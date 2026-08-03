@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* RealComply brand tokens — see RealComply-brand-and-site-status.md (LOCKED) */
+:root {
+  --background: #ffffff;
+  --foreground: #0d1f19;
+  --rc-ink: #0d1f19;
+  --rc-green: #2ecc8f;
+  --rc-green-deep: #0ca678;
+  --rc-amber: #e2a94a;
+  --rc-amber-deep: #b7791f;
+  --rc-border: #e4e9e6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-rc-ink: var(--rc-ink);
+  --color-rc-green: var(--rc-green);
+  --color-rc-green-deep: var(--rc-green-deep);
+  --color-rc-amber: var(--rc-amber);
+  --color-rc-amber-deep: var(--rc-amber-deep);
+  --color-rc-border: var(--rc-border);
+  --font-sans: var(--font-plus-jakarta);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
