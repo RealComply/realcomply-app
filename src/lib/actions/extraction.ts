@@ -122,6 +122,20 @@ async function extractOneDocument(
   const fileName =
     (item.data as { evidenceFileName?: string } | null)?.evidenceFileName ?? path.split("/").pop() ?? "document";
 
+  // Deterministic backstop, not a prompt instruction: a real contract, agency
+  // agreement, or comps report is never this short. Skip the model call
+  // entirely rather than trust an LLM not to fabricate an answer about
+  // content that plainly isn't a real source document — this caught a
+  // confirmed hallucination (invented document names) that survived two
+  // rounds of prompt-only fixes on a one-line placeholder test file.
+  const MIN_TEXT_CHARS = 400;
+  if (contentType === "text/plain") {
+    const text = Buffer.from(base64, "base64").toString("utf-8");
+    if (text.trim().length < MIN_TEXT_CHARS) {
+      return [];
+    }
+  }
+
   const documentBlock = buildDocumentBlock(contentType, base64, fileName);
   if (!documentBlock) {
     throw new Error(`file type not supported for extraction yet (${contentType})`);
@@ -153,7 +167,11 @@ async function extractOneDocument(
       "name the document, quote identifying details (issuer, date, certificate or reference number) if visible, " +
       "and say exactly what you found and where it disagrees with the index. Still never assert a document is " +
       "missing or doesn't exist unless you've actually looked through the whole document for it; phrase that as " +
-      "'not found in what I was shown', not a categorical claim.",
+      "'not found in what I was shown', not a categorical claim. Calling record_findings is entirely optional — " +
+      "if nothing in this document warrants a finding, or the document doesn't genuinely look like the kind of " +
+      "document it was labelled as (too short, wrong format, unrelated content), just say so in plain text and " +
+      "do not call the tool at all. Do not feel obliged to produce a tool call just because the tool is " +
+      "available — an unused tool is a completely normal, successful outcome here.",
     messages: [
       {
         role: "user",
@@ -168,21 +186,25 @@ async function extractOneDocument(
               "figure is explicitly stated in this document), a4b (what comparable-sales evidence is present), " +
               "a4c (the reasoning behind an ESP, only if stated), a5 (commission/rebate/VPA terms), a6 " +
               "(cooling-off), a7 (material facts disclosed), b1 (the s52A prescribed documents — planning " +
-              "certificate, sewer/sewerage diagrams, title/plan. If this document has a 'List of Documents' " +
-              "index page, don't just read the checkboxes and stop — check whether the annexures later in the " +
-              "document actually back up what's marked, and name the specific documents you can actually find " +
-              "attached, with identifying details like issuer, date, or certificate number where visible. Report " +
-              "any mismatch between the index and the actual attachments specifically — that's a comparison " +
-              "within this one document, not a guess. Don't claim something is missing unless you've looked " +
-              "through the whole document and still can't find it). For every item: only report what is " +
-              "directly readable in the content above; if you're not looking at something substantial enough to " +
-              "ground a finding, leave that item out rather than filling it in.",
+              "certificate, sewer/sewerage diagrams, title/plan. First check this actually looks like a real " +
+              "contract for sale of land — vendor/purchaser details, price, settlement terms, that kind of " +
+              "substance. If it doesn't, say so in one line and stop there; don't attempt the s52A check at all " +
+              "on something that isn't genuinely a contract, even though it was labelled as one when uploaded. " +
+              "If it does look like a real contract and has a 'List of Documents' index page, don't just read " +
+              "the checkboxes and stop — check whether the annexures later in the document actually back up " +
+              "what's marked, and name the specific documents you can actually find attached, with identifying " +
+              "details like issuer, date, or certificate number where visible. Report any mismatch between the " +
+              "index and the actual attachments specifically — that's a comparison within this one document, not " +
+              "a guess. Don't claim something is missing unless you've looked through the whole document and " +
+              "still can't find it). For every item: only report what is directly readable in the content above; " +
+              "if you're not looking at something substantial enough to ground a finding, leave that item out " +
+              "rather than filling it in.",
           },
         ],
       },
     ],
     tools: [EXTRACTION_TOOL],
-    tool_choice: { type: "tool", name: "record_findings" },
+    tool_choice: { type: "auto" },
   });
 
   const toolUse = response.content.find(
