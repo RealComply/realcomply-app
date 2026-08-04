@@ -191,11 +191,22 @@ function ChecklistItem({
 }) {
   const boundAction = setItemStatus.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
-  const data = (current?.data ?? {}) as { note?: string; espLow?: number; espHigh?: number };
+  const data = (current?.data ?? {}) as {
+    note?: string;
+    espLow?: number;
+    espHigh?: number;
+    aiDraft?: { note?: string; espLow?: number; espHigh?: number; eventDate?: string };
+  };
+  const draft = data.aiDraft;
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       <form action={formAction} className="space-y-3">
+        {draft && (
+          <p className="rounded-md bg-rc-green/10 px-2 py-1.5 text-xs text-rc-green-deep">
+            🤖 Pre-filled from an uploaded document — check it against the source, then save.
+          </p>
+        )}
         {item.key === "a4" && (
           <div className="flex gap-3">
             <div>
@@ -203,7 +214,7 @@ function ChecklistItem({
               <input
                 type="number"
                 name="espLow"
-                defaultValue={data.espLow ?? ""}
+                defaultValue={data.espLow ?? draft?.espLow ?? ""}
                 className="mt-1 w-32 rounded-md border border-rc-border px-2 py-1 text-sm"
               />
             </div>
@@ -212,7 +223,7 @@ function ChecklistItem({
               <input
                 type="number"
                 name="espHigh"
-                defaultValue={data.espHigh ?? ""}
+                defaultValue={data.espHigh ?? draft?.espHigh ?? ""}
                 className="mt-1 w-32 rounded-md border border-rc-border px-2 py-1 text-sm"
               />
             </div>
@@ -224,7 +235,7 @@ function ChecklistItem({
             <input
               type="date"
               name="eventDate"
-              defaultValue={current?.event_date ?? ""}
+              defaultValue={current?.event_date ?? draft?.eventDate ?? ""}
               className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
             />
           </div>
@@ -233,7 +244,7 @@ function ChecklistItem({
           <label className="block text-xs text-neutral-500">Note</label>
           <textarea
             name="note"
-            defaultValue={data.note ?? ""}
+            defaultValue={data.note ?? draft?.note ?? ""}
             rows={2}
             className="mt-1 w-full rounded-md border border-rc-border px-2 py-1 text-sm"
           />

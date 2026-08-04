@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
 import { ItemCard } from "@/components/compliance/ItemCard";
-import { CompleteStageButton, TestModeToggle } from "@/components/compliance/StageActions";
+import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
 import { itemsForStage } from "@/lib/rules/nsw-sales";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
@@ -52,6 +52,7 @@ export default async function PropertyPage({
   const stageItems = itemsForStage(viewedStage, p);
   const isCurrentStage = viewedStage === p.stage;
   const fileFinalised = p.stage === 5 && allItems["f1"]?.status === "done";
+  const hasSourceDocs = ["a3", "b1", "a4b"].some((key) => allItems[key]?.evidence_path);
 
   return (
     <>
@@ -104,6 +105,8 @@ export default async function PropertyPage({
             );
           })}
         </div>
+
+        {hasSourceDocs && p.stage <= 1 && <ExtractDocumentsButton propertyId={p.id} />}
 
         {fileFinalised && (
           <div className="mt-6 rounded-lg border border-rc-green-deep/30 bg-rc-green/10 px-4 py-3 text-sm text-rc-green-deep">

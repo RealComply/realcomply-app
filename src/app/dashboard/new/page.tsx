@@ -112,9 +112,10 @@ export default function NewPropertyPage() {
         <div className="border-t border-rc-border pt-6">
           <h2 className="text-sm font-semibold text-rc-ink">Documents you already have</h2>
           <p className="mt-1 text-xs text-neutral-500">
-            Attach these now if you have them and skip re-uploading later. AI-assisted extraction — pulling
-            dates and figures out of these automatically — isn&rsquo;t wired up yet; for now this just files
-            them against the right item as evidence.
+            Attach these now if you have them and skip re-uploading later. Each one files against the right
+            item as evidence — then use &ldquo;Extract from uploaded documents&rdquo; on the property page to
+            have the AI pre-fill what it can find (you&rsquo;ll still review and confirm every field before
+            saving).
           </p>
           <div className="mt-4 space-y-4">
             <DocUpload

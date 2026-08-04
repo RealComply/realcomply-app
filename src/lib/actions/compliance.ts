@@ -10,7 +10,7 @@ import type { Property, PropertyItem, PropertyStage } from "@/lib/types";
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
 
-async function requireAuthContext() {
+export async function requireAuthContext() {
   const supabase = await createClient();
   const {
     data: { user },

@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { completeStage, toggleTestMode, type ActionState } from "@/lib/actions/compliance";
+import { extractFromDocuments } from "@/lib/actions/extraction";
 import type { PropertyStage } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
@@ -26,6 +27,24 @@ export function CompleteStageButton({
         {pending ? "Checking…" : `Complete stage ${stage + 1} & continue`}
       </button>
       {state.error && <p className="mt-2 text-sm text-rc-amber-deep">{state.error}</p>}
+    </form>
+  );
+}
+
+export function ExtractDocumentsButton({ propertyId }: { propertyId: string }) {
+  const boundAction = extractFromDocuments.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(boundAction, initialState);
+
+  return (
+    <form action={formAction} className="mt-4">
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded-md border border-rc-green-deep/40 px-3 py-1.5 text-xs font-semibold text-rc-green-deep transition hover:bg-rc-green/10 disabled:opacity-60"
+      >
+        {pending ? "Reading documents…" : "🤖 Extract from uploaded documents"}
+      </button>
+      {state.error && <p className="mt-2 text-xs text-rc-amber-deep">{state.error}</p>}
     </form>
   );
 }
