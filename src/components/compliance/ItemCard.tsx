@@ -244,7 +244,7 @@ function ChecklistItem({
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       <form action={formAction} className="space-y-3">
-        {draft && (
+        {draft && !item.showFindings && (
           <p className="rounded-md bg-rc-green/10 px-2 py-1.5 text-xs text-rc-green-deep">
             🤖 Pre-filled from an uploaded document — check it against the source, then save.
           </p>
@@ -282,16 +282,30 @@ function ChecklistItem({
             />
           </div>
         )}
-        {!item.hideNote && (
+        {item.showFindings ? (
           <div>
-            <label className="block text-xs text-neutral-500">Note</label>
-            <textarea
-              name="note"
-              defaultValue={data.note ?? draft?.note ?? ""}
-              rows={2}
-              className="mt-1 w-full rounded-md border border-rc-border px-2 py-1 text-sm"
-            />
+            <label className="block text-xs text-neutral-500">
+              Findings <span className="font-normal text-neutral-400">(from AI extraction, not for manual entry)</span>
+            </label>
+            <p className="mt-1 rounded-md border border-rc-border bg-neutral-50 px-2 py-1.5 text-sm text-rc-ink">
+              {(data.note ?? draft?.note ?? "").trim() || "None"}
+            </p>
+            {/* Carries the current finding through Mark done/Flag/Reopen so it isn't wiped by
+                a submit — this field has no editable input, so formData wouldn't otherwise include it. */}
+            <input type="hidden" name="note" value={data.note ?? draft?.note ?? ""} readOnly />
           </div>
+        ) : (
+          !item.hideNote && (
+            <div>
+              <label className="block text-xs text-neutral-500">Note</label>
+              <textarea
+                name="note"
+                defaultValue={data.note ?? draft?.note ?? ""}
+                rows={2}
+                className="mt-1 w-full rounded-md border border-rc-border px-2 py-1 text-sm"
+              />
+            </div>
+          )
         )}
         <div className="flex gap-2">
           <button

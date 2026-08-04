@@ -45,6 +45,13 @@ export type ComplianceItem = {
   // self-explanatory yes/done confirmations, where a note is unnecessary
   // extra work rather than useful evidence.
   hideNote?: boolean;
+  // Replaces the note box with a read-only "Findings" line instead of
+  // hiding it outright — for items where the box was never meant for the
+  // agent to type into, only to surface what AI extraction found (e.g. a
+  // s52A index/annexure mismatch). Shows "None" rather than staying blank
+  // when there's nothing to report, so it's clear the AI looked and found
+  // nothing rather than that nobody's looked yet.
+  showFindings?: boolean;
 };
 
 const items: ComplianceItem[] = [
@@ -171,6 +178,7 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
     hideNote: true,
+    showFindings: true,
   },
   {
     key: "b2",
