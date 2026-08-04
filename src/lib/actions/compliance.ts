@@ -454,6 +454,111 @@ export async function generateExport(propertyId: string): Promise<void> {
   revalidatePath(`/dashboard/${propertyId}`);
 }
 
+const MAX_EVIDENCE_BYTES = 20 * 1024 * 1024; // 20MB
+const EVIDENCE_BUCKET = "compliance-evidence";
+
+function sanitizeFileName(name: string): string {
+  // Keep it simple and storage-path-safe; the original name is preserved
+  // separately in data.evidenceFileName for display.
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
+}
+
+// Attaches (or replaces) the evidence file for a single item. One file per
+// item for now — evidence_path is a single column on property_items, not a
+// list (supabase/migrations/0001_init.sql). Path convention:
+// `${agency_id}/${property_id}/${item_key}/${timestamp}-${filename}`, which
+// the storage RLS policies in 0002_evidence_storage.sql key off directly.
+export async function uploadEvidence(
+  propertyId: string,
+  itemKey: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Choose a file to attach." };
+  }
+  if (file.size > MAX_EVIDENCE_BYTES) {
+    return { error: "File is too large — 20MB max." };
+  }
+
+  const { data: existingRow } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", itemKey)
+    .maybeSingle();
+  const existing = existingRow as PropertyItem | null;
+
+  const path = `${profile.agency_id}/${propertyId}/${itemKey}/${Date.now()}-${sanitizeFileName(file.name)}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(EVIDENCE_BUCKET)
+    .upload(path, file, { contentType: file.type || undefined });
+
+  if (uploadError) {
+    return { error: uploadError.message };
+  }
+
+  // Only remove the old file once the new one is safely uploaded, so a
+  // failed upload never leaves an item with no evidence at all.
+  if (existing?.evidence_path) {
+    await supabase.storage.from(EVIDENCE_BUCKET).remove([existing.evidence_path]);
+  }
+
+  const { error } = await supabase.from("property_items").upsert(
+    {
+      agency_id: profile.agency_id,
+      property_id: propertyId,
+      item_key: itemKey,
+      status: existing?.status ?? "open",
+      data: { ...(existing?.data ?? {}), evidenceFileName: file.name },
+      event_date: existing?.event_date ?? null,
+      completed_by: existing?.completed_by ?? null,
+      evidence_path: path,
+    },
+    { onConflict: "property_id,item_key" },
+  );
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return error ? { error: error.message } : ok;
+}
+
+// Removes the attached evidence file (storage object + the pointer/filename
+// on the item row) without touching the item's status, note, or any other
+// data — evidence is supporting material, not the record of completion.
+export async function removeEvidence(propertyId: string, itemKey: string): Promise<void> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const { data: existingRow } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", itemKey)
+    .maybeSingle();
+  const existing = existingRow as PropertyItem | null;
+
+  if (!existing?.evidence_path) {
+    return;
+  }
+
+  await supabase.storage.from(EVIDENCE_BUCKET).remove([existing.evidence_path]);
+
+  const { evidenceFileName: _drop, ...restData } = existing.data as Record<string, unknown> & {
+    evidenceFileName?: string;
+  };
+
+  await supabase
+    .from("property_items")
+    .update({ evidence_path: null, data: restData, agency_id: profile.agency_id })
+    .eq("property_id", propertyId)
+    .eq("item_key", itemKey);
+
+  revalidatePath(`/dashboard/${propertyId}`);
+}
+
 export async function toggleTestMode(propertyId: string): Promise<void> {
   const { supabase } = await requireAuthContext();
 
