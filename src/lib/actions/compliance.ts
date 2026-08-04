@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
+import { attachEvidenceFile, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem, PropertyStage } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -454,20 +455,11 @@ export async function generateExport(propertyId: string): Promise<void> {
   revalidatePath(`/dashboard/${propertyId}`);
 }
 
-const MAX_EVIDENCE_BYTES = 20 * 1024 * 1024; // 20MB
-const EVIDENCE_BUCKET = "compliance-evidence";
-
-function sanitizeFileName(name: string): string {
-  // Keep it simple and storage-path-safe; the original name is preserved
-  // separately in data.evidenceFileName for display.
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
-}
-
 // Attaches (or replaces) the evidence file for a single item. One file per
 // item for now — evidence_path is a single column on property_items, not a
-// list (supabase/migrations/0001_init.sql). Path convention:
-// `${agency_id}/${property_id}/${item_key}/${timestamp}-${filename}`, which
-// the storage RLS policies in 0002_evidence_storage.sql key off directly.
+// list (supabase/migrations/0001_init.sql). The actual upload/attach logic
+// is shared with the property-setup upload fields (agency agreement,
+// contract for sale, comparable-sales report) via src/lib/storage/evidence.ts.
 export async function uploadEvidence(
   propertyId: string,
   itemKey: string,
@@ -480,50 +472,16 @@ export async function uploadEvidence(
   if (!(file instanceof File) || file.size === 0) {
     return { error: "Choose a file to attach." };
   }
-  if (file.size > MAX_EVIDENCE_BYTES) {
-    return { error: "File is too large — 20MB max." };
-  }
 
-  const { data: existingRow } = await supabase
-    .from("property_items")
-    .select("*")
-    .eq("property_id", propertyId)
-    .eq("item_key", itemKey)
-    .maybeSingle();
-  const existing = existingRow as PropertyItem | null;
-
-  const path = `${profile.agency_id}/${propertyId}/${itemKey}/${Date.now()}-${sanitizeFileName(file.name)}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from(EVIDENCE_BUCKET)
-    .upload(path, file, { contentType: file.type || undefined });
-
-  if (uploadError) {
-    return { error: uploadError.message };
-  }
-
-  // Only remove the old file once the new one is safely uploaded, so a
-  // failed upload never leaves an item with no evidence at all.
-  if (existing?.evidence_path) {
-    await supabase.storage.from(EVIDENCE_BUCKET).remove([existing.evidence_path]);
-  }
-
-  const { error } = await supabase.from("property_items").upsert(
-    {
-      agency_id: profile.agency_id,
-      property_id: propertyId,
-      item_key: itemKey,
-      status: existing?.status ?? "open",
-      data: { ...(existing?.data ?? {}), evidenceFileName: file.name },
-      event_date: existing?.event_date ?? null,
-      completed_by: existing?.completed_by ?? null,
-      evidence_path: path,
-    },
-    { onConflict: "property_id,item_key" },
-  );
+  const { error } = await attachEvidenceFile(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey,
+    file,
+  });
 
   revalidatePath(`/dashboard/${propertyId}`);
-  return error ? { error: error.message } : ok;
+  return error ? { error } : ok;
 }
 
 // Removes the attached evidence file (storage object + the pointer/filename

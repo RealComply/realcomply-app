@@ -31,6 +31,26 @@ function YesNo({ name, label, help }: { name: string; label: string; help?: stri
   );
 }
 
+function DocUpload({ name, label, itemLabel }: { name: string; label: string; itemLabel: string }) {
+  return (
+    <div>
+      <label htmlFor={name} className="block text-sm font-medium text-rc-ink">
+        {label} <span className="font-normal text-neutral-400">(optional)</span>
+      </label>
+      <p className="mt-0.5 text-xs text-neutral-500">
+        Attaches straight to &ldquo;{itemLabel}&rdquo; so it&rsquo;s waiting there when you reach it — you can
+        always add or replace it later on the item itself.
+      </p>
+      <input
+        id={name}
+        name={name}
+        type="file"
+        className="mt-1.5 w-full text-xs text-neutral-500 file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1.5 file:text-xs file:font-medium"
+      />
+    </div>
+  );
+}
+
 export default function NewPropertyPage() {
   const [state, formAction, pending] = useActionState(createProperty, initialState);
 
@@ -88,6 +108,32 @@ export default function NewPropertyPage() {
         />
         <YesNo name="isTenanted" label="Is the property currently tenanted?" />
         <YesNo name="hasPool" label="Does the property have a pool?" />
+
+        <div className="border-t border-rc-border pt-6">
+          <h2 className="text-sm font-semibold text-rc-ink">Documents you already have</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Attach these now if you have them and skip re-uploading later. AI-assisted extraction — pulling
+            dates and figures out of these automatically — isn&rsquo;t wired up yet; for now this just files
+            them against the right item as evidence.
+          </p>
+          <div className="mt-4 space-y-4">
+            <DocUpload
+              name="agencyAgreementFile"
+              label="Agency agreement"
+              itemLabel="Agency agreement signed; copy served within 48 hours"
+            />
+            <DocUpload
+              name="contractFile"
+              label="Contract for sale"
+              itemLabel="Contract of sale prepared with prescribed documents"
+            />
+            <DocUpload
+              name="comparableSalesFile"
+              label="Comparable sales report"
+              itemLabel="Comparable-sales evidence held"
+            />
+          </div>
+        </div>
 
         <button
           type="submit"
