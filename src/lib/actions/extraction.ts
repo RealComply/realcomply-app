@@ -131,7 +131,7 @@ async function extractOneDocument(
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-5",
-    max_tokens: 1024,
+    max_tokens: 1536,
     system:
       "You are extracting facts from a real-estate compliance document for a NSW licensed agent's compliance " +
       "file (RealComply). This is diligence support only — the licensee reviews everything and decides, you do " +
@@ -143,7 +143,17 @@ async function extractOneDocument(
       "what is shown, and do not reason from what this type of document 'usually' or 'typically' contains. If " +
       "nothing relevant is written down for an item, or the content shown is too short, generic, or unrelated to " +
       "make a grounded finding, omit that item entirely — an empty patches array is correct and expected, not a " +
-      "failure. Keep notes short, factual, and traceable to specific text you were actually shown.",
+      "failure. Keep notes short, factual, and traceable to specific text you were actually shown. One exception " +
+      "to 'never speculate': when a document contains its own index or checklist of what's attached (for " +
+      "example a contract's 'List of Documents' page), you should cross-check that index against what actually " +
+      "appears later in the same document — that is a literal comparison between two parts of the one file in " +
+      "front of you, not a guess about the outside world, and it is exactly the kind of grounded finding this " +
+      "tool exists for. If a box is ticked but you can't find the matching attachment, or a box is left blank " +
+      "despite the item plainly being attached further on, report that mismatch specifically and factually — " +
+      "name the document, quote identifying details (issuer, date, certificate or reference number) if visible, " +
+      "and say exactly what you found and where it disagrees with the index. Still never assert a document is " +
+      "missing or doesn't exist unless you've actually looked through the whole document for it; phrase that as " +
+      "'not found in what I was shown', not a categorical claim.",
     messages: [
       {
         role: "user",
@@ -157,11 +167,16 @@ async function extractOneDocument(
               "identity/ownership), a3 (the date the agency agreement was signed), a4 (an ESP range, only if a " +
               "figure is explicitly stated in this document), a4b (what comparable-sales evidence is present), " +
               "a4c (the reasoning behind an ESP, only if stated), a5 (commission/rebate/VPA terms), a6 " +
-              "(cooling-off), a7 (material facts disclosed), b1 (only note specific s52A prescribed documents — " +
-              "planning certificate, sewer diagram, title/plan — that you can actually see included in this " +
-              "document; never comment on which ones are absent or missing). For every item: only report what " +
-              "is directly readable in the content above; if you're not looking at something substantial enough " +
-              "to ground a finding, leave that item out rather than filling it in.",
+              "(cooling-off), a7 (material facts disclosed), b1 (the s52A prescribed documents — planning " +
+              "certificate, sewer/sewerage diagrams, title/plan. If this document has a 'List of Documents' " +
+              "index page, don't just read the checkboxes and stop — check whether the annexures later in the " +
+              "document actually back up what's marked, and name the specific documents you can actually find " +
+              "attached, with identifying details like issuer, date, or certificate number where visible. Report " +
+              "any mismatch between the index and the actual attachments specifically — that's a comparison " +
+              "within this one document, not a guess. Don't claim something is missing unless you've looked " +
+              "through the whole document and still can't find it). For every item: only report what is " +
+              "directly readable in the content above; if you're not looking at something substantial enough to " +
+              "ground a finding, leave that item out rather than filling it in.",
           },
         ],
       },
