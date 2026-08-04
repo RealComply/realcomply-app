@@ -3,14 +3,20 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
-import { STAGE_LABELS, type Property } from "@/lib/types";
+import { ItemCard } from "@/components/compliance/ItemCard";
+import { CompleteStageButton, TestModeToggle } from "@/components/compliance/StageActions";
+import { itemsForStage } from "@/lib/rules/nsw-sales";
+import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
 export default async function PropertyPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ stage?: string }>;
 }) {
   const { id } = await params;
+  const { stage: stageParam } = await searchParams;
   const profile = await requireProfile();
   const supabase = await createClient();
 
@@ -26,13 +32,37 @@ export default async function PropertyPage({
 
   const p = property as Property;
 
+  const { data: propertyItemRows } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", id);
+
+  const allItems = Object.fromEntries(
+    ((propertyItemRows ?? []) as PropertyItem[]).map((item) => [item.item_key, item]),
+  );
+
+  const maxViewable = p.test_mode ? 5 : p.stage;
+  const requestedStage = stageParam ? (Number(stageParam) as PropertyStage) : p.stage;
+  const viewedStage = (
+    Number.isFinite(requestedStage) && requestedStage >= 0 && requestedStage <= maxViewable
+      ? requestedStage
+      : p.stage
+  ) as PropertyStage;
+
+  const stageItems = itemsForStage(viewedStage, p);
+  const isCurrentStage = viewedStage === p.stage;
+  const fileFinalised = p.stage === 5 && allItems["f1"]?.status === "done";
+
   return (
     <>
       <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
-        <Link href="/dashboard" className="text-sm text-neutral-500 hover:underline">
-          ← All properties
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/dashboard" className="text-sm text-neutral-500 hover:underline">
+            ← All properties
+          </Link>
+          <TestModeToggle propertyId={p.id} testMode={p.test_mode} />
+        </div>
 
         <div className="mt-3 flex items-center justify-between">
           <div>
@@ -44,16 +74,67 @@ export default async function PropertyPage({
               {p.has_pool ? " · Pool" : ""}
             </p>
           </div>
-          <span className="rounded-full bg-rc-green/15 px-3 py-1 text-xs font-medium text-rc-green-deep">
-            {STAGE_LABELS[p.stage]}
-          </span>
         </div>
 
-        <div className="mt-8 rounded-lg border border-dashed border-rc-border px-6 py-12 text-center text-sm text-neutral-500">
-          The stage-by-stage compliance checklist (ported from the prototype, item
-          by item) lands here next — this page currently just proves the
-          property record itself is real, persisted, and scoped to your agency.
+        <div className="mt-6 flex flex-wrap gap-2">
+          {([0, 1, 2, 3, 4, 5] as PropertyStage[]).map((s) => {
+            const reachable = s <= maxViewable;
+            const active = s === viewedStage;
+            return reachable ? (
+              <Link
+                key={s}
+                href={`/dashboard/${p.id}?stage=${s}`}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                  active
+                    ? "bg-rc-green-deep text-white"
+                    : s < p.stage
+                      ? "bg-rc-green/15 text-rc-green-deep hover:opacity-80"
+                      : "border border-rc-border text-neutral-500 hover:bg-neutral-50"
+                }`}
+              >
+                {STAGE_LABELS[s]}
+              </Link>
+            ) : (
+              <span
+                key={s}
+                className="rounded-full border border-dashed border-rc-border px-3 py-1 text-xs font-medium text-neutral-300"
+              >
+                {STAGE_LABELS[s]}
+              </span>
+            );
+          })}
         </div>
+
+        {fileFinalised && (
+          <div className="mt-6 rounded-lg border border-rc-green-deep/30 bg-rc-green/10 px-4 py-3 text-sm text-rc-green-deep">
+            This file is finalised. See the{" "}
+            <Link href={`/dashboard/${p.id}/summary`} className="underline">
+              finalised summary
+            </Link>
+            .
+          </div>
+        )}
+
+        {!isCurrentStage && (
+          <div className="mt-6 rounded-lg border border-rc-border bg-neutral-50 px-4 py-2 text-xs text-neutral-500">
+            Viewing {STAGE_LABELS[viewedStage]} — the file&rsquo;s current stage is {STAGE_LABELS[p.stage]}.
+          </div>
+        )}
+
+        <div className="mt-6 space-y-4">
+          {stageItems.map((item) => (
+            <ItemCard
+              key={item.key}
+              item={item}
+              propertyId={p.id}
+              current={allItems[item.key]}
+              profile={profile}
+              allItems={allItems}
+            />
+          ))}
+        </div>
+
+        {isCurrentStage && p.stage < 5 && <CompleteStageButton propertyId={p.id} stage={p.stage} />}
       </main>
     </>
   );
