@@ -135,9 +135,15 @@ async function extractOneDocument(
     system:
       "You are extracting facts from a real-estate compliance document for a NSW licensed agent's compliance " +
       "file (RealComply). This is diligence support only — the licensee reviews everything and decides, you do " +
-      "not. Only extract facts the document explicitly states. Never infer, estimate, guess, or fill a gap with " +
-      "a plausible-sounding figure or date. If nothing relevant is written down for an item, omit that item " +
-      "entirely — an empty result is correct and expected, not a failure. Keep notes short and factual.",
+      "not. Only extract facts the document explicitly and literally states. Never infer, estimate, guess, or " +
+      "fill a gap with a plausible-sounding figure, date, or description — including describing what a document " +
+      "is missing, lacks, or does not include. A statement about absence is exactly as fabricated as a wrong " +
+      "figure if you cannot see the rest of the actual file to know it's true. You have been shown the complete " +
+      "content available to you above — do not assume there are further pages, schedules, or attachments beyond " +
+      "what is shown, and do not reason from what this type of document 'usually' or 'typically' contains. If " +
+      "nothing relevant is written down for an item, or the content shown is too short, generic, or unrelated to " +
+      "make a grounded finding, omit that item entirely — an empty patches array is correct and expected, not a " +
+      "failure. Keep notes short, factual, and traceable to specific text you were actually shown.",
     messages: [
       {
         role: "user",
@@ -147,12 +153,15 @@ async function extractOneDocument(
             type: "text",
             text:
               `This document was uploaded as the ${sourceLabel}. Call record_findings with any facts it ` +
-              "explicitly states that are relevant to these compliance items: a1 (vendor identity/ownership), " +
-              "a3 (the date the agency agreement was signed), a4 (an ESP range, only if a figure is explicitly " +
-              "stated in this document), a4b (what comparable-sales evidence is present), a4c (the reasoning " +
-              "behind an ESP, only if stated), a5 (commission/rebate/VPA terms), a6 (cooling-off), a7 (material " +
-              "facts disclosed), b1 (which s52A prescribed documents — planning certificate, sewer diagram, " +
-              "title/plan — appear to be present in this document).",
+              "explicitly and literally states that are relevant to these compliance items: a1 (vendor " +
+              "identity/ownership), a3 (the date the agency agreement was signed), a4 (an ESP range, only if a " +
+              "figure is explicitly stated in this document), a4b (what comparable-sales evidence is present), " +
+              "a4c (the reasoning behind an ESP, only if stated), a5 (commission/rebate/VPA terms), a6 " +
+              "(cooling-off), a7 (material facts disclosed), b1 (only note specific s52A prescribed documents — " +
+              "planning certificate, sewer diagram, title/plan — that you can actually see included in this " +
+              "document; never comment on which ones are absent or missing). For every item: only report what " +
+              "is directly readable in the content above; if you're not looking at something substantial enough " +
+              "to ground a finding, leave that item out rather than filling it in.",
           },
         ],
       },
