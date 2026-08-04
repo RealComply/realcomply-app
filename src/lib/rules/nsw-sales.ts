@@ -395,14 +395,24 @@ const items: ComplianceItem[] = [
   },
 ];
 
+// Server components pass ComplianceItem objects straight into client
+// components (ItemCard). `showIf` is a function and functions can't cross
+// the server/client boundary — strip it once filtering is done so callers
+// always get a plain, serializable object.
+function stripShowIf(item: ComplianceItem): ComplianceItem {
+  const { showIf: _showIf, ...rest } = item;
+  return rest;
+}
+
 export function itemsForStage(stage: PropertyStage, property: Property): ComplianceItem[] {
   return items
     .filter((item) => item.stage === stage)
-    .filter((item) => (item.showIf ? item.showIf(property) : true));
+    .filter((item) => (item.showIf ? item.showIf(property) : true))
+    .map(stripShowIf);
 }
 
 export function allItemsFor(property: Property): ComplianceItem[] {
-  return items.filter((item) => (item.showIf ? item.showIf(property) : true));
+  return items.filter((item) => (item.showIf ? item.showIf(property) : true)).map(stripShowIf);
 }
 
 export function getItem(key: string): ComplianceItem | undefined {
