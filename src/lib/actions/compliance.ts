@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
-import { attachEvidenceFile, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { finalizeEvidenceRecord, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem, PropertyStage } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -460,6 +460,12 @@ export async function generateExport(propertyId: string): Promise<void> {
 // list (supabase/migrations/0001_init.sql). The actual upload/attach logic
 // is shared with the property-setup upload fields (agency agreement,
 // contract for sale, comparable-sales report) via src/lib/storage/evidence.ts.
+// The browser uploads the file straight to Storage itself (see
+// EvidenceUploader in ItemCard.tsx and src/lib/storage/evidence.ts for why
+// — a Server Action can't reliably carry a real multi-MB document, since
+// Vercel Functions hard-cap request bodies at 4.5MB regardless of app
+// config). This action only ever receives the resulting path + filename as
+// plain strings and records the pointer.
 export async function uploadEvidence(
   propertyId: string,
   itemKey: string,
@@ -468,16 +474,18 @@ export async function uploadEvidence(
 ): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
 
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
+  const path = String(formData.get("path") ?? "").trim();
+  const fileName = String(formData.get("fileName") ?? "").trim();
+  if (!path || !fileName) {
     return { error: "Choose a file to attach." };
   }
 
-  const { error } = await attachEvidenceFile(supabase, {
+  const { error } = await finalizeEvidenceRecord(supabase, {
     agencyId: profile.agency_id,
     propertyId,
     itemKey,
-    file,
+    path,
+    fileName,
   });
 
   revalidatePath(`/dashboard/${propertyId}`);

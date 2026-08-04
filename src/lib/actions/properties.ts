@@ -2,14 +2,18 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { attachEvidenceFile } from "@/lib/storage/evidence";
+import { buildEvidencePath, finalizeEvidenceRecord, moveStagedEvidence } from "@/lib/storage/evidence";
 import type { ActionState } from "@/lib/actions/auth";
 
-// Documents collected at setup time (now mandatory — see createProperty
-// below), and which Stage 0/1 item each is attached to as evidence.
-// Uploading here means the file is already sitting on the right item when
-// the agent gets to it, and immediately available to
-// src/lib/actions/extraction.ts's "Extract from uploaded documents" step.
+// Documents collected at setup time (mandatory — see createProperty below),
+// and which Stage 0/1 item each is attached to as evidence. The browser
+// uploads these directly to Storage before this action ever runs (see
+// NewPropertyForm.tsx and src/lib/storage/evidence.ts for why — Vercel
+// Functions cap request bodies at 4.5MB, so real multi-MB contracts can
+// never travel through a Server Action as file bytes). This action only
+// ever sees the resulting staged path + original filename as plain
+// strings, then moves the object to its permanent, property-scoped path
+// once the property row exists.
 const SETUP_EVIDENCE_FIELDS: Array<{ field: string; itemKey: string }> = [
   { field: "agencyAgreementFile", itemKey: "a3" }, // Agency agreement signed; copy served within 48 hours
   { field: "contractFile", itemKey: "b1" }, // Contract of sale prepared with prescribed documents
@@ -34,14 +38,20 @@ export async function createProperty(
     return { error: "Address is required." };
   }
 
-  // Documents are mandatory at setup — enforced with `required` on the file
-  // inputs client-side, and re-checked here since a Server Action is a real
-  // POST endpoint that a bare form submission could otherwise bypass.
-  for (const { field } of SETUP_EVIDENCE_FIELDS) {
-    const file = formData.get(field);
-    if (!(file instanceof File) || file.size === 0) {
-      return { error: "Attach all three documents (agency agreement, contract for sale, comparable sales report) to create a property file." };
+  // Documents are mandatory at setup — NewPropertyForm.tsx uploads each
+  // file to Storage itself and only submits here once all three succeed,
+  // but re-check that every staged path actually arrived, since a Server
+  // Action is a real POST endpoint a bare form submission could bypass.
+  const staged: Array<{ field: string; itemKey: string; path: string; fileName: string }> = [];
+  for (const { field, itemKey } of SETUP_EVIDENCE_FIELDS) {
+    const path = String(formData.get(`${field}StagedPath`) ?? "").trim();
+    const fileName = String(formData.get(`${field}FileName`) ?? "").trim();
+    if (!path || !fileName) {
+      return {
+        error: "Attach all three documents (agency agreement, contract for sale, comparable sales report) to create a property file.",
+      };
     }
+    staged.push({ field, itemKey, path, fileName });
   }
 
   const supabase = await createClient();
@@ -82,19 +92,21 @@ export async function createProperty(
     return { error: error.message };
   }
 
-  // Attach whichever setup documents were provided. Best-effort — a failed
-  // attachment here shouldn't block property creation, since the agent can
-  // always attach the file directly on the item later.
-  for (const { field, itemKey } of SETUP_EVIDENCE_FIELDS) {
-    const file = formData.get(field);
-    if (file instanceof File && file.size > 0) {
-      await attachEvidenceFile(supabase, {
-        agencyId: profile.agency_id,
-        propertyId: property.id,
-        itemKey,
-        file,
-      });
-    }
+  // Relocate each staged upload to its permanent, property-scoped path and
+  // record it as evidence. Best-effort per file — a problem with one
+  // shouldn't block the others or the property that's already been
+  // created; the agent can always re-attach directly on the item.
+  for (const { itemKey, path, fileName } of staged) {
+    const finalPath = buildEvidencePath(profile.agency_id, property.id, itemKey, fileName);
+    const { error: moveError } = await moveStagedEvidence(supabase, { from: path, to: finalPath });
+    if (moveError) continue;
+    await finalizeEvidenceRecord(supabase, {
+      agencyId: profile.agency_id,
+      propertyId: property.id,
+      itemKey,
+      path: finalPath,
+      fileName,
+    });
   }
 
   redirect(`/dashboard/${property.id}`);

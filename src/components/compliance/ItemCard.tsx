@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ReactNode } from "react";
+import { useActionState, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import type { Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import {
   setItemStatus,
   addReviewEntry,
@@ -19,7 +20,6 @@ import {
 } from "@/lib/actions/compliance";
 
 const initialState: ActionState = { error: null };
-const EVIDENCE_BUCKET = "compliance-evidence";
 
 function StatusPill({ status }: { status?: PropertyItem["status"] }) {
   if (!status || status === "open") {
@@ -98,6 +98,11 @@ function FieldError({ error }: { error: string | null }) {
 // pool certificate, a comparable-sales report), not just the "evidence"
 // items in the rules file. Signed URLs are fetched client-side so they're
 // generated fresh per view rather than baked into server-rendered HTML.
+// Uploads straight to Supabase Storage from the browser, then hands only
+// the resulting path (a short string) to the uploadEvidence Server Action
+// to record. A Server Action can't reliably carry the file bytes itself —
+// Vercel Functions hard-cap every request body at 4.5MB, well under real
+// contracts/agreements/comps reports — see src/lib/storage/evidence.ts.
 function EvidenceUploader({
   propertyId,
   itemKey,
@@ -113,6 +118,9 @@ function EvidenceUploader({
   const uploadAction = uploadEvidence.bind(null, propertyId, itemKey);
   const [uploadState, uploadFormAction, uploadPending] = useActionState(uploadAction, initialState);
   const removeAction = removeEvidence.bind(null, propertyId, itemKey);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!evidencePath) return;
@@ -128,6 +136,40 @@ function EvidenceUploader({
       cancelled = true;
     };
   }, [evidencePath]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedFile) return;
+
+    setClientError(null);
+    setUploading(true);
+    const supabase = createBrowserClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: profile } = user
+      ? await supabase.from("profiles").select("agency_id").eq("id", user.id).maybeSingle()
+      : { data: null };
+
+    if (!profile?.agency_id) {
+      setClientError("Couldn't confirm your agency — try reloading the page.");
+      setUploading(false);
+      return;
+    }
+
+    const path = buildEvidencePath(profile.agency_id, propertyId, itemKey, selectedFile.name);
+    const { error } = await uploadEvidenceObject(supabase, { path, file: selectedFile });
+    setUploading(false);
+    if (error) {
+      setClientError(error);
+      return;
+    }
+
+    const fd = new FormData();
+    fd.set("path", path);
+    fd.set("fileName", selectedFile.name);
+    uploadFormAction(fd);
+  }
 
   return (
     <div className="mt-3 border-t border-rc-border pt-3">
@@ -156,23 +198,23 @@ function EvidenceUploader({
           </form>
         </div>
       ) : (
-        <form action={uploadFormAction} className="mt-1 flex flex-wrap items-center gap-2">
+        <form onSubmit={handleSubmit} className="mt-1 flex flex-wrap items-center gap-2">
           <input
             type="file"
-            name="file"
             required
+            onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
             className="text-xs text-neutral-500 file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
           />
           <button
             type="submit"
-            disabled={uploadPending}
+            disabled={uploading || uploadPending}
             className="rounded-md border border-rc-border px-2 py-1 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-60"
           >
-            {uploadPending ? "Uploading…" : "Attach file"}
+            {uploading ? "Uploading…" : uploadPending ? "Saving…" : "Attach file"}
           </button>
         </form>
       )}
-      <FieldError error={uploadState.error} />
+      <FieldError error={clientError ?? uploadState.error} />
     </div>
   );
 }
