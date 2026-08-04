@@ -240,15 +240,17 @@ function ChecklistItem({
             />
           </div>
         )}
-        <div>
-          <label className="block text-xs text-neutral-500">Note</label>
-          <textarea
-            name="note"
-            defaultValue={data.note ?? draft?.note ?? ""}
-            rows={2}
-            className="mt-1 w-full rounded-md border border-rc-border px-2 py-1 text-sm"
-          />
-        </div>
+        {!item.hideNote && (
+          <div>
+            <label className="block text-xs text-neutral-500">Note</label>
+            <textarea
+              name="note"
+              defaultValue={data.note ?? draft?.note ?? ""}
+              rows={2}
+              className="mt-1 w-full rounded-md border border-rc-border px-2 py-1 text-sm"
+            />
+          </div>
+        )}
         <div className="flex gap-2">
           <button
             type="submit"

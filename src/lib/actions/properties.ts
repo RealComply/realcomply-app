@@ -5,13 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { attachEvidenceFile } from "@/lib/storage/evidence";
 import type { ActionState } from "@/lib/actions/auth";
 
-// Optional documents collected at setup time, and which Stage 0/1 item each
-// is attached to as evidence. Uploading here just means the file is already
-// sitting on the right item when the agent gets to it — no re-uploading
-// later. Reading these documents to pre-fill item data (dates, ESP figures,
-// commission %) is a separate, not-yet-built step that needs the Claude API
-// wired in; see RealComply-tech-stack-notes.md "Build status: compliance
-// engine" for what's deferred and why.
+// Documents collected at setup time (now mandatory — see createProperty
+// below), and which Stage 0/1 item each is attached to as evidence.
+// Uploading here means the file is already sitting on the right item when
+// the agent gets to it, and immediately available to
+// src/lib/actions/extraction.ts's "Extract from uploaded documents" step.
 const SETUP_EVIDENCE_FIELDS: Array<{ field: string; itemKey: string }> = [
   { field: "agencyAgreementFile", itemKey: "a3" }, // Agency agreement signed; copy served within 48 hours
   { field: "contractFile", itemKey: "b1" }, // Contract of sale prepared with prescribed documents
@@ -34,6 +32,16 @@ export async function createProperty(
 
   if (!address) {
     return { error: "Address is required." };
+  }
+
+  // Documents are mandatory at setup — enforced with `required` on the file
+  // inputs client-side, and re-checked here since a Server Action is a real
+  // POST endpoint that a bare form submission could otherwise bypass.
+  for (const { field } of SETUP_EVIDENCE_FIELDS) {
+    const file = formData.get(field);
+    if (!(file instanceof File) || file.size === 0) {
+      return { error: "Attach all three documents (agency agreement, contract for sale, comparable sales report) to create a property file." };
+    }
   }
 
   const supabase = await createClient();

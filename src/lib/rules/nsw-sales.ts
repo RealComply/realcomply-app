@@ -41,6 +41,10 @@ export type ComplianceItem = {
   requiresDate?: boolean;
   requiredForStageCompletion: boolean;
   showIf?: (property: Property) => boolean;
+  // Suppresses the free-text note box on the item card — for items that are
+  // self-explanatory yes/done confirmations, where a note is unnecessary
+  // extra work rather than useful evidence.
+  hideNote?: boolean;
 };
 
 const items: ComplianceItem[] = [
@@ -166,6 +170,7 @@ const items: ComplianceItem[] = [
     legalBasis: "s52A, Conveyancing Act 1919 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
+    hideNote: true,
   },
   {
     key: "b2",
@@ -189,6 +194,7 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
     showIf: (p) => Boolean(p.is_tenanted),
+    hideNote: true,
   },
   {
     key: "t2",
@@ -201,6 +207,7 @@ const items: ComplianceItem[] = [
     requiresDate: true,
     requiredForStageCompletion: true,
     showIf: (p) => Boolean(p.is_tenanted),
+    hideNote: true,
   },
   {
     key: "t3",
@@ -225,6 +232,7 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
     showIf: (p) => Boolean(p.is_tenanted),
+    hideNote: true,
   },
 
   // ── Stage 2 — On market ───────────────────────────────────────────────

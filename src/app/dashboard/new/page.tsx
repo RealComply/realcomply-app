@@ -31,20 +31,17 @@ function YesNo({ name, label, help }: { name: string; label: string; help?: stri
   );
 }
 
-function DocUpload({ name, label, itemLabel }: { name: string; label: string; itemLabel: string }) {
+function DocUpload({ name, label }: { name: string; label: string }) {
   return (
     <div>
       <label htmlFor={name} className="block text-sm font-medium text-rc-ink">
-        {label} <span className="font-normal text-neutral-400">(optional)</span>
+        {label}
       </label>
-      <p className="mt-0.5 text-xs text-neutral-500">
-        Attaches straight to &ldquo;{itemLabel}&rdquo; so it&rsquo;s waiting there when you reach it — you can
-        always add or replace it later on the item itself.
-      </p>
       <input
         id={name}
         name={name}
         type="file"
+        required
         className="mt-1.5 w-full text-xs text-neutral-500 file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1.5 file:text-xs file:font-medium"
       />
     </div>
@@ -110,29 +107,11 @@ export default function NewPropertyPage() {
         <YesNo name="hasPool" label="Does the property have a pool?" />
 
         <div className="border-t border-rc-border pt-6">
-          <h2 className="text-sm font-semibold text-rc-ink">Documents you already have</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            Attach these now if you have them and skip re-uploading later. Each one files against the right
-            item as evidence — then use &ldquo;Extract from uploaded documents&rdquo; on the property page to
-            have the AI pre-fill what it can find (you&rsquo;ll still review and confirm every field before
-            saving).
-          </p>
+          <h2 className="text-sm font-semibold text-rc-ink">Documents</h2>
           <div className="mt-4 space-y-4">
-            <DocUpload
-              name="agencyAgreementFile"
-              label="Agency agreement"
-              itemLabel="Agency agreement signed; copy served within 48 hours"
-            />
-            <DocUpload
-              name="contractFile"
-              label="Contract for sale"
-              itemLabel="Contract of sale prepared with prescribed documents"
-            />
-            <DocUpload
-              name="comparableSalesFile"
-              label="Comparable sales report"
-              itemLabel="Comparable-sales evidence held"
-            />
+            <DocUpload name="agencyAgreementFile" label="Agency agreement" />
+            <DocUpload name="contractFile" label="Contract for sale" />
+            <DocUpload name="comparableSalesFile" label="Comparable sales report" />
           </div>
         </div>
 
