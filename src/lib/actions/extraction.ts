@@ -167,11 +167,9 @@ async function extractOneDocument(
       "name the document, quote identifying details (issuer, date, certificate or reference number) if visible, " +
       "and say exactly what you found and where it disagrees with the index. Still never assert a document is " +
       "missing or doesn't exist unless you've actually looked through the whole document for it; phrase that as " +
-      "'not found in what I was shown', not a categorical claim. Calling record_findings is entirely optional — " +
-      "if nothing in this document warrants a finding, or the document doesn't genuinely look like the kind of " +
-      "document it was labelled as (too short, wrong format, unrelated content), just say so in plain text and " +
-      "do not call the tool at all. Do not feel obliged to produce a tool call just because the tool is " +
-      "available — an unused tool is a completely normal, successful outcome here.",
+      "'not found in what I was shown', not a categorical claim. You must call record_findings exactly once, " +
+      "but calling it with an empty patches array is a completely normal, successful, and common outcome — do " +
+      "not stretch to fill the array with a weak or unsupported finding just because you're calling the tool.",
     messages: [
       {
         role: "user",
@@ -204,7 +202,7 @@ async function extractOneDocument(
       },
     ],
     tools: [EXTRACTION_TOOL],
-    tool_choice: { type: "auto" },
+    tool_choice: { type: "tool", name: "record_findings" },
   });
 
   const toolUse = response.content.find(
