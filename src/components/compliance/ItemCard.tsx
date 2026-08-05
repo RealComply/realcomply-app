@@ -9,6 +9,7 @@ import {
   setItemStatus,
   addReviewEntry,
   addOfferEntry,
+  addReportEntry,
   recordReduction,
   recordSale,
   signItem,
@@ -505,6 +506,76 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
   );
 }
 
+function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+  const boundAction = addReportEntry.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(boundAction, initialState);
+  const entries =
+    ((current?.data ?? {}) as {
+      entries?: Array<{
+        buyerName: string;
+        pestBuilding: boolean;
+        strata: boolean;
+        source: string;
+        note: string;
+        recordedAt: string;
+      }>;
+    }).entries ?? [];
+
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      <form action={formAction} className="space-y-2 rounded-md bg-neutral-50 p-3">
+        <input
+          type="text"
+          name="buyerName"
+          placeholder="Buyer's name"
+          className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
+        />
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-xs text-neutral-600">
+            <input type="checkbox" name="pestBuilding" /> Pest & building report
+          </label>
+          <label className="flex items-center gap-2 text-xs text-neutral-600">
+            <input type="checkbox" name="strata" /> Strata report
+          </label>
+        </div>
+        <select name="source" className="rounded-md border border-rc-border px-2 py-1 text-sm">
+          <option value="third_party">Purchased from a third-party provider</option>
+          <option value="provided_by_us">Provided by us</option>
+        </select>
+        <textarea
+          name="note"
+          placeholder="Note (optional)"
+          rows={2}
+          className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+        >
+          Log entry
+        </button>
+      </form>
+      <FieldError error={state.error} />
+      {entries.length > 0 && (
+        <ul className="mt-3 space-y-2 text-sm text-neutral-600">
+          {entries.map((e, i) => (
+            <li key={i} className="border-t border-rc-border pt-2">
+              <span className="font-medium text-rc-ink">{e.buyerName}</span> —{" "}
+              {[e.pestBuilding && "Pest & building", e.strata && "Strata"].filter(Boolean).join(" + ")}
+              {" · "}
+              {e.source === "provided_by_us" ? "provided by us" : "purchased from third party"}
+              {" · "}
+              {new Date(e.recordedAt).toLocaleDateString("en-AU")}
+              {e.note && <> — {e.note}</>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </ItemShell>
+  );
+}
+
 function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const boundAction = recordReduction.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -692,6 +763,8 @@ export function ItemCard({
       return <ReviewLogItem item={item} propertyId={propertyId} current={current} />;
     case "offers":
       return <OffersLogItem item={item} propertyId={propertyId} current={current} />;
+    case "reports":
+      return <ReportsLogItem item={item} propertyId={propertyId} current={current} />;
     case "reduction":
       return <ReductionItem item={item} propertyId={propertyId} current={current} />;
     case "sale":

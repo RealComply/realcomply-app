@@ -218,6 +218,59 @@ export async function addReviewEntry(
   return error ? { error: error.message } : ok;
 }
 
+// f3 — pest & building / strata report register. A due-diligence record of
+// who had access to these reports, not a per-sale legal gate — so it never
+// blocks stage completion and an empty register is a valid, normal outcome.
+export async function addReportEntry(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const buyerName = String(formData.get("buyerName") ?? "").trim();
+  const pestBuilding = formData.get("pestBuilding") === "on";
+  const strata = formData.get("strata") === "on";
+  const source = String(formData.get("source") ?? "third_party"); // third_party | provided_by_us
+  const note = String(formData.get("note") ?? "").trim();
+
+  if (!buyerName) {
+    return { error: "Enter the buyer's name." };
+  }
+  if (!pestBuilding && !strata) {
+    return { error: "Select at least one report type (pest & building or strata)." };
+  }
+
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "f3")
+    .maybeSingle();
+
+  const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as Array<{
+    buyerName: string;
+    pestBuilding: boolean;
+    strata: boolean;
+    source: string;
+    note: string;
+    recordedAt: string;
+  }>;
+  entries.unshift({ buyerName, pestBuilding, strata, source, note, recordedAt: new Date().toISOString() });
+
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "f3",
+    status: "done",
+    data: { entries },
+    completedBy: user.id,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return error ? { error: error.message } : ok;
+}
+
 // d2 — offers log. Live underquoting check: a rejected offer above the
 // advertised guide (c1) can never be advertised below again (s73A) — we
 // flag the offers item so it's visible, we don't silently pass it.

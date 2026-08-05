@@ -26,6 +26,7 @@ export type ItemKind =
   | "review" // ESP review log (repeating entries)
   | "reduction" // price reduction / revise-ESP workflow
   | "sale" // final sale price + ESP-diff check
+  | "reports" // pest & building / strata report register (repeating entries)
   | "export" // generate the finalised compliance file
   | "sign" // typed-signature attestation
   | "send"; // hand-off to the licensee
@@ -358,6 +359,17 @@ const items: ComplianceItem[] = [
     legalBasis: "s72A",
     requiresDate: false,
     requiredForStageCompletion: true,
+  },
+  {
+    key: "f3",
+    stage: 5,
+    kind: "reports",
+    label: "Pest & building / strata report register",
+    description:
+      "Log every buyer who received a pest & building or strata report for this property — whether purchased from a third-party provider or provided by us. Not every sale will have entries; this is a due-diligence record of who had access to that information, not a per-sale requirement.",
+    legalBasis: "s104, Property and Stock Agents Act 2002 (NSW) — general record-keeping duty",
+    requiresDate: false,
+    requiredForStageCompletion: false,
   },
   {
     key: "f1",
