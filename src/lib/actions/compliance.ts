@@ -218,9 +218,13 @@ export async function addReviewEntry(
   return error ? { error: error.message } : ok;
 }
 
-// f3 — pest & building / strata report register. A due-diligence record of
-// who had access to these reports, not a per-sale legal gate — so it never
-// blocks stage completion and an empty register is a valid, normal outcome.
+// f3 — pre-purchase inspection report register (cl 37, Property and Stock
+// Agents Regulation 2022). Records the report and its preparer, not just
+// who received it — that's what the clause actually requires: date
+// inspected, who requested it, the preparer's identity/contact, whether
+// they're PI-insured, and whether the report is available for another
+// buyer to buy a copy. Never blocks stage completion — an empty register
+// (no reports the licensee is aware of) is a valid, normal outcome.
 export async function addReportEntry(
   propertyId: string,
   _prevState: ActionState,
@@ -228,17 +232,23 @@ export async function addReportEntry(
 ): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
 
-  const buyerName = String(formData.get("buyerName") ?? "").trim();
-  const pestBuilding = formData.get("pestBuilding") === "on";
+  const pestInspection = formData.get("pestInspection") === "on";
+  const buildingInspection = formData.get("buildingInspection") === "on";
   const strata = formData.get("strata") === "on";
-  const source = String(formData.get("source") ?? "third_party"); // third_party | provided_by_us
+  const inspectionDate = String(formData.get("inspectionDate") ?? "").trim();
+  const requestedBy = String(formData.get("requestedBy") ?? "purchaser"); // client | purchaser | licensee
+  const requesterName = String(formData.get("requesterName") ?? "").trim();
+  const preparerName = String(formData.get("preparerName") ?? "").trim();
+  const preparerContact = String(formData.get("preparerContact") ?? "").trim();
+  const preparerInsured = formData.get("preparerInsured") === "on";
+  const availableForRepurchase = formData.get("availableForRepurchase") === "on";
   const note = String(formData.get("note") ?? "").trim();
 
-  if (!buyerName) {
-    return { error: "Enter the buyer's name." };
+  if (!pestInspection && !buildingInspection && !strata) {
+    return { error: "Select at least one report type (pest, building, or strata)." };
   }
-  if (!pestBuilding && !strata) {
-    return { error: "Select at least one report type (pest & building or strata)." };
+  if (!preparerName) {
+    return { error: "Enter the report preparer's name — cl 37 requires it on the record." };
   }
 
   const { data: existing } = await supabase
@@ -249,14 +259,33 @@ export async function addReportEntry(
     .maybeSingle();
 
   const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as Array<{
-    buyerName: string;
-    pestBuilding: boolean;
+    pestInspection: boolean;
+    buildingInspection: boolean;
     strata: boolean;
-    source: string;
+    inspectionDate: string;
+    requestedBy: string;
+    requesterName: string;
+    preparerName: string;
+    preparerContact: string;
+    preparerInsured: boolean;
+    availableForRepurchase: boolean;
     note: string;
     recordedAt: string;
   }>;
-  entries.unshift({ buyerName, pestBuilding, strata, source, note, recordedAt: new Date().toISOString() });
+  entries.unshift({
+    pestInspection,
+    buildingInspection,
+    strata,
+    inspectionDate,
+    requestedBy,
+    requesterName,
+    preparerName,
+    preparerContact,
+    preparerInsured,
+    availableForRepurchase,
+    note,
+    recordedAt: new Date().toISOString(),
+  });
 
   const { error } = await upsertItem(supabase, {
     agencyId: profile.agency_id,

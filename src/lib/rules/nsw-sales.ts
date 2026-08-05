@@ -364,10 +364,10 @@ const items: ComplianceItem[] = [
     key: "f3",
     stage: 5,
     kind: "reports",
-    label: "Pest & building / strata report register",
+    label: "Pre-purchase inspection report register",
     description:
-      "Log every buyer who received a pest & building or strata report for this property — whether purchased from a third-party provider or provided by us. Not every sale will have entries; this is a due-diligence record of who had access to that information, not a per-sale requirement.",
-    legalBasis: "s104, Property and Stock Agents Act 2002 (NSW) — general record-keeping duty",
+      "A written record of every building, pest, or strata report you're aware of for this property — who requested it, the preparer's details, and whether it's available for another buyer to buy a copy. You must be able to show this to anyone who asks for a copy of the contract for sale. Not every sale will have entries — that's a valid, normal outcome.",
+    legalBasis: "cl 37, Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: false,
   },

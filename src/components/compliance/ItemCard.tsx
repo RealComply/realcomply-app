@@ -506,16 +506,28 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
   );
 }
 
+const REQUESTED_BY_LABELS: Record<string, string> = {
+  client: "the vendor",
+  purchaser: "a prospective purchaser",
+  licensee: "us (the agency)",
+};
+
 function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const boundAction = addReportEntry.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const entries =
     ((current?.data ?? {}) as {
       entries?: Array<{
-        buyerName: string;
-        pestBuilding: boolean;
+        pestInspection: boolean;
+        buildingInspection: boolean;
         strata: boolean;
-        source: string;
+        inspectionDate: string;
+        requestedBy: string;
+        requesterName: string;
+        preparerName: string;
+        preparerContact: string;
+        preparerInsured: boolean;
+        availableForRepurchase: boolean;
         note: string;
         recordedAt: string;
       }>;
@@ -523,25 +535,73 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form action={formAction} className="space-y-2 rounded-md bg-neutral-50 p-3">
+      <form action={formAction} className="space-y-3 rounded-md bg-neutral-50 p-3">
+        <div>
+          <label className="block text-xs text-neutral-500">Report type</label>
+          <div className="mt-1 flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-xs text-neutral-600">
+              <input type="checkbox" name="pestInspection" /> Pest inspection
+            </label>
+            <label className="flex items-center gap-2 text-xs text-neutral-600">
+              <input type="checkbox" name="buildingInspection" /> Building inspection
+            </label>
+            <label className="flex items-center gap-2 text-xs text-neutral-600">
+              <input type="checkbox" name="strata" /> Strata report
+            </label>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <div>
+            <label className="block text-xs text-neutral-500">Date inspected</label>
+            <input
+              type="date"
+              name="inspectionDate"
+              className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-500">Who requested it</label>
+            <select name="requestedBy" className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm">
+              <option value="purchaser">Prospective purchaser</option>
+              <option value="client">The vendor (client)</option>
+              <option value="licensee">Us (the agency)</option>
+            </select>
+          </div>
+        </div>
         <input
           type="text"
-          name="buyerName"
-          placeholder="Buyer's name"
+          name="requesterName"
+          placeholder="Requester's name (optional, for your own reference)"
           className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
         />
-        <div className="flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-xs text-neutral-600">
-            <input type="checkbox" name="pestBuilding" /> Pest & building report
-          </label>
-          <label className="flex items-center gap-2 text-xs text-neutral-600">
-            <input type="checkbox" name="strata" /> Strata report
-          </label>
+
+        <div className="border-t border-rc-border pt-2">
+          <p className="text-xs font-medium text-neutral-500">Report preparer (required by cl 37)</p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            <input
+              type="text"
+              name="preparerName"
+              placeholder="Preparer's name"
+              className="flex-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+            />
+            <input
+              type="text"
+              name="preparerContact"
+              placeholder="Business address & phone"
+              className="flex-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-xs text-neutral-600">
+              <input type="checkbox" name="preparerInsured" /> Preparer holds PI insurance
+            </label>
+            <label className="flex items-center gap-2 text-xs text-neutral-600">
+              <input type="checkbox" name="availableForRepurchase" /> Available for another buyer to purchase a copy
+            </label>
+          </div>
         </div>
-        <select name="source" className="rounded-md border border-rc-border px-2 py-1 text-sm">
-          <option value="third_party">Purchased from a third-party provider</option>
-          <option value="provided_by_us">Provided by us</option>
-        </select>
+
         <textarea
           name="note"
           placeholder="Note (optional)"
@@ -561,12 +621,19 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
         <ul className="mt-3 space-y-2 text-sm text-neutral-600">
           {entries.map((e, i) => (
             <li key={i} className="border-t border-rc-border pt-2">
-              <span className="font-medium text-rc-ink">{e.buyerName}</span> —{" "}
-              {[e.pestBuilding && "Pest & building", e.strata && "Strata"].filter(Boolean).join(" + ")}
-              {" · "}
-              {e.source === "provided_by_us" ? "provided by us" : "purchased from third party"}
-              {" · "}
-              {new Date(e.recordedAt).toLocaleDateString("en-AU")}
+              <span className="font-medium text-rc-ink">
+                {[e.pestInspection && "Pest", e.buildingInspection && "Building", e.strata && "Strata"]
+                  .filter(Boolean)
+                  .join(" + ")}
+              </span>{" "}
+              — prepared by {e.preparerName || "unknown"}
+              {e.preparerContact && ` (${e.preparerContact})`}
+              {e.preparerInsured ? ", PI insured" : ", PI insurance not confirmed"}
+              {" · requested by "}
+              {REQUESTED_BY_LABELS[e.requestedBy] ?? e.requestedBy}
+              {e.requesterName && ` (${e.requesterName})`}
+              {e.inspectionDate && ` · inspected ${e.inspectionDate}`}
+              {e.availableForRepurchase && " · available for repurchase"}
               {e.note && <> — {e.note}</>}
             </li>
           ))}
