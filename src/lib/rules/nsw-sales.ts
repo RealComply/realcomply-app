@@ -53,6 +53,10 @@ export type ComplianceItem = {
   // when there's nothing to report, so it's clear the AI looked and found
   // nothing rather than that nobody's looked yet.
   showFindings?: boolean;
+  // Suppresses the "Evidence" attach-a-file control on the item card — for
+  // items that are themselves an attestation/action (a typed signature, a
+  // hand-off to the licensee), not a claim that needs a supporting document.
+  hideEvidence?: boolean;
 };
 
 const items: ComplianceItem[] = [
@@ -390,6 +394,7 @@ const items: ComplianceItem[] = [
     description: "Type your name to adopt it as your signature on this file.",
     requiresDate: false,
     requiredForStageCompletion: true,
+    hideEvidence: true,
   },
   {
     key: "send_licensee",
@@ -400,6 +405,7 @@ const items: ComplianceItem[] = [
       "Hand the file to the licensee for sign-off. (Email delivery isn't wired up yet — let your licensee know directly that it's ready.)",
     requiresDate: false,
     requiredForStageCompletion: true,
+    hideEvidence: true,
   },
   {
     key: "sign_licensee",
@@ -408,6 +414,7 @@ const items: ComplianceItem[] = [
     label: "Licensee signature",
     description: "The licensee in charge types their name to adopt it as their signature.",
     licenseeOnly: true,
+    hideEvidence: true,
     requiresDate: false,
     requiredForStageCompletion: true,
   },

@@ -78,13 +78,15 @@ function ItemShell({
         <StatusPill status={status} />
       </div>
       <div className="mt-3">{children}</div>
-      <EvidenceUploader
-        key={current?.evidence_path ?? "none"}
-        propertyId={propertyId}
-        itemKey={item.key}
-        evidencePath={current?.evidence_path ?? null}
-        evidenceFileName={(current?.data as { evidenceFileName?: string } | undefined)?.evidenceFileName}
-      />
+      {!item.hideEvidence && (
+        <EvidenceUploader
+          key={current?.evidence_path ?? "none"}
+          propertyId={propertyId}
+          itemKey={item.key}
+          evidencePath={current?.evidence_path ?? null}
+          evidenceFileName={(current?.data as { evidenceFileName?: string } | undefined)?.evidenceFileName}
+        />
+      )}
     </div>
   );
 }
