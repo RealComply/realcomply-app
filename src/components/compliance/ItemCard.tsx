@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useActionState, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import type { Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -19,6 +19,7 @@ import {
   removeEvidence,
   type ActionState,
 } from "@/lib/actions/compliance";
+import { extractReportDetails, type ReportExtractionFields } from "@/lib/actions/extraction";
 
 const initialState: ActionState = { error: null };
 
@@ -512,6 +513,41 @@ const REQUESTED_BY_LABELS: Record<string, string> = {
   licensee: "us (the agency)",
 };
 
+// Shows a past register entry's attached report as a clickable link — same
+// signed-URL pattern as EvidenceUploader above, generated fresh per view.
+function ReportEvidenceLink({ path, fileName }: { path: string; fileName: string }) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createBrowserClient();
+    supabase.storage
+      .from(EVIDENCE_BUCKET)
+      .createSignedUrl(path, 3600)
+      .then(({ data }) => {
+        if (!cancelled) setSignedUrl(data?.signedUrl ?? null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  if (!signedUrl) {
+    return <span className="text-neutral-400">📎 {fileName}</span>;
+  }
+  return (
+    <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="text-rc-green-deep hover:underline">
+      📎 {fileName}
+    </a>
+  );
+}
+
+// f3 — the cl 37 report register. "Nice and simple": the agent uploads the
+// actual report (same direct-to-Storage pattern as EvidenceUploader), it's
+// run through extractReportDetails for a pre-fill, and the agent reviews/
+// edits before logging — never auto-saved. The uploaded file is kept
+// attached to the entry so it's retrievable later, same as any other
+// evidence in the app.
 function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const boundAction = addReportEntry.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -529,24 +565,115 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
         preparerInsured: boolean;
         availableForRepurchase: boolean;
         note: string;
+        evidencePath: string | null;
+        evidenceFileName: string | null;
         recordedAt: string;
       }>;
     }).entries ?? [];
 
+  const [uploading, setUploading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<{ path: string; fileName: string } | null>(null);
+  const [draft, setDraft] = useState<ReportExtractionFields | null>(null);
+  const [draftKey, setDraftKey] = useState(0);
+  const wasPending = useRef(pending);
+
+  // Reset the upload/extraction state once a submission actually succeeds,
+  // so the form is ready for the next entry rather than carrying over the
+  // previous upload.
+  useEffect(() => {
+    if (wasPending.current && !pending && !state.error) {
+      setUploading(false);
+      setExtracting(false);
+      setClientError(null);
+      setEvidence(null);
+      setDraft(null);
+      setDraftKey((k) => k + 1);
+    }
+    wasPending.current = pending;
+  }, [pending, state.error]);
+
+  async function handleFileSelected(file: File) {
+    setClientError(null);
+    setUploading(true);
+    const supabase = createBrowserClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: profile } = user
+      ? await supabase.from("profiles").select("agency_id").eq("id", user.id).maybeSingle()
+      : { data: null };
+
+    if (!profile?.agency_id) {
+      setClientError("Couldn't confirm your agency — try reloading the page.");
+      setUploading(false);
+      return;
+    }
+
+    const path = buildEvidencePath(profile.agency_id, propertyId, item.key, file.name);
+    const { error } = await uploadEvidenceObject(supabase, { path, file });
+    setUploading(false);
+    if (error) {
+      setClientError(error);
+      return;
+    }
+
+    setEvidence({ path, fileName: file.name });
+    setExtracting(true);
+    const { error: extractError, fields } = await extractReportDetails(path, file.name);
+    setExtracting(false);
+    if (extractError) {
+      setClientError(extractError);
+      return;
+    }
+    setDraft(fields ?? {});
+    setDraftKey((k) => k + 1);
+  }
+
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       <form action={formAction} className="space-y-3 rounded-md bg-neutral-50 p-3">
+        <div className="border-b border-rc-border pb-3">
+          <label className="block text-xs font-medium text-neutral-500">
+            Upload the report <span className="font-normal text-neutral-400">(optional — pre-fills the fields below)</span>
+          </label>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <input
+              type="file"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                if (file) handleFileSelected(file);
+              }}
+              disabled={uploading || extracting}
+              className="text-xs text-neutral-500 file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
+            />
+            {(uploading || extracting) && (
+              <span className="text-xs text-neutral-400">{uploading ? "Uploading…" : "Reading report…"}</span>
+            )}
+          </div>
+          {evidence && !uploading && !extracting && (
+            <p className="mt-1 text-xs text-rc-green-deep">
+              📎 {evidence.fileName} attached
+              {draft && Object.keys(draft).length > 0 ? " · fields pre-filled below, check them against the report" : ""}
+            </p>
+          )}
+          <FieldError error={clientError} />
+          <input type="hidden" name="evidencePath" value={evidence?.path ?? ""} readOnly />
+          <input type="hidden" name="evidenceFileName" value={evidence?.fileName ?? ""} readOnly />
+        </div>
+
         <div>
           <label className="block text-xs text-neutral-500">Report type</label>
-          <div className="mt-1 flex flex-wrap gap-4">
+          <div className="mt-1 flex flex-wrap gap-4" key={`types-${draftKey}`}>
             <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="pestInspection" /> Pest inspection
+              <input type="checkbox" name="pestInspection" defaultChecked={draft?.pestInspection ?? false} /> Pest inspection
             </label>
             <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="buildingInspection" /> Building inspection
+              <input type="checkbox" name="buildingInspection" defaultChecked={draft?.buildingInspection ?? false} /> Building inspection
             </label>
             <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="strata" /> Strata report
+              <input type="checkbox" name="strata" defaultChecked={draft?.strata ?? false} /> Strata report
             </label>
           </div>
         </div>
@@ -555,8 +682,10 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
           <div>
             <label className="block text-xs text-neutral-500">Date inspected</label>
             <input
+              key={`date-${draftKey}`}
               type="date"
               name="inspectionDate"
+              defaultValue={draft?.inspectionDate ?? ""}
               className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
             />
           </div>
@@ -578,26 +707,28 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
 
         <div className="border-t border-rc-border pt-2">
           <p className="text-xs font-medium text-neutral-500">Report preparer (required by cl 37)</p>
-          <div className="mt-1 flex flex-wrap gap-2">
+          <div className="mt-1 flex flex-wrap gap-2" key={`preparer-${draftKey}`}>
             <input
               type="text"
               name="preparerName"
               placeholder="Preparer's name"
+              defaultValue={draft?.preparerName ?? ""}
               className="flex-1 rounded-md border border-rc-border px-2 py-1 text-sm"
             />
             <input
               type="text"
               name="preparerContact"
               placeholder="Business address & phone"
+              defaultValue={draft?.preparerContact ?? ""}
               className="flex-1 rounded-md border border-rc-border px-2 py-1 text-sm"
             />
           </div>
-          <div className="mt-2 flex flex-wrap gap-4">
+          <div className="mt-2 flex flex-wrap gap-4" key={`preparer-flags-${draftKey}`}>
             <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="preparerInsured" /> Preparer holds PI insurance
+              <input type="checkbox" name="preparerInsured" defaultChecked={draft?.preparerInsured ?? false} /> Preparer holds PI insurance
             </label>
             <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="availableForRepurchase" /> Available for another buyer to purchase a copy
+              <input type="checkbox" name="availableForRepurchase" defaultChecked={draft?.availableForRepurchase ?? false} /> Available for another buyer to purchase a copy
             </label>
           </div>
         </div>
@@ -610,10 +741,10 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
         />
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || uploading || extracting}
           className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
         >
-          Log entry
+          {pending ? "Saving…" : "Log entry"}
         </button>
       </form>
       <FieldError error={state.error} />
@@ -635,6 +766,12 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
               {e.inspectionDate && ` · inspected ${e.inspectionDate}`}
               {e.availableForRepurchase && " · available for repurchase"}
               {e.note && <> — {e.note}</>}
+              {e.evidencePath && e.evidenceFileName && (
+                <>
+                  {" · "}
+                  <ReportEvidenceLink path={e.evidencePath} fileName={e.evidenceFileName} />
+                </>
+              )}
             </li>
           ))}
         </ul>

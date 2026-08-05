@@ -77,6 +77,153 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
   },
 };
 
+// f3 — pre-purchase inspection report register (cl 37, Property and Stock
+// Agents Regulation 2022). Separate tool/schema from record_findings above:
+// the fields a report register needs (preparer contact, PI-insured,
+// available-for-repurchase) don't fit the property_items aiDraft shape, and
+// this never writes to the DB itself — it just returns what it found so the
+// agent can review it in the "log a report" form before saving, same
+// diligence-support framing as everywhere else.
+const REPORT_EXTRACTION_TOOL: Anthropic.Tool = {
+  name: "record_report_details",
+  description:
+    "Record pre-purchase inspection report details explicitly and literally stated in the document. Omit any " +
+    "field not stated — never guess, infer, or assume a false/negative value for something the document simply " +
+    "doesn't mention.",
+  input_schema: {
+    type: "object",
+    properties: {
+      pestInspection: {
+        type: "boolean",
+        description: "True only if this document is or includes a pest/termite inspection report.",
+      },
+      buildingInspection: {
+        type: "boolean",
+        description: "True only if this document is or includes a building inspection report.",
+      },
+      strata: {
+        type: "boolean",
+        description:
+          "True only if this document is a strata report — a strata scheme document inspection or a strata financial certificate.",
+      },
+      inspectionDate: {
+        type: "string",
+        description: "The date the property was inspected for this report, only if explicitly stated. Format YYYY-MM-DD.",
+      },
+      preparerName: {
+        type: "string",
+        description: "The name of the person or business that prepared/issued the report, only if stated.",
+      },
+      preparerContact: {
+        type: "string",
+        description: "The preparer's business address and/or phone number, only if stated.",
+      },
+      preparerInsured: {
+        type: "boolean",
+        description:
+          "True only if the document explicitly states the preparer holds professional indemnity insurance. " +
+          "Omit this field entirely if insurance isn't mentioned at all — never assume false just because it " +
+          "isn't stated.",
+      },
+      availableForRepurchase: {
+        type: "boolean",
+        description:
+          "True only if the document explicitly states the report is available for purchase or reissue to " +
+          "another party. Omit if not mentioned.",
+      },
+    },
+    required: [],
+  },
+};
+
+export type ReportExtractionFields = {
+  pestInspection?: boolean;
+  buildingInspection?: boolean;
+  strata?: boolean;
+  inspectionDate?: string;
+  preparerName?: string;
+  preparerContact?: string;
+  preparerInsured?: boolean;
+  availableForRepurchase?: boolean;
+};
+
+// Downloads an already-uploaded report document (the agent uploads it
+// client-side first, same direct-to-Storage pattern as every other evidence
+// upload in this app — see src/lib/storage/evidence.ts) and reads off
+// whatever cl 37 fields are explicitly stated, for the agent to review and
+// complete before logging the register entry. Never writes to the DB.
+export async function extractReportDetails(
+  path: string,
+  fileName: string,
+): Promise<{ error: string | null; fields?: ReportExtractionFields }> {
+  const { supabase } = await requireAuthContext();
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { error: "AI extraction isn't set up yet — add ANTHROPIC_API_KEY in Vercel's Environment Variables first." };
+  }
+
+  const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
+  if (error || !blob) {
+    return { error: "Couldn't download the uploaded file." };
+  }
+
+  const arrayBuffer = await blob.arrayBuffer();
+  const base64 = Buffer.from(arrayBuffer).toString("base64");
+  const contentType = blob.type || "application/octet-stream";
+
+  const MIN_TEXT_CHARS = 400;
+  if (contentType === "text/plain") {
+    const text = Buffer.from(base64, "base64").toString("utf-8");
+    if (text.trim().length < MIN_TEXT_CHARS) {
+      return { error: null, fields: {} };
+    }
+  }
+
+  const documentBlock = buildDocumentBlock(contentType, base64, fileName);
+  if (!documentBlock) {
+    return { error: `File type not supported for extraction yet (${contentType}).` };
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-5",
+    max_tokens: 1024,
+    system:
+      "You are reading a pre-purchase inspection report (pest, building, or strata) for a NSW licensed agent's " +
+      "compliance file (RealComply), to help them fill in their cl 37 report register. This is diligence support " +
+      "only — the agent reviews and confirms everything before it's saved, you do not. Only record a field if " +
+      "the document explicitly and literally states it. Never infer, estimate, or assume a value — especially " +
+      "for preparerInsured, where 'not mentioned' must be left out entirely, never recorded as false. You have " +
+      "been shown the complete content available to you — do not assume further pages exist. If the document " +
+      "doesn't look like a genuine pest, building, or strata report at all, call the tool with an empty object " +
+      "rather than guessing at any field. You must call record_report_details exactly once, but calling it with " +
+      "few or no fields set is a completely normal, successful, and common outcome — do not stretch to fill in " +
+      "a field you're not actually seeing stated.",
+    messages: [
+      {
+        role: "user",
+        content: [
+          documentBlock,
+          {
+            type: "text",
+            text: `This document was uploaded as "${fileName}" for the pre-purchase inspection report register. Call record_report_details with whatever it explicitly states.`,
+          },
+        ],
+      },
+    ],
+    tools: [REPORT_EXTRACTION_TOOL],
+    tool_choice: { type: "tool", name: "record_report_details" },
+  });
+
+  const toolUse = response.content.find(
+    (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+  );
+  if (!toolUse) return { error: null, fields: {} };
+
+  return { error: null, fields: toolUse.input as ReportExtractionFields };
+}
+
 function buildDocumentBlock(
   contentType: string,
   base64: string,

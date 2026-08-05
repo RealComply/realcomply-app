@@ -243,6 +243,8 @@ export async function addReportEntry(
   const preparerInsured = formData.get("preparerInsured") === "on";
   const availableForRepurchase = formData.get("availableForRepurchase") === "on";
   const note = String(formData.get("note") ?? "").trim();
+  const evidencePath = String(formData.get("evidencePath") ?? "").trim() || null;
+  const evidenceFileName = String(formData.get("evidenceFileName") ?? "").trim() || null;
 
   if (!pestInspection && !buildingInspection && !strata) {
     return { error: "Select at least one report type (pest, building, or strata)." };
@@ -270,6 +272,8 @@ export async function addReportEntry(
     preparerInsured: boolean;
     availableForRepurchase: boolean;
     note: string;
+    evidencePath: string | null;
+    evidenceFileName: string | null;
     recordedAt: string;
   }>;
   entries.unshift({
@@ -284,6 +288,8 @@ export async function addReportEntry(
     preparerInsured,
     availableForRepurchase,
     note,
+    evidencePath,
+    evidenceFileName,
     recordedAt: new Date().toISOString(),
   });
 
