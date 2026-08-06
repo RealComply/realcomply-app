@@ -253,17 +253,32 @@ function ChecklistItem({
     note?: string;
     espLow?: number;
     espHigh?: number;
-    aiDraft?: { note?: string; espLow?: number; espHigh?: number; eventDate?: string };
+    aiDraft?: {
+      note?: string;
+      espLow?: number;
+      espHigh?: number;
+      eventDate?: string;
+      consumerGuideProvided?: boolean;
+      autoCompleted?: boolean;
+    };
   };
   const draft = data.aiDraft;
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       <form action={formAction} className="space-y-3">
-        {draft && !item.showFindings && (
+        {draft?.autoCompleted ? (
           <p className="rounded-md bg-rc-green/10 px-2 py-1.5 text-xs text-rc-green-deep">
-            🤖 Pre-filled from an uploaded document — check it against the source, then save.
+            🤖 Auto-marked done — the agency agreement explicitly confirmed the guide was given, dated{" "}
+            {draft.eventDate}. Check it against the source; use Reopen below if that&apos;s not right.
           </p>
+        ) : (
+          draft &&
+          !item.showFindings && (
+            <p className="rounded-md bg-rc-green/10 px-2 py-1.5 text-xs text-rc-green-deep">
+              🤖 Pre-filled from an uploaded document — check it against the source, then save.
+            </p>
+          )
         )}
         {item.key === "a4" && (
           <div className="flex gap-3">

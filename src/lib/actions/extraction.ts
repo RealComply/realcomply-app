@@ -27,8 +27,11 @@ const SOURCE_LABELS: Record<string, string> = {
 // (vendor identity/ownership): that's verified externally as part of AML/CTF
 // CDD and registered with AUSTRAC there, not something to extract from an
 // uploaded document — see the hideNote/hideEvidence attestation item in
-// nsw-sales.ts.
-const TARGET_ITEM_KEYS = new Set(["a3", "a4", "a4b", "a4c", "a5", "a6", "a7", "b1"]);
+// nsw-sales.ts. a2 (consumer guide given before signing) IS included — see
+// the consumerGuideProvided field below and the autoComplete logic in
+// extractFromDocuments for why it's handled differently from every other
+// item here.
+const TARGET_ITEM_KEYS = new Set(["a2", "a3", "a4", "a4b", "a4c", "a5", "a6", "a7", "b1"]);
 
 type DraftPatch = {
   itemKey: string;
@@ -36,6 +39,7 @@ type DraftPatch = {
   espLow?: number;
   espHigh?: number;
   eventDate?: string;
+  consumerGuideProvided?: boolean;
 };
 
 const EXTRACTION_TOOL: Anthropic.Tool = {
@@ -72,6 +76,11 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
             eventDate: {
               type: "string",
               description: "Only for a date the document explicitly states (e.g. the agreement's signing date). Format YYYY-MM-DD.",
+            },
+            consumerGuideProvided: {
+              type: "boolean",
+              description:
+                "Item a2 only — true only if the document explicitly confirms the approved consumer guide (the approved guide required by s56 of the Property and Stock Agents Act) was given to the vendor before the agency agreement was signed — e.g. an acknowledgement clause, a signed receipt, a ticked box referencing the guide. Do not set this from the agreement's mere existence or from silence on the point. If the document doesn't explicitly address it, omit this field and leave a2 out of the patches entirely rather than guessing. When you do set this true, also set that a2 patch's eventDate to the date the guide was given, only if that specific date is stated — if provision is confirmed but no date is given, omit eventDate and use note instead to flag it for the agent so they can supply the date manually.",
             },
           },
           required: ["itemKey"],
@@ -340,7 +349,11 @@ async function extractOneDocument(
             type: "text",
             text:
               `This document was uploaded as the ${sourceLabel}. Call record_findings with any facts it ` +
-              "explicitly and literally states that are relevant to these compliance items: a3 (the date the " +
+              "explicitly and literally states that are relevant to these compliance items: a2 (whether the " +
+              "approved consumer guide was given to the vendor before the agency agreement was signed — set " +
+              "consumerGuideProvided true only on an explicit confirmation, with eventDate set to the date given " +
+              "if that's stated; if the document doesn't address this at all, leave a2 out rather than guessing), " +
+              "a3 (the date the " +
               "agency agreement was signed), a4 (an ESP range, only if a " +
               "figure is explicitly stated in this document), a4b (what comparable-sales evidence is present), " +
               "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
@@ -380,10 +393,14 @@ async function extractOneDocument(
 
 // Reads whichever setup documents were attached (agency agreement, contract
 // for sale, comparable-sales report) and writes what it finds into each
-// target item's data.aiDraft — never into note/status/event_date directly.
-// The item stays "open" and untouched either way; ItemCard reads aiDraft as
-// a pre-fill default that the agent can edit or discard before saving, per
-// the product's diligence-support framing (never auto-completes anything).
+// target item's data.aiDraft — never into note/status/event_date directly,
+// with one narrow, deliberate exception: a2 (consumer guide given before
+// signing) can be auto-marked "done" outright when the document explicitly
+// confirms it with a date — see the autoComplete check below, added per
+// Adam's explicit instruction rather than the general product default. Every
+// other item stays "open" and untouched either way; ItemCard reads aiDraft
+// as a pre-fill default that the agent can edit or discard before saving,
+// per the product's diligence-support framing.
 export async function extractFromDocuments(propertyId: string): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
 
@@ -428,12 +445,25 @@ export async function extractFromDocuments(propertyId: string): Promise<ActionSt
       .maybeSingle();
     const existing = existingRow as PropertyItem | null;
 
+    // The one auto-complete exception in this file. Fires only when: it's
+    // a2, the model gave an explicit positive confirmation AND a date (both
+    // required — a confirmation with no date falls through to the normal
+    // pre-fill/flag path so the agent supplies the date), and the item is
+    // still untouched ("open"). That last condition matters: this must
+    // never downgrade a "flagged" item or silently redo something a human
+    // already set — it only fills in a genuinely blank item.
+    const autoComplete =
+      patch.itemKey === "a2" &&
+      patch.consumerGuideProvided === true &&
+      !!patch.eventDate &&
+      (existing?.status ?? "open") === "open";
+
     await supabase.from("property_items").upsert(
       {
         agency_id: profile.agency_id,
         property_id: propertyId,
         item_key: patch.itemKey,
-        status: existing?.status ?? "open",
+        status: autoComplete ? "done" : existing?.status ?? "open",
         data: {
           ...(existing?.data ?? {}),
           aiDraft: {
@@ -441,10 +471,16 @@ export async function extractFromDocuments(propertyId: string): Promise<ActionSt
             espLow: patch.espLow,
             espHigh: patch.espHigh,
             eventDate: patch.eventDate,
+            consumerGuideProvided: patch.consumerGuideProvided,
+            // Flags the ItemCard banner to explain *why* this is already
+            // done rather than just pre-filled, and that it was AI-set, not
+            // agent-confirmed — reversible any time via the existing Reopen
+            // button, same as any other "done" item.
+            autoCompleted: autoComplete || undefined,
             generatedAt: new Date().toISOString(),
           },
         },
-        event_date: existing?.event_date ?? null,
+        event_date: autoComplete ? (patch.eventDate as string) : existing?.event_date ?? null,
         completed_by: existing?.completed_by ?? null,
         evidence_path: existing?.evidence_path ?? null,
       },
