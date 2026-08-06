@@ -370,7 +370,7 @@ const items: ComplianceItem[] = [
     kind: "reports",
     label: "Pre-purchase inspection report register",
     description:
-      "A written record of every building, pest, or strata report you're aware of for this property — who requested it, the preparer's details, and whether it's available for another buyer to buy a copy. You must be able to show this to anyone who asks for a copy of the contract for sale. Not every sale will have entries — that's a valid, normal outcome.",
+      "Upload every building, pest, or strata report you're aware of for this property — the details cl 37 requires are read straight off the document, and you'll be shown anything it flags as missing. You must be able to show this register to anyone who asks for a copy of the contract for sale. Not every sale will have entries — that's a valid, normal outcome.",
     legalBasis: "cl 37, Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: false,

@@ -509,12 +509,6 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
   );
 }
 
-const REQUESTED_BY_LABELS: Record<string, string> = {
-  client: "the vendor",
-  purchaser: "a prospective purchaser",
-  licensee: "us (the agency)",
-};
-
 // Shows a past register entry's attached report as a clickable link — same
 // signed-URL pattern as EvidenceUploader above, generated fresh per view.
 function ReportEvidenceLink({ path, fileName }: { path: string; fileName: string }) {
@@ -544,12 +538,14 @@ function ReportEvidenceLink({ path, fileName }: { path: string; fileName: string
   );
 }
 
-// f3 — the cl 37 report register. "Nice and simple": the agent uploads the
-// actual report (same direct-to-Storage pattern as EvidenceUploader), it's
-// run through extractReportDetails for a pre-fill, and the agent reviews/
-// edits before logging — never auto-saved. The uploaded file is kept
-// attached to the entry so it's retrievable later, same as any other
-// evidence in the app.
+// f3 — the cl 37 report register. The agent just uploads the report; every
+// cl 37 field is read straight from it via extractReportDetails, shown
+// read-only (same "Findings, not a form" idea as b1) so there's nothing left
+// to manually re-type. Whatever the document doesn't state is flagged rather
+// than silently dropped — cl 37 needs the gap visible, not hidden by an
+// empty-looking form field. "Who requested it" isn't something a report
+// document states about itself, so it's not something extraction can check;
+// the note field is where that goes if it matters for this entry.
 function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const boundAction = addReportEntry.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -560,8 +556,6 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
         buildingInspection: boolean;
         strata: boolean;
         inspectionDate: string;
-        requestedBy: string;
-        requesterName: string;
         preparerName: string;
         preparerContact: string;
         preparerInsured: boolean;
@@ -569,6 +563,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
         note: string;
         evidencePath: string | null;
         evidenceFileName: string | null;
+        missingFields: string[];
         recordedAt: string;
       }>;
     }).entries ?? [];
@@ -578,7 +573,6 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
   const [clientError, setClientError] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<{ path: string; fileName: string } | null>(null);
   const [draft, setDraft] = useState<ReportExtractionFields | null>(null);
-  const [draftKey, setDraftKey] = useState(0);
   const wasPending = useRef(pending);
 
   // Reset the upload/extraction state once a submission actually succeeds,
@@ -591,7 +585,6 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
       setClientError(null);
       setEvidence(null);
       setDraft(null);
-      setDraftKey((k) => k + 1);
     }
     wasPending.current = pending;
   }, [pending, state.error]);
@@ -630,16 +623,19 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
       return;
     }
     setDraft(fields ?? {});
-    setDraftKey((k) => k + 1);
   }
+
+  const reportType = draft
+    ? [draft.pestInspection && "Pest", draft.buildingInspection && "Building", draft.strata && "Strata"]
+        .filter(Boolean)
+        .join(" + ") || "not identified"
+    : null;
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       <form action={formAction} className="space-y-3 rounded-md bg-neutral-50 p-3">
-        <div className="border-b border-rc-border pb-3">
-          <label className="block text-xs font-medium text-neutral-500">
-            Upload the report <span className="font-normal text-neutral-400">(optional — pre-fills the fields below)</span>
-          </label>
+        <div>
+          <label className="block text-xs font-medium text-neutral-500">Upload the report</label>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <input
               type="file"
@@ -654,90 +650,50 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
               <span className="text-xs text-neutral-400">{uploading ? "Uploading…" : "Reading report…"}</span>
             )}
           </div>
-          {evidence && !uploading && !extracting && (
-            <p className="mt-1 text-xs text-rc-green-deep">
-              📎 {evidence.fileName} attached
-              {draft && Object.keys(draft).length > 0 ? " · fields pre-filled below, check them against the report" : ""}
-            </p>
-          )}
           <FieldError error={clientError} />
           <input type="hidden" name="evidencePath" value={evidence?.path ?? ""} readOnly />
           <input type="hidden" name="evidenceFileName" value={evidence?.fileName ?? ""} readOnly />
+          <input type="hidden" name="pestInspection" value={draft?.pestInspection ? "true" : ""} readOnly />
+          <input type="hidden" name="buildingInspection" value={draft?.buildingInspection ? "true" : ""} readOnly />
+          <input type="hidden" name="strata" value={draft?.strata ? "true" : ""} readOnly />
+          <input type="hidden" name="inspectionDate" value={draft?.inspectionDate ?? ""} readOnly />
+          <input type="hidden" name="preparerName" value={draft?.preparerName ?? ""} readOnly />
+          <input type="hidden" name="preparerContact" value={draft?.preparerContact ?? ""} readOnly />
+          <input type="hidden" name="preparerInsured" value={draft?.preparerInsured ? "true" : ""} readOnly />
+          <input
+            type="hidden"
+            name="availableForRepurchase"
+            value={draft?.availableForRepurchase ? "true" : ""}
+            readOnly
+          />
         </div>
 
-        <div>
-          <label className="block text-xs text-neutral-500">Report type</label>
-          <div className="mt-1 flex flex-wrap gap-4" key={`types-${draftKey}`}>
-            <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="pestInspection" defaultChecked={draft?.pestInspection ?? false} /> Pest inspection
-            </label>
-            <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="buildingInspection" defaultChecked={draft?.buildingInspection ?? false} /> Building inspection
-            </label>
-            <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="strata" defaultChecked={draft?.strata ?? false} /> Strata report
-            </label>
+        {draft && (
+          <div className="rounded-md border border-rc-border bg-white p-2 text-xs text-neutral-600">
+            <p className="font-medium text-neutral-500">
+              From the report <span className="font-normal text-neutral-400">(read by AI — check it against the document)</span>
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              <li>Type: {reportType}</li>
+              <li>Inspected: {draft.inspectionDate || "⚠️ not stated in the document"}</li>
+              <li>
+                Preparer: {draft.preparerName || "⚠️ not stated in the document"}
+                {draft.preparerContact ? ` (${draft.preparerContact})` : draft.preparerName ? " · ⚠️ contact not stated" : ""}
+              </li>
+              <li>PI insurance: {draft.preparerInsured ? "confirmed in the document" : "⚠️ not stated in the document"}</li>
+              <li>
+                Available for repurchase: {draft.availableForRepurchase ? "confirmed in the document" : "⚠️ not stated in the document"}
+              </li>
+            </ul>
+            <p className="mt-1.5 text-neutral-400">
+              Cl 37 also asks who requested the report — that&rsquo;s rarely written in the report itself, so add it in the note below if it matters.
+            </p>
           </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <div>
-            <label className="block text-xs text-neutral-500">Date inspected</label>
-            <input
-              key={`date-${draftKey}`}
-              type="date"
-              name="inspectionDate"
-              defaultValue={draft?.inspectionDate ?? ""}
-              className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-neutral-500">Who requested it</label>
-            <select name="requestedBy" className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm">
-              <option value="purchaser">Prospective purchaser</option>
-              <option value="client">The vendor (client)</option>
-              <option value="licensee">Us (the agency)</option>
-            </select>
-          </div>
-        </div>
-        <input
-          type="text"
-          name="requesterName"
-          placeholder="Requester's name (optional, for your own reference)"
-          className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
-        />
-
-        <div className="border-t border-rc-border pt-2">
-          <p className="text-xs font-medium text-neutral-500">Report preparer (required by cl 37)</p>
-          <div className="mt-1 flex flex-wrap gap-2" key={`preparer-${draftKey}`}>
-            <input
-              type="text"
-              name="preparerName"
-              placeholder="Preparer's name"
-              defaultValue={draft?.preparerName ?? ""}
-              className="flex-1 rounded-md border border-rc-border px-2 py-1 text-sm"
-            />
-            <input
-              type="text"
-              name="preparerContact"
-              placeholder="Business address & phone"
-              defaultValue={draft?.preparerContact ?? ""}
-              className="flex-1 rounded-md border border-rc-border px-2 py-1 text-sm"
-            />
-          </div>
-          <div className="mt-2 flex flex-wrap gap-4" key={`preparer-flags-${draftKey}`}>
-            <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="preparerInsured" defaultChecked={draft?.preparerInsured ?? false} /> Preparer holds PI insurance
-            </label>
-            <label className="flex items-center gap-2 text-xs text-neutral-600">
-              <input type="checkbox" name="availableForRepurchase" defaultChecked={draft?.availableForRepurchase ?? false} /> Available for another buyer to purchase a copy
-            </label>
-          </div>
-        </div>
+        )}
 
         <textarea
           name="note"
-          placeholder="Note (optional)"
+          placeholder="Note — e.g. who requested this report, or anything else worth recording (optional)"
           rows={2}
           className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
         />
@@ -757,14 +713,11 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
               <span className="font-medium text-rc-ink">
                 {[e.pestInspection && "Pest", e.buildingInspection && "Building", e.strata && "Strata"]
                   .filter(Boolean)
-                  .join(" + ")}
+                  .join(" + ") || "Report"}
               </span>{" "}
               — prepared by {e.preparerName || "unknown"}
               {e.preparerContact && ` (${e.preparerContact})`}
-              {e.preparerInsured ? ", PI insured" : ", PI insurance not confirmed"}
-              {" · requested by "}
-              {REQUESTED_BY_LABELS[e.requestedBy] ?? e.requestedBy}
-              {e.requesterName && ` (${e.requesterName})`}
+              {e.preparerInsured ? ", PI insured" : ""}
               {e.inspectionDate && ` · inspected ${e.inspectionDate}`}
               {e.availableForRepurchase && " · available for repurchase"}
               {e.note && <> — {e.note}</>}
@@ -773,6 +726,9 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
                   {" · "}
                   <ReportEvidenceLink path={e.evidencePath} fileName={e.evidenceFileName} />
                 </>
+              )}
+              {e.missingFields && e.missingFields.length > 0 && (
+                <p className="mt-1 text-rc-amber-deep">⚠️ Not stated in the document: {e.missingFields.join(", ")}</p>
               )}
             </li>
           ))}

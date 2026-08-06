@@ -219,12 +219,15 @@ export async function addReviewEntry(
 }
 
 // f3 — pre-purchase inspection report register (cl 37, Property and Stock
-// Agents Regulation 2022). Records the report and its preparer, not just
-// who received it — that's what the clause actually requires: date
-// inspected, who requested it, the preparer's identity/contact, whether
-// they're PI-insured, and whether the report is available for another
-// buyer to buy a copy. Never blocks stage completion — an empty register
-// (no reports the licensee is aware of) is a valid, normal outcome.
+// Agents Regulation 2022). The agent just uploads the report; every cl 37
+// field here comes from extractReportDetails (see ItemCard.tsx's
+// ReportsLogItem), not manual entry — this action just records what was
+// found and, separately, what wasn't (missingFields), so a partial document
+// still produces a useful, honest record rather than blocking the agent or
+// silently pretending a gap doesn't exist. Never blocks stage completion —
+// an empty register (no reports the licensee is aware of) is a valid,
+// normal outcome, and neither is a genuinely required field to log an entry
+// at all: the agent may only have a note about a report, not the document.
 export async function addReportEntry(
   propertyId: string,
   _prevState: ActionState,
@@ -232,26 +235,28 @@ export async function addReportEntry(
 ): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
 
-  const pestInspection = formData.get("pestInspection") === "on";
-  const buildingInspection = formData.get("buildingInspection") === "on";
-  const strata = formData.get("strata") === "on";
+  const pestInspection = formData.get("pestInspection") === "true";
+  const buildingInspection = formData.get("buildingInspection") === "true";
+  const strata = formData.get("strata") === "true";
   const inspectionDate = String(formData.get("inspectionDate") ?? "").trim();
-  const requestedBy = String(formData.get("requestedBy") ?? "purchaser"); // client | purchaser | licensee
-  const requesterName = String(formData.get("requesterName") ?? "").trim();
   const preparerName = String(formData.get("preparerName") ?? "").trim();
   const preparerContact = String(formData.get("preparerContact") ?? "").trim();
-  const preparerInsured = formData.get("preparerInsured") === "on";
-  const availableForRepurchase = formData.get("availableForRepurchase") === "on";
+  const preparerInsured = formData.get("preparerInsured") === "true";
+  const availableForRepurchase = formData.get("availableForRepurchase") === "true";
   const note = String(formData.get("note") ?? "").trim();
   const evidencePath = String(formData.get("evidencePath") ?? "").trim() || null;
   const evidenceFileName = String(formData.get("evidenceFileName") ?? "").trim() || null;
 
-  if (!pestInspection && !buildingInspection && !strata) {
-    return { error: "Select at least one report type (pest, building, or strata)." };
+  if (!evidencePath && !note) {
+    return { error: "Attach the report, or add a note describing it, before logging an entry." };
   }
-  if (!preparerName) {
-    return { error: "Enter the report preparer's name — cl 37 requires it on the record." };
-  }
+
+  const missingFields: string[] = [];
+  if (!inspectionDate) missingFields.push("inspection date");
+  if (!preparerName) missingFields.push("preparer's name");
+  if (!preparerContact) missingFields.push("preparer's business address/phone");
+  if (!preparerInsured) missingFields.push("whether the preparer holds PI insurance");
+  if (!availableForRepurchase) missingFields.push("whether it's available for repurchase");
 
   const { data: existing } = await supabase
     .from("property_items")
@@ -265,8 +270,6 @@ export async function addReportEntry(
     buildingInspection: boolean;
     strata: boolean;
     inspectionDate: string;
-    requestedBy: string;
-    requesterName: string;
     preparerName: string;
     preparerContact: string;
     preparerInsured: boolean;
@@ -274,6 +277,7 @@ export async function addReportEntry(
     note: string;
     evidencePath: string | null;
     evidenceFileName: string | null;
+    missingFields: string[];
     recordedAt: string;
   }>;
   entries.unshift({
@@ -281,8 +285,6 @@ export async function addReportEntry(
     buildingInspection,
     strata,
     inspectionDate,
-    requestedBy,
-    requesterName,
     preparerName,
     preparerContact,
     preparerInsured,
@@ -290,6 +292,7 @@ export async function addReportEntry(
     note,
     evidencePath,
     evidenceFileName,
+    missingFields,
     recordedAt: new Date().toISOString(),
   });
 
