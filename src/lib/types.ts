@@ -16,6 +16,8 @@ export type Profile = {
   licence_type: LicenceType | null;
   licence_number: string | null;
   licence_expiry: string | null;
+  licence_document_path: string | null;
+  licence_document_file_name: string | null;
   created_at: string;
 };
 
@@ -25,6 +27,55 @@ export type Agency = {
   pi_insurer: string | null;
   pi_policy_number: string | null;
   pi_expiry: string | null;
+  gift_threshold: number;
+  complaint_resolution_target_days: number;
+  created_at: string;
+};
+
+export type GiftDirection = "received" | "given";
+export type GiftStatus = "recorded" | "flagged" | "reviewed";
+
+export type Gift = {
+  id: string;
+  agency_id: string;
+  profile_id: string;
+  gift_date: string;
+  description: string;
+  counterparty: string | null;
+  value: number | null;
+  direction: GiftDirection;
+  status: GiftStatus;
+  property_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type ComplaintStatus = "open" | "under_review" | "resolved";
+
+export type Complaint = {
+  id: string;
+  agency_id: string;
+  received_date: string;
+  complainant: string;
+  agent_id: string | null;
+  property_id: string | null;
+  nature: string;
+  status: ComplaintStatus;
+  resolved_date: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type SgManualVersion = {
+  id: string;
+  agency_id: string;
+  version_label: string | null;
+  file_path: string;
+  file_name: string;
+  notes: string | null;
+  uploaded_by: string | null;
   created_at: string;
 };
 

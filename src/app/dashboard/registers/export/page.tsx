@@ -1,0 +1,125 @@
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { requireProfile } from "@/lib/data/current-profile";
+import { currentCpdYear, CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
+import type { Agency, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
+
+const LICENCE_TYPE_LABELS: Record<string, string> = {
+  class_1: "Class 1 licence",
+  class_2: "Class 2 licence",
+  certificate_of_registration: "Certificate of registration",
+};
+
+// A plain, printable export of all three registers — same browser
+// Print → Save as PDF mechanism as the per-property finalised summary
+// (src/app/dashboard/[id]/summary/page.tsx); a polished branded export is a
+// later follow-up, not built here.
+export default async function RegistersExportPage() {
+  const profile = await requireProfile();
+  const supabase = await createClient();
+  const cpdYear = currentCpdYear();
+
+  const [{ data: staffRows }, { data: agencyRow }, { data: cpdRows }, { data: giftRows }, { data: complaintRows }] =
+    await Promise.all([
+      supabase.from("profiles").select("*").order("full_name", { ascending: true }),
+      supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
+      supabase.from("cpd_records").select("*").gte("completed_date", cpdYear.start).lte("completed_date", cpdYear.end),
+      supabase.from("gifts").select("*").order("gift_date", { ascending: false }),
+      supabase.from("complaints").select("*").order("received_date", { ascending: false }),
+    ]);
+
+  const staff = (staffRows ?? []) as Profile[];
+  const agency = agencyRow as Agency | null;
+  const gifts = (giftRows ?? []) as Gift[];
+  const complaints = (complaintRows ?? []) as Complaint[];
+  const cpdByProfile: Record<string, CpdRecord[]> = {};
+  for (const row of (cpdRows ?? []) as CpdRecord[]) {
+    (cpdByProfile[row.profile_id] ??= []).push(row);
+  }
+  const nameFor = (id: string) => staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "Unknown";
+
+  return (
+    <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 print:px-0">
+      <div className="flex items-center justify-between print:hidden">
+        <Link href="/dashboard/registers" className="text-sm text-neutral-500 hover:underline">
+          ← Back to registers
+        </Link>
+        <button className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white">
+          Use your browser&rsquo;s Print → Save as PDF
+        </button>
+      </div>
+
+      <h1 className="mt-6 text-2xl font-bold text-rc-ink">
+        Real<span className="text-rc-green-deep">Comply</span> — Registers export
+      </h1>
+      <p className="mt-1 text-xs text-neutral-400">
+        Generated {new Date().toLocaleString("en-AU")} · {cpdYear.label} CPD year · diligence support — verify with your
+        adviser; the licensee decides.
+      </p>
+
+      <section className="mt-8">
+        <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Licence register</h2>
+        {agency && (
+          <p className="mt-2 text-sm">
+            <span className="font-medium">PI insurance:</span>{" "}
+            {agency.pi_insurer ? `${agency.pi_insurer} · ${agency.pi_policy_number ?? "no policy #"} · expires ${agency.pi_expiry ?? "—"}` : "not on file"}
+          </p>
+        )}
+        <ul className="mt-2 space-y-1">
+          {staff.map((s) => {
+            const isAssistant = s.licence_type === "certificate_of_registration";
+            const target = isAssistant ? CPD_UNITS_REQUIRED_ASSISTANT : CPD_HOURS_REQUIRED_AGENT;
+            const total = (cpdByProfile[s.id] ?? []).reduce((sum, r) => sum + Number(r.hours), 0);
+            return (
+              <li key={s.id} className="text-sm">
+                <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>{" "}
+                <span className="text-neutral-500">
+                  — {s.licence_type ? LICENCE_TYPE_LABELS[s.licence_type] : "no licence on file"}
+                  {s.licence_number ? ` · ${s.licence_number}` : ""}
+                  {s.licence_expiry ? ` · expires ${s.licence_expiry}` : ""} · CPD {total}/{target}
+                  {isAssistant ? "u" : "h"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Gifts &amp; benefits register</h2>
+        <ul className="mt-2 space-y-1">
+          {gifts.length === 0 && <li className="text-sm text-neutral-500">No entries.</li>}
+          {gifts.map((g) => (
+            <li key={g.id} className="text-sm">
+              <span className="font-medium text-rc-ink">{g.gift_date}</span>{" "}
+              <span className="text-neutral-500">
+                — {nameFor(g.profile_id)} · {g.description} ({g.direction}){g.value ? ` · ~$${g.value}` : ""} · {g.status}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Complaints register</h2>
+        <ul className="mt-2 space-y-1">
+          {complaints.length === 0 && <li className="text-sm text-neutral-500">No complaints logged.</li>}
+          {complaints.map((c) => (
+            <li key={c.id} className="text-sm">
+              <span className="font-medium text-rc-ink">{c.received_date}</span>{" "}
+              <span className="text-neutral-500">
+                — {c.complainant} · {c.nature} · {c.status}
+                {c.resolved_date ? ` (resolved ${c.resolved_date})` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <p className="mt-10 text-xs text-neutral-400">
+        Prepared for {profile.full_name ?? profile.email}. This record reflects diligence-support content maintained
+        in RealComply and is not legal advice.
+      </p>
+    </main>
+  );
+}

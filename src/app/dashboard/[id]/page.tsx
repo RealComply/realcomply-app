@@ -75,6 +75,12 @@ export default async function PropertyPage({
               {p.has_pool ? " · Pool" : ""}
             </p>
           </div>
+          <Link
+            href={`/dashboard/${p.id}/summary`}
+            className="shrink-0 rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50"
+          >
+            Download audit pack
+          </Link>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2">

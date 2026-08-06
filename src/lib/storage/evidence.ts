@@ -17,6 +17,17 @@ export function buildEvidencePath(agencyId: string, propertyId: string, itemKey:
   return `${agencyId}/${propertyId}/${itemKey}/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// Same bucket, same RLS (only the agency_id first segment is checked — see
+// 0002_evidence_storage.sql), different second segment so these don't
+// collide with per-property evidence paths.
+export function buildLicenceDocPath(agencyId: string, profileId: string, fileName: string): string {
+  return `${agencyId}/_licences/${profileId}/${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
+export function buildSgManualPath(agencyId: string, fileName: string): string {
+  return `${agencyId}/_sg-manual/${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 // A property doesn't have an id yet while its setup form is being filled
 // in, but the browser still needs somewhere RLS-legal to put the file the
 // moment it's chosen (see below on why upload happens client-side at all).

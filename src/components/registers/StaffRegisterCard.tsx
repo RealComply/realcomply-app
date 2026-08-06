@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { updateLicence, addCpdRecord, deleteCpdRecord, type ActionState } from "@/lib/actions/registers";
+import { useActionState, useEffect, useState, type ChangeEvent } from "react";
+import { updateLicence, addCpdRecord, deleteCpdRecord, finalizeLicenceDocument, removeLicenceDocument, type ActionState } from "@/lib/actions/registers";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
 import { CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
 import type { CpdRecord, Profile } from "@/lib/types";
@@ -141,6 +143,7 @@ export function StaffRegisterCard({
             {licenceState.error && <p className="text-xs text-rc-amber-deep">{licenceState.error}</p>}
           </form>
         )}
+        {canEdit && <LicenceDocument profile={profile} />}
       </div>
 
       <div className="mt-3">
@@ -233,6 +236,80 @@ export function StaffRegisterCard({
           </form>
         )}
       </div>
+    </div>
+  );
+}
+
+// Licence document — the "Upload licence document" action from the
+// registers mockup. Same client-side-upload-then-record-path pattern as
+// EvidenceUploader in ItemCard.tsx (a Server Action can't carry a real
+// document upload — see the comment on uploadEvidenceObject).
+function LicenceDocument({ profile }: { profile: Profile }) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!profile.licence_document_path) return;
+    let cancelled = false;
+    const supabase = createBrowserClient();
+    supabase.storage
+      .from(EVIDENCE_BUCKET)
+      .createSignedUrl(profile.licence_document_path, 3600)
+      .then(({ data }) => {
+        if (!cancelled) setSignedUrl(data?.signedUrl ?? null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile.licence_document_path]);
+
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setError(null);
+    setUploading(true);
+    const supabase = createBrowserClient();
+    const path = buildLicenceDocPath(profile.agency_id, profile.id, file.name);
+    const { error: uploadError } = await uploadEvidenceObject(supabase, { path, file });
+    if (uploadError) {
+      setError(uploadError);
+      setUploading(false);
+      return;
+    }
+    const { error: saveError } = await finalizeLicenceDocument(profile.id, path, file.name);
+    setUploading(false);
+    if (saveError) setError(saveError);
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      {profile.licence_document_path ? (
+        <>
+          {signedUrl ? (
+            <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="text-rc-green-deep hover:underline">
+              📎 {profile.licence_document_file_name ?? "View document"}
+            </a>
+          ) : (
+            <span className="text-neutral-400">📎 loading link…</span>
+          )}
+          <button
+            type="button"
+            onClick={() => removeLicenceDocument(profile.id)}
+            className="text-neutral-400 hover:text-rc-amber-deep"
+          >
+            Remove
+          </button>
+        </>
+      ) : (
+        <label className="cursor-pointer text-rc-green-deep hover:underline">
+          {uploading ? "Uploading…" : "Upload licence document"}
+          <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
+        </label>
+      )}
+      {error && <span className="text-rc-amber-deep">{error}</span>}
     </div>
   );
 }

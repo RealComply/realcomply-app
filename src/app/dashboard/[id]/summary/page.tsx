@@ -5,8 +5,20 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
 
+// Bump this when the item set/wording in nsw-sales.ts changes meaningfully —
+// stamped on every export so it's traceable to the exact ruleset in force
+// when it was generated, per the "immutable audit trail stamped with the
+// ruleset version" design principle in the website IA doc.
+const RULESET_VERSION = "NSW Sales Ruleset 2026.2";
+
 // The finalised, read-only compliance record — what item f2 ("Generate
-// finalised compliance file") produces. Production version is a branded
+// finalised compliance file") produces, and also the one-click "audit pack"
+// a licensee hands to Fair Trading or points a regulator at. Per the
+// product philosophy doc (§2, "diligence record, not a breach ledger"):
+// this shows CURRENT state honestly — including any flag that's open right
+// now — not a historical catalogue of past breaches. A flag that's since
+// been resolved just reads "done," same as anything else; only what's
+// actually open today gets called out. Production version is a branded
 // PDF; this is a real, printable summary of the same data today (use the
 // browser's print-to-PDF for now).
 export default async function SummaryPage({ params }: { params: Promise<{ id: string }> }) {
@@ -40,8 +52,8 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
       </h1>
       <p className="mt-1 text-sm text-neutral-500">{p.address}</p>
       <p className="mt-1 text-xs text-neutral-400">
-        Generated {new Date().toLocaleString("en-AU")} · diligence support — verify with your adviser; the
-        licensee decides.
+        Generated {new Date().toLocaleString("en-AU")} · {RULESET_VERSION} · diligence support — verify with your
+        adviser; the licensee decides.
       </p>
 
       <div className="mt-8 space-y-6">
@@ -56,13 +68,16 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
               <ul className="mt-2 space-y-2">
                 {stageItems.map((item) => {
                   const current = allItems[item.key];
+                  const flaggedNote = current?.status === "flagged" ? (current.data as { note?: string })?.note : null;
                   return (
                     <li key={item.key} className="text-sm">
                       <span className="font-medium text-rc-ink">{item.label}</span>{" "}
-                      <span className="text-neutral-500">
+                      <span className={current?.status === "flagged" ? "font-medium text-rc-amber-deep" : "text-neutral-500"}>
                         — {current?.status ?? "open"}
                         {current?.event_date ? ` · ${current.event_date}` : ""}
                       </span>
+                      {item.legalBasis && <span className="ml-1 text-xs text-neutral-400">({item.legalBasis})</span>}
+                      {flaggedNote && <p className="mt-0.5 text-xs text-rc-amber-deep">Open flag: {flaggedNote}</p>}
                     </li>
                   );
                 })}
