@@ -10,6 +10,9 @@ export function TopNav({ profile }: { profile: Profile }) {
           Real<span className="text-rc-green-deep">Comply</span>
         </Link>
         <div className="flex items-center gap-4 text-sm text-neutral-600">
+          <Link href="/dashboard/home" className="hover:text-rc-ink hover:underline">
+            Home
+          </Link>
           <Link href="/dashboard/portfolio" className="hover:text-rc-ink hover:underline">
             Portfolio
           </Link>

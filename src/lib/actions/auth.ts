@@ -33,7 +33,7 @@ export async function login(
     return { error: error.message };
   }
 
-  redirect("/dashboard");
+  redirect("/dashboard/home");
 }
 
 export async function signup(
@@ -89,7 +89,7 @@ export async function signup(
     return { error: bootstrapError.message };
   }
 
-  redirect("/dashboard");
+  redirect("/dashboard/home");
 }
 
 export async function logout() {
