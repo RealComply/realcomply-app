@@ -13,6 +13,12 @@ export function TopNav({ profile }: { profile: Profile }) {
           <Link href="/dashboard/licensee" className="hover:text-rc-ink hover:underline">
             Licensee digest
           </Link>
+          <Link href="/dashboard/registers" className="hover:text-rc-ink hover:underline">
+            Registers
+          </Link>
+          <Link href="/dashboard/training" className="hover:text-rc-ink hover:underline">
+            Training
+          </Link>
           <span>
             {profile.full_name ?? profile.email}
             {profile.is_licensee_in_charge && (

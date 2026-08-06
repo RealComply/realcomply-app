@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
 import { allItemsFor, type ComplianceItem } from "@/lib/rules/nsw-sales";
-import { STAGE_LABELS, type Profile, type Property, type PropertyItem } from "@/lib/types";
+import { expiryStatus } from "@/lib/expiry-status";
+import { STAGE_LABELS, type Agency, type Profile, type Property, type PropertyItem } from "@/lib/types";
 
 // The licensee digest — "at a glance across every file," the in-app version
 // of the two-tier Monday status email idea from the product brief (per-agent
@@ -27,12 +28,21 @@ export default async function LicenseeDigestPage() {
   const propertyList = (properties ?? []) as Property[];
   const propertyIds = propertyList.map((p) => p.id);
 
-  const [{ data: itemRows }, { data: profileRows }] = await Promise.all([
+  const [{ data: itemRows }, { data: profileRows }, { data: agencyRow }] = await Promise.all([
     propertyIds.length > 0
       ? supabase.from("property_items").select("*").in("property_id", propertyIds)
       : Promise.resolve({ data: [] as PropertyItem[] }),
     supabase.from("profiles").select("*"),
+    supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
   ]);
+
+  const staffList = (profileRows ?? []) as Profile[];
+  const agency = agencyRow as Agency | null;
+  const expiringStaff = staffList.filter((s) => {
+    const status = expiryStatus(s.licence_expiry);
+    return status === "expired" || status === "urgent";
+  });
+  const piConcern = agency ? expiryStatus(agency.pi_expiry) : "none";
 
   const itemsByProperty = new Map<string, Map<string, PropertyItem>>();
   for (const row of (itemRows ?? []) as PropertyItem[]) {
@@ -103,6 +113,34 @@ export default async function LicenseeDigestPage() {
             You&rsquo;re viewing this as an agent, not the licensee in charge — the sign-off items below need the
             licensee&rsquo;s action, not yours.
           </p>
+        )}
+
+        {(expiringStaff.length > 0 || piConcern === "expired" || piConcern === "urgent") && (
+          <section className="mt-8">
+            <h2 className="text-sm font-semibold text-rc-ink">Licences &amp; insurance</h2>
+            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+              {(piConcern === "expired" || piConcern === "urgent") && (
+                <li className="px-4 py-3 text-sm">
+                  <Link href="/dashboard/registers" className="font-medium text-rc-ink hover:underline">
+                    PI insurance
+                  </Link>{" "}
+                  <span className="text-rc-amber-deep">
+                    {piConcern === "expired" ? "expired" : "expires within 30 days"}
+                  </span>
+                </li>
+              )}
+              {expiringStaff.map((s) => (
+                <li key={s.id} className="px-4 py-3 text-sm">
+                  <Link href="/dashboard/registers" className="font-medium text-rc-ink hover:underline">
+                    {s.full_name ?? s.email}
+                  </Link>{" "}
+                  <span className="text-rc-amber-deep">
+                    licence {expiryStatus(s.licence_expiry) === "expired" ? "expired" : "expires within 30 days"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         <section className="mt-8">
