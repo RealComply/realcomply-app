@@ -54,16 +54,16 @@ export default async function RegistersPage() {
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-rc-ink">Registers</h1>
-            <p className="mt-1 text-sm text-neutral-500">
+            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Registers</h1>
+            <p className="mt-1 text-sm text-rc-muted">
               Agency-level records the licensee must keep — {cpdYear.label} CPD year.
             </p>
           </div>
-          <div className="flex gap-4 text-sm">
-            <Link href="/dashboard/registers/export" className="text-neutral-500 hover:underline">
+          <div className="flex gap-4 text-sm font-medium">
+            <Link href="/dashboard/registers/export" className="text-rc-muted transition hover:text-rc-green-deep">
               Export register
             </Link>
-            <Link href="/dashboard/training" className="text-neutral-500 hover:underline">
+            <Link href="/dashboard/training" className="text-rc-muted transition hover:text-rc-green-deep">
               Training log →
             </Link>
           </div>

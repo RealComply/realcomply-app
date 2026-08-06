@@ -1,3 +1,4 @@
+import { Gift as GiftIcon } from "lucide-react";
 import { WidgetCard, BreakdownRow } from "./WidgetCard";
 
 export function GiftsWidget({
@@ -13,7 +14,7 @@ export function GiftsWidget({
 }) {
   return (
     <WidgetCard
-      icon="🎁"
+      icon={GiftIcon}
       title="Gifts & benefits"
       href="/dashboard/registers"
       hrefLabel="Registers →"

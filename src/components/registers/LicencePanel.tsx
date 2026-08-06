@@ -62,9 +62,9 @@ export function LicencePanel({
 function Tile({ n, l, ok, warn, bad }: { n: number; l: string; ok?: boolean; warn?: boolean; bad?: boolean }) {
   const color = bad ? "text-red-700" : warn ? "text-rc-amber-deep" : ok ? "text-rc-green-deep" : "text-rc-ink";
   return (
-    <div className="rounded-lg border border-rc-border bg-white p-3">
-      <div className={`text-xl font-bold ${color}`}>{n}</div>
-      <div className="mt-0.5 text-[11px] font-medium text-neutral-500">{l}</div>
+    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
+      <div className={`text-xl font-bold tracking-tight ${color}`}>{n}</div>
+      <div className="mt-0.5 text-[11px] font-medium text-rc-muted">{l}</div>
     </div>
   );
 }

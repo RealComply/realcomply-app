@@ -1,3 +1,4 @@
+import { GraduationCap } from "lucide-react";
 import { WidgetCard, BreakdownRow } from "./WidgetCard";
 
 export function LicenceCpdWidget({
@@ -17,7 +18,7 @@ export function LicenceCpdWidget({
 }) {
   return (
     <WidgetCard
-      icon="🎓"
+      icon={GraduationCap}
       title="Licence & CPD"
       href="/dashboard/registers"
       hrefLabel="Registers →"

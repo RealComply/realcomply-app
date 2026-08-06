@@ -1,15 +1,35 @@
 @import "tailwindcss";
 
-/* RealComply brand tokens — see RealComply-brand-and-site-status.md (LOCKED) */
+/* RealComply brand tokens — see RealComply-brand-and-site-status.md (LOCKED).
+   The extra tokens below (bg-alt, muted/faint text, green-soft, ink/panel,
+   card radius+shadow) are ported straight from the marketing site's design
+   system (RealComply-landing-page.html) rather than invented fresh, so the
+   product screens read as the same product as the marketing site instead of
+   a separately-designed thing bolted on next to it. */
 :root {
   --background: #ffffff;
   --foreground: #0d1f19;
   --rc-ink: #0d1f19;
   --rc-green: #2ecc8f;
   --rc-green-deep: #0ca678;
+  --rc-green-deep-600: #0b8a5e;
   --rc-amber: #e2a94a;
   --rc-amber-deep: #b7791f;
   --rc-border: #e4e9e6;
+
+  /* New: page background + secondary text, matching the marketing site's
+     "alt" section tint and muted/faint text colours (not generic Tailwind
+     grays) */
+  --rc-bg-alt: #f5faf8;
+  --rc-muted: #5c6f68;
+  --rc-faint: #8a9a93;
+  --rc-green-soft: #e9faf3;
+
+  /* New: the "ink" dark surfaces used as punctuation on the marketing site */
+  --rc-ink-bg: #0d1f19;
+  --rc-panel: #16302a;
+  --rc-ink-line: rgba(255, 255, 255, 0.09);
+  --rc-ink-muted: #9db3a9;
 }
 
 @theme inline {
@@ -18,14 +38,29 @@
   --color-rc-ink: var(--rc-ink);
   --color-rc-green: var(--rc-green);
   --color-rc-green-deep: var(--rc-green-deep);
+  --color-rc-green-deep-600: var(--rc-green-deep-600);
   --color-rc-amber: var(--rc-amber);
   --color-rc-amber-deep: var(--rc-amber-deep);
   --color-rc-border: var(--rc-border);
+  --color-rc-bg-alt: var(--rc-bg-alt);
+  --color-rc-muted: var(--rc-muted);
+  --color-rc-faint: var(--rc-faint);
+  --color-rc-green-soft: var(--rc-green-soft);
+  --color-rc-ink-bg: var(--rc-ink-bg);
+  --color-rc-panel: var(--rc-panel);
+  --color-rc-ink-line: var(--rc-ink-line);
+  --color-rc-ink-muted: var(--rc-ink-muted);
   --font-sans: var(--font-plus-jakarta);
+
+  /* Named so Tailwind generates rounded-card / shadow-card utilities —
+     the 18px radius + soft layered shadow used throughout the landing page */
+  --radius-card: 18px;
+  --shadow-card: 0 1px 2px rgba(13, 31, 25, 0.05), 0 12px 28px rgba(13, 31, 25, 0.06);
+  --shadow-card-lg: 0 2px 4px rgba(13, 31, 25, 0.05), 0 26px 60px rgba(13, 31, 25, 0.14);
 }
 
 body {
-  background: var(--background);
+  background: var(--rc-bg-alt);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }

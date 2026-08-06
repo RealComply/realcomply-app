@@ -37,11 +37,11 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 print:px-0">
       <div className="flex items-center justify-between print:hidden">
-        <Link href={`/dashboard/${p.id}`} className="text-sm text-neutral-500 hover:underline">
+        <Link href={`/dashboard/${p.id}`} className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
           ← Back to file
         </Link>
         <button
-          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white"
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600"
         >
           Use your browser&rsquo;s Print → Save as PDF
         </button>
@@ -50,8 +50,8 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
       <h1 className="mt-6 text-2xl font-bold text-rc-ink">
         Real<span className="text-rc-green-deep">Comply</span> — Finalised compliance record
       </h1>
-      <p className="mt-1 text-sm text-neutral-500">{p.address}</p>
-      <p className="mt-1 text-xs text-neutral-400">
+      <p className="mt-1 text-sm text-rc-muted">{p.address}</p>
+      <p className="mt-1 text-xs text-rc-faint">
         Generated {new Date().toLocaleString("en-AU")} · {RULESET_VERSION} · diligence support — verify with your
         adviser; the licensee decides.
       </p>
@@ -72,11 +72,11 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                   return (
                     <li key={item.key} className="text-sm">
                       <span className="font-medium text-rc-ink">{item.label}</span>{" "}
-                      <span className={current?.status === "flagged" ? "font-medium text-rc-amber-deep" : "text-neutral-500"}>
+                      <span className={current?.status === "flagged" ? "font-medium text-rc-amber-deep" : "text-rc-muted"}>
                         — {current?.status ?? "open"}
                         {current?.event_date ? ` · ${current.event_date}` : ""}
                       </span>
-                      {item.legalBasis && <span className="ml-1 text-xs text-neutral-400">({item.legalBasis})</span>}
+                      {item.legalBasis && <span className="ml-1 text-xs text-rc-faint">({item.legalBasis})</span>}
                       {flaggedNote && <p className="mt-0.5 text-xs text-rc-amber-deep">Open flag: {flaggedNote}</p>}
                     </li>
                   );
@@ -87,7 +87,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         })}
       </div>
 
-      <p className="mt-10 text-xs text-neutral-400">
+      <p className="mt-10 text-xs text-rc-faint">
         Prepared for {profile.full_name ?? profile.email}. This record reflects diligence-support content
         maintained in RealComply and is not legal advice.
       </p>

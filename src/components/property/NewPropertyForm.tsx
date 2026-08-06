@@ -22,7 +22,7 @@ function YesNo({ name, label, help }: { name: string; label: string; help?: stri
   return (
     <fieldset>
       <legend className="text-sm font-medium text-rc-ink">{label}</legend>
-      {help && <p className="mt-0.5 text-xs text-neutral-500">{help}</p>}
+      {help && <p className="mt-0.5 text-xs text-rc-muted">{help}</p>}
       <div className="mt-2 flex gap-3">
         <label className="flex items-center gap-2 text-sm">
           <input type="radio" name={name} value="yes" className="accent-rc-green-deep" />
@@ -63,7 +63,7 @@ function DocUpload({
         type="file"
         required
         onChange={(e) => onChange(e.target.files?.[0] ?? null)}
-        className="mt-1.5 w-full text-xs text-neutral-500 file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1.5 file:text-xs file:font-medium"
+        className="mt-1.5 w-full text-xs text-rc-muted file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1.5 file:text-xs file:font-medium"
       />
     </div>
   );
@@ -126,10 +126,10 @@ function AddressAutocomplete({ defaultValue }: { defaultValue?: string }) {
         onFocus={() => setOpen(suggestions.length > 0)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="6/2C Amor Street, Asquith NSW 2077"
-        className="mt-1 w-full rounded-md border border-rc-border px-3 py-2 text-sm focus:border-rc-green-deep focus:outline-none"
+        className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
       />
       {open && (
-        <ul className="absolute z-10 mt-1 w-full rounded-md border border-rc-border bg-white py-1 text-sm shadow-lg">
+        <ul className="absolute z-10 mt-1 w-full rounded-card border border-rc-border bg-white py-1 text-sm shadow-card-lg">
           {suggestions.map((s) => (
             <li key={s.placeId}>
               <button
@@ -139,7 +139,7 @@ function AddressAutocomplete({ defaultValue }: { defaultValue?: string }) {
                   setSuggestions([]);
                   setOpen(false);
                 }}
-                className="block w-full px-3 py-1.5 text-left hover:bg-neutral-50"
+                className="block w-full px-3 py-1.5 text-left hover:bg-rc-bg-alt"
               >
                 {s.text}
               </button>
@@ -204,18 +204,18 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
 
   return (
     <main className="mx-auto w-full max-w-lg flex-1 px-4 py-10">
-      <Link href="/dashboard" className="text-sm text-neutral-500 transition hover:text-rc-ink hover:underline">
+      <Link href="/dashboard" className="text-sm text-rc-muted transition hover:text-rc-ink hover:underline">
         ← Back to properties
       </Link>
       <h1 className="mt-3 text-xl font-semibold text-rc-ink">Add a property</h1>
-      <p className="mt-1 text-sm text-neutral-500">
+      <p className="mt-1 text-sm text-rc-muted">
         These answers unlock the right checklist items for this listing — e.g. the
         tenancy notice items, or the strata pool-certificate exemption.
       </p>
 
       <form ref={formRef} onSubmit={handleSubmit} className="mt-8 space-y-6">
         {(uploadError ?? state.error) && (
-          <p className="rounded-md border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2 text-sm text-rc-amber-deep">
+          <p className="rounded-2xl border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2 text-sm text-rc-amber-deep">
             {uploadError ?? state.error}
           </p>
         )}
@@ -230,7 +230,7 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
             id="propertyType"
             name="propertyType"
             defaultValue="House"
-            className="mt-1 w-full rounded-md border border-rc-border px-3 py-2 text-sm focus:border-rc-green-deep focus:outline-none"
+            className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           >
             <option value="House">House</option>
             <option value="Unit">Unit</option>
@@ -270,7 +270,7 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
         <button
           type="submit"
           disabled={pending || uploading}
-          className="w-full rounded-md bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          className="w-full rounded-full bg-rc-green-deep px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
           {uploading ? "Uploading documents…" : pending ? "Creating…" : "Create property"}
         </button>

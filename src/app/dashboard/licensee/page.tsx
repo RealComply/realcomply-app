@@ -97,19 +97,19 @@ export default async function LicenseeDigestPage() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-rc-ink">Licensee digest</h1>
-            <p className="mt-1 text-sm text-neutral-500">
+            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Licensee digest</h1>
+            <p className="mt-1 text-sm text-rc-muted">
               What&rsquo;s waiting on sign-off and what&rsquo;s been flagged, across every file — diligence support
               only, the licensee still decides.
             </p>
           </div>
-          <Link href="/dashboard" className="text-sm text-neutral-500 hover:underline">
+          <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
             ← All properties
           </Link>
         </div>
 
         {!profile.is_licensee_in_charge && (
-          <p className="mt-4 rounded-md border border-rc-border bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
+          <p className="mt-4 rounded-md border border-rc-border bg-neutral-50 px-3 py-2 text-xs text-rc-muted">
             You&rsquo;re viewing this as an agent, not the licensee in charge — the sign-off items below need the
             licensee&rsquo;s action, not yours.
           </p>
@@ -118,7 +118,7 @@ export default async function LicenseeDigestPage() {
         {(expiringStaff.length > 0 || piConcern === "expired" || piConcern === "urgent") && (
           <section className="mt-8">
             <h2 className="text-sm font-semibold text-rc-ink">Licences &amp; insurance</h2>
-            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
               {(piConcern === "expired" || piConcern === "urgent") && (
                 <li className="px-4 py-3 text-sm">
                   <Link href="/dashboard/registers" className="font-medium text-rc-ink hover:underline">
@@ -148,9 +148,9 @@ export default async function LicenseeDigestPage() {
             Needs sign-off {awaitingSignoff.length > 0 && `(${awaitingSignoff.length})`}
           </h2>
           {awaitingSignoff.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-500">Nothing waiting on a licensee sign-off right now.</p>
+            <p className="mt-2 text-sm text-rc-muted">Nothing waiting on a licensee sign-off right now.</p>
           ) : (
-            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
               {awaitingSignoff.map((d) => (
                 <li key={d.property.id} className="px-4 py-3">
                   <Link
@@ -159,7 +159,7 @@ export default async function LicenseeDigestPage() {
                   >
                     {d.property.address}
                   </Link>
-                  <span className="ml-2 text-xs text-neutral-400">
+                  <span className="ml-2 text-xs text-rc-faint">
                     {STAGE_LABELS[d.property.stage]} · {d.agentName}
                   </span>
                   <ul className="mt-1 flex flex-wrap gap-1.5">
@@ -183,9 +183,9 @@ export default async function LicenseeDigestPage() {
             Flagged {withFlags.length > 0 && `(${withFlags.length})`}
           </h2>
           {withFlags.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-500">No flags on any file right now.</p>
+            <p className="mt-2 text-sm text-rc-muted">No flags on any file right now.</p>
           ) : (
-            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
               {withFlags.map((d) => (
                 <li key={d.property.id} className="px-4 py-3">
                   <Link
@@ -194,7 +194,7 @@ export default async function LicenseeDigestPage() {
                   >
                     {d.property.address}
                   </Link>
-                  <span className="ml-2 text-xs text-neutral-400">
+                  <span className="ml-2 text-xs text-rc-faint">
                     {STAGE_LABELS[d.property.stage]} · {d.agentName}
                   </span>
                   <ul className="mt-1 flex flex-wrap gap-1.5">
@@ -216,9 +216,9 @@ export default async function LicenseeDigestPage() {
         <section className="mt-8">
           <h2 className="text-sm font-semibold text-rc-ink">All properties</h2>
           {digests.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-500">No properties yet.</p>
+            <p className="mt-2 text-sm text-rc-muted">No properties yet.</p>
           ) : (
-            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
               {digests.map((d) => (
                 <li key={d.property.id}>
                   <Link
@@ -227,12 +227,12 @@ export default async function LicenseeDigestPage() {
                   >
                     <div>
                       <p className="font-medium text-rc-ink">{d.property.address}</p>
-                      <p className="text-xs text-neutral-400">
+                      <p className="text-xs text-rc-faint">
                         {STAGE_LABELS[d.property.stage]} · {d.agentName}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2 text-xs">
-                      <span className="text-neutral-500">
+                      <span className="text-rc-muted">
                         {d.doneCurrentStage.length}/{d.requiredCurrentStage.length} done this stage
                       </span>
                       {d.pendingSignoff.length > 0 && (

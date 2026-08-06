@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { IdCard, Gift, Mail } from "lucide-react";
 
 const TABS = [
-  { key: "licence", label: "🪪 Licence register" },
-  { key: "gifts", label: "🎁 Gift register" },
-  { key: "complaints", label: "📮 Complaints register" },
+  { key: "licence", label: "Licence register", icon: IdCard },
+  { key: "gifts", label: "Gift register", icon: Gift },
+  { key: "complaints", label: "Complaints register", icon: Mail },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -33,25 +34,29 @@ export function RegistersTabs({
   return (
     <div>
       <div className="flex flex-wrap gap-1 border-b border-rc-border">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActive(tab.key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition ${
-              active === tab.key
-                ? "border-b-2 border-rc-green-deep text-rc-green-deep"
-                : "border-b-2 border-transparent text-neutral-500 hover:text-rc-ink"
-            }`}
-          >
-            {tab.label}
-            {!!badges[tab.key] && (
-              <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
-                {badges[tab.key]}
-              </span>
-            )}
-          </button>
-        ))}
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActive(tab.key)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold transition ${
+                active === tab.key
+                  ? "border-b-2 border-rc-green-deep text-rc-green-deep"
+                  : "border-b-2 border-transparent text-rc-muted hover:text-rc-ink"
+              }`}
+            >
+              <Icon size={15} strokeWidth={2} />
+              {tab.label}
+              {!!badges[tab.key] && (
+                <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                  {badges[tab.key]}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="mt-4" style={{ display: active === "licence" ? "block" : "none" }}>

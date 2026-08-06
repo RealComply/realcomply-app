@@ -49,12 +49,12 @@ export default async function TrainingPage() {
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-rc-ink">Training log</h1>
-            <p className="mt-1 text-sm text-neutral-500">
+            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Training log</h1>
+            <p className="mt-1 text-sm text-rc-muted">
               Session history and attendance — evidence for your s32 training plan.
             </p>
           </div>
-          <Link href="/dashboard/registers" className="text-sm text-neutral-500 hover:underline">
+          <Link href="/dashboard/registers" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
             ← Registers
           </Link>
         </div>
@@ -65,7 +65,7 @@ export default async function TrainingPage() {
 
         <div className="mt-6 space-y-4">
           {sessions.length === 0 ? (
-            <p className="text-sm text-neutral-500">No training sessions logged yet.</p>
+            <p className="text-sm text-rc-muted">No training sessions logged yet.</p>
           ) : (
             sessions.map((session) => (
               <SessionCard
@@ -82,18 +82,18 @@ export default async function TrainingPage() {
         {sessions.length > 0 && (
           <section className="mt-8">
             <h2 className="text-sm font-semibold text-rc-ink">Per-agent training record</h2>
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-xs text-rc-muted">
               Who&rsquo;s completed or attended what — mark attendance on a session above (&ldquo;Edit
               attendance&rdquo;) to populate this.
             </p>
-            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
               {staff.map((s) => {
                 const attended = sessionsByAgent.get(s.id) ?? [];
                 return (
                   <li key={s.id} className="px-4 py-3 text-sm">
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>
-                      <span className="text-xs text-neutral-400">
+                      <span className="text-xs text-rc-faint">
                         {attended.length} session{attended.length === 1 ? "" : "s"}
                       </span>
                     </div>
@@ -106,7 +106,7 @@ export default async function TrainingPage() {
                         ))}
                       </ul>
                     ) : (
-                      <p className="mt-1 text-xs text-neutral-400">No sessions recorded yet.</p>
+                      <p className="mt-1 text-xs text-rc-faint">No sessions recorded yet.</p>
                     )}
                   </li>
                 );

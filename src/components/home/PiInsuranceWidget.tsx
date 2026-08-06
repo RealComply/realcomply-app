@@ -1,3 +1,4 @@
+import { ShieldCheck } from "lucide-react";
 import { WidgetCard } from "./WidgetCard";
 import { EXPIRY_STATUS_LABELS, type ExpiryStatus } from "@/lib/expiry-status";
 
@@ -13,7 +14,7 @@ export function PiInsuranceWidget({
   const tone = status === "expired" ? "danger" : status === "urgent" || status === "soon" ? "warn" : status === "ok" ? "ok" : "neutral";
   return (
     <WidgetCard
-      icon="🛡️"
+      icon={ShieldCheck}
       title="PI insurance"
       href="/dashboard/registers"
       hrefLabel="Registers →"

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClipboardList } from "lucide-react";
 import { WidgetCard } from "./WidgetCard";
 
 export type NeedsAttentionItem = {
@@ -12,7 +13,7 @@ export type NeedsAttentionItem = {
 export function NeedsAttentionWidget({ items }: { items: NeedsAttentionItem[] }) {
   return (
     <WidgetCard
-      icon="📋"
+      icon={ClipboardList}
       title="Needs your attention"
       href="/dashboard/portfolio"
       hrefLabel="Portfolio →"

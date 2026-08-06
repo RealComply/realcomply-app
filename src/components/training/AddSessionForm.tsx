@@ -10,7 +10,7 @@ export function AddSessionForm() {
   const [cpdEligible, setCpdEligible] = useState(false);
 
   return (
-    <form action={formAction} className="space-y-3 rounded-lg border border-dashed border-rc-border p-4">
+    <form action={formAction} className="space-y-3 rounded-card border border-dashed border-rc-border bg-rc-bg-alt p-5">
       <h3 className="text-sm font-semibold text-rc-ink">Log a training session</h3>
       <input
         type="text"
@@ -21,11 +21,11 @@ export function AddSessionForm() {
       />
       <div className="flex flex-wrap gap-3">
         <div>
-          <label className="block text-xs text-neutral-500">Date</label>
+          <label className="block text-xs text-rc-muted">Date</label>
           <input type="date" name="sessionDate" required className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm" />
         </div>
         <div>
-          <label className="block text-xs text-neutral-500">Trainer</label>
+          <label className="block text-xs text-rc-muted">Trainer</label>
           <input
             type="text"
             name="trainerName"
@@ -33,18 +33,18 @@ export function AddSessionForm() {
             className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
           />
         </div>
-        <label className="mt-5 flex items-center gap-1.5 text-xs text-neutral-600">
+        <label className="mt-5 flex items-center gap-1.5 text-xs text-rc-muted">
           <input type="checkbox" name="isExternal" />
           External trainer
         </label>
       </div>
-      <label className="flex items-center gap-1.5 text-xs text-neutral-600">
+      <label className="flex items-center gap-1.5 text-xs text-rc-muted">
         <input type="checkbox" name="isCpdEligible" checked={cpdEligible} onChange={(e) => setCpdEligible(e.target.checked)} />
         Counts toward CPD hours
       </label>
       {cpdEligible && (
         <div>
-          <label className="block text-xs text-neutral-500">CPD hours per attendee</label>
+          <label className="block text-xs text-rc-muted">CPD hours per attendee</label>
           <input
             type="number"
             step="0.5"

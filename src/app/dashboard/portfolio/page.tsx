@@ -72,10 +72,10 @@ export default async function PortfolioPage() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-rc-ink">Portfolio</h1>
-            <p className="mt-1 text-sm text-neutral-500">The whole agency at a glance — diligence support only, the licensee decides.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Portfolio</h1>
+            <p className="mt-1 text-sm text-rc-muted">The whole agency at a glance — diligence support only, the licensee decides.</p>
           </div>
-          <Link href="/dashboard" className="text-sm text-neutral-500 hover:underline">
+          <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
             All properties →
           </Link>
         </div>
@@ -93,15 +93,15 @@ export default async function PortfolioPage() {
             Needs you {needsYou.length > 0 && `(${needsYou.length})`}
           </h2>
           {needsYou.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-500">Nothing needs your attention right now.</p>
+            <p className="mt-2 text-sm text-rc-muted">Nothing needs your attention right now.</p>
           ) : (
-            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
               {needsYou.map((d) => (
                 <li key={d.property.id} className="px-4 py-3">
                   <Link href={`/dashboard/${d.property.id}`} className="font-medium text-rc-ink hover:underline">
                     {d.property.address}
                   </Link>
-                  <span className="ml-2 text-xs text-neutral-400">
+                  <span className="ml-2 text-xs text-rc-faint">
                     {STAGE_LABELS[d.property.stage]} · {agentNames.get(d.property.created_by) ?? "Unknown agent"}
                   </span>
                   <ul className="mt-1 flex flex-wrap gap-1.5">
@@ -121,11 +121,11 @@ export default async function PortfolioPage() {
           <h2 className="text-sm font-semibold text-rc-ink">
             Due for weekly review {dueForReview.length > 0 && `(${dueForReview.length})`}
           </h2>
-          <p className="mt-1 text-xs text-neutral-500">Files with no activity in the last 7 days — worth a check-in.</p>
+          <p className="mt-1 text-xs text-rc-muted">Files with no activity in the last 7 days — worth a check-in.</p>
           {dueForReview.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-500">Every active file has had activity this week.</p>
+            <p className="mt-2 text-sm text-rc-muted">Every active file has had activity this week.</p>
           ) : (
-            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
               {dueForReview.map((d) => {
                 const days = daysSinceActivity(d.lastActivityAt);
                 return (
@@ -133,7 +133,7 @@ export default async function PortfolioPage() {
                     <Link href={`/dashboard/${d.property.id}`} className="font-medium text-rc-ink hover:underline">
                       {d.property.address}
                     </Link>
-                    <span className="text-xs text-neutral-400">{days === null ? "No activity yet" : `${days} days since last activity`}</span>
+                    <span className="text-xs text-rc-faint">{days === null ? "No activity yet" : `${days} days since last activity`}</span>
                   </li>
                 );
               })}
@@ -143,18 +143,18 @@ export default async function PortfolioPage() {
 
         <section className="mt-8">
           <h2 className="text-sm font-semibold text-rc-ink">Listings</h2>
-          <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+          <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
             {digests.map((d) => (
               <li key={d.property.id}>
                 <Link href={`/dashboard/${d.property.id}`} className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-neutral-50">
                   <div>
                     <p className="font-medium text-rc-ink">{d.property.address}</p>
-                    <p className="text-xs text-neutral-400">
+                    <p className="text-xs text-rc-faint">
                       {STAGE_LABELS[d.property.stage]} · {agentNames.get(d.property.created_by) ?? "Unknown agent"}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2 text-xs">
-                    <span className="text-neutral-500">
+                    <span className="text-rc-muted">
                       {d.doneCurrentStage.length}/{d.requiredCurrentStage.length} done this stage
                     </span>
                     {d.pendingSignoff.length > 0 && (
@@ -176,7 +176,7 @@ export default async function PortfolioPage() {
           <h2 className="text-sm font-semibold text-rc-ink">Per-agent supervision</h2>
           <table className="mt-2 w-full text-sm">
             <thead>
-              <tr className="border-b border-rc-border text-left text-xs uppercase tracking-wide text-neutral-400">
+              <tr className="border-b border-rc-border text-left text-xs uppercase tracking-wide text-rc-faint">
                 <th className="pb-2 pr-3">Agent</th>
                 <th className="pb-2 pr-3">Properties</th>
                 <th className="pb-2 pr-3">Flags</th>
@@ -203,9 +203,9 @@ export default async function PortfolioPage() {
 function Tile({ n, l, ok, warn }: { n: number; l: string; ok?: boolean; warn?: boolean }) {
   const color = warn && n > 0 ? "text-rc-amber-deep" : ok ? "text-rc-green-deep" : "text-rc-ink";
   return (
-    <div className="rounded-lg border border-rc-border bg-white p-3">
-      <div className={`text-xl font-bold ${color}`}>{n}</div>
-      <div className="mt-0.5 text-[11px] font-medium text-neutral-500">{l}</div>
+    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
+      <div className={`text-xl font-bold tracking-tight ${color}`}>{n}</div>
+      <div className="mt-0.5 text-[11px] font-medium text-rc-muted">{l}</div>
     </div>
   );
 }

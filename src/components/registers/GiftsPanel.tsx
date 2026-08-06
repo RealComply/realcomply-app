@@ -76,11 +76,11 @@ export function GiftsPanel({
       </div>
       {thresholdState.error && <p className="mt-1 text-xs text-rc-amber-deep">{thresholdState.error}</p>}
 
-      <div className="mt-4 rounded-lg border border-rc-border p-4">
+      <div className="mt-4 rounded-card border border-rc-border bg-white p-4 shadow-card">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-rc-ink">Gifts &amp; benefits register</h3>
-            <p className="mt-0.5 text-xs text-neutral-500">
+            <h3 className="text-base font-semibold text-rc-ink">Gifts &amp; benefits register</h3>
+            <p className="mt-0.5 text-xs text-rc-muted">
               Recorded to manage conflicts of interest and probity under the Rules of Conduct.
             </p>
           </div>
@@ -151,11 +151,11 @@ export function GiftsPanel({
 
         <div className="mt-3 overflow-x-auto">
           {gifts.length === 0 ? (
-            <p className="text-sm text-neutral-500">No entries yet.</p>
+            <p className="text-sm text-rc-muted">No entries yet.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-rc-border text-left text-xs uppercase tracking-wide text-neutral-400">
+                <tr className="border-b border-rc-border text-left text-xs uppercase tracking-wide text-rc-faint">
                   <th className="pb-2 pr-3">Date</th>
                   <th className="pb-2 pr-3">Agent</th>
                   <th className="pb-2 pr-3">Gift / benefit</th>
@@ -171,9 +171,9 @@ export function GiftsPanel({
                     <td className="py-2 pr-3">{g.gift_date}</td>
                     <td className="py-2 pr-3">{nameFor(g.profile_id)}</td>
                     <td className="py-2 pr-3">
-                      {g.description} <span className="text-xs text-neutral-400">({g.direction})</span>
+                      {g.description} <span className="text-xs text-rc-faint">({g.direction})</span>
                     </td>
-                    <td className="py-2 pr-3 text-neutral-500">{g.counterparty ?? "—"}</td>
+                    <td className="py-2 pr-3 text-rc-muted">{g.counterparty ?? "—"}</td>
                     <td className="py-2 pr-3">{g.value ? `~$${g.value}` : "—"}</td>
                     <td className="py-2 pr-3">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[g.status]}`}>
@@ -191,7 +191,7 @@ export function GiftsPanel({
                             </form>
                           )}
                           <form action={deleteGift.bind(null, g.id)}>
-                            <button type="submit" className="text-xs text-neutral-400 hover:text-rc-amber-deep">
+                            <button type="submit" className="text-xs text-rc-faint hover:text-rc-amber-deep">
                               Remove
                             </button>
                           </form>
@@ -227,11 +227,11 @@ function Tile({
   const color = bad ? "text-red-700" : warn ? "text-rc-amber-deep" : ok ? "text-rc-green-deep" : "text-rc-ink";
   return (
     <div
-      className={`rounded-lg border border-rc-border bg-white p-3 ${onClick ? "cursor-pointer hover:bg-neutral-50" : ""}`}
+      className={`rounded-card border border-rc-border bg-white p-4 shadow-card ${onClick ? "cursor-pointer hover:shadow-card-lg" : ""}`}
       onClick={onClick}
     >
-      <div className={`text-xl font-bold ${color}`}>{n}</div>
-      <div className="mt-0.5 text-[11px] font-medium text-neutral-500">{l}</div>
+      <div className={`text-xl font-bold tracking-tight ${color}`}>{n}</div>
+      <div className="mt-0.5 text-[11px] font-medium text-rc-muted">{l}</div>
     </div>
   );
 }

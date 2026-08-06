@@ -59,11 +59,11 @@ export function ComplaintsPanel({
         <Tile n={`${resolutionTargetDays}d`} l="Resolution target" />
       </div>
 
-      <div className="mt-4 rounded-lg border border-rc-border p-4">
+      <div className="mt-4 rounded-card border border-rc-border bg-white p-4 shadow-card">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-rc-ink">Complaints register</h3>
-            <p className="mt-0.5 text-xs text-neutral-500">
+            <h3 className="text-base font-semibold text-rc-ink">Complaints register</h3>
+            <p className="mt-0.5 text-xs text-rc-muted">
               Every complaint logged and tracked to resolution. A complaint touching a property is cross-linked to that file.
             </p>
           </div>
@@ -133,11 +133,11 @@ export function ComplaintsPanel({
 
         <div className="mt-3 overflow-x-auto">
           {complaints.length === 0 ? (
-            <p className="text-sm text-neutral-500">No complaints logged.</p>
+            <p className="text-sm text-rc-muted">No complaints logged.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-rc-border text-left text-xs uppercase tracking-wide text-neutral-400">
+                <tr className="border-b border-rc-border text-left text-xs uppercase tracking-wide text-rc-faint">
                   <th className="pb-2 pr-3">Received</th>
                   <th className="pb-2 pr-3">Complainant</th>
                   <th className="pb-2 pr-3">Matter</th>
@@ -190,7 +190,7 @@ export function ComplaintsPanel({
                         )}
                         {viewerProfile.is_licensee_in_charge && (
                           <form action={deleteComplaint.bind(null, c.id)}>
-                            <button type="submit" className="text-xs text-neutral-400 hover:text-rc-amber-deep">
+                            <button type="submit" className="text-xs text-rc-faint hover:text-rc-amber-deep">
                               Remove
                             </button>
                           </form>
@@ -211,9 +211,9 @@ export function ComplaintsPanel({
 function Tile({ n, l, ok, bad }: { n: number | string; l: string; ok?: boolean; bad?: boolean }) {
   const color = bad ? "text-red-700" : ok ? "text-rc-green-deep" : "text-rc-ink";
   return (
-    <div className="rounded-lg border border-rc-border bg-white p-3">
-      <div className={`text-xl font-bold ${color}`}>{n}</div>
-      <div className="mt-0.5 text-[11px] font-medium text-neutral-500">{l}</div>
+    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
+      <div className={`text-xl font-bold tracking-tight ${color}`}>{n}</div>
+      <div className="mt-0.5 text-[11px] font-medium text-rc-muted">{l}</div>
     </div>
   );
 }

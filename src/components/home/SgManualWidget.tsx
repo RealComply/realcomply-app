@@ -1,3 +1,4 @@
+import { BookOpen } from "lucide-react";
 import { WidgetCard } from "./WidgetCard";
 
 export function SgManualWidget({
@@ -11,7 +12,7 @@ export function SgManualWidget({
 }) {
   return (
     <WidgetCard
-      icon="📘"
+      icon={BookOpen}
       title="Supervision Guidelines"
       href="/dashboard/sg-manual"
       hrefLabel="SG Manual →"

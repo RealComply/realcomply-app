@@ -6,6 +6,7 @@ import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
 import { CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
+import { Paperclip } from "lucide-react";
 import type { CpdRecord, Profile } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
@@ -49,7 +50,7 @@ export function StaffRegisterCard({
   const [addingCpd, setAddingCpd] = useState(false);
 
   return (
-    <div className="rounded-lg border border-rc-border p-4">
+    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -60,7 +61,7 @@ export function StaffRegisterCard({
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-xs text-neutral-500">{profile.email}</p>
+          <p className="mt-0.5 text-xs text-rc-muted">{profile.email}</p>
         </div>
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${EXPIRY_STATUS_STYLES[status]}`}>
           {EXPIRY_STATUS_LABELS[status]}
@@ -135,7 +136,7 @@ export function StaffRegisterCard({
               <button
                 type="button"
                 onClick={() => setEditingLicence(false)}
-                className="rounded-md border border-rc-border px-3 py-1 text-xs font-medium text-neutral-500 hover:bg-neutral-100"
+                className="rounded-md border border-rc-border px-3 py-1 text-xs font-medium text-rc-muted hover:bg-neutral-100"
               >
                 Cancel
               </button>
@@ -148,7 +149,7 @@ export function StaffRegisterCard({
 
       <div className="mt-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-neutral-500">
+          <p className="text-xs font-medium text-rc-muted">
             CPD {cpdYearLabel} — {totalHours}/{target} {isAssistant ? "units" : "hrs"}
           </p>
           {canEdit && (
@@ -178,7 +179,7 @@ export function StaffRegisterCard({
                 </span>
                 {canEdit && (
                   <form action={deleteCpdRecord.bind(null, r.id)}>
-                    <button type="submit" className="text-neutral-400 hover:text-rc-amber-deep">
+                    <button type="submit" className="text-rc-faint hover:text-rc-amber-deep">
                       Remove
                     </button>
                   </form>
@@ -289,16 +290,18 @@ function LicenceDocument({ profile }: { profile: Profile }) {
       {profile.licence_document_path ? (
         <>
           {signedUrl ? (
-            <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="text-rc-green-deep hover:underline">
-              📎 {profile.licence_document_file_name ?? "View document"}
+            <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-rc-green-deep hover:underline">
+              <Paperclip size={12} /> {profile.licence_document_file_name ?? "View document"}
             </a>
           ) : (
-            <span className="text-neutral-400">📎 loading link…</span>
+            <span className="inline-flex items-center gap-1 text-rc-faint">
+              <Paperclip size={12} /> loading link…
+            </span>
           )}
           <button
             type="button"
             onClick={() => removeLicenceDocument(profile.id)}
-            className="text-neutral-400 hover:text-rc-amber-deep"
+            className="text-rc-faint hover:text-rc-amber-deep"
           >
             Remove
           </button>

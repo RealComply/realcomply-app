@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Paperclip, Sparkles, AlertTriangle } from "lucide-react";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import type { Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -27,7 +28,7 @@ const initialState: ActionState = { error: null };
 function StatusPill({ status }: { status?: PropertyItem["status"] }) {
   if (!status || status === "open") {
     return (
-      <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-500">
+      <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-rc-muted">
         Open
       </span>
     );
@@ -71,20 +72,20 @@ function ItemShell({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-rc-border p-4">
+    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-rc-ink">{item.label}</h3>
             {item.licenseeOnly && (
-              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rc-muted">
                 Licensee
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-neutral-500">{item.description}</p>
+          <p className="mt-1 text-sm text-rc-muted">{item.description}</p>
           {item.legalBasis && (
-            <p className="mt-1 text-xs text-neutral-400">{item.legalBasis}</p>
+            <p className="mt-1 text-xs text-rc-faint">{item.legalBasis}</p>
           )}
         </div>
         <StatusPill status={status} />
@@ -106,6 +107,16 @@ function ItemShell({
 function FieldError({ error }: { error: string | null }) {
   if (!error) return null;
   return <p className="mt-2 text-sm text-rc-amber-deep">{error}</p>;
+}
+
+// Small inline flag for a cl 37 field the AI extraction didn't find in the
+// document — colour + icon carries the warning instead of an emoji glyph.
+function NotStated({ text = "not stated in the document" }: { text?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-rc-amber-deep">
+      <AlertTriangle size={11} className="shrink-0" /> {text}
+    </span>
+  );
 }
 
 // Evidence attachment — one file per item, uploaded to a private Supabase
@@ -189,7 +200,7 @@ function EvidenceUploader({
 
   return (
     <div className="mt-3 border-t border-rc-border pt-3">
-      <p className="text-xs font-medium text-neutral-500">Evidence</p>
+      <p className="text-xs font-medium text-rc-muted">Evidence</p>
       {evidencePath ? (
         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
           {signedUrl ? (
@@ -197,17 +208,19 @@ function EvidenceUploader({
               href={signedUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-rc-green-deep hover:underline"
+              className="inline-flex items-center gap-1 text-rc-green-deep hover:underline"
             >
-              📎 {evidenceFileName ?? "View file"}
+              <Paperclip size={13} /> {evidenceFileName ?? "View file"}
             </a>
           ) : (
-            <span className="text-neutral-400">📎 {evidenceFileName ?? "file"} (loading link…)</span>
+            <span className="inline-flex items-center gap-1 text-rc-faint">
+              <Paperclip size={13} /> {evidenceFileName ?? "file"} (loading link…)
+            </span>
           )}
           <form action={removeAction}>
             <button
               type="submit"
-              className="text-xs text-neutral-400 transition hover:text-rc-amber-deep hover:underline"
+              className="text-xs text-rc-faint transition hover:text-rc-amber-deep hover:underline"
             >
               Remove
             </button>
@@ -219,12 +232,12 @@ function EvidenceUploader({
             type="file"
             required
             onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-            className="text-xs text-neutral-500 file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
+            className="text-xs text-rc-muted file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
           />
           <button
             type="submit"
             disabled={uploading || uploadPending}
-            className="rounded-md border border-rc-border px-2 py-1 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-60"
+            className="rounded-md border border-rc-border px-2 py-1 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt disabled:opacity-60"
           >
             {uploading ? "Uploading…" : uploadPending ? "Saving…" : "Attach file"}
           </button>
@@ -268,22 +281,26 @@ function ChecklistItem({
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       <form action={formAction} className="space-y-3">
         {draft?.autoCompleted ? (
-          <p className="rounded-md bg-rc-green/10 px-2 py-1.5 text-xs text-rc-green-deep">
-            🤖 Auto-marked done — the agency agreement explicitly confirmed the guide was given, dated{" "}
-            {draft.eventDate}. Check it against the source; use Reopen below if that&apos;s not right.
+          <p className="flex items-start gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-1.5 text-xs text-rc-green-deep">
+            <Sparkles size={13} className="mt-0.5 shrink-0" />
+            <span>
+              Auto-marked done — the agency agreement explicitly confirmed the guide was given, dated{" "}
+              {draft.eventDate}. Check it against the source; use Reopen below if that&apos;s not right.
+            </span>
           </p>
         ) : (
           draft &&
           !item.showFindings && (
-            <p className="rounded-md bg-rc-green/10 px-2 py-1.5 text-xs text-rc-green-deep">
-              🤖 Pre-filled from an uploaded document — check it against the source, then save.
+            <p className="flex items-center gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-1.5 text-xs text-rc-green-deep">
+              <Sparkles size={13} className="shrink-0" />
+              Pre-filled from an uploaded document — check it against the source, then save.
             </p>
           )
         )}
         {item.key === "a4" && (
           <div className="flex gap-3">
             <div>
-              <label className="block text-xs text-neutral-500">ESP low</label>
+              <label className="block text-xs text-rc-muted">ESP low</label>
               <input
                 type="number"
                 name="espLow"
@@ -292,7 +309,7 @@ function ChecklistItem({
               />
             </div>
             <div>
-              <label className="block text-xs text-neutral-500">ESP high (optional)</label>
+              <label className="block text-xs text-rc-muted">ESP high (optional)</label>
               <input
                 type="number"
                 name="espHigh"
@@ -304,7 +321,7 @@ function ChecklistItem({
         )}
         {item.requiresDate && (
           <div>
-            <label className="block text-xs text-neutral-500">Event date</label>
+            <label className="block text-xs text-rc-muted">Event date</label>
             <input
               type="date"
               name="eventDate"
@@ -315,10 +332,10 @@ function ChecklistItem({
         )}
         {item.showFindings ? (
           <div>
-            <label className="block text-xs text-neutral-500">
-              Findings <span className="font-normal text-neutral-400">(from AI extraction, not for manual entry)</span>
+            <label className="block text-xs text-rc-muted">
+              Findings <span className="font-normal text-rc-faint">(from AI extraction, not for manual entry)</span>
             </label>
-            <p className="mt-1 rounded-md border border-rc-border bg-neutral-50 px-2 py-1.5 text-sm text-rc-ink">
+            <p className="mt-1 rounded-md border border-rc-border bg-rc-bg-alt px-2 py-1.5 text-sm text-rc-ink">
               {(data.note ?? draft?.note ?? "").trim() || "None"}
             </p>
             {/* Carries the current finding through Mark done/Flag/Reopen so it isn't wiped by
@@ -328,7 +345,7 @@ function ChecklistItem({
         ) : (
           !item.hideNote && (
             <div>
-              <label className="block text-xs text-neutral-500">Note</label>
+              <label className="block text-xs text-rc-muted">Note</label>
               <textarea
                 name="note"
                 defaultValue={data.note ?? draft?.note ?? ""}
@@ -344,7 +361,7 @@ function ChecklistItem({
             name="status"
             value="done"
             disabled={pending}
-            className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
           >
             Mark done
           </button>
@@ -353,7 +370,7 @@ function ChecklistItem({
             name="status"
             value="open"
             disabled={pending}
-            className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-neutral-500 transition hover:bg-neutral-50 disabled:opacity-60"
+            className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt disabled:opacity-60"
           >
             Reopen
           </button>
@@ -387,9 +404,9 @@ function GuideItem({
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       {esp.espLow == null ? (
-        <p className="text-sm text-neutral-500">Record the ESP (item a4) first — the live check needs it.</p>
+        <p className="text-sm text-rc-muted">Record the ESP (item a4) first — the live check needs it.</p>
       ) : (
-        <p className="text-xs text-neutral-400">Recorded ESP: ${esp.espLow.toLocaleString()}
+        <p className="text-xs text-rc-faint">Recorded ESP: ${esp.espLow.toLocaleString()}
           {esp.espHigh && esp.espHigh !== esp.espLow ? ` – $${esp.espHigh.toLocaleString()}` : ""}
         </p>
       )}
@@ -400,7 +417,7 @@ function GuideItem({
         </div>
         <textarea name="note" defaultValue={data.note ?? ""} placeholder="Exact wording used in the ad" rows={2} className="w-full rounded-md border border-rc-border px-2 py-1 text-sm" />
         <div className="flex gap-2">
-          <button type="submit" name="status" value="done" disabled={pending} className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
+          <button type="submit" name="status" value="done" disabled={pending} className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60">
             Record guide
           </button>
         </div>
@@ -434,17 +451,17 @@ function ReviewLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
           Log review
         </button>
       </form>
       <FieldError error={state.error} />
       {entries.length > 0 && (
-        <ul className="mt-3 space-y-2 text-sm text-neutral-600">
+        <ul className="mt-3 space-y-2 text-sm text-rc-muted">
           {entries.map((e, i) => (
             <li key={i} className="border-t border-rc-border pt-2">
-              <span className="text-xs text-neutral-400">
+              <span className="text-xs text-rc-faint">
                 {new Date(e.recordedAt).toLocaleDateString("en-AU")}
               </span>{" "}
               — {e.note}
@@ -474,7 +491,7 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form action={formAction} className="space-y-2 rounded-md bg-neutral-50 p-3">
+      <form action={formAction} className="space-y-2 rounded-lg bg-rc-bg-alt p-3">
         <div className="flex flex-wrap gap-2">
           <input
             type="number"
@@ -488,10 +505,10 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
             <option value="rejected">Rejected</option>
           </select>
         </div>
-        <label className="flex items-center gap-2 text-xs text-neutral-600">
+        <label className="flex items-center gap-2 text-xs text-rc-muted">
           <input type="checkbox" name="vendorInformed" /> Vendor informed in writing
         </label>
-        <label className="flex items-center gap-2 text-xs text-neutral-600">
+        <label className="flex items-center gap-2 text-xs text-rc-muted">
           <input type="checkbox" name="belowFloor" /> Below the vendor&rsquo;s written offer-floor instruction (exempt)
         </label>
         <textarea
@@ -503,7 +520,7 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
           Log offer
         </button>
@@ -513,7 +530,7 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
         <p className="mt-2 text-sm text-rc-amber-deep">{data.flagReason}</p>
       )}
       {entries.length > 0 && (
-        <ul className="mt-3 space-y-2 text-sm text-neutral-600">
+        <ul className="mt-3 space-y-2 text-sm text-rc-muted">
           {entries.map((e, i) => (
             <li key={i} className="border-t border-rc-border pt-2">
               <span className="font-medium text-rc-ink">${e.amount.toLocaleString()}</span> — {e.outcome}
@@ -547,11 +564,15 @@ function ReportEvidenceLink({ path, fileName }: { path: string; fileName: string
   }, [path]);
 
   if (!signedUrl) {
-    return <span className="text-neutral-400">📎 {fileName}</span>;
+    return (
+      <span className="inline-flex items-center gap-1 text-rc-faint">
+        <Paperclip size={13} /> {fileName}
+      </span>
+    );
   }
   return (
-    <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="text-rc-green-deep hover:underline">
-      📎 {fileName}
+    <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-rc-green-deep hover:underline">
+      <Paperclip size={13} /> {fileName}
     </a>
   );
 }
@@ -651,9 +672,9 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form action={formAction} className="space-y-3 rounded-md bg-neutral-50 p-3">
+      <form action={formAction} className="space-y-3 rounded-lg bg-rc-bg-alt p-3">
         <div>
-          <label className="block text-xs font-medium text-neutral-500">Upload the report</label>
+          <label className="block text-xs font-medium text-rc-muted">Upload the report</label>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <input
               type="file"
@@ -662,10 +683,10 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
                 if (file) handleFileSelected(file);
               }}
               disabled={uploading || extracting}
-              className="text-xs text-neutral-500 file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
+              className="text-xs text-rc-muted file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
             />
             {(uploading || extracting) && (
-              <span className="text-xs text-neutral-400">{uploading ? "Uploading…" : "Reading report…"}</span>
+              <span className="text-xs text-rc-faint">{uploading ? "Uploading…" : "Reading report…"}</span>
             )}
           </div>
           <FieldError error={clientError} />
@@ -687,23 +708,24 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
         </div>
 
         {draft && (
-          <div className="rounded-md border border-rc-border bg-white p-2 text-xs text-neutral-600">
-            <p className="font-medium text-neutral-500">
-              From the report <span className="font-normal text-neutral-400">(read by AI — check it against the document)</span>
+          <div className="rounded-lg border border-rc-border bg-white p-3 text-xs text-rc-muted">
+            <p className="flex items-center gap-1.5 font-medium text-rc-muted">
+              <Sparkles size={12} className="text-rc-green-deep" />
+              From the report <span className="font-normal text-rc-faint">(read by AI — check it against the document)</span>
             </p>
-            <ul className="mt-1 space-y-0.5">
+            <ul className="mt-1.5 space-y-1">
               <li>Type: {reportType}</li>
-              <li>Inspected: {draft.inspectionDate || "⚠️ not stated in the document"}</li>
+              <li>Inspected: {draft.inspectionDate || <NotStated />}</li>
               <li>
-                Preparer: {draft.preparerName || "⚠️ not stated in the document"}
-                {draft.preparerContact ? ` (${draft.preparerContact})` : draft.preparerName ? " · ⚠️ contact not stated" : ""}
+                Preparer: {draft.preparerName || <NotStated />}
+                {draft.preparerContact ? ` (${draft.preparerContact})` : draft.preparerName ? <> · <NotStated text="contact not stated" /></> : null}
               </li>
-              <li>PI insurance: {draft.preparerInsured ? "confirmed in the document" : "⚠️ not stated in the document"}</li>
+              <li>PI insurance: {draft.preparerInsured ? "confirmed in the document" : <NotStated />}</li>
               <li>
-                Available for repurchase: {draft.availableForRepurchase ? "confirmed in the document" : "⚠️ not stated in the document"}
+                Available for repurchase: {draft.availableForRepurchase ? "confirmed in the document" : <NotStated />}
               </li>
             </ul>
-            <p className="mt-1.5 text-neutral-400">
+            <p className="mt-1.5 text-rc-faint">
               Cl 37 also asks who requested the report — that&rsquo;s rarely written in the report itself, so add it in the note below if it matters.
             </p>
           </div>
@@ -718,14 +740,14 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
         <button
           type="submit"
           disabled={pending || uploading || extracting}
-          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
           {pending ? "Saving…" : "Log entry"}
         </button>
       </form>
       <FieldError error={state.error} />
       {entries.length > 0 && (
-        <ul className="mt-3 space-y-2 text-sm text-neutral-600">
+        <ul className="mt-3 space-y-2 text-sm text-rc-muted">
           {entries.map((e, i) => (
             <li key={i} className="border-t border-rc-border pt-2">
               <span className="font-medium text-rc-ink">
@@ -746,7 +768,9 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
                 </>
               )}
               {e.missingFields && e.missingFields.length > 0 && (
-                <p className="mt-1 text-rc-amber-deep">⚠️ Not stated in the document: {e.missingFields.join(", ")}</p>
+                <p className="mt-1 flex items-center gap-1 text-rc-amber-deep">
+                  <AlertTriangle size={12} className="shrink-0" /> Not stated in the document: {e.missingFields.join(", ")}
+                </p>
               )}
             </li>
           ))}
@@ -773,7 +797,7 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
         {data.noRevision ? (
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-rc-muted">
             Marked — no price revision on this listing.{" "}
             <button type="button" onClick={() => setShowForm(true)} className="text-rc-green-deep hover:underline">
               Actually, log one
@@ -781,12 +805,12 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
           </p>
         ) : (
           <div className="space-y-2">
-            <p className="text-sm text-neutral-500">Has the price been revised during this campaign?</p>
+            <p className="text-sm text-rc-muted">Has the price been revised during this campaign?</p>
             <div className="flex gap-2">
               <form action={noRevisionAction}>
                 <button
                   type="submit"
-                  className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50"
+                  className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt"
                 >
                   No — nothing to record
                 </button>
@@ -807,37 +831,37 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form action={formAction} className="space-y-2 rounded-md bg-neutral-50 p-3">
+      <form action={formAction} className="space-y-2 rounded-lg bg-rc-bg-alt p-3">
         <textarea
           name="reason"
           placeholder="Reason for the reduction"
           rows={2}
           className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
         />
-        <label className="flex items-center gap-2 text-xs text-neutral-600">
+        <label className="flex items-center gap-2 text-xs text-rc-muted">
           <input type="checkbox" name="espAdjusted" /> This also revises the ESP
         </label>
         <div className="flex gap-2">
           <input type="number" name="newEspLow" placeholder="New ESP low" className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm" />
           <input type="number" name="newEspHigh" placeholder="New ESP high" className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm" />
         </div>
-        <label className="flex items-center gap-2 text-xs text-neutral-600">
+        <label className="flex items-center gap-2 text-xs text-rc-muted">
           <input type="checkbox" name="vendorNotified" /> Vendor notified in writing
         </label>
-        <label className="flex items-center gap-2 text-xs text-neutral-600">
+        <label className="flex items-center gap-2 text-xs text-rc-muted">
           <input type="checkbox" name="agreementAmended" /> Agreement amended
         </label>
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
           Log reduction
         </button>
       </form>
       <FieldError error={state.error} />
       {entries.length > 0 && (
-        <ul className="mt-3 space-y-2 text-sm text-neutral-600">
+        <ul className="mt-3 space-y-2 text-sm text-rc-muted">
           {entries.map((e, i) => (
             <li key={i} className="border-t border-rc-border pt-2">
               {String(e.reason)} {e.espAdjusted ? "· ESP revised" : ""}
@@ -849,7 +873,7 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
         <button
           type="button"
           onClick={() => setShowForm(false)}
-          className="mt-2 text-xs text-neutral-400 transition hover:underline"
+          className="mt-2 text-xs text-rc-faint transition hover:underline"
         >
           ← Back
         </button>
@@ -876,7 +900,7 @@ function SaleItem({ item, propertyId, current }: { item: ComplianceItem; propert
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
           Record
         </button>
@@ -895,7 +919,7 @@ function SignItem({ item, propertyId, current, profile }: { item: ComplianceItem
   if (item.licenseeOnly && !profile.is_licensee_in_charge) {
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-        <p className="text-sm text-neutral-500">Waiting on the licensee in charge to sign.</p>
+        <p className="text-sm text-rc-muted">Waiting on the licensee in charge to sign.</p>
       </ItemShell>
     );
   }
@@ -903,7 +927,7 @@ function SignItem({ item, propertyId, current, profile }: { item: ComplianceItem
   if (data.signedAt) {
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-        <p className="text-sm text-neutral-600">
+        <p className="text-sm text-rc-muted">
           Signed <span className="font-medium text-rc-ink">{data.typedName}</span> on{" "}
           {new Date(data.signedAt).toLocaleString("en-AU")}
         </p>
@@ -923,7 +947,7 @@ function SignItem({ item, propertyId, current, profile }: { item: ComplianceItem
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
           Adopt as signature
         </button>
@@ -938,7 +962,7 @@ function SendItem({ item, propertyId, current }: { item: ComplianceItem; propert
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       {current?.status === "done" ? (
-        <p className="text-sm text-neutral-500">Marked sent.</p>
+        <p className="text-sm text-rc-muted">Marked sent.</p>
       ) : (
         <form action={action}>
           <button
@@ -958,7 +982,7 @@ function ExportItem({ item, propertyId, current }: { item: ComplianceItem; prope
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       {current?.status === "done" ? (
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-rc-muted">
           Generated {new Date((current.data as { generatedAt?: string }).generatedAt ?? current.created_at).toLocaleString("en-AU")}.{" "}
           <a href={`/dashboard/${propertyId}/summary`} className="text-rc-green-deep hover:underline">
             View the finalised summary

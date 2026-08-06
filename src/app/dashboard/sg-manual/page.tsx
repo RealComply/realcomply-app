@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Paperclip } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
@@ -34,30 +35,30 @@ export default async function SgManualPage() {
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-rc-ink">Supervision Guidelines Manual</h1>
-            <p className="mt-1 text-sm text-neutral-500">Upload and keep the current version on file, with history.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Supervision Guidelines Manual</h1>
+            <p className="mt-1 text-sm text-rc-muted">Upload and keep the current version on file, with history.</p>
           </div>
-          <Link href="/dashboard/registers" className="text-sm text-neutral-500 hover:underline">
+          <Link href="/dashboard/registers" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
             ← Registers
           </Link>
         </div>
 
         {current && (
-          <div className="mt-6 rounded-lg border border-rc-green-deep/30 bg-rc-green/10 px-4 py-3 text-sm">
+          <div className="mt-6 rounded-card border border-rc-green-deep/30 bg-rc-green-soft px-4 py-3 text-sm shadow-card">
             <p className="font-medium text-rc-green-deep">
               Current version{current.version_label ? `: ${current.version_label}` : ""}
             </p>
-            <p className="mt-1 text-neutral-600">
+            <p className="mt-1 text-rc-muted">
               {signedUrls[0]?.data?.signedUrl ? (
-                <a href={signedUrls[0].data.signedUrl} target="_blank" rel="noopener noreferrer" className="text-rc-green-deep hover:underline">
-                  📎 {current.file_name}
+                <a href={signedUrls[0].data.signedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-rc-green-deep hover:underline">
+                  <Paperclip size={12} /> {current.file_name}
                 </a>
               ) : (
                 current.file_name
               )}{" "}
               · uploaded {new Date(current.created_at).toLocaleDateString("en-AU")} by {nameFor(current.uploaded_by)}
             </p>
-            {current.notes && <p className="mt-1 text-xs text-neutral-500">{current.notes}</p>}
+            {current.notes && <p className="mt-1 text-xs text-rc-muted">{current.notes}</p>}
           </div>
         )}
 
@@ -66,22 +67,22 @@ export default async function SgManualPage() {
             <SgManualUploader profile={profile} isFirstUpload={versions.length === 0} />
           </div>
         ) : (
-          <p className="mt-6 text-xs text-neutral-400">Only the licensee in charge can publish a new version.</p>
+          <p className="mt-6 text-xs text-rc-faint">Only the licensee in charge can publish a new version.</p>
         )}
 
         {versions.length > 1 && (
           <div className="mt-8">
             <h2 className="text-sm font-semibold text-rc-ink">Version history</h2>
-            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
               {versions.slice(1).map((v, i) => {
                 const url = signedUrls[i + 1]?.data?.signedUrl ?? null;
                 return (
                 <li key={v.id} className="px-4 py-3 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-rc-ink">{v.version_label ?? "Untitled version"}</span>
-                    <span className="text-xs text-neutral-400">{new Date(v.created_at).toLocaleDateString("en-AU")}</span>
+                    <span className="text-xs text-rc-faint">{new Date(v.created_at).toLocaleDateString("en-AU")}</span>
                   </div>
-                  <p className="mt-0.5 text-xs text-neutral-500">
+                  <p className="mt-0.5 text-xs text-rc-muted">
                     {url ? (
                       <a href={url} target="_blank" rel="noopener noreferrer" className="text-rc-green-deep hover:underline">
                         {v.file_name}
@@ -91,7 +92,7 @@ export default async function SgManualPage() {
                     )}{" "}
                     · {nameFor(v.uploaded_by)}
                   </p>
-                  {v.notes && <p className="mt-1 text-xs text-neutral-400">{v.notes}</p>}
+                  {v.notes && <p className="mt-1 text-xs text-rc-faint">{v.notes}</p>}
                 </li>
                 );
               })}
@@ -100,7 +101,7 @@ export default async function SgManualPage() {
         )}
 
         {versions.length === 0 && (
-          <p className="mt-4 text-sm text-neutral-500">No version uploaded yet.</p>
+          <p className="mt-4 text-sm text-rc-muted">No version uploaded yet.</p>
         )}
       </main>
     </>

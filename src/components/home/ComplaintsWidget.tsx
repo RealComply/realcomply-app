@@ -1,3 +1,4 @@
+import { MessageSquareWarning } from "lucide-react";
 import { WidgetCard, BreakdownRow } from "./WidgetCard";
 
 export function ComplaintsWidget({
@@ -13,7 +14,7 @@ export function ComplaintsWidget({
 }) {
   return (
     <WidgetCard
-      icon="📝"
+      icon={MessageSquareWarning}
       title="Complaints"
       href="/dashboard/registers"
       hrefLabel="Registers →"

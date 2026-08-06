@@ -1,3 +1,4 @@
+import { Presentation } from "lucide-react";
 import { WidgetCard } from "./WidgetCard";
 
 export function TrainingWidget({
@@ -11,7 +12,7 @@ export function TrainingWidget({
 }) {
   return (
     <WidgetCard
-      icon="🧑‍🏫"
+      icon={Presentation}
       title="Training"
       href="/dashboard/training"
       hrefLabel="Training log →"

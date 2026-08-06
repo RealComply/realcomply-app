@@ -13,11 +13,11 @@ export function PiInsuranceCard({ agency, viewerProfile }: { agency: Agency; vie
   const status = expiryStatus(agency.pi_expiry);
 
   return (
-    <div className="rounded-lg border border-rc-border p-4">
+    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-rc-ink">Professional indemnity insurance</h3>
-          <p className="mt-1 text-xs text-neutral-500">
+          <p className="mt-1 text-xs text-rc-muted">
             Mandatory condition of every licence in the agency — s22, Property and Stock Agents Act 2002 (NSW).
           </p>
         </div>
@@ -91,7 +91,7 @@ export function PiInsuranceCard({ agency, viewerProfile }: { agency: Agency; vie
               <button
                 type="button"
                 onClick={() => setEditing(false)}
-                className="rounded-md border border-rc-border px-3 py-1 text-xs font-medium text-neutral-500 hover:bg-neutral-100"
+                className="rounded-md border border-rc-border px-3 py-1 text-xs font-medium text-rc-muted hover:bg-neutral-100"
               >
                 Cancel
               </button>
@@ -101,7 +101,7 @@ export function PiInsuranceCard({ agency, viewerProfile }: { agency: Agency; vie
         )}
       </div>
       {!viewerProfile.is_licensee_in_charge && !agency.pi_insurer && (
-        <p className="mt-2 text-xs text-neutral-400">Only the licensee in charge can enter these details.</p>
+        <p className="mt-2 text-xs text-rc-faint">Only the licensee in charge can enter these details.</p>
       )}
     </div>
   );

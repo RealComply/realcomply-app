@@ -1,9 +1,10 @@
+import { CalendarClock } from "lucide-react";
 import { WidgetCard } from "./WidgetCard";
 
 export function WeeklyReviewWidget({ dueCount }: { dueCount: number }) {
   return (
     <WidgetCard
-      icon="🗓️"
+      icon={CalendarClock}
       title="Weekly review"
       href="/dashboard/portfolio"
       hrefLabel="Portfolio →"

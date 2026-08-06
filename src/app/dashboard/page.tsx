@@ -20,45 +20,45 @@ export default async function DashboardPage() {
       <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-rc-ink">Your properties</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Your properties</h1>
           <Link
             href="/dashboard/new"
-            className="rounded-md bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+            className="rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600"
           >
             + Add property
           </Link>
         </div>
 
         {list.length === 0 ? (
-          <div className="mt-10 rounded-lg border border-dashed border-rc-border px-6 py-16 text-center">
-            <p className="text-neutral-500">
+          <div className="mt-10 rounded-card border border-dashed border-rc-border bg-white px-6 py-16 text-center">
+            <p className="text-rc-muted">
               No properties yet. Add your first listing to start the compliance checklist.
             </p>
             <Link
               href="/dashboard/new"
-              className="mt-4 inline-block rounded-md bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+              className="mt-4 inline-block rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600"
             >
               + Add property
             </Link>
           </div>
         ) : (
-          <ul className="mt-6 divide-y divide-rc-border rounded-lg border border-rc-border">
+          <ul className="mt-6 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
             {list.map((property) => (
               <li key={property.id}>
                 <Link
                   href={`/dashboard/${property.id}`}
-                  className="flex items-center justify-between px-4 py-4 transition hover:bg-neutral-50"
+                  className="flex items-center justify-between px-4 py-4 transition hover:bg-rc-bg-alt"
                 >
                   <div>
                     <p className="font-medium text-rc-ink">{property.address}</p>
-                    <p className="text-sm text-neutral-500">
+                    <p className="text-sm text-rc-muted">
                       {property.property_type}
                       {property.is_strata ? " · Strata" : ""}
                       {property.is_tenanted ? " · Tenanted" : ""}
                       {property.has_pool ? " · Pool" : ""}
                     </p>
                   </div>
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600">
+                  <span className="rounded-full bg-rc-green-soft px-3 py-1 text-xs font-medium text-rc-green-deep">
                     {STAGE_LABELS[property.stage]}
                   </span>
                 </Link>

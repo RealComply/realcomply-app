@@ -59,7 +59,7 @@ export default async function PropertyPage({
       <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
-          <Link href="/dashboard" className="text-sm text-neutral-500 hover:underline">
+          <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
             ← All properties
           </Link>
           <TestModeToggle propertyId={p.id} testMode={p.test_mode} />
@@ -67,8 +67,8 @@ export default async function PropertyPage({
 
         <div className="mt-3 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-rc-ink">{p.address}</h1>
-            <p className="mt-1 text-sm text-neutral-500">
+            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">{p.address}</h1>
+            <p className="mt-1 text-sm text-rc-muted">
               {p.property_type}
               {p.is_strata ? " · Strata" : ""}
               {p.is_tenanted ? " · Tenanted" : ""}
@@ -77,7 +77,7 @@ export default async function PropertyPage({
           </div>
           <Link
             href={`/dashboard/${p.id}/summary`}
-            className="shrink-0 rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50"
+            className="shrink-0 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted shadow-card transition hover:border-rc-green-deep/40 hover:text-rc-green-deep"
           >
             Download audit pack
           </Link>
@@ -95,8 +95,8 @@ export default async function PropertyPage({
                   active
                     ? "bg-rc-green-deep text-white"
                     : s < p.stage
-                      ? "bg-rc-green/15 text-rc-green-deep hover:opacity-80"
-                      : "border border-rc-border text-neutral-500 hover:bg-neutral-50"
+                      ? "bg-rc-green-soft text-rc-green-deep hover:opacity-80"
+                      : "border border-rc-border bg-white text-rc-muted hover:bg-rc-bg-alt"
                 }`}
               >
                 {STAGE_LABELS[s]}
@@ -115,7 +115,7 @@ export default async function PropertyPage({
         {hasSourceDocs && p.stage <= 1 && <ExtractDocumentsButton propertyId={p.id} />}
 
         {fileFinalised && (
-          <div className="mt-6 rounded-lg border border-rc-green-deep/30 bg-rc-green/10 px-4 py-3 text-sm text-rc-green-deep">
+          <div className="mt-6 rounded-card border border-rc-green-deep/30 bg-rc-green-soft px-4 py-3 text-sm text-rc-green-deep shadow-card">
             This file is finalised. See the{" "}
             <Link href={`/dashboard/${p.id}/summary`} className="underline">
               finalised summary
@@ -125,7 +125,7 @@ export default async function PropertyPage({
         )}
 
         {!isCurrentStage && (
-          <div className="mt-6 rounded-lg border border-rc-border bg-neutral-50 px-4 py-2 text-xs text-neutral-500">
+          <div className="mt-6 rounded-2xl border border-rc-border bg-rc-bg-alt px-4 py-2 text-xs text-rc-muted">
             Viewing {STAGE_LABELS[viewedStage]} — the file&rsquo;s current stage is {STAGE_LABELS[p.stage]}.
           </div>
         )}

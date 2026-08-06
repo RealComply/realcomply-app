@@ -146,8 +146,8 @@ export default async function HomeDashboardPage() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-rc-ink">Home</h1>
-            <p className="mt-1 text-sm text-neutral-500">
+            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Home</h1>
+            <p className="mt-1 text-sm text-rc-muted">
               Everything at a glance — diligence support only, the licensee decides.
             </p>
           </div>
