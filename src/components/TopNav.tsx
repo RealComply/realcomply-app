@@ -10,6 +10,9 @@ export function TopNav({ profile }: { profile: Profile }) {
           Real<span className="text-rc-green-deep">Comply</span>
         </Link>
         <div className="flex items-center gap-4 text-sm text-neutral-600">
+          <Link href="/dashboard/licensee" className="hover:text-rc-ink hover:underline">
+            Licensee digest
+          </Link>
           <span>
             {profile.full_name ?? profile.email}
             {profile.is_licensee_in_charge && (
