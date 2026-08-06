@@ -139,7 +139,8 @@ function InviteAwareForm() {
 
 export default function SignupPage() {
   return (
-    <main className="flex flex-1 items-center justify-center bg-rc-bg-alt px-4 py-16">
+    <main className="relative isolate flex flex-1 items-center justify-center overflow-hidden bg-rc-bg-alt px-4 py-16">
+      <div className="rc-mesh-bg" />
       <div className="w-full max-w-sm rounded-card border border-rc-border bg-white p-8 shadow-card-lg">
         <Logo size={22} />
         <p className="mt-1.5 text-sm text-rc-muted">Set up your agency.</p>

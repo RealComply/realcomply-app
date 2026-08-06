@@ -47,7 +47,10 @@ export default async function TeamPage() {
           <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
             {staff.map((s) => (
               <li key={s.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rc-ink-bg text-xs font-bold text-white">
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]"
+                  style={{ background: "linear-gradient(155deg, #1d3a31 0%, #0d1f19 100%)" }}
+                >
                   {(s.full_name ?? s.email).charAt(0).toUpperCase()}
                 </span>
                 <div className="flex-1">

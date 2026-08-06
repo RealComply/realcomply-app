@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { Building2, ClipboardCheck, Flag, ShieldCheck, MessageSquareWarning } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
+import { StatTile } from "@/components/home/WidgetCard";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
 import { STAGE_LABELS, type Agency, type Complaint, type Profile, type Property, type PropertyItem } from "@/lib/types";
@@ -70,22 +72,35 @@ export default async function PortfolioPage() {
     <>
       <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Portfolio</h1>
-            <p className="mt-1 text-sm text-rc-muted">The whole agency at a glance — diligence support only, the licensee decides.</p>
+        <div className="relative isolate overflow-hidden rounded-card">
+          <div className="rc-mesh-bg" />
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Portfolio</h1>
+              <p className="mt-1 text-sm text-rc-muted">The whole agency at a glance — diligence support only, the licensee decides.</p>
+            </div>
+            <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
+              All properties →
+            </Link>
           </div>
-          <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-            All properties →
-          </Link>
-        </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <Tile n={propertyList.length} l="Properties" />
-          <Tile n={digests.filter((d) => d.pendingSignoff.length > 0).length} l="Need sign-off" warn />
-          <Tile n={digests.filter((d) => d.flagged.length > 0).length} l="Flagged" warn />
-          <Tile n={licenceRisk + piRisk} l="Licence/PI at risk" warn={licenceRisk + piRisk > 0} ok={licenceRisk + piRisk === 0} />
-          <Tile n={openComplaints.length} l="Open complaints" warn={openComplaints.length > 0} ok={openComplaints.length === 0} />
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <StatTile n={propertyList.length} l="Properties" icon={Building2} />
+            <StatTile
+              n={digests.filter((d) => d.pendingSignoff.length > 0).length}
+              l="Need sign-off"
+              tone={digests.filter((d) => d.pendingSignoff.length > 0).length > 0 ? "warn" : "ok"}
+              icon={ClipboardCheck}
+            />
+            <StatTile
+              n={digests.filter((d) => d.flagged.length > 0).length}
+              l="Flagged"
+              tone={digests.filter((d) => d.flagged.length > 0).length > 0 ? "warn" : "ok"}
+              icon={Flag}
+            />
+            <StatTile n={licenceRisk + piRisk} l="Licence/PI at risk" tone={licenceRisk + piRisk > 0 ? "warn" : "ok"} icon={ShieldCheck} />
+            <StatTile n={openComplaints.length} l="Open complaints" tone={openComplaints.length > 0 ? "warn" : "ok"} icon={MessageSquareWarning} />
+          </div>
         </div>
 
         <section className="mt-8">
@@ -197,15 +212,5 @@ export default async function PortfolioPage() {
         </section>
       </main>
     </>
-  );
-}
-
-function Tile({ n, l, ok, warn }: { n: number; l: string; ok?: boolean; warn?: boolean }) {
-  const color = warn && n > 0 ? "text-rc-amber-deep" : ok ? "text-rc-green-deep" : "text-rc-ink";
-  return (
-    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
-      <div className={`text-xl font-bold tracking-tight ${color}`}>{n}</div>
-      <div className="mt-0.5 text-[11px] font-medium text-rc-muted">{l}</div>
-    </div>
   );
 }

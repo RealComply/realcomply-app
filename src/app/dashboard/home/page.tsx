@@ -1,3 +1,4 @@
+import { Building2, FileWarning, ShieldCheck, MessageSquareWarning, Gift as GiftIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
@@ -148,21 +149,24 @@ export default async function HomeDashboardPage() {
     <>
       <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Home</h1>
-            <p className="mt-1 text-sm text-rc-muted">
-              Everything at a glance — diligence support only, the licensee decides.
-            </p>
+        <div className="relative isolate overflow-hidden rounded-card">
+          <div className="rc-mesh-bg" />
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Home</h1>
+              <p className="mt-1 text-sm text-rc-muted">
+                Everything at a glance — diligence support only, the licensee decides.
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <StatTile n={propertyList.length} l="Properties" />
-          <StatTile n={needsAttentionItems.length} l="Files need you" tone={needsAttentionItems.length > 0 ? "warn" : "ok"} />
-          <StatTile n={licenceRisk + piRisk} l="Licence/PI at risk" tone={licenceRisk + piRisk > 0 ? "warn" : "ok"} />
-          <StatTile n={complaintsOpen + complaintsUnderReview} l="Open complaints" tone={complaintsOpen + complaintsUnderReview > 0 ? "warn" : "ok"} />
-          <StatTile n={giftsFlagged} l="Gifts awaiting review" tone={giftsFlagged > 0 ? "warn" : "ok"} />
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <StatTile n={propertyList.length} l="Properties" icon={Building2} />
+            <StatTile n={needsAttentionItems.length} l="Files need you" tone={needsAttentionItems.length > 0 ? "warn" : "ok"} icon={FileWarning} />
+            <StatTile n={licenceRisk + piRisk} l="Licence/PI at risk" tone={licenceRisk + piRisk > 0 ? "warn" : "ok"} icon={ShieldCheck} />
+            <StatTile n={complaintsOpen + complaintsUnderReview} l="Open complaints" tone={complaintsOpen + complaintsUnderReview > 0 ? "warn" : "ok"} icon={MessageSquareWarning} />
+            <StatTile n={giftsFlagged} l="Gifts awaiting review" tone={giftsFlagged > 0 ? "warn" : "ok"} icon={GiftIcon} />
+          </div>
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -34,7 +34,9 @@ export function TopNav({ profile }: { profile: Profile }) {
                 key={link.href}
                 href={link.href}
                 className={`shrink-0 rounded-full px-3 py-1.5 font-medium transition ${
-                  active ? "bg-rc-green-soft text-rc-green-deep" : "text-rc-muted hover:bg-neutral-100 hover:text-rc-ink"
+                  active
+                    ? "bg-rc-green-soft text-rc-green-deep shadow-[inset_0_0_0_1px_rgba(12,166,120,0.18)]"
+                    : "text-rc-muted hover:bg-neutral-100 hover:text-rc-ink"
                 }`}
               >
                 {link.label}
@@ -46,7 +48,8 @@ export function TopNav({ profile }: { profile: Profile }) {
         <div className="flex shrink-0 items-center gap-3 text-sm">
           <div className="hidden items-center gap-2 sm:flex">
             <span
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-rc-ink-bg text-[11px] font-bold text-white"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]"
+              style={{ background: "linear-gradient(155deg, #1d3a31 0%, #0d1f19 100%)" }}
               aria-hidden="true"
             >
               {(profile.full_name ?? profile.email).charAt(0).toUpperCase()}

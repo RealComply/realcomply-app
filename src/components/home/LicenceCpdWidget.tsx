@@ -25,6 +25,11 @@ export function LicenceCpdWidget({
       metric={holders}
       caption={`licence holders · ${cpdYearLabel} CPD year`}
       tone={expired > 0 ? "danger" : expiringSoon > 0 || cpdOutstanding > 0 ? "warn" : "ok"}
+      ring={[
+        { value: current, colorVar: "var(--rc-green-deep)" },
+        { value: expiringSoon, colorVar: "var(--rc-amber)" },
+        { value: expired, colorVar: "var(--rc-red)" },
+      ]}
     >
       <BreakdownRow dot="green" label="Current" count={current} />
       <BreakdownRow dot="amber" label="Expiring ≤ 30 days" count={expiringSoon} />

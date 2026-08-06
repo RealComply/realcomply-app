@@ -30,6 +30,19 @@
   --rc-panel: #16302a;
   --rc-ink-line: rgba(255, 255, 255, 0.09);
   --rc-ink-muted: #9db3a9;
+
+  /* New: a real "critical" red (status palette, not generic Tailwind red) so
+     danger states — expired licence, overdue complaint — sit in the same
+     token system as everything else instead of a one-off Tailwind color. */
+  --rc-red: #d03b3b;
+  --rc-red-soft: #fdecec;
+
+  /* New: depth pass — gloss/gradient badges for icon chips. Layered shadows
+     for the hover-lift/glow states are defined directly in @theme below,
+     matching how --shadow-card itself is declared (no :root mirror). */
+  --rc-badge-grad-green: linear-gradient(155deg, #eefdf7 0%, #d3f3e6 100%);
+  --rc-badge-grad-amber: linear-gradient(155deg, #fdf3e2 0%, #f7e3bd 100%);
+  --rc-badge-grad-red: linear-gradient(155deg, #fdeceb 0%, #f8d3d1 100%);
 }
 
 @theme inline {
@@ -50,6 +63,8 @@
   --color-rc-panel: var(--rc-panel);
   --color-rc-ink-line: var(--rc-ink-line);
   --color-rc-ink-muted: var(--rc-ink-muted);
+  --color-rc-red: var(--rc-red);
+  --color-rc-red-soft: var(--rc-red-soft);
   --font-sans: var(--font-plus-jakarta);
 
   /* Named so Tailwind generates rounded-card / shadow-card utilities —
@@ -57,10 +72,48 @@
   --radius-card: 18px;
   --shadow-card: 0 1px 2px rgba(13, 31, 25, 0.05), 0 12px 28px rgba(13, 31, 25, 0.06);
   --shadow-card-lg: 0 2px 4px rgba(13, 31, 25, 0.05), 0 26px 60px rgba(13, 31, 25, 0.14);
+  --shadow-card-hover: 0 4px 10px rgba(13, 31, 25, 0.07), 0 30px 64px rgba(13, 31, 25, 0.16);
+  --shadow-glow-green: 0 8px 20px rgba(12, 166, 120, 0.28);
 }
 
 body {
   background: var(--rc-bg-alt);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Soft, brand-only gradient wash used behind hero/header areas (dashboard
+   home, portfolio, auth screens) — the thing that makes a screen read as
+   "designed" on first paint rather than "a form on a white page". Kept to
+   the existing green/amber tokens (no new hues) so it reads as the same
+   brand, just lit. Purely decorative: absolutely positioned behind content,
+   never intercepts clicks, and is inert for anyone on prefers-reduced-motion
+   or forced-colors since it's a static gradient rather than an animation. */
+.rc-mesh-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.rc-mesh-bg::before,
+.rc-mesh-bg::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(50px);
+}
+.rc-mesh-bg::before {
+  top: -160px;
+  left: -100px;
+  width: 460px;
+  height: 460px;
+  background: radial-gradient(circle at center, rgba(46, 204, 143, 0.55), rgba(46, 204, 143, 0) 72%);
+}
+.rc-mesh-bg::after {
+  top: -100px;
+  right: -140px;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle at center, rgba(226, 169, 74, 0.4), rgba(226, 169, 74, 0) 72%);
 }

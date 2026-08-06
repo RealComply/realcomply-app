@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Home as HomeIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
@@ -23,7 +24,7 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Your properties</h1>
           <Link
             href="/dashboard/new"
-            className="rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600"
+            className="rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
           >
             + Add property
           </Link>
@@ -47,18 +48,26 @@ export default async function DashboardPage() {
               <li key={property.id}>
                 <Link
                   href={`/dashboard/${property.id}`}
-                  className="flex items-center justify-between px-4 py-4 transition hover:bg-rc-bg-alt"
+                  className="flex items-center justify-between gap-3 px-4 py-4 transition hover:bg-rc-bg-alt"
                 >
-                  <div>
-                    <p className="font-medium text-rc-ink">{property.address}</p>
-                    <p className="text-sm text-rc-muted">
-                      {property.property_type}
-                      {property.is_strata ? " · Strata" : ""}
-                      {property.is_tenanted ? " · Tenanted" : ""}
-                      {property.has_pool ? " · Pool" : ""}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-rc-green-deep ring-1 ring-inset ring-white/70"
+                      style={{ background: "var(--rc-badge-grad-green)" }}
+                    >
+                      <HomeIcon size={16} strokeWidth={2} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-rc-ink">{property.address}</p>
+                      <p className="text-sm text-rc-muted">
+                        {property.property_type}
+                        {property.is_strata ? " · Strata" : ""}
+                        {property.is_tenanted ? " · Tenanted" : ""}
+                        {property.has_pool ? " · Pool" : ""}
+                      </p>
+                    </div>
                   </div>
-                  <span className="rounded-full bg-rc-green-soft px-3 py-1 text-xs font-medium text-rc-green-deep">
+                  <span className="shrink-0 rounded-full bg-rc-green-soft px-3 py-1 text-xs font-medium text-rc-green-deep shadow-[inset_0_0_0_1px_rgba(12,166,120,0.14)]">
                     {STAGE_LABELS[property.stage]}
                   </span>
                 </Link>
