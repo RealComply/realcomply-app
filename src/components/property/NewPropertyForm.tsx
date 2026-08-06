@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import { createProperty } from "@/lib/actions/properties";
+import { searchAddress, type AddressSuggestion } from "@/lib/actions/places";
 import type { ActionState } from "@/lib/actions/auth";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildStagingPath, uploadEvidenceObject } from "@/lib/storage/evidence";
@@ -67,6 +69,88 @@ function DocUpload({
   );
 }
 
+// Plain text field, but as the agent types it debounces a call out to
+// Google Places (via the searchAddress Server Action — the API key stays
+// server-side, see src/lib/actions/places.ts) and offers a dropdown of
+// matching addresses. Selecting one fills the field with Google's
+// formatted text; the agent can otherwise just keep typing and ignore the
+// dropdown entirely — this never blocks manual entry, since the API key
+// might not be configured, the network might hiccup, or Google might
+// simply not have this address.
+function AddressAutocomplete({ defaultValue }: { defaultValue?: string }) {
+  const [value, setValue] = useState(defaultValue ?? "");
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  function handleChange(next: string) {
+    setValue(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    const trimmed = next.trim();
+    if (trimmed.length < 3) {
+      setSuggestions([]);
+      setOpen(false);
+      return;
+    }
+
+    const requestId = ++requestIdRef.current;
+    debounceRef.current = setTimeout(async () => {
+      const results = await searchAddress(trimmed);
+      if (requestIdRef.current !== requestId) return; // a newer keystroke has since fired
+      setSuggestions(results);
+      setOpen(results.length > 0);
+    }, 300);
+  }
+
+  return (
+    <div className="relative">
+      <label htmlFor="address" className="block text-sm font-medium text-rc-ink">
+        Property address
+      </label>
+      <input
+        id="address"
+        name="address"
+        type="text"
+        required
+        autoComplete="off"
+        value={value}
+        onChange={(e) => handleChange(e.target.value)}
+        onFocus={() => setOpen(suggestions.length > 0)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="6/2C Amor Street, Asquith NSW 2077"
+        className="mt-1 w-full rounded-md border border-rc-border px-3 py-2 text-sm focus:border-rc-green-deep focus:outline-none"
+      />
+      {open && (
+        <ul className="absolute z-10 mt-1 w-full rounded-md border border-rc-border bg-white py-1 text-sm shadow-lg">
+          {suggestions.map((s) => (
+            <li key={s.placeId}>
+              <button
+                type="button"
+                onMouseDown={() => {
+                  setValue(s.text);
+                  setSuggestions([]);
+                  setOpen(false);
+                }}
+                className="block w-full px-3 py-1.5 text-left hover:bg-neutral-50"
+              >
+                {s.text}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // Property creation bundles the setup questions with up to three document
 // uploads in one submit. The documents are uploaded straight from the
 // browser to Storage (not through the createProperty Server Action) before
@@ -120,7 +204,10 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
 
   return (
     <main className="mx-auto w-full max-w-lg flex-1 px-4 py-10">
-      <h1 className="text-xl font-semibold text-rc-ink">Add a property</h1>
+      <Link href="/dashboard" className="text-sm text-neutral-500 transition hover:text-rc-ink hover:underline">
+        ← Back to properties
+      </Link>
+      <h1 className="mt-3 text-xl font-semibold text-rc-ink">Add a property</h1>
       <p className="mt-1 text-sm text-neutral-500">
         These answers unlock the right checklist items for this listing — e.g. the
         tenancy notice items, or the strata pool-certificate exemption.
@@ -133,19 +220,7 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
           </p>
         )}
 
-        <div>
-          <label htmlFor="address" className="block text-sm font-medium text-rc-ink">
-            Property address
-          </label>
-          <input
-            id="address"
-            name="address"
-            type="text"
-            required
-            placeholder="6/2C Amor Street, Asquith NSW 2077"
-            className="mt-1 w-full rounded-md border border-rc-border px-3 py-2 text-sm focus:border-rc-green-deep focus:outline-none"
-          />
-        </div>
+        <AddressAutocomplete />
 
         <div>
           <label htmlFor="propertyType" className="block text-sm font-medium text-rc-ink">
