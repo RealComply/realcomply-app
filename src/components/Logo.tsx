@@ -9,21 +9,29 @@ export function LogoMark({ size = 28, variant = "light" }: { size?: number; vari
   const stroke = variant === "dark" ? "rgba(255,255,255,.18)" : "none";
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
-      <path
-        d="M13 43 L13 21 L9 21 L24 7 L39 21 L35 21 L35 43 Z"
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={stroke !== "none" ? 1.2 : undefined}
-        strokeLinejoin="round"
-      />
-      <path
-        d="M17 31 l5 5 L31 25.5"
-        fill="none"
-        stroke="#2ecc8f"
-        strokeWidth={4}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      {/* The marketing-site glyph's raw bounding box is 30 wide x 36 tall
+          (a tall, narrow house), which reads as a rectangle rather than a
+          square badge at product-UI sizes — this 20%-horizontal-stretch
+          (matrix scale 1.2, re-centred) widens it to a 36x36 box, still the
+          same house-and-tick silhouette, just squared off. Per Adam: "I wanna
+          keep it square." */}
+      <g transform="matrix(1.2,0,0,1,-4.8,0)">
+        <path
+          d="M13 43 L13 21 L9 21 L24 7 L39 21 L35 21 L35 43 Z"
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={stroke !== "none" ? 1.2 : undefined}
+          strokeLinejoin="round"
+        />
+        <path
+          d="M17 31 l5 5 L31 25.5"
+          fill="none"
+          stroke="#2ecc8f"
+          strokeWidth={4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
     </svg>
   );
 }

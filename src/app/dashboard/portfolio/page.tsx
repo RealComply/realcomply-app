@@ -8,12 +8,16 @@ import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest
 import { expiryStatus } from "@/lib/expiry-status";
 import { STAGE_LABELS, type Agency, type Complaint, type Profile, type Property, type PropertyItem } from "@/lib/types";
 
-// Portfolio dashboard — the fuller command-centre from the website IA
-// mockup (KPIs, cross-property "needs you" queue, weekly review loop,
-// listings table, per-agent supervision row), distinct from the lighter
-// Licensee digest at /dashboard/licensee (which stays as the quick
-// sign-off/flags check). This is the new default home for a licensee
-// running the whole portfolio, not just one file at a time.
+// Office overview — the command-centre from the website IA mockup (KPIs,
+// cross-property "needs you" queue, weekly review loop, listings table,
+// per-agent supervision row). This used to be split across two pages
+// ("Portfolio" here + a separate "Licensee digest" at /dashboard/licensee),
+// but in practice they showed almost the same thing — sign-off/flags across
+// every file — just with different framing. Per Adam: "they're basically
+// showing the same thing... condense them into one page and just call it
+// office overview." This is that merge: the licensee digest's named
+// "who exactly is expiring" list and its agent-viewing note are folded in
+// below, and /dashboard/licensee now just redirects here.
 export default async function PortfolioPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
@@ -51,11 +55,17 @@ export default async function PortfolioPage() {
     return d.property.stage < 5 && (days === null || days > 7);
   });
 
-  const licenceRisk = staffList.filter((s) => {
+  // Named, not just counted — "4 at risk" tells you there's a problem,
+  // but the licensee needs to know whose licence it is without a second
+  // click. This is the bit the old /dashboard/licensee page had that this
+  // page's stat tile alone didn't.
+  const expiringStaff = staffList.filter((s) => {
     const status = expiryStatus(s.licence_expiry);
     return status === "expired" || status === "urgent";
-  }).length;
-  const piRisk = agency && (expiryStatus(agency.pi_expiry) === "expired" || expiryStatus(agency.pi_expiry) === "urgent") ? 1 : 0;
+  });
+  const licenceRisk = expiringStaff.length;
+  const piConcern = agency ? expiryStatus(agency.pi_expiry) : "none";
+  const piRisk = piConcern === "expired" || piConcern === "urgent" ? 1 : 0;
 
   // Per-agent supervision row.
   const byAgent = new Map<string, { name: string; properties: number; flags: number; pendingSignoff: number }>();
@@ -76,7 +86,7 @@ export default async function PortfolioPage() {
           <div className="rc-mesh-bg" />
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Portfolio</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Office overview</h1>
               <p className="mt-1 text-sm text-rc-muted">The whole agency at a glance — diligence support only, the licensee decides.</p>
             </div>
             <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
@@ -102,6 +112,41 @@ export default async function PortfolioPage() {
             <StatTile n={openComplaints.length} l="Open complaints" tone={openComplaints.length > 0 ? "warn" : "ok"} icon={MessageSquareWarning} />
           </div>
         </div>
+
+        {!profile.is_licensee_in_charge && (
+          <p className="mt-4 rounded-md border border-rc-border bg-neutral-50 px-3 py-2 text-xs text-rc-muted">
+            You&rsquo;re viewing this as an agent, not the licensee in charge — the sign-off items below need the
+            licensee&rsquo;s action, not yours.
+          </p>
+        )}
+
+        {(expiringStaff.length > 0 || piRisk > 0) && (
+          <section className="mt-8">
+            <h2 className="text-sm font-semibold text-rc-ink">Licences &amp; insurance</h2>
+            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
+              {piRisk > 0 && (
+                <li className="px-4 py-3 text-sm">
+                  <Link href="/dashboard/registers" className="font-medium text-rc-ink hover:underline">
+                    PI insurance
+                  </Link>{" "}
+                  <span className="text-rc-amber-deep">
+                    {piConcern === "expired" ? "expired" : "expires within 30 days"}
+                  </span>
+                </li>
+              )}
+              {expiringStaff.map((s) => (
+                <li key={s.id} className="px-4 py-3 text-sm">
+                  <Link href="/dashboard/registers" className="font-medium text-rc-ink hover:underline">
+                    {s.full_name ?? s.email}
+                  </Link>{" "}
+                  <span className="text-rc-amber-deep">
+                    licence {expiryStatus(s.licence_expiry) === "expired" ? "expired" : "expires within 30 days"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section className="mt-8">
           <h2 className="text-sm font-semibold text-rc-ink">

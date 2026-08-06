@@ -8,8 +8,7 @@ import type { Profile } from "@/lib/types";
 
 const LINKS = [
   { href: "/dashboard/home", label: "Home" },
-  { href: "/dashboard/portfolio", label: "Portfolio" },
-  { href: "/dashboard/licensee", label: "Licensee digest" },
+  { href: "/dashboard/portfolio", label: "Office overview" },
   { href: "/dashboard/registers", label: "Registers" },
   { href: "/dashboard/training", label: "Training" },
   { href: "/dashboard/sg-manual", label: "SG Manual" },

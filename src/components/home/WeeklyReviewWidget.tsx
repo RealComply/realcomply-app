@@ -7,7 +7,7 @@ export function WeeklyReviewWidget({ dueCount }: { dueCount: number }) {
       icon={CalendarClock}
       title="Weekly review"
       href="/dashboard/portfolio"
-      hrefLabel="Portfolio →"
+      hrefLabel="Office overview →"
       metric={dueCount}
       caption={dueCount === 0 ? "Every active file has had activity this week" : "files with no activity in 7+ days"}
       tone={dueCount > 0 ? "warn" : "ok"}

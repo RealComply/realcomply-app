@@ -16,7 +16,7 @@ export function NeedsAttentionWidget({ items }: { items: NeedsAttentionItem[] })
       icon={ClipboardList}
       title="Needs your attention"
       href="/dashboard/portfolio"
-      hrefLabel="Portfolio →"
+      hrefLabel="Office overview →"
       metric={items.length}
       caption={items.length === 0 ? "Nothing pending across the portfolio" : "files awaiting sign-off or with open flags"}
       tone={items.length > 0 ? "warn" : "ok"}
@@ -42,7 +42,7 @@ export function NeedsAttentionWidget({ items }: { items: NeedsAttentionItem[] })
             </li>
           ))}
           {items.length > 5 && (
-            <li className="px-3 py-2 text-xs text-neutral-400">+{items.length - 5} more on the Portfolio page →</li>
+            <li className="px-3 py-2 text-xs text-neutral-400">+{items.length - 5} more on the Office overview page →</li>
           )}
         </ul>
       )}
