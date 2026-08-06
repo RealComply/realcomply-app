@@ -23,8 +23,12 @@ const SOURCE_LABELS: Record<string, string> = {
 // independent of whatever the model returns. Deliberately excludes every
 // licenseeOnly item (amc, f1, sign_licensee) and every log-style item
 // (d1/d2/d3, offers, reviews) — those have their own entry semantics and
-// AI must never touch a licensee sign-off, full stop.
-const TARGET_ITEM_KEYS = new Set(["a1", "a3", "a4", "a4b", "a4c", "a5", "a6", "a7", "b1"]);
+// AI must never touch a licensee sign-off, full stop. Also excludes a1
+// (vendor identity/ownership): that's verified externally as part of AML/CTF
+// CDD and registered with AUSTRAC there, not something to extract from an
+// uploaded document — see the hideNote/hideEvidence attestation item in
+// nsw-sales.ts.
+const TARGET_ITEM_KEYS = new Set(["a3", "a4", "a4b", "a4c", "a5", "a6", "a7", "b1"]);
 
 type DraftPatch = {
   itemKey: string;
@@ -336,8 +340,8 @@ async function extractOneDocument(
             type: "text",
             text:
               `This document was uploaded as the ${sourceLabel}. Call record_findings with any facts it ` +
-              "explicitly and literally states that are relevant to these compliance items: a1 (vendor " +
-              "identity/ownership), a3 (the date the agency agreement was signed), a4 (an ESP range, only if a " +
+              "explicitly and literally states that are relevant to these compliance items: a3 (the date the " +
+              "agency agreement was signed), a4 (an ESP range, only if a " +
               "figure is explicitly stated in this document), a4b (what comparable-sales evidence is present), " +
               "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
               "note-flagging rule: if the document contains that reasoning text, paraphrase it as a short " +

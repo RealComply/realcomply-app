@@ -57,7 +57,7 @@ export function LegislationChat() {
           <div className="flex items-center justify-between border-b border-rc-border bg-rc-green-deep px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-white">Ask the Act</p>
-              <p className="text-[11px] text-white/80">Property and Stock Agents Act 2002 (NSW)</p>
+              <p className="text-[11px] text-white/80">NSW property &amp; real estate legislation</p>
             </div>
             <button
               type="button"

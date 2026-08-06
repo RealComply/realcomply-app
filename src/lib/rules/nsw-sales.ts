@@ -67,11 +67,12 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "Vendor identity & ownership verified",
     description:
-      "Identity verified for every vendor (+ any beneficial owner) and confirmed they own what they're selling. No ID copies are stored here — this is an attestation that verification happened via your normal process.",
+      "Identity verified for every vendor (+ any beneficial owner) and confirmed they own what they're selling. This happens externally as part of your AML/CTF customer due diligence — the confirmation is registered with AUSTRAC there, not stored here. Just confirm it's been done.",
     legalBasis: "Rules of Conduct Sch 1",
     requiresDate: false,
     requiredForStageCompletion: true,
-    showFindings: true,
+    hideNote: true,
+    hideEvidence: true,
   },
   {
     key: "a2",
