@@ -37,13 +37,13 @@ type DraftPatch = {
 const EXTRACTION_TOOL: Anthropic.Tool = {
   name: "record_findings",
   description:
-    "Record facts explicitly stated in the document, each mapped to the single compliance item it most directly supports. Only call this with facts actually written in the document — never a guess or an inference.",
+    "Flag anything the agent needs to see for each compliance item — a gap, an ambiguity, something missing, something needing their confirmation. Do not restate facts the document already states plainly; the agent has the document, so repeating it back adds nothing. Only call this with things actually grounded in the document — never a guess or an inference.",
   input_schema: {
     type: "object",
     properties: {
       patches: {
         type: "array",
-        description: "Zero or more findings. Return an empty array if the document states nothing usable.",
+        description: "Zero or more findings. Return an empty array if there's nothing to flag and no structured figures/dates to record.",
         items: {
           type: "object",
           properties: {
@@ -54,7 +54,8 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
             },
             note: {
               type: "string",
-              description: "A short, factual note — quote or closely paraphrase the source. No speculation.",
+              description:
+                "Only something the agent needs to act on or confirm — a gap, an inconsistency, a missing detail. Never a restatement of a fact the document already states clearly (e.g. do not write 'commission is 2.2%, as stated in clause 4' — that tells the agent nothing they don't already have in front of them). Leave this out entirely, or send an empty string, when the document covers the item completely with nothing exceptional to flag. Exception: for a4c specifically, this field instead carries a short paraphrase of the agent's own ESP reasoning if the document contains it, as an editable starting draft — not a gap-flag.",
             },
             espLow: {
               type: "number",
@@ -314,9 +315,18 @@ async function extractOneDocument(
       "name the document, quote identifying details (issuer, date, certificate or reference number) if visible, " +
       "and say exactly what you found and where it disagrees with the index. Still never assert a document is " +
       "missing or doesn't exist unless you've actually looked through the whole document for it; phrase that as " +
-      "'not found in what I was shown', not a categorical claim. You must call record_findings exactly once, " +
-      "but calling it with an empty patches array is a completely normal, successful, and common outcome — do " +
-      "not stretch to fill the array with a weak or unsupported finding just because you're calling the tool.",
+      "'not found in what I was shown', not a categorical claim. Beyond that index-cross-check exception, treat " +
+      "the note field as a place to flag something for the agent's attention — a gap, an ambiguity, a missing " +
+      "detail, something needing their confirmation or follow-up — never as a summary or restatement of a fact " +
+      "the document already states plainly. The agent has the source document open in front of them; telling " +
+      "them again what it already says adds nothing. If an item is covered completely with nothing exceptional " +
+      "about it, leave the note out of that item's patch (or send an empty string) — 'nothing to flag' is the " +
+      "normal, expected, successful outcome, not a sign you should have found something to say. This doesn't " +
+      "apply to structured fields (espLow, espHigh, eventDate): keep populating those whenever explicitly " +
+      "stated, note or no note — a figure or date saves the agent real typing, unlike a restated sentence. You " +
+      "must call record_findings exactly once, but calling it with an empty patches array is a completely " +
+      "normal, successful, and common outcome — do not stretch to fill the array with a weak or unsupported " +
+      "finding just because you're calling the tool.",
     messages: [
       {
         role: "user",
@@ -329,7 +339,10 @@ async function extractOneDocument(
               "explicitly and literally states that are relevant to these compliance items: a1 (vendor " +
               "identity/ownership), a3 (the date the agency agreement was signed), a4 (an ESP range, only if a " +
               "figure is explicitly stated in this document), a4b (what comparable-sales evidence is present), " +
-              "a4c (the reasoning behind an ESP, only if stated), a5 (commission/rebate/VPA terms), a6 " +
+              "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
+              "note-flagging rule: if the document contains that reasoning text, paraphrase it as a short " +
+              "editable starting draft for the agent to refine, not just a gap-flag), a5 " +
+              "(commission/rebate/VPA terms), a6 " +
               "(cooling-off), a7 (material facts disclosed), b1 (the s52A prescribed documents — planning " +
               "certificate, sewer/sewerage diagrams, title/plan. First check this actually looks like a real " +
               "contract for sale of land — vendor/purchaser details, price, settlement terms, that kind of " +

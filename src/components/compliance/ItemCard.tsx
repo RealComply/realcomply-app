@@ -11,6 +11,7 @@ import {
   addOfferEntry,
   addReportEntry,
   recordReduction,
+  markNoPriceRevision,
   recordSale,
   signItem,
   sendToLicensee,
@@ -39,8 +40,19 @@ function StatusPill({ status }: { status?: PropertyItem["status"] }) {
     );
   }
   return (
-    <span className="rounded-full bg-rc-green/15 px-2.5 py-0.5 text-xs font-medium text-rc-green-deep">
-      Done
+    <span
+      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rc-green-deep text-white"
+      role="img"
+      aria-label="Done"
+      title="Done"
+    >
+      <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
+        <path
+          fillRule="evenodd"
+          d="M16.704 5.29a1 1 0 010 1.415l-7.25 7.25a1 1 0 01-1.415 0l-3.25-3.25a1 1 0 111.415-1.414l2.542 2.543 6.543-6.543a1 1 0 011.415 0z"
+          clipRule="evenodd"
+        />
+      </svg>
     </span>
   );
 }
@@ -320,15 +332,6 @@ function ChecklistItem({
             className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
           >
             Mark done
-          </button>
-          <button
-            type="submit"
-            name="status"
-            value="flagged"
-            disabled={pending}
-            className="rounded-md border border-rc-amber-deep/40 px-3 py-1.5 text-xs font-semibold text-rc-amber-deep transition hover:bg-rc-amber/10 disabled:opacity-60"
-          >
-            Flag
           </button>
           <button
             type="submit"
@@ -738,10 +741,54 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
   );
 }
 
+// d3 — not every listing has a price change, so this starts with a plain
+// Yes/No gate rather than assuming there's a reduction to log. "No" marks
+// the item done immediately via markNoPriceRevision; "Yes" reveals the
+// existing log form. An already-logged reduction (entries.length > 0)
+// skips the gate and goes straight to the form/history.
 function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const boundAction = recordReduction.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
-  const entries = ((current?.data ?? {}) as { entries?: Array<Record<string, unknown>> }).entries ?? [];
+  const noRevisionAction = markNoPriceRevision.bind(null, propertyId);
+  const data = (current?.data ?? {}) as { entries?: Array<Record<string, unknown>>; noRevision?: boolean };
+  const entries = data.entries ?? [];
+  const [showForm, setShowForm] = useState(entries.length > 0);
+
+  if (!showForm) {
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        {data.noRevision ? (
+          <p className="text-sm text-neutral-500">
+            Marked — no price revision on this listing.{" "}
+            <button type="button" onClick={() => setShowForm(true)} className="text-rc-green-deep hover:underline">
+              Actually, log one
+            </button>
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-neutral-500">Has the price been revised during this campaign?</p>
+            <div className="flex gap-2">
+              <form action={noRevisionAction}>
+                <button
+                  type="submit"
+                  className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50"
+                >
+                  No — nothing to record
+                </button>
+              </form>
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
+              >
+                Yes — log it
+              </button>
+            </div>
+          </div>
+        )}
+      </ItemShell>
+    );
+  }
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -782,6 +829,15 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
             </li>
           ))}
         </ul>
+      )}
+      {entries.length === 0 && (
+        <button
+          type="button"
+          onClick={() => setShowForm(false)}
+          className="mt-2 text-xs text-neutral-400 transition hover:underline"
+        >
+          ← Back
+        </button>
       )}
     </ItemShell>
   );

@@ -432,6 +432,35 @@ export async function recordReduction(
   return error ? { error: error.message } : ok;
 }
 
+// d3 — "no revision" fast path. Most listings never need a price change, so
+// this marks the item done without forcing the agent through the log form.
+// Preserves any existing entries (belt-and-braces — this shouldn't normally
+// be called once entries already exist, since ReductionItem hides the
+// Yes/No gate in that case).
+export async function markNoPriceRevision(propertyId: string): Promise<void> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3")
+    .maybeSingle();
+
+  const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as unknown[];
+
+  await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "d3",
+    status: "done",
+    data: { entries, noRevision: true },
+    completedBy: user.id,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+}
+
 // f0 — final sale price, checked against the recorded ESP range.
 export async function recordSale(
   propertyId: string,

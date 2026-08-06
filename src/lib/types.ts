@@ -40,6 +40,7 @@ export type Property = {
   is_strata: boolean | null;
   is_tenanted: boolean | null;
   has_pool: boolean | null;
+  agent_interest: boolean | null;
   stage: PropertyStage;
   test_mode: boolean;
   created_at: string;

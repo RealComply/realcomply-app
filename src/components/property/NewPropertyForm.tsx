@@ -172,6 +172,11 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
         />
         <YesNo name="isTenanted" label="Is the property currently tenanted?" />
         <YesNo name="hasPool" label="Does the property have a pool?" />
+        <YesNo
+          name="agentInterest"
+          label="Does Agent's Interest need to be disclosed?"
+          help="Yes if you, or someone related to you, has or may obtain a beneficial interest in this property (s49) — e.g. you're buying it yourself."
+        />
 
         <div className="border-t border-rc-border pt-6">
           <h2 className="text-sm font-semibold text-rc-ink">Documents</h2>

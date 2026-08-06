@@ -71,6 +71,7 @@ const items: ComplianceItem[] = [
     legalBasis: "Rules of Conduct Sch 1",
     requiresDate: false,
     requiredForStageCompletion: true,
+    showFindings: true,
   },
   {
     key: "a2",
@@ -93,6 +94,7 @@ const items: ComplianceItem[] = [
     legalBasis: "s55, Property and Stock Agents Act 2002 (NSW); Sch 1 r16",
     requiresDate: true,
     requiredForStageCompletion: true,
+    showFindings: true,
   },
   {
     key: "a4",
@@ -104,6 +106,7 @@ const items: ComplianceItem[] = [
     legalBasis: "s72A, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
+    showFindings: true,
   },
   {
     key: "a4b",
@@ -115,6 +118,7 @@ const items: ComplianceItem[] = [
     legalBasis: "s72A + NSW Fair Trading underquoting guidance",
     requiresDate: false,
     requiredForStageCompletion: true,
+    showFindings: true,
   },
   {
     key: "a4c",
@@ -137,6 +141,7 @@ const items: ComplianceItem[] = [
     legalBasis: "s57, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
+    showFindings: true,
   },
   {
     key: "a6",
@@ -147,6 +152,7 @@ const items: ComplianceItem[] = [
     legalBasis: "Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
+    showFindings: true,
   },
   {
     key: "a7",
@@ -158,6 +164,20 @@ const items: ComplianceItem[] = [
     legalBasis: "Reg 60, Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
+    showFindings: true,
+  },
+  {
+    key: "a8",
+    stage: 0,
+    kind: "checklist",
+    label: "Agent's interest disclosed & consented (s49)",
+    description:
+      "You (or a related party) may obtain a beneficial interest in this property. Before that happens, the vendor must give written consent on the approved s49 form — and a separate written consent if you'll still be paid commission on the sale.",
+    legalBasis: "s49, Property and Stock Agents Act 2002 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+    showIf: (p) => Boolean(p.agent_interest),
+    hideNote: true,
   },
   {
     key: "amv",
@@ -247,6 +267,17 @@ const items: ComplianceItem[] = [
     showIf: (p) => Boolean(p.is_tenanted),
     hideNote: true,
   },
+  {
+    key: "b3",
+    stage: 1,
+    kind: "checklist",
+    label: "Vendor approved all marketing material",
+    description:
+      "Confirm the vendor has approved the marketing material (photos, copy, floorplan, signage) before it goes live.",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+    hideNote: true,
+  },
 
   // ── Stage 2 — On market ───────────────────────────────────────────────
   {
@@ -279,6 +310,18 @@ const items: ComplianceItem[] = [
     legalBasis: "Australian Consumer Law s18/s30",
     requiresDate: false,
     requiredForStageCompletion: true,
+  },
+  {
+    key: "c4",
+    stage: 2,
+    kind: "checklist",
+    label: "Agent's interest included in all marketing material",
+    description:
+      "Every advertisement and marketing piece for this listing discloses that you (or a related party) have an interest in the property, consistent with the written consent given under s49.",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+    showIf: (p) => Boolean(p.agent_interest),
+    hideNote: true,
   },
 
   // ── Stage 3 — Campaign ────────────────────────────────────────────────

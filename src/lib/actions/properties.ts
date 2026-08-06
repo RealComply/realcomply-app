@@ -33,6 +33,7 @@ export async function createProperty(
   const isStrata = formData.get("isStrata") === "yes";
   const isTenanted = formData.get("isTenanted") === "yes";
   const hasPool = formData.get("hasPool") === "yes";
+  const agentInterest = formData.get("agentInterest") === "yes";
 
   if (!address) {
     return { error: "Address is required." };
@@ -84,6 +85,7 @@ export async function createProperty(
       is_strata: isStrata,
       is_tenanted: isTenanted,
       has_pool: hasPool,
+      agent_interest: agentInterest,
     })
     .select("id")
     .single();
