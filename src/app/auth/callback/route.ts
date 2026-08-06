@@ -24,11 +24,16 @@ export async function GET(request: Request) {
         const meta = data.user.user_metadata as {
           full_name?: string;
           agency_name?: string;
+          invite_token?: string;
         };
-        await supabase.rpc("bootstrap_agency", {
-          p_agency_name: meta.agency_name ?? "My agency",
-          p_full_name: meta.full_name ?? "",
-        });
+        if (meta.invite_token) {
+          await supabase.rpc("accept_invite", { p_token: meta.invite_token, p_full_name: meta.full_name ?? "" });
+        } else {
+          await supabase.rpc("bootstrap_agency", {
+            p_agency_name: meta.agency_name ?? "My agency",
+            p_full_name: meta.full_name ?? "",
+          });
+        }
       }
 
       return NextResponse.redirect(`${origin}/dashboard/home`);

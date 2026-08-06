@@ -31,15 +31,14 @@ export async function requireProfile(): Promise<Profile> {
     return profile as Profile;
   }
 
-  const meta = user.user_metadata as { full_name?: string; agency_name?: string };
+  const meta = user.user_metadata as { full_name?: string; agency_name?: string; invite_token?: string };
 
-  if (meta.agency_name) {
-    const { error: bootstrapError } = await supabase.rpc("bootstrap_agency", {
-      p_agency_name: meta.agency_name,
-      p_full_name: meta.full_name ?? "",
-    });
+  if (meta.invite_token || meta.agency_name) {
+    const { error: joinError } = meta.invite_token
+      ? await supabase.rpc("accept_invite", { p_token: meta.invite_token, p_full_name: meta.full_name ?? "" })
+      : await supabase.rpc("bootstrap_agency", { p_agency_name: meta.agency_name!, p_full_name: meta.full_name ?? "" });
 
-    if (!bootstrapError) {
+    if (!joinError) {
       const { data: healedProfile } = await supabase
         .from("profiles")
         .select("*")

@@ -122,6 +122,21 @@ export type TrainingAttendance = {
   created_at: string;
 };
 
+export type InviteStatus = "pending" | "accepted" | "revoked";
+
+export type AgencyInvite = {
+  id: string;
+  agency_id: string;
+  email: string;
+  full_name: string | null;
+  is_licensee_in_charge: boolean;
+  token: string;
+  status: InviteStatus;
+  invited_by: string | null;
+  created_at: string;
+  accepted_at: string | null;
+};
+
 export type PropertyStage =
   | 0 // Listing set-up
   | 1 // Pre-market

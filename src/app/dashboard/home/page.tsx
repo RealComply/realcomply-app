@@ -7,6 +7,7 @@ import { currentCpdYear, CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT 
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
 import { WeeklyReviewWidget } from "@/components/home/WeeklyReviewWidget";
+import { TeamWidget } from "@/components/home/TeamWidget";
 import { LicenceCpdWidget } from "@/components/home/LicenceCpdWidget";
 import { PiInsuranceWidget } from "@/components/home/PiInsuranceWidget";
 import { GiftsWidget } from "@/components/home/GiftsWidget";
@@ -50,6 +51,7 @@ export default async function HomeDashboardPage() {
     { data: cpdRows },
     { data: sessionRows },
     { data: sgVersionRows },
+    { data: pendingInviteRows },
   ] = await Promise.all([
     propertyIds.length > 0
       ? supabase.from("property_items").select("*").in("property_id", propertyIds)
@@ -61,10 +63,12 @@ export default async function HomeDashboardPage() {
     supabase.from("cpd_records").select("*").gte("completed_date", cpdYear.start).lte("completed_date", cpdYear.end),
     supabase.from("training_sessions").select("*").order("session_date", { ascending: false }),
     supabase.from("sg_manual_versions").select("*").order("created_at", { ascending: false }).limit(1),
+    supabase.from("agency_invites").select("id").eq("status", "pending"),
   ]);
 
   const staff = (staffRows ?? []) as Profile[];
   const agency = agencyRow as Agency | null;
+  const pendingInviteCount = (pendingInviteRows ?? []).length;
   const gifts = (giftRows ?? []) as Gift[];
   const complaints = (complaintRows ?? []) as Complaint[];
   const cpdRecords = (cpdRows ?? []) as CpdRecord[];
@@ -184,6 +188,7 @@ export default async function HomeDashboardPage() {
             versionLabel={currentSgVersion?.version_label ?? null}
             uploadedAt={currentSgVersion?.created_at ?? null}
           />
+          <TeamWidget staffCount={staff.length} pendingInvites={pendingInviteCount} />
         </div>
       </main>
     </>

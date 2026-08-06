@@ -44,8 +44,12 @@ export async function signup(
   const password = String(formData.get("password") ?? "");
   const fullName = String(formData.get("fullName") ?? "");
   const agencyName = String(formData.get("agencyName") ?? "");
+  // Present only when this signup came from an invite link (see
+  // src/lib/actions/team.ts / 0006_agency_invites.sql) — joins the existing
+  // agency the invite was issued for instead of bootstrapping a new one.
+  const inviteToken = String(formData.get("inviteToken") ?? "").trim() || null;
 
-  if (!agencyName.trim()) {
+  if (!inviteToken && !agencyName.trim()) {
     return { error: "Agency name is required." };
   }
 
@@ -56,7 +60,11 @@ export async function signup(
     email,
     password,
     options: {
-      data: { full_name: fullName, agency_name: agencyName },
+      // invite_token rides along in user metadata so both the
+      // email-confirmation callback and requireProfile's self-heal path
+      // (for whichever one actually ends up running the join) know to call
+      // accept_invite instead of bootstrap_agency.
+      data: { full_name: fullName, agency_name: agencyName, invite_token: inviteToken },
       // Without this, Supabase falls back to its configured Site URL —
       // which sends the confirmation link to the bare site root instead
       // of /auth/callback, so the code exchange (and the agency/profile
@@ -70,8 +78,8 @@ export async function signup(
   }
 
   // If email confirmation is required, there's no session yet — the
-  // agency/profile bootstrap runs after they click the confirmation link
-  // and land back in the app (see /auth/callback).
+  // agency/profile bootstrap (or invite acceptance) runs after they click
+  // the confirmation link and land back in the app (see /auth/callback).
   if (!signUpData.session) {
     redirect(
       `/login?message=${encodeURIComponent(
@@ -80,13 +88,12 @@ export async function signup(
     );
   }
 
-  const { error: bootstrapError } = await supabase.rpc("bootstrap_agency", {
-    p_agency_name: agencyName,
-    p_full_name: fullName,
-  });
+  const { error: joinError } = inviteToken
+    ? await supabase.rpc("accept_invite", { p_token: inviteToken, p_full_name: fullName })
+    : await supabase.rpc("bootstrap_agency", { p_agency_name: agencyName, p_full_name: fullName });
 
-  if (bootstrapError) {
-    return { error: bootstrapError.message };
+  if (joinError) {
+    return { error: joinError.message };
   }
 
   redirect("/dashboard/home");
@@ -96,4 +103,25 @@ export async function logout() {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+export type InvitePreview = { agencyName: string; email: string; isLicenseeInCharge: boolean } | null;
+
+// Called from the (unauthenticated) signup page when it's reached via an
+// invite link, so it can show "you're joining <agency>" and lock the email
+// field before an account even exists. Backed by get_invite_preview() in
+// 0006_agency_invites.sql, which only returns a row for a still-pending
+// invite — an unknown, already-accepted, or revoked token just comes back
+// null and the signup page falls back to its normal "create a new agency"
+// form.
+export async function getInvitePreview(token: string): Promise<InvitePreview> {
+  const trimmed = token.trim();
+  if (!trimmed) return null;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_invite_preview", { p_token: trimmed }).maybeSingle();
+  const row = data as { agency_name: string; email: string; is_licensee_in_charge: boolean } | null;
+
+  if (error || !row) return null;
+  return { agencyName: row.agency_name, email: row.email, isLicenseeInCharge: row.is_licensee_in_charge };
 }
