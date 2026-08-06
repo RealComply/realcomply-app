@@ -63,7 +63,7 @@ export default async function SgManualPage() {
 
         {profile.is_licensee_in_charge ? (
           <div className="mt-6">
-            <SgManualUploader profile={profile} />
+            <SgManualUploader profile={profile} isFirstUpload={versions.length === 0} />
           </div>
         ) : (
           <p className="mt-6 text-xs text-neutral-400">Only the licensee in charge can publish a new version.</p>

@@ -34,6 +34,15 @@ export default async function TrainingPage() {
     attendeesBySession.get(row.session_id)!.push(row.profile_id);
   }
 
+  const sessionsById = new Map(sessions.map((s) => [s.id, s]));
+  const sessionsByAgent = new Map<string, TrainingSession[]>();
+  for (const row of (attendanceRows ?? []) as TrainingAttendance[]) {
+    const session = sessionsById.get(row.session_id);
+    if (!session) continue;
+    if (!sessionsByAgent.has(row.profile_id)) sessionsByAgent.set(row.profile_id, []);
+    sessionsByAgent.get(row.profile_id)!.push(session);
+  }
+
   return (
     <>
       <TopNav profile={profile} />
@@ -69,6 +78,42 @@ export default async function TrainingPage() {
             ))
           )}
         </div>
+
+        {sessions.length > 0 && (
+          <section className="mt-8">
+            <h2 className="text-sm font-semibold text-rc-ink">Per-agent training record</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Who&rsquo;s completed or attended what — mark attendance on a session above (&ldquo;Edit
+              attendance&rdquo;) to populate this.
+            </p>
+            <ul className="mt-2 divide-y divide-rc-border rounded-lg border border-rc-border">
+              {staff.map((s) => {
+                const attended = sessionsByAgent.get(s.id) ?? [];
+                return (
+                  <li key={s.id} className="px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>
+                      <span className="text-xs text-neutral-400">
+                        {attended.length} session{attended.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    {attended.length > 0 ? (
+                      <ul className="mt-1 flex flex-wrap gap-1.5">
+                        {attended.map((sess) => (
+                          <li key={sess.id} className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-600">
+                            {sess.title} ({sess.session_date})
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-xs text-neutral-400">No sessions recorded yet.</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
       </main>
     </>
   );
