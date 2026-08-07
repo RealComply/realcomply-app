@@ -5,6 +5,7 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
 import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
+import { DeletePropertySection } from "@/components/compliance/DeletePropertySection";
 import { itemsForStage } from "@/lib/rules/nsw-sales";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
@@ -144,6 +145,8 @@ export default async function PropertyPage({
         </div>
 
         {isCurrentStage && p.stage < 5 && <CompleteStageButton propertyId={p.id} stage={p.stage} />}
+
+        {profile.is_licensee_in_charge && <DeletePropertySection propertyId={p.id} address={p.address} />}
       </main>
     </>
   );

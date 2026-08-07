@@ -1,8 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { buildEvidencePath, finalizeEvidenceRecord, moveStagedEvidence } from "@/lib/storage/evidence";
+import { requireAuthContext } from "@/lib/actions/compliance";
+import { buildEvidencePath, finalizeEvidenceRecord, moveStagedEvidence, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { ActionState } from "@/lib/actions/auth";
 
 // Documents collected at setup time (mandatory — see createProperty below),
@@ -112,4 +114,71 @@ export async function createProperty(
   }
 
   redirect(`/dashboard/${property.id}`);
+}
+
+// Deletes a property and its whole compliance record. Licensee-in-charge
+// only, enforced both here and at the DB level (0008_property_delete_
+// licensee_only.sql tightened the RLS delete policy from "any agency
+// member" to this same check, so this app-layer gate isn't the only thing
+// standing between an agent and a destructive action they shouldn't have).
+//
+// Requires typing the address back exactly (case-insensitive) as a
+// deliberate confirmation step — there's no undo once this runs.
+//
+// property_items cascade-deletes via the FK in 0001_init.sql, but Storage
+// objects don't cascade with a database row, so any evidence files have to
+// be collected and removed here explicitly or they'd be orphaned in the
+// bucket forever with nothing left pointing at them.
+export async function deleteProperty(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const confirmAddress = String(formData.get("confirmAddress") ?? "").trim();
+
+  const { supabase, profile } = await requireAuthContext();
+
+  if (!profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can delete a property file." };
+  }
+
+  const { data: property } = await supabase
+    .from("properties")
+    .select("id, address")
+    .eq("id", propertyId)
+    .maybeSingle();
+
+  if (!property) {
+    return { error: "Property not found." };
+  }
+
+  if (confirmAddress.toLowerCase() !== property.address.trim().toLowerCase()) {
+    return { error: "That doesn't match the property address — type it exactly as shown to confirm." };
+  }
+
+  const { data: items } = await supabase
+    .from("property_items")
+    .select("evidence_path")
+    .eq("property_id", propertyId);
+
+  const evidencePaths = (items ?? [])
+    .map((item) => item.evidence_path)
+    .filter((path): path is string => !!path);
+
+  if (evidencePaths.length > 0) {
+    // Best-effort — a Storage cleanup failure shouldn't block the delete
+    // itself; an orphaned file with nothing pointing at it is a much
+    // smaller problem than a property the licensee can no longer remove.
+    await supabase.storage.from(EVIDENCE_BUCKET).remove(evidencePaths);
+  }
+
+  const { error } = await supabase.from("properties").delete().eq("id", propertyId);
+
+  if (error) {
+    return { error: "Couldn't delete the property — try again." };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/portfolio");
+  redirect("/dashboard");
 }
