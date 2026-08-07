@@ -113,7 +113,14 @@ export default async function PropertyPage({
           })}
         </div>
 
-        {hasSourceDocs && p.stage <= 1 && <ExtractDocumentsButton propertyId={p.id} />}
+        {/* Not stage-gated: extractFromDocuments only ever pre-fills a
+            still-open item's aiDraft, or auto-completes a2 specifically
+            when the model finds an explicit, dated confirmation — it never
+            touches an item that's already done or flagged. So re-reading
+            the same attached documents stays safe and useful long after a
+            property has moved past Stage 0/1 (e.g. re-checking the agency
+            agreement for a2 on a property that's already in Campaign). */}
+        {hasSourceDocs && <ExtractDocumentsButton propertyId={p.id} />}
 
         {fileFinalised && (
           <div className="mt-6 rounded-card border border-rc-green-deep/30 bg-rc-green-soft px-4 py-3 text-sm text-rc-green-deep shadow-card">
