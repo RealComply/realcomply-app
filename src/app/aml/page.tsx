@@ -22,6 +22,11 @@ export const metadata: Metadata = {
   title: "RealComply — AML/CTF for real estate agencies",
   description:
     "Tranche 2 AML/CTF reforms brought real estate agencies into scope from 1 July 2026. Join the waitlist for RealComply's AML/CTF module — diligence support for the licensee who stays accountable.",
+  // This is a quiet early test of the AML wedge, shared directly with a
+  // small first group rather than announced — kept out of search indexing
+  // for now so it isn't surfaced by a random search rather than shared
+  // deliberately. Revisit once it's ready to be public.
+  robots: { index: false, follow: false },
 };
 
 const facts = [
