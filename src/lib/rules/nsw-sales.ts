@@ -318,25 +318,6 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
   },
-  {
-    // Gap-analysis finding, 7 Aug 2026: the Price Reps checklist requires
-    // every price statement made "in the course of marketing" to be
-    // recorded in writing — including a verbal figure given at an open
-    // home. Logging an entry here IS that written record. Gated at
-    // Pre-market per Adam's call: an agent must at least acknowledge the
-    // obligation (or log a real quote) before marketing opens, though the
-    // log stays open and editable for the rest of the campaign the same
-    // way the ESP review/offers logs do.
-    key: "b5",
-    stage: 1,
-    kind: "quotes",
-    label: "Verbal price-quote log",
-    description:
-      "Every verbal price statement made to a prospective purchaser, written down here — the written record the Act requires. Log one now if you've already given a figure verbally, or confirm there's nothing to log yet.",
-    legalBasis: "Price Representations & Material Fact Checklist — price statements recorded in writing",
-    requiresDate: false,
-    requiredForStageCompletion: true,
-  },
 
   // ── Stage 2 — On market ───────────────────────────────────────────────
   {
@@ -475,6 +456,24 @@ const items: ComplianceItem[] = [
   },
 
   // ── Stage 5 — Settled ─────────────────────────────────────────────────
+  {
+    // Gap-analysis finding, 7 Aug 2026: the Price Reps checklist requires
+    // every price statement made "in the course of marketing" to be
+    // recorded in writing — including a verbal figure given at an open
+    // home. Logging an entry here IS that written record. Originally gated
+    // at Pre-market; moved to Settlement per Adam's follow-up call, so the
+    // log is finalised alongside the rest of the closing paperwork rather
+    // than being locked in before the campaign even starts.
+    key: "b5",
+    stage: 5,
+    kind: "quotes",
+    label: "Verbal price-quote log",
+    description:
+      "Every verbal price statement made to a prospective purchaser, written down here — the written record the Act requires. Log one now if you've already given a figure verbally, or confirm there's nothing to log yet.",
+    legalBasis: "Price Representations & Material Fact Checklist — price statements recorded in writing",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+  },
   {
     key: "f0",
     stage: 5,
