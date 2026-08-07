@@ -37,7 +37,11 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/signup") ||
     request.nextUrl.pathname.startsWith("/auth");
 
-  const isPublicRoute = request.nextUrl.pathname === "/" || isAuthRoute;
+  // /aml is the standalone AML/CTF waitlist landing page — public marketing
+  // content with an anon-insert waitlist form, no auth required to view it.
+  const isMarketingRoute = request.nextUrl.pathname.startsWith("/aml");
+
+  const isPublicRoute = request.nextUrl.pathname === "/" || isAuthRoute || isMarketingRoute;
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
