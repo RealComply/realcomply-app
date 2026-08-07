@@ -23,7 +23,7 @@ export function computePropertyDigests(
     // Only items in stages the file has actually reached — anything further
     // out hasn't been started yet, so it's not meaningfully "pending" or
     // "flagged," it just hasn't come up.
-    const reached = allItemsFor(property).filter((i) => i.stage <= property.stage);
+    const reached = allItemsFor(property, Object.fromEntries(rows)).filter((i) => i.stage <= property.stage);
 
     const pendingSignoff = reached.filter((i) => i.licenseeOnly && rows.get(i.key)?.status !== "done");
     const flagged = reached.filter((i) => rows.get(i.key)?.status === "flagged");

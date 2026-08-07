@@ -17,7 +17,7 @@
 // RealComply-NSW-sales-obligation-register.md and
 // RealComply-listing-lifecycle-stage-map.md (both in the project docs).
 
-import type { Property, PropertyStage } from "@/lib/types";
+import type { Property, PropertyItem, PropertyStage } from "@/lib/types";
 
 export type ItemKind =
   | "checklist" // confirm/done/flag, optional note + agent-asserted date
@@ -25,6 +25,7 @@ export type ItemKind =
   | "offers" // offers log (repeating entries)
   | "review" // ESP review log (repeating entries)
   | "reduction" // price reduction / revise-ESP workflow
+  | "quotes" // verbal price-quote log (repeating entries) — the written record of a verbal price statement
   | "sale" // final sale price + ESP-diff check
   | "reports" // pest & building / strata report register (repeating entries)
   | "export" // generate the finalised compliance file
@@ -41,7 +42,12 @@ export type ComplianceItem = {
   licenseeOnly?: boolean;
   requiresDate?: boolean;
   requiredForStageCompletion: boolean;
-  showIf?: (property: Property) => boolean;
+  // Second argument gives a conditional item visibility into ANOTHER item's
+  // recorded data (not just the property's own setup fields) — e.g. e2
+  // below only appears once a7 records that a material fact was actually
+  // disclosed, not just that the vendor was asked. Keyed by item_key, same
+  // shape as the allItems maps already built in every page that calls this.
+  showIf?: (property: Property, allItems: Record<string, PropertyItem>) => boolean;
   // Suppresses the free-text note box on the item card — for items that are
   // self-explanatory yes/done confirmations, where a note is unnecessary
   // extra work rather than useful evidence.
@@ -279,6 +285,58 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: true,
     hideNote: true,
   },
+  {
+    // Gap-analysis finding, 7 Aug 2026: the Sales File Checklist requires
+    // AML red flags/EDD to be escalated to the licensee — amv (Stage 0)
+    // confirms CDD happened but never asked this specifically. Placed here
+    // at Pre-market rather than alongside amv/amp/amc at Stage 0/4, per
+    // Adam's call — gates before marketing goes live rather than back at
+    // initial listing set-up.
+    key: "amr",
+    stage: 1,
+    kind: "checklist",
+    label: "AML red flags escalated to the licensee",
+    description:
+      "Confirm there's nothing to escalate from the vendor AML/CTF check, or that any red flags / enhanced due diligence requirements have been raised with the licensee in charge.",
+    legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+  },
+  {
+    // Gap-analysis finding, 7 Aug 2026: appeared independently in both the
+    // Sales File Checklist and the Price Representations & Material Fact
+    // Checklist — "approved by the vendor AND licensee before publication."
+    // b3 already covers vendor approval; this is the missing licensee half,
+    // gated here so it has to happen before Stage 2 (On market) opens.
+    key: "b4",
+    stage: 1,
+    kind: "checklist",
+    label: "Licensee approved the price statement before publication",
+    description:
+      "The licensee in charge confirms the price statement on the marketing material (the advertised guide/range) is accurate, before it's published.",
+    licenseeOnly: true,
+    requiresDate: false,
+    requiredForStageCompletion: true,
+  },
+  {
+    // Gap-analysis finding, 7 Aug 2026: the Price Reps checklist requires
+    // every price statement made "in the course of marketing" to be
+    // recorded in writing — including a verbal figure given at an open
+    // home. Logging an entry here IS that written record. Gated at
+    // Pre-market per Adam's call: an agent must at least acknowledge the
+    // obligation (or log a real quote) before marketing opens, though the
+    // log stays open and editable for the rest of the campaign the same
+    // way the ESP review/offers logs do.
+    key: "b5",
+    stage: 1,
+    kind: "quotes",
+    label: "Verbal price-quote log",
+    description:
+      "Every verbal price statement made to a prospective purchaser, written down here — the written record the Act requires. Log one now if you've already given a figure verbally, or confirm there's nothing to log yet.",
+    legalBasis: "Price Representations & Material Fact Checklist — price statements recorded in writing",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+  },
 
   // ── Stage 2 — On market ───────────────────────────────────────────────
   {
@@ -371,6 +429,26 @@ const items: ComplianceItem[] = [
     legalBasis: "Sch 2 r17, Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: true,
     requiredForStageCompletion: true,
+  },
+  {
+    // Gap-analysis finding, 7 Aug 2026: a7 (Stage 0) only confirms the agent
+    // asked the vendor and recorded the answer — the Price Reps checklist
+    // separately requires confirming the fact was actually disclosed to
+    // purchasers. Only appears at all when a7 records that a material fact
+    // WAS disclosed (data.materialFactDisclosed) — most files never see
+    // this item, per Adam's call: "only if a material fact has been
+    // disclosed by the vendor." Placed at Under offer rather than earlier,
+    // since that's the point a real purchaser exists to disclose it to.
+    key: "e2",
+    stage: 4,
+    kind: "checklist",
+    label: "Material facts disclosed to the purchaser(s)",
+    description:
+      "A material fact was recorded against this listing at a7 — confirm it's actually been disclosed to the purchaser(s), not just recorded from the vendor.",
+    legalBasis: "Reg 60, Property and Stock Agents Regulation 2022 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+    showIf: (_p, allItems) => Boolean((allItems["a7"]?.data as { materialFactDisclosed?: boolean } | undefined)?.materialFactDisclosed),
   },
   {
     key: "amp",
@@ -483,15 +561,19 @@ function stripShowIf(item: ComplianceItem): ComplianceItem {
   return rest;
 }
 
-export function itemsForStage(stage: PropertyStage, property: Property): ComplianceItem[] {
+export function itemsForStage(
+  stage: PropertyStage,
+  property: Property,
+  allItems: Record<string, PropertyItem> = {},
+): ComplianceItem[] {
   return items
     .filter((item) => item.stage === stage)
-    .filter((item) => (item.showIf ? item.showIf(property) : true))
+    .filter((item) => (item.showIf ? item.showIf(property, allItems) : true))
     .map(stripShowIf);
 }
 
-export function allItemsFor(property: Property): ComplianceItem[] {
-  return items.filter((item) => (item.showIf ? item.showIf(property) : true)).map(stripShowIf);
+export function allItemsFor(property: Property, allItems: Record<string, PropertyItem> = {}): ComplianceItem[] {
+  return items.filter((item) => (item.showIf ? item.showIf(property, allItems) : true)).map(stripShowIf);
 }
 
 export function getItem(key: string): ComplianceItem | undefined {

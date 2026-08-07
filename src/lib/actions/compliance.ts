@@ -95,6 +95,14 @@ export async function setItemStatus(
 
   const data: Record<string, unknown> = { note };
 
+  // a7 (material facts) carries a structured yes/no alongside the generic
+  // note — e2 (Stage 4) reads this to decide whether "disclosed to the
+  // purchaser" even applies to this file, so it needs a real boolean, not
+  // something inferred from free text.
+  if (itemKey === "a7") {
+    data.materialFactDisclosed = String(formData.get("materialFactDisclosed") ?? "") === "yes";
+  }
+
   // a4 (ESP) carries structured figures alongside the generic note, since
   // the live underquoting checks (c1, offers floor, final-sale diff) need
   // real numbers to compare against, not free text.
@@ -461,6 +469,77 @@ export async function markNoPriceRevision(propertyId: string): Promise<void> {
   revalidatePath(`/dashboard/${propertyId}`);
 }
 
+// b5 — verbal price-quote log. Logging an entry here IS the written record
+// the Price Reps checklist requires for a verbal price statement — there's
+// no separate "confirm it was written down" step because this is that step.
+export async function addVerbalQuoteEntry(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const amount = Number(formData.get("amount") ?? 0);
+  const context = String(formData.get("context") ?? "").trim();
+
+  if (!amount) {
+    return { error: "Enter the figure that was quoted." };
+  }
+  if (!context) {
+    return { error: "Note who it was given to / the context (e.g. \"buyer at Saturday's open home\")." };
+  }
+
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "b5")
+    .maybeSingle();
+
+  const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as unknown[];
+  entries.unshift({ amount, context, recordedAt: new Date().toISOString() });
+
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "b5",
+    status: "done",
+    data: { entries },
+    completedBy: user.id,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return error ? { error: error.message } : ok;
+}
+
+// b5 — "nothing to log yet" fast path, same shape as markNoPriceRevision.
+// Most files won't have a verbal quote to log before Pre-market completes —
+// this lets the gate clear without forcing an empty log entry, while
+// staying happy to be reopened and added to later in the campaign.
+export async function markNoVerbalQuotes(propertyId: string): Promise<void> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "b5")
+    .maybeSingle();
+
+  const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as unknown[];
+
+  await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "b5",
+    status: "done",
+    data: { entries, noQuotes: true },
+    completedBy: user.id,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+}
+
 // f0 — final sale price, checked against the recorded ESP range.
 export async function recordSale(
   propertyId: string,
@@ -676,14 +755,17 @@ export async function completeStage(
   }
 
   if (!property.test_mode) {
-    const required = itemsForStage(property.stage, property).filter((i) => i.requiredForStageCompletion);
-
     const { data: propertyItems } = await supabase
       .from("property_items")
       .select("*")
       .eq("property_id", propertyId);
 
     const byKey = new Map(((propertyItems ?? []) as PropertyItem[]).map((i) => [i.item_key, i]));
+    // Built before itemsForStage so conditional items (e.g. e2, which only
+    // appears once a7 records a disclosed material fact) see the same
+    // recorded data the page itself would show.
+    const allItems = Object.fromEntries(byKey);
+    const required = itemsForStage(property.stage, property, allItems).filter((i) => i.requiredForStageCompletion);
     const incomplete = required.filter((r) => byKey.get(r.key)?.status !== "done");
 
     if (incomplete.length > 0) {

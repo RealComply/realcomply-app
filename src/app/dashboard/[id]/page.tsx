@@ -50,7 +50,7 @@ export default async function PropertyPage({
       : p.stage
   ) as PropertyStage;
 
-  const stageItems = itemsForStage(viewedStage, p);
+  const stageItems = itemsForStage(viewedStage, p, allItems);
   const isCurrentStage = viewedStage === p.stage;
   const fileFinalised = p.stage === 5 && allItems["f1"]?.status === "done";
   const hasSourceDocs = ["a3", "b1", "a4b"].some((key) => allItems[key]?.evidence_path);

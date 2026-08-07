@@ -32,7 +32,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
 
   const { data: rows } = await supabase.from("property_items").select("*").eq("property_id", id);
   const allItems = Object.fromEntries(((rows ?? []) as PropertyItem[]).map((i) => [i.item_key, i]));
-  const items = allItemsFor(p);
+  const items = allItemsFor(p, allItems);
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 print:px-0">

@@ -13,6 +13,8 @@ import {
   addReportEntry,
   recordReduction,
   markNoPriceRevision,
+  addVerbalQuoteEntry,
+  markNoVerbalQuotes,
   recordSale,
   signItem,
   sendToLicensee,
@@ -266,6 +268,7 @@ function ChecklistItem({
     note?: string;
     espLow?: number;
     espHigh?: number;
+    materialFactDisclosed?: boolean;
     aiDraft?: {
       note?: string;
       espLow?: number;
@@ -296,6 +299,25 @@ function ChecklistItem({
               Pre-filled from an uploaded document — check it against the source, then save.
             </p>
           )
+        )}
+        {item.key === "a7" && (
+          <div>
+            <label className="block text-xs text-rc-muted">Material fact disclosed by the vendor?</label>
+            <select
+              name="materialFactDisclosed"
+              defaultValue={data.materialFactDisclosed === true ? "yes" : data.materialFactDisclosed === false ? "no" : ""}
+              className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+            >
+              <option value="" disabled>
+                Choose one
+              </option>
+              <option value="no">None disclosed</option>
+              <option value="yes">Yes — disclosed</option>
+            </select>
+            <p className="mt-1 text-xs text-rc-faint">
+              Answering &ldquo;yes&rdquo; adds an item at Under offer to confirm it&rsquo;s been passed on to the purchaser.
+            </p>
+          </div>
         )}
         {item.key === "a4" && (
           <div className="flex gap-3">
@@ -882,6 +904,103 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
   );
 }
 
+// b5 — verbal price-quote log. Same shape as ReductionItem above: a Yes/No
+// gate that either fast-paths to "nothing to log" or opens a repeating
+// entry form. Logging an entry here is itself the written record the Price
+// Reps checklist requires for a verbal price statement — there's no
+// separate confirmation step because this IS that step.
+function VerbalQuoteLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+  const boundAction = addVerbalQuoteEntry.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(boundAction, initialState);
+  const noQuotesAction = markNoVerbalQuotes.bind(null, propertyId);
+  const data = (current?.data ?? {}) as { entries?: Array<Record<string, unknown>>; noQuotes?: boolean };
+  const entries = data.entries ?? [];
+  const [showForm, setShowForm] = useState(entries.length > 0);
+
+  if (!showForm) {
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        {data.noQuotes ? (
+          <p className="text-sm text-rc-muted">
+            Marked — no verbal quotes given yet.{" "}
+            <button type="button" onClick={() => setShowForm(true)} className="text-rc-green-deep hover:underline">
+              Actually, log one
+            </button>
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-rc-muted">Has a price figure been given to anyone verbally yet?</p>
+            <div className="flex gap-2">
+              <form action={noQuotesAction}>
+                <button
+                  type="submit"
+                  className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt"
+                >
+                  No — nothing to log yet
+                </button>
+              </form>
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
+              >
+                Yes — log it
+              </button>
+            </div>
+          </div>
+        )}
+      </ItemShell>
+    );
+  }
+
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      <form action={formAction} className="space-y-2 rounded-lg bg-rc-bg-alt p-3">
+        <div className="flex gap-3">
+          <input
+            type="number"
+            name="amount"
+            placeholder="Figure quoted"
+            className="w-40 rounded-md border border-rc-border px-2 py-1 text-sm"
+          />
+        </div>
+        <textarea
+          name="context"
+          placeholder="Who it was given to / the context (e.g. buyer at Saturday's open home)"
+          rows={2}
+          className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+        >
+          Log quote
+        </button>
+      </form>
+      <FieldError error={state.error} />
+      {entries.length > 0 && (
+        <ul className="mt-3 space-y-2 text-sm text-rc-muted">
+          {entries.map((e, i) => (
+            <li key={i} className="border-t border-rc-border pt-2">
+              ${Number(e.amount).toLocaleString()} — {String(e.context)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {entries.length === 0 && (
+        <button
+          type="button"
+          onClick={() => setShowForm(false)}
+          className="mt-2 text-xs text-rc-faint transition hover:underline"
+        >
+          ← Back
+        </button>
+      )}
+    </ItemShell>
+  );
+}
+
 function SaleItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const boundAction = recordSale.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -1024,6 +1143,8 @@ export function ItemCard({
       return <ReportsLogItem item={item} propertyId={propertyId} current={current} />;
     case "reduction":
       return <ReductionItem item={item} propertyId={propertyId} current={current} />;
+    case "quotes":
+      return <VerbalQuoteLogItem item={item} propertyId={propertyId} current={current} />;
     case "sale":
       return <SaleItem item={item} propertyId={propertyId} current={current} />;
     case "sign":
