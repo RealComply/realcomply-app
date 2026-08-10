@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { createSignoffDocument } from "@/lib/actions/signoffs";
 import type { GiftDirection, LicenceType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -422,7 +423,10 @@ export async function deleteComplaint(complaintId: string): Promise<void> {
 }
 
 // ── SG Manual — simple upload + version history. Current version is just
-// the most recent row; older ones stay on file for the audit trail. ───────
+// the most recent row; older ones stay on file for the audit trail. Every
+// new version also publishes a sign-off document (Adam, 9 Aug 2026) so
+// every staff member has to individually acknowledge it, same file, no
+// separate upload — see signoffs.ts and the Document sign-offs register.
 export async function addSgManualVersion(
   path: string,
   fileName: string,
@@ -443,6 +447,20 @@ export async function addSgManualVersion(
     notes,
     uploaded_by: profile.id,
   });
+
+  if (!error) {
+    // Best-effort: the version is already saved above regardless of whether
+    // this succeeds, so a sign-off setup failure never loses the upload.
+    await createSignoffDocument({
+      category: "sg_manual",
+      title: versionLabel ? `Supervision Guidelines Manual — ${versionLabel}` : "Supervision Guidelines Manual",
+      periodLabel: null,
+      filePath: path,
+      fileName,
+      notes,
+      signerScope: "all_staff",
+    });
+  }
 
   revalidatePath("/dashboard/sg-manual");
   return { error: error ? "Couldn't save that version — try again." : null };

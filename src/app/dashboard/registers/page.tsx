@@ -66,6 +66,9 @@ export default async function RegistersPage() {
             <Link href="/dashboard/training" className="text-rc-muted transition hover:text-rc-green-deep">
               Training log →
             </Link>
+            <Link href="/dashboard/document-signoffs" className="text-rc-muted transition hover:text-rc-green-deep">
+              Document sign-offs →
+            </Link>
           </div>
         </div>
 

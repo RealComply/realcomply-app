@@ -79,6 +79,36 @@ export type SgManualVersion = {
   created_at: string;
 };
 
+// Document sign-offs — see supabase/migrations/0009_document_signoffs.sql
+// for the full design note. 'other' exists so a one-off document can be
+// published without inventing a new category.
+export type SignoffCategory = "sg_manual" | "trust_reconciliation" | "other";
+export type SignerScope = "all_staff" | "licensee_only";
+
+export type SignoffDocument = {
+  id: string;
+  agency_id: string;
+  category: SignoffCategory;
+  title: string;
+  period_label: string | null;
+  file_path: string;
+  file_name: string;
+  notes: string | null;
+  signer_scope: SignerScope;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
+export type SignoffSignature = {
+  id: string;
+  document_id: string;
+  agency_id: string;
+  signer_id: string;
+  typed_name: string | null;
+  signed_at: string | null;
+  created_at: string;
+};
+
 // Matches the CPD categories called out in the NSW obligation register:
 // 'general' (the base 7hr/yr requirement), 'fair_trading_forum' and
 // 'austrac_aml' (Class 1 agents only, on top of the 7 hours), and

@@ -4,19 +4,25 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
 import { SgManualUploader } from "@/components/registers/SgManualUploader";
+import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
-import type { Profile, SgManualVersion } from "@/lib/types";
+import type { Profile, SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // SG Manual store — simple upload + version history (see the SG Manual
 // scope decision: the full AI gap-analysis/redline review flow from the
 // mockup is a deliberate later build). Current version = most recent row.
+// Every version also publishes a sign-off document (addSgManualVersion in
+// registers.ts) so staff can acknowledge it right here, not just from the
+// full Document sign-offs register.
 export default async function SgManualPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: versionRows }, { data: staffRows }] = await Promise.all([
+  const [{ data: versionRows }, { data: staffRows }, { data: signoffDocRows }, { data: signoffSigRows }] = await Promise.all([
     supabase.from("sg_manual_versions").select("*").order("created_at", { ascending: false }),
     supabase.from("profiles").select("*"),
+    supabase.from("signoff_documents").select("*").eq("category", "sg_manual").order("created_at", { ascending: false }),
+    supabase.from("signoff_signatures").select("*"),
   ]);
 
   const versions = (versionRows ?? []) as SgManualVersion[];
@@ -28,6 +34,13 @@ export default async function SgManualPage() {
   );
 
   const current = versions[0];
+
+  // Matched by file_path rather than a formal FK — the signoff row is
+  // created from the same upload, in the same request, right after this one.
+  const signoffDocs = (signoffDocRows ?? []) as SignoffDocument[];
+  const signoffSigs = (signoffSigRows ?? []) as SignoffSignature[];
+  const currentSignoff = current ? signoffDocs.find((d) => d.file_path === current.file_path) : undefined;
+  const currentSignoffUrl = currentSignoff ? signedUrls[versions.findIndex((v) => v.file_path === currentSignoff.file_path)]?.data?.signedUrl ?? null : null;
 
   return (
     <>
@@ -59,6 +72,21 @@ export default async function SgManualPage() {
               · uploaded {new Date(current.created_at).toLocaleDateString("en-AU")} by {nameFor(current.uploaded_by)}
             </p>
             {current.notes && <p className="mt-1 text-xs text-rc-muted">{current.notes}</p>}
+          </div>
+        )}
+
+        {currentSignoff && (
+          <div className="mt-4">
+            <DocumentSignoffCard
+              document={currentSignoff}
+              signatures={signoffSigs.filter((s) => s.document_id === currentSignoff.id)}
+              profiles={staff}
+              currentProfile={profile}
+              fileUrl={currentSignoffUrl}
+            />
+            <Link href="/dashboard/document-signoffs" className="mt-1 inline-block text-xs text-rc-muted transition hover:text-rc-green-deep hover:underline">
+              View all sign-offs →
+            </Link>
           </div>
         )}
 

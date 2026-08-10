@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/dashboard/registers", label: "Registers" },
   { href: "/dashboard/training", label: "Training" },
   { href: "/dashboard/sg-manual", label: "SG Manual" },
+  { href: "/dashboard/document-signoffs", label: "Sign-offs" },
   { href: "/dashboard/team", label: "Team" },
 ];
 

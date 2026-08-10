@@ -28,6 +28,12 @@ export function buildSgManualPath(agencyId: string, fileName: string): string {
   return `${agencyId}/_sg-manual/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// Same bucket, same RLS, its own segment. category keeps sg_manual and
+// trust_reconciliation (and whatever's added later) from colliding.
+export function buildSignoffDocPath(agencyId: string, category: string, fileName: string): string {
+  return `${agencyId}/_signoffs/${category}/${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 // A property doesn't have an id yet while its setup form is being filled
 // in, but the browser still needs somewhere RLS-legal to put the file the
 // moment it's chosen (see below on why upload happens client-side at all).
