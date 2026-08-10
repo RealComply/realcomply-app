@@ -149,7 +149,7 @@ export default async function HomeDashboardPage() {
     <>
       <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
-        <div className="relative isolate overflow-hidden rounded-card">
+        <div className="relative isolate overflow-hidden rounded-card px-3">
           <div className="rc-mesh-bg" />
           <div className="flex items-center justify-between">
             <div>
@@ -160,6 +160,9 @@ export default async function HomeDashboardPage() {
             </div>
           </div>
 
+          {/* px-3 above matches gap-3 below, so the outer edges get the same
+              gap as the gap between tiles, rather than the first/last tile
+              sitting flush against the section edge (Adam, 9 Aug 2026). */}
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
             <StatTile n={propertyList.length} l="Properties" icon={Building2} href="/dashboard/portfolio" />
             <StatTile
