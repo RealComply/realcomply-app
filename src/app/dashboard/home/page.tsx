@@ -161,11 +161,35 @@ export default async function HomeDashboardPage() {
           </div>
 
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <StatTile n={propertyList.length} l="Properties" icon={Building2} />
-            <StatTile n={needsAttentionItems.length} l="Files need you" tone={needsAttentionItems.length > 0 ? "warn" : "ok"} icon={FileWarning} />
-            <StatTile n={licenceRisk + piRisk} l="Licence/PI at risk" tone={licenceRisk + piRisk > 0 ? "warn" : "ok"} icon={ShieldCheck} />
-            <StatTile n={complaintsOpen + complaintsUnderReview} l="Open complaints" tone={complaintsOpen + complaintsUnderReview > 0 ? "warn" : "ok"} icon={MessageSquareWarning} />
-            <StatTile n={giftsFlagged} l="Gifts awaiting review" tone={giftsFlagged > 0 ? "warn" : "ok"} icon={GiftIcon} />
+            <StatTile n={propertyList.length} l="Properties" icon={Building2} href="/dashboard/portfolio" />
+            <StatTile
+              n={needsAttentionItems.length}
+              l="Files need you"
+              tone={needsAttentionItems.length > 0 ? "warn" : "ok"}
+              icon={FileWarning}
+              href="/dashboard/portfolio"
+            />
+            <StatTile
+              n={licenceRisk + piRisk}
+              l="Licence/PI at risk"
+              tone={licenceRisk + piRisk > 0 ? "warn" : "ok"}
+              icon={ShieldCheck}
+              href="/dashboard/registers"
+            />
+            <StatTile
+              n={complaintsOpen + complaintsUnderReview}
+              l="Open complaints"
+              tone={complaintsOpen + complaintsUnderReview > 0 ? "warn" : "ok"}
+              icon={MessageSquareWarning}
+              href="/dashboard/registers"
+            />
+            <StatTile
+              n={giftsFlagged}
+              l="Gifts awaiting review"
+              tone={giftsFlagged > 0 ? "warn" : "ok"}
+              icon={GiftIcon}
+              href="/dashboard/registers"
+            />
           </div>
         </div>
 

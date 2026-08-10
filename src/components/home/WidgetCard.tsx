@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { DonutRing, type RingSegment } from "@/components/DonutRing";
+import { ClickableCard } from "./ClickableCard";
 
 // Shared shell for every Home dashboard widget. Deliberately dumb/presentational
 // — all data-shaping happens in the page — so each widget is a self-contained
@@ -57,7 +58,8 @@ export function WidgetCard({
   const ringHasValues = ring && ring.reduce((sum, s) => sum + s.value, 0) > 0;
 
   return (
-    <div
+    <ClickableCard
+      href={href}
       className={`group flex flex-col rounded-card border border-rc-border bg-white p-5 shadow-card transition duration-200 hover:-translate-y-0.5 hover:shadow-card-hover ${className}`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -88,7 +90,7 @@ export function WidgetCard({
       </div>
 
       {children && <div className="mt-3">{children}</div>}
-    </div>
+    </ClickableCard>
   );
 }
 
@@ -123,17 +125,22 @@ export function StatTile({
   l,
   tone = "neutral",
   icon: Icon,
+  href,
 }: {
   n: number | string;
   l: string;
   tone?: "neutral" | "warn" | "ok";
   icon?: LucideIcon;
+  href?: string;
 }) {
   const color = tone === "warn" ? "text-rc-amber-deep" : tone === "ok" ? "text-rc-green-deep" : "text-rc-ink";
   const badgeColor = tone === "warn" ? "text-rc-amber-deep" : tone === "ok" ? "text-rc-green-deep" : "text-rc-muted";
   const badgeGradient = tone === "warn" ? "var(--rc-badge-grad-amber)" : tone === "ok" ? "var(--rc-badge-grad-green)" : "var(--rc-green-soft)";
   return (
-    <div className="group flex items-center gap-3 rounded-card border border-rc-border bg-white p-4 shadow-card transition duration-200 hover:-translate-y-0.5 hover:shadow-card-hover">
+    <ClickableCard
+      href={href}
+      className="group flex items-center gap-3 rounded-card border border-rc-border bg-white p-4 shadow-card transition duration-200 hover:-translate-y-0.5 hover:shadow-card-hover"
+    >
       {Icon && (
         <span
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ring-white/70 ${badgeColor}`}
@@ -146,6 +153,6 @@ export function StatTile({
         <div className={`text-xl font-bold tracking-tight ${color}`}>{n}</div>
         <div className="mt-0.5 truncate text-[11px] font-medium text-rc-muted">{l}</div>
       </div>
-    </div>
+    </ClickableCard>
   );
 }
