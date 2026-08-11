@@ -121,19 +121,20 @@ export default async function RootPage() {
         </div>
       </section>
 
-      {/* ONE proof section — the differentiator, nothing else competing for attention */}
+      {/* ONE proof section — the differentiator, nothing else competing for attention.
+          Copy workshopped with Adam 11 Aug 2026: moved off "The difference" (implied a
+          competitor that doesn't exist) onto the filing-cabinet/compliance-officer
+          contrast he'd already responded to, then further onto a plain assistant-role
+          headline once we agreed the explainer paragraph below carries the specifics —
+          "personal" does the reassurance work, no absolutes, no invented rival. */}
       <section className="bg-rc-ink-bg py-16 text-white" data-section="proof">
         <div className="mx-auto grid max-w-5xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-2 lg:gap-12">
           <div>
-            <div className="text-xs font-extrabold uppercase tracking-widest text-rc-green">The difference</div>
-            <h2 className="mt-2.5 text-3xl font-extrabold tracking-tight">It reads the documents, not just the checkboxes</h2>
+            <div className="text-xs font-extrabold uppercase tracking-widest text-rc-green">What you&rsquo;ve been waiting for</div>
+            <h2 className="mt-2.5 text-3xl font-extrabold tracking-tight">Your personal compliance assistant.</h2>
             <p className="mt-4 text-base leading-relaxed text-rc-ink-muted">
-              Most compliance tools track whether you <em>ticked</em> a box. RealComply reads the documents
-              themselves and tells you when the box is wrong, like a guide price that&rsquo;s quietly slipped below
-              your own estimated selling price, tipping a listing into underquoting.
-            </p>
-            <p className="mt-4 text-base leading-relaxed text-rc-ink-muted">
-              That&rsquo;s the difference between a filing cabinet and a compliance officer.
+              It reads the documents as they land, guides you through each compliance step, and flags anything
+              that looks off before settlement. Then it wraps it all into a compliance summary, ready to sign off.
             </p>
           </div>
           <div className="rounded-card border border-rc-ink-line bg-rc-panel p-3 shadow-card-lg">
