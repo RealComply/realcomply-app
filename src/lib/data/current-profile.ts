@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import type { Profile } from "@/lib/types";
 
 // Fetches the logged-in user's profile (agency + role), redirecting to
@@ -46,6 +47,17 @@ export async function requireProfile(): Promise<Profile> {
         .maybeSingle();
 
       if (healedProfile) {
+        // Same "new agency, not an invite join" guard as the other two
+        // bootstrap_agency call sites (lib/actions/auth.ts, auth/callback) —
+        // this is the third and last place bootstrap can run, for a
+        // confirmation redirect that missed /auth/callback entirely.
+        if (!meta.invite_token) {
+          await notifyNewAgencySignup({
+            agencyName: meta.agency_name ?? "My agency",
+            fullName: meta.full_name ?? "",
+            email: user.email ?? "",
+          });
+        }
         return healedProfile as Profile;
       }
     }

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 
 // Resolves the origin the request actually came in on (e.g. the exact
 // Vercel domain the user is visiting), so the email confirmation link
@@ -94,6 +95,12 @@ export async function signup(
 
   if (joinError) {
     return { error: joinError.message };
+  }
+
+  // Only for a brand-new agency, not someone joining an existing one via
+  // invite — this is the "new signup" event, accept_invite isn't.
+  if (!inviteToken) {
+    await notifyNewAgencySignup({ agencyName, fullName, email });
   }
 
   redirect("/dashboard/home");
