@@ -32,7 +32,6 @@ export default function LoginPage() {
       <div className="rc-mesh-bg" />
       <div className="w-full max-w-sm rounded-card border border-rc-border bg-white p-8 shadow-card-lg">
         <Logo size={22} />
-        <p className="mt-1.5 text-sm text-rc-muted">Built by agents, for agents.</p>
 
         <form action={formAction} className="mt-8 space-y-4">
           <Suspense fallback={null}>
