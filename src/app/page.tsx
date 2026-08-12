@@ -10,12 +10,14 @@ import { Logo } from "@/components/Logo";
 // RealComply-landing-page-mvp.html live in the project as reference/export
 // copies of this content, not the deployed source of truth any more).
 //
-// Content is the trimmed MVP shape Adam approved (hero + one proof point +
-// a single repeated CTA), not the full 9-section site — deliberately lighter
-// on detail (no pricing table, no full feature grid) while the domain is in
-// its quiet-launch phase: Adam wants realcomply.com.au live and collecting
-// real signups, but doesn't want to hand a competitor (or Jye, the domain's
-// previous owner) a full blueprint before there's a client base. See
+// Content is the bare-hook shape Adam approved on 12 Aug 2026 (headline +
+// one-line pitch + a single CTA, no mock UI at all) — a further strip-back
+// from the earlier "hero + one proof point" MVP. That earlier version's
+// hero snapshot card and "personal compliance assistant" proof section
+// (with the specific underquoting-example mockup) were cut because they
+// showed too concretely how the product reasons — exactly the kind of
+// detail Adam doesn't want handing Jye (the domain's previous owner) or
+// any other competitor a blueprint before there's a client base. See
 // RealComply-brand-and-site-status.md for the fuller background.
 //
 // robots: noindex/nofollow for the same reason, mirroring the /aml page's
@@ -51,102 +53,42 @@ export default async function RootPage() {
         </div>
       </header>
 
-      {/* HERO — single screen, single message, single action */}
+      {/* HERO — the whole page. Bare hook: headline, one-line pitch, one CTA,
+          no mock UI. See the file-level comment above for why. */}
       <section className="relative isolate overflow-hidden" data-section="hero">
         <div className="rc-mesh-bg" />
-        <div className="mx-auto grid max-w-5xl items-center gap-10 px-4 py-10 sm:px-6 sm:py-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12">
-          <div>
-            <span className="inline-flex items-center gap-2 rounded-full bg-rc-green-soft px-3.5 py-1.5 text-xs font-bold text-rc-green-deep">
-              <span className="h-2 w-2 rounded-full bg-rc-green-deep" />
-              Built by agents, for agents
+        <div className="mx-auto max-w-2xl px-4 py-14 text-center sm:px-6 sm:py-20">
+          <span className="inline-flex items-center gap-2 rounded-full bg-rc-green-soft px-3.5 py-1.5 text-xs font-bold text-rc-green-deep">
+            <span className="h-2 w-2 rounded-full bg-rc-green-deep" />
+            Built by agents, for agents
+          </span>
+          <h1 className="mt-5 text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
+            Stay on top of compliance. <span className="text-rc-green-deep">Without a full-time hire.</span>
+          </h1>
+          <p className="mx-auto mt-4 max-w-md text-lg text-rc-muted">
+            RealComply reads your agreements, contracts and records, checks them against NSW Fair Trading
+            requirements, and flags what needs attention.
+          </p>
+          <a
+            href="/signup"
+            className="mt-7 inline-flex items-center gap-2 rounded-full bg-rc-green-deep px-7 py-3.5 text-base font-bold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
+            data-cta="hero-primary"
+          >
+            Start your free trial
+          </a>
+          <div className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm font-semibold text-rc-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
+              Grounded in NSW legislation
             </span>
-            <h1 className="mt-5 text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
-              Stay on top of compliance. <span className="text-rc-green-deep">Without a full-time hire.</span>
-            </h1>
-            <p className="mt-4 max-w-md text-lg text-rc-muted">
-              RealComply reads your agreements, contracts and records, checks them against NSW Fair Trading
-              requirements, and flags what needs attention.
-            </p>
-            <a
-              href="/signup"
-              className="mt-7 inline-flex items-center gap-2 rounded-full bg-rc-green-deep px-7 py-3.5 text-base font-bold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
-              data-cta="hero-primary"
-            >
-              Start your free trial
-            </a>
-            <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-rc-muted">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
-                Grounded in NSW legislation
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
-                Up and running in a day
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
-                14-day free trial, no lock-in
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-card border border-rc-border bg-white p-5 shadow-card-lg">
-            <div className="flex items-center justify-between">
-              <span className="text-base font-extrabold">123 Smith Street, Smithtown</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-rc-green-soft px-3 py-1 text-xs font-bold text-rc-green-deep">
-                <span className="h-2 w-2 rounded-full bg-rc-green-deep" />
-                On track
-              </span>
-            </div>
-            <p className="mt-0.5 text-xs text-rc-faint">Sales file · NSW · last reviewed today</p>
-
-            <div className="mt-3 divide-y divide-rc-border border-t border-rc-border">
-              <div className="flex items-center gap-3 py-3 text-sm">
-                <span className="h-2.5 w-2.5 flex-none rounded-full bg-rc-green-deep" />
-                Agency agreement read &amp; on file
-                <span className="ml-auto text-xs font-bold text-rc-green-deep">Clear</span>
-              </div>
-              <div className="flex items-center gap-3 py-3 text-sm">
-                <span className="h-2.5 w-2.5 flex-none rounded-full bg-rc-green-deep" />
-                Price guide matches the estimate
-                <span className="ml-auto text-xs font-bold text-rc-green-deep">Clear</span>
-              </div>
-              <div className="flex items-center gap-3 py-3 text-sm">
-                <span className="h-2.5 w-2.5 flex-none rounded-full bg-rc-amber-deep" />
-                <span className="font-semibold text-rc-amber-deep">Estimate due for weekly review</span>
-                <span className="ml-auto text-xs font-bold text-rc-amber-deep">Look</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ONE proof section — the differentiator, nothing else competing for attention.
-          Copy workshopped with Adam 11 Aug 2026: moved off "The difference" (implied a
-          competitor that doesn't exist) onto the filing-cabinet/compliance-officer
-          contrast he'd already responded to, then further onto a plain assistant-role
-          headline once we agreed the explainer paragraph below carries the specifics —
-          "personal" does the reassurance work, no absolutes, no invented rival. */}
-      <section className="bg-rc-ink-bg py-16 text-white" data-section="proof">
-        <div className="mx-auto grid max-w-5xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-2 lg:gap-12">
-          <div>
-            <div className="text-xs font-extrabold uppercase tracking-widest text-rc-green">What you&rsquo;ve been waiting for</div>
-            <h2 className="mt-2.5 text-3xl font-extrabold tracking-tight">Your personal compliance assistant.</h2>
-            <p className="mt-4 text-base leading-relaxed text-rc-ink-muted">
-              It reads the documents as they land, guides you through each compliance step, and flags anything
-              that looks off before settlement. Then it wraps it all into a compliance summary, ready to sign off.
-            </p>
-          </div>
-          <div className="rounded-card border border-rc-ink-line bg-rc-panel p-3 shadow-card-lg">
-            <div className="mx-3 mt-3 h-2.5 w-4/5 rounded bg-white/[0.06]" />
-            <div className="mx-3 mt-2 h-2.5 w-3/5 rounded bg-white/[0.06]" />
-            <div className="m-3 rounded-xl border border-rc-green/30 bg-rc-green/10 p-3.5 text-xs font-semibold leading-relaxed text-rc-green">
-              &ldquo;Advertised guide $1,600,000 sits below your estimated selling price of $1,680,000. That reads
-              as underquoting. Raise the guide or revise the estimate.&rdquo;
-            </div>
-            <div className="mx-3 mt-2 h-2.5 w-4/5 rounded bg-white/[0.06]" />
-            <div className="mx-3 mt-2 h-2.5 w-full rounded bg-white/[0.06]" />
-            <div className="mx-3 mb-3 mt-2 h-2.5 w-3/5 rounded bg-white/[0.06]" />
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
+              Up and running in a day
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
+              14-day free trial, no lock-in
+            </span>
           </div>
         </div>
       </section>
