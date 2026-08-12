@@ -381,88 +381,39 @@ export async function addOfferEntry(
   return error ? { error: error.message } : ok;
 }
 
-// d3 — price reduction / ESP revision workflow. If the ESP itself was
-// revised, s72A requires written notice to the vendor + an amended
-// agreement — this records that those steps happened; it doesn't chase
-// them up automatically (no document generation wired in yet).
-export async function recordReduction(
-  propertyId: string,
-  _prevState: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
+// d3 — price reduction / ESP revision, simplified (12 Aug 2026) to a plain
+// Yes/No question: did the ESP need to be revised this campaign? The old
+// version asked for a typed reason plus separate figures/checkboxes
+// (vendor-notified, agreement-amended) re-typed by hand — Adam flagged that
+// as unnecessary duplication. The written notice sent to the vendor IS the
+// record now; it's attached via the item's own generic evidence uploader
+// (ItemShell, since d3 doesn't hideEvidence), not retyped into this form.
+export async function markEspRevised(propertyId: string): Promise<void> {
   const { supabase, user, profile } = await requireAuthContext();
-
-  const reason = String(formData.get("reason") ?? "").trim();
-  const espAdjusted = formData.get("espAdjusted") === "on";
-  const newEspLow = Number(formData.get("newEspLow") ?? 0) || null;
-  const newEspHigh = Number(formData.get("newEspHigh") ?? newEspLow ?? 0) || newEspLow;
-  const vendorNotified = formData.get("vendorNotified") === "on";
-  const agreementAmended = formData.get("agreementAmended") === "on";
-
-  if (!reason) {
-    return { error: "Add a reason for the reduction." };
-  }
-  if (espAdjusted && (!vendorNotified || !agreementAmended)) {
-    return {
-      error:
-        "An ESP revision requires both written notice to the vendor and an amended agreement before it can be logged as complete.",
-    };
-  }
-
-  const { data: existing } = await supabase
-    .from("property_items")
-    .select("data")
-    .eq("property_id", propertyId)
-    .eq("item_key", "d3")
-    .maybeSingle();
-
-  const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as unknown[];
-  entries.unshift({
-    reason,
-    espAdjusted,
-    newEspLow,
-    newEspHigh,
-    vendorNotified,
-    agreementAmended,
-    recordedAt: new Date().toISOString(),
-  });
-
-  const { error } = await upsertItem(supabase, {
-    agencyId: profile.agency_id,
-    propertyId,
-    itemKey: "d3",
-    status: "done",
-    data: { entries },
-    completedBy: user.id,
-  });
-
-  revalidatePath(`/dashboard/${propertyId}`);
-  return error ? { error: error.message } : ok;
-}
-
-// d3 — "no revision" fast path. Most listings never need a price change, so
-// this marks the item done without forcing the agent through the log form.
-// Preserves any existing entries (belt-and-braces — this shouldn't normally
-// be called once entries already exist, since ReductionItem hides the
-// Yes/No gate in that case).
-export async function markNoPriceRevision(propertyId: string): Promise<void> {
-  const { supabase, user, profile } = await requireAuthContext();
-
-  const { data: existing } = await supabase
-    .from("property_items")
-    .select("data")
-    .eq("property_id", propertyId)
-    .eq("item_key", "d3")
-    .maybeSingle();
-
-  const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as unknown[];
 
   await upsertItem(supabase, {
     agencyId: profile.agency_id,
     propertyId,
     itemKey: "d3",
     status: "done",
-    data: { entries, noRevision: true },
+    data: { espRevised: true },
+    completedBy: user.id,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+}
+
+// d3 — "no revision" outcome. Most listings never need an ESP change, so
+// this marks the item done immediately without asking for evidence.
+export async function markNoPriceRevision(propertyId: string): Promise<void> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "d3",
+    status: "done",
+    data: { espRevised: false },
     completedBy: user.id,
   });
 

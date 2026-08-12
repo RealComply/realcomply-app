@@ -318,17 +318,9 @@ async function extractOneDocument(
       "what is shown, and do not reason from what this type of document 'usually' or 'typically' contains. If " +
       "nothing relevant is written down for an item, or the content shown is too short, generic, or unrelated to " +
       "make a grounded finding, omit that item entirely — an empty patches array is correct and expected, not a " +
-      "failure. Keep notes short, factual, and traceable to specific text you were actually shown. One exception " +
-      "to 'never speculate': when a document contains its own index or checklist of what's attached (for " +
-      "example a contract's 'List of Documents' page), you should cross-check that index against what actually " +
-      "appears later in the same document — that is a literal comparison between two parts of the one file in " +
-      "front of you, not a guess about the outside world, and it is exactly the kind of grounded finding this " +
-      "tool exists for. If a box is ticked but you can't find the matching attachment, or a box is left blank " +
-      "despite the item plainly being attached further on, report that mismatch specifically and factually — " +
-      "name the document, quote identifying details (issuer, date, certificate or reference number) if visible, " +
-      "and say exactly what you found and where it disagrees with the index. Still never assert a document is " +
-      "missing or doesn't exist unless you've actually looked through the whole document for it; phrase that as " +
-      "'not found in what I was shown', not a categorical claim. Beyond that index-cross-check exception, treat " +
+      "failure. Keep notes short, factual, and traceable to specific text you were actually shown. Never assert a " +
+      "document is missing or doesn't exist unless you've actually looked through the whole document for it; " +
+      "phrase that as 'not found in what I was shown', not a categorical claim. Treat " +
       "the note field as a place to flag something for the agent's attention — a gap, an ambiguity, a missing " +
       "detail, something needing their confirmation or follow-up — never as a summary or restatement of a fact " +
       "the document already states plainly. The agent has the source document open in front of them; telling " +
@@ -361,17 +353,16 @@ async function extractOneDocument(
               "editable starting draft for the agent to refine, not just a gap-flag), a5 " +
               "(commission/rebate/VPA terms), a6 " +
               "(cooling-off), a7 (material facts disclosed), b1 (the s52A prescribed documents — planning " +
-              "certificate, sewer/sewerage diagrams, title/plan. First check this actually looks like a real " +
+              "certificate, sewer/sewerage diagram, title/plan. First check this actually looks like a real " +
               "contract for sale of land — vendor/purchaser details, price, settlement terms, that kind of " +
               "substance. If it doesn't, say so in one line and stop there; don't attempt the s52A check at all " +
               "on something that isn't genuinely a contract, even though it was labelled as one when uploaded. " +
-              "If it does look like a real contract and has a 'List of Documents' index page, don't just read " +
-              "the checkboxes and stop — check whether the annexures later in the document actually back up " +
-              "what's marked, and name the specific documents you can actually find attached, with identifying " +
-              "details like issuer, date, or certificate number where visible. Report any mismatch between the " +
-              "index and the actual attachments specifically — that's a comparison within this one document, not " +
-              "a guess. Don't claim something is missing unless you've looked through the whole document and " +
-              "still can't find it). For every item: only report what is directly readable in the content above; " +
+              "If it does look like a real contract, keep this simple: just say plainly which of those three " +
+              "documents, if any, you can't find anywhere in what was shown. Don't cross-check a 'List of " +
+              "Documents' index page against the annexures, don't name issuers/dates/certificate numbers, and " +
+              "don't describe what IS present — the agent has the document open in front of them. If all three " +
+              "are there, leave b1 out of the patches entirely; that's the normal, expected outcome, not a " +
+              "reason to keep looking for something to say). For every item: only report what is directly readable in the content above; " +
               "if you're not looking at something substantial enough to ground a finding, leave that item out " +
               "rather than filling it in.",
           },

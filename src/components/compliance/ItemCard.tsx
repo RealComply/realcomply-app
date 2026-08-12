@@ -11,7 +11,7 @@ import {
   addReviewEntry,
   addOfferEntry,
   addReportEntry,
-  recordReduction,
+  markEspRevised,
   markNoPriceRevision,
   addVerbalQuoteEntry,
   markNoVerbalQuotes,
@@ -358,7 +358,7 @@ function ChecklistItem({
               Findings <span className="font-normal text-rc-faint">(from AI extraction, not for manual entry)</span>
             </label>
             <p className="mt-1 rounded-md border border-rc-border bg-rc-bg-alt px-2 py-1.5 text-sm text-rc-ink">
-              {(data.note ?? draft?.note ?? "").trim() || "None"}
+              {(data.note ?? draft?.note ?? "").trim() || "No findings to action"}
             </p>
             {/* Carries the current finding through Mark done/Flag/Reopen so it isn't wiped by
                 a submit — this field has no editable input, so formData wouldn't otherwise include it. */}
@@ -802,104 +802,59 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
   );
 }
 
-// d3 — not every listing has a price change, so this starts with a plain
-// Yes/No gate rather than assuming there's a reduction to log. "No" marks
-// the item done immediately via markNoPriceRevision; "Yes" reveals the
-// existing log form. An already-logged reduction (entries.length > 0)
-// skips the gate and goes straight to the form/history.
+// d3 — simplified (12 Aug 2026) to a plain Yes/No question: did the ESP
+// need to be revised during the campaign? "No" marks the item done
+// immediately. "Yes" also marks it done — the notice sent to the vendor is
+// attached via the item's own generic evidence uploader (rendered below by
+// ItemShell, since d3 doesn't hideEvidence), not retyped into a form here.
+// "Change answer" is local-only UI state so either outcome can be
+// reconsidered without a confirm dialog; picking a new answer overwrites
+// the stored one.
 function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
-  const boundAction = recordReduction.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(boundAction, initialState);
-  const noRevisionAction = markNoPriceRevision.bind(null, propertyId);
-  const data = (current?.data ?? {}) as { entries?: Array<Record<string, unknown>>; noRevision?: boolean };
-  const entries = data.entries ?? [];
-  const [showForm, setShowForm] = useState(entries.length > 0);
+  const yesAction = markEspRevised.bind(null, propertyId);
+  const noAction = markNoPriceRevision.bind(null, propertyId);
+  const data = (current?.data ?? {}) as { espRevised?: boolean };
+  const [reconsidering, setReconsidering] = useState(false);
+  const answered = data.espRevised !== undefined && !reconsidering;
 
-  if (!showForm) {
+  if (!answered) {
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-        {data.noRevision ? (
-          <p className="text-sm text-rc-muted">
-            Marked — no price revision on this listing.{" "}
-            <button type="button" onClick={() => setShowForm(true)} className="text-rc-green-deep hover:underline">
-              Actually, log one
-            </button>
-          </p>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-sm text-rc-muted">Has the price been revised during this campaign?</p>
-            <div className="flex gap-2">
-              <form action={noRevisionAction}>
-                <button
-                  type="submit"
-                  className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt"
-                >
-                  No — nothing to record
-                </button>
-              </form>
+        <div className="space-y-2">
+          <p className="text-sm text-rc-muted">Did the ESP need to be revised during this campaign?</p>
+          <div className="flex gap-2">
+            <form action={noAction} onSubmit={() => setReconsidering(false)}>
               <button
-                type="button"
-                onClick={() => setShowForm(true)}
+                type="submit"
+                className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt"
+              >
+                No
+              </button>
+            </form>
+            <form action={yesAction} onSubmit={() => setReconsidering(false)}>
+              <button
+                type="submit"
                 className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
               >
-                Yes — log it
+                Yes
               </button>
-            </div>
+            </form>
           </div>
-        )}
+        </div>
       </ItemShell>
     );
   }
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form action={formAction} className="space-y-2 rounded-lg bg-rc-bg-alt p-3">
-        <textarea
-          name="reason"
-          placeholder="Reason for the reduction"
-          rows={2}
-          className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
-        />
-        <label className="flex items-center gap-2 text-xs text-rc-muted">
-          <input type="checkbox" name="espAdjusted" /> This also revises the ESP
-        </label>
-        <div className="flex gap-2">
-          <input type="number" name="newEspLow" placeholder="New ESP low" className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm" />
-          <input type="number" name="newEspHigh" placeholder="New ESP high" className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm" />
-        </div>
-        <label className="flex items-center gap-2 text-xs text-rc-muted">
-          <input type="checkbox" name="vendorNotified" /> Vendor notified in writing
-        </label>
-        <label className="flex items-center gap-2 text-xs text-rc-muted">
-          <input type="checkbox" name="agreementAmended" /> Agreement amended
-        </label>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
-        >
-          Log reduction
+      <p className="text-sm text-rc-muted">
+        {data.espRevised
+          ? "ESP was revised — attach the notice sent to the vendor below."
+          : "Marked — the ESP wasn't revised on this listing."}{" "}
+        <button type="button" onClick={() => setReconsidering(true)} className="text-rc-green-deep hover:underline">
+          Change answer
         </button>
-      </form>
-      <FieldError error={state.error} />
-      {entries.length > 0 && (
-        <ul className="mt-3 space-y-2 text-sm text-rc-muted">
-          {entries.map((e, i) => (
-            <li key={i} className="border-t border-rc-border pt-2">
-              {String(e.reason)} {e.espAdjusted ? "· ESP revised" : ""}
-            </li>
-          ))}
-        </ul>
-      )}
-      {entries.length === 0 && (
-        <button
-          type="button"
-          onClick={() => setShowForm(false)}
-          className="mt-2 text-xs text-rc-faint transition hover:underline"
-        >
-          ← Back
-        </button>
-      )}
+      </p>
     </ItemShell>
   );
 }
