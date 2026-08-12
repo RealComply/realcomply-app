@@ -67,6 +67,21 @@ export type ComplianceItem = {
 
 const items: ComplianceItem[] = [
   // ── Stage 0 — Listing set-up ──────────────────────────────────────────
+  // a3 (signed agreement) leads the stage — Adam wants it front and centre
+  // since it's the item agents actually chase down first in practice, ahead
+  // of the AML/consumer-guide housekeeping items that used to precede it.
+  {
+    key: "a3",
+    stage: 0,
+    kind: "checklist",
+    label: "Agency agreement signed; copy served within 48 hours",
+    description:
+      "A signed copy of the agency agreement must be given to the vendor within 48 hours of signing.",
+    legalBasis: "s55, Property and Stock Agents Act 2002 (NSW); Sch 1 r16",
+    requiresDate: true,
+    requiredForStageCompletion: true,
+    showFindings: true,
+  },
   {
     key: "a1",
     stage: 0,
@@ -90,18 +105,6 @@ const items: ComplianceItem[] = [
     legalBasis: "s56, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: true,
     requiredForStageCompletion: true,
-  },
-  {
-    key: "a3",
-    stage: 0,
-    kind: "checklist",
-    label: "Agency agreement signed; copy served within 48 hours",
-    description:
-      "A signed copy of the agency agreement must be given to the vendor within 48 hours of signing.",
-    legalBasis: "s55, Property and Stock Agents Act 2002 (NSW); Sch 1 r16",
-    requiresDate: true,
-    requiredForStageCompletion: true,
-    showFindings: true,
   },
   {
     key: "a4",
