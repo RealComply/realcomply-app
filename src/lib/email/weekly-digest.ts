@@ -2,7 +2,16 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { sendEmail } from "@/lib/email/send";
 import { computePropertyDigests, daysSinceActivity, type PropertyDigest } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
-import { STAGE_LABELS, type Agency, type Profile, type Property, type PropertyItem } from "@/lib/types";
+import { STAGE_LABELS, type Agency, type Profile, type Property, type PropertyItem, type TrainingSession } from "@/lib/types";
+
+// Office training frequency isn't prescribed — s32 is outcome-based, the
+// agency sets its own cadence — but "defaults quarterly" (see
+// src/app/dashboard/training/page.tsx) has only ever lived as a code
+// comment, never actually checked against anything. This is that check:
+// 90 days is quarterly's rough length, and there's no per-agency cadence
+// setting to read instead, so it's hardcoded the same way "quarterly" was
+// already assumed everywhere else.
+const TRAINING_REMINDER_DAYS = 90;
 
 // Same computation the in-app "Office overview" page uses
 // (src/app/dashboard/portfolio/page.tsx) — the Monday email is meant to be
@@ -14,15 +23,22 @@ type AgencyBundle = {
   properties: Property[];
   profiles: Profile[];
   digests: PropertyDigest[];
+  lastTrainingSessionDate: string | null;
 };
 
 async function loadAgencyBundle(
   supabase: ReturnType<typeof createServiceClient>,
   agency: Agency,
 ): Promise<AgencyBundle> {
-  const [{ data: properties }, { data: profiles }] = await Promise.all([
+  const [{ data: properties }, { data: profiles }, { data: trainingSessions }] = await Promise.all([
     supabase.from("properties").select("*").eq("agency_id", agency.id),
     supabase.from("profiles").select("*").eq("agency_id", agency.id),
+    supabase
+      .from("training_sessions")
+      .select("session_date")
+      .eq("agency_id", agency.id)
+      .order("session_date", { ascending: false })
+      .limit(1),
   ]);
 
   const propertyList = (properties ?? []) as Property[];
@@ -41,8 +57,9 @@ async function loadAgencyBundle(
   }
 
   const digests = computePropertyDigests(propertyList, itemsByProperty);
+  const lastTrainingSessionDate = ((trainingSessions as Pick<TrainingSession, "session_date">[] | null) ?? [])[0]?.session_date ?? null;
 
-  return { agency, properties: propertyList, profiles: profileList, digests };
+  return { agency, properties: propertyList, profiles: profileList, digests, lastTrainingSessionDate };
 }
 
 function agentName(profiles: Profile[], id: string): string {
@@ -103,6 +120,23 @@ function renderLicenceAndPiSection(agency: Agency, profiles: Profile[]): string 
   return lines.join("\n");
 }
 
+// Same "flag only when it's actually due" shape as renderLicenceAndPiSection
+// above — returns "" (nothing added) when there's a session on record within
+// the reminder window, so this only ever shows up when it's genuinely worth
+// the licensee's attention.
+function renderTrainingSection(lastTrainingSessionDate: string | null): string {
+  const days = daysSinceActivity(lastTrainingSessionDate);
+  if (days !== null && days <= TRAINING_REMINDER_DAYS) return "";
+
+  const lines = ["", "Training", "========"];
+  lines.push(
+    days === null
+      ? "  - No training session logged yet."
+      : `  - ${days} days since the last logged training session — worth booking one in.`,
+  );
+  return lines.join("\n");
+}
+
 const FOOTER =
   "\n\n---\nRealComply provides diligence support to help you stay on top of compliance. " +
   "It doesn't guarantee compliance and doesn't replace your own judgement — you decide.\n" +
@@ -124,6 +158,7 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
   for (const agency of (agencies ?? []) as Agency[]) {
     const bundle = await loadAgencyBundle(supabase, agency);
     const licenceSection = renderLicenceAndPiSection(bundle.agency, bundle.profiles);
+    const trainingSection = renderTrainingSection(bundle.lastTrainingSessionDate);
 
     for (const profile of bundle.profiles) {
       if (!profile.is_agent && !profile.is_licensee_in_charge) {
@@ -142,6 +177,7 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
         sections.push("");
         sections.push(renderDigestSection("Whole agency", bundle.digests, bundle.profiles));
         if (licenceSection) sections.push(licenceSection);
+        if (trainingSection) sections.push(trainingSection);
       }
 
       const text = sections.join("\n") + FOOTER;
