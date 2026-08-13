@@ -16,7 +16,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { Logo } from "@/components/Logo";
+import { LogoMark } from "@/components/Logo";
 
 // Left sidebar navigation, replacing the seven-link top bar (TopNav) that had
 // outgrown its row and scrolled sideways on smaller screens.
@@ -118,7 +118,12 @@ export function Sidebar() {
         data-rail-center
         className="flex items-center gap-2.5 px-2.5 pb-5 pt-0.5"
       >
-        <Logo size={20} />
+        {/* LogoMark, not Logo. Logo bundles the mark WITH a "RealComply"
+            wordmark in text-rc-ink — near-invisible on this surface, and it
+            rendered a second time underneath the white one below, which is
+            exactly what it looked like in production. variant="dark" is the
+            lifted fill the mark already provides for ink surfaces. */}
+        <LogoMark size={26} variant="dark" />
         <span
           data-rail-hide
           className="whitespace-nowrap text-[17px] font-extrabold tracking-tight text-white"
@@ -181,8 +186,13 @@ export function Sidebar() {
     <>
       {/* Desktop: a real column in the layout grid, with the width control
           pinned to its bottom edge. */}
-      <aside className="rc-app-chrome relative hidden md:block">
-        {panel}
+      {/* The control sits in normal flow beneath the panel rather than
+          absolutely positioned over it — as an overlay it landed on top of
+          the "Diligence support" line, which is what shipped. A flex column
+          with the panel taking the free space keeps them apart at any
+          height. */}
+      <aside className="rc-app-chrome hidden bg-rc-nav-bg md:flex md:flex-col">
+        <div className="min-h-0 flex-1">{panel}</div>
         <button
           type="button"
           onClick={(e) => toggleRail(e.currentTarget)}
@@ -190,7 +200,7 @@ export function Sidebar() {
           aria-label="Collapse or expand the sidebar"
           aria-pressed="false"
           data-rail-center
-          className="absolute inset-x-3 bottom-4 flex h-8 items-center gap-2 rounded-lg px-3 text-rc-nav-muted transition hover:bg-white/[0.06] hover:text-white"
+          className="mx-3 mb-4 mt-1 flex h-8 items-center gap-2 rounded-lg px-3 text-rc-nav-muted transition hover:bg-white/[0.06] hover:text-white"
         >
           <PanelLeftClose data-expanded-only size={16} aria-hidden="true" />
           <PanelLeftOpen data-rail-only size={16} aria-hidden="true" />
