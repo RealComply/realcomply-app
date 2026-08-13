@@ -7,11 +7,12 @@ import { LicencePanel } from "@/components/registers/LicencePanel";
 import { InsurancePanel } from "@/components/registers/InsurancePanel";
 import { GiftsPanel } from "@/components/registers/GiftsPanel";
 import { ComplaintsPanel } from "@/components/registers/ComplaintsPanel";
+import { BreachesPanel } from "@/components/registers/BreachesPanel";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { expiryStatus } from "@/lib/expiry-status";
-import type { Agency, Complaint, CpdRecord, Gift, Profile, Property } from "@/lib/types";
+import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile, Property } from "@/lib/types";
 
-const TAB_KEYS = new Set(["licence", "insurance", "gifts", "complaints"]);
+const TAB_KEYS = new Set(["licence", "insurance", "gifts", "complaints", "breaches"]);
 
 // Registers — RealComply-website-IA.md's "Registers" screen, all three tabs
 // from the mockup: licence register (+ PI insurance + CPD), gift register
@@ -30,7 +31,7 @@ export default async function RegistersPage({
   const profile = await requireProfile();
   const supabase = await createClient();
   const { tab, add } = await searchParams;
-  const defaultTab = (tab && TAB_KEYS.has(tab) ? tab : "licence") as "licence" | "insurance" | "gifts" | "complaints";
+  const defaultTab = (tab && TAB_KEYS.has(tab) ? tab : "licence") as "licence" | "insurance" | "gifts" | "complaints" | "breaches";
 
   const cpdYear = currentCpdYear();
 
@@ -41,6 +42,7 @@ export default async function RegistersPage({
     { data: giftRows },
     { data: complaintRows },
     { data: propertyRows },
+    { data: breachRows },
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
@@ -48,6 +50,7 @@ export default async function RegistersPage({
     supabase.from("gifts").select("*").order("gift_date", { ascending: false }),
     supabase.from("complaints").select("*").order("received_date", { ascending: false }),
     supabase.from("properties").select("*").order("address", { ascending: true }),
+    supabase.from("breaches").select("*").order("identified_date", { ascending: false }),
   ]);
 
   const staff = (staffRows ?? []) as Profile[];
@@ -55,6 +58,7 @@ export default async function RegistersPage({
   const gifts = (giftRows ?? []) as Gift[];
   const complaints = (complaintRows ?? []) as Complaint[];
   const properties = (propertyRows ?? []) as Property[];
+  const breaches = (breachRows ?? []) as Breach[];
 
   const cpdByProfile: Record<string, CpdRecord[]> = {};
   for (const row of (cpdRows ?? []) as CpdRecord[]) {
@@ -63,6 +67,11 @@ export default async function RegistersPage({
 
   const giftsBadge = gifts.filter((g) => g.status === "flagged").length;
   const complaintsBadge = complaints.filter((c) => c.status !== "resolved").length;
+  // Anything still open, plus any notifiable breach not yet notified — the
+  // latter carries a statutory deadline (s89: 5 days), so it earns a badge
+  // even once the breach itself has a corrective action recorded.
+  const breachesBadge =
+    breaches.filter((b) => b.status !== "closed" || (b.notifiable && !b.notified_date)).length;
   const insuranceBadge = agency
     ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry].filter((d) => {
         const s = expiryStatus(d);
@@ -100,6 +109,7 @@ export default async function RegistersPage({
               insuranceBadge={insuranceBadge}
               giftsBadge={giftsBadge}
               complaintsBadge={complaintsBadge}
+              breachesBadge={breachesBadge}
               defaultTab={defaultTab}
               licence={
                 <LicencePanel staff={staff} cpdByProfile={cpdByProfile} viewerProfile={profile} cpdYearLabel={cpdYear.label} />
@@ -121,6 +131,14 @@ export default async function RegistersPage({
                   properties={properties}
                   viewerProfile={profile}
                   resolutionTargetDays={agency.complaint_resolution_target_days}
+                />
+              }
+              breaches={
+                <BreachesPanel
+                  breaches={breaches}
+                  staff={staff}
+                  properties={properties}
+                  viewerProfile={profile}
                 />
               }
             />

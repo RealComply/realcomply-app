@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { currentCpdYear, CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
-import type { Agency, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
+import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
 
 const LICENCE_TYPE_LABELS: Record<string, string> = {
   class_1: "Class 1 licence",
@@ -19,19 +19,21 @@ export default async function RegistersExportPage() {
   const supabase = await createClient();
   const cpdYear = currentCpdYear();
 
-  const [{ data: staffRows }, { data: agencyRow }, { data: cpdRows }, { data: giftRows }, { data: complaintRows }] =
+  const [{ data: staffRows }, { data: agencyRow }, { data: cpdRows }, { data: giftRows }, { data: complaintRows }, { data: breachRows }] =
     await Promise.all([
       supabase.from("profiles").select("*").order("full_name", { ascending: true }),
       supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
       supabase.from("cpd_records").select("*").gte("completed_date", cpdYear.start).lte("completed_date", cpdYear.end),
       supabase.from("gifts").select("*").order("gift_date", { ascending: false }),
       supabase.from("complaints").select("*").order("received_date", { ascending: false }),
+      supabase.from("breaches").select("*").order("identified_date", { ascending: false }),
     ]);
 
   const staff = (staffRows ?? []) as Profile[];
   const agency = agencyRow as Agency | null;
   const gifts = (giftRows ?? []) as Gift[];
   const complaints = (complaintRows ?? []) as Complaint[];
+  const breaches = (breachRows ?? []) as Breach[];
   const cpdByProfile: Record<string, CpdRecord[]> = {};
   for (const row of (cpdRows ?? []) as CpdRecord[]) {
     (cpdByProfile[row.profile_id] ??= []).push(row);
@@ -136,6 +138,25 @@ export default async function RegistersExportPage() {
               <span className="text-rc-muted">
                 — {c.complainant} · {c.nature} · {c.status}
                 {c.resolved_date ? ` (resolved ${c.resolved_date})` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">
+          Breach &amp; corrective-actions register
+        </h2>
+        <ul className="mt-2 space-y-1">
+          {breaches.length === 0 && <li className="text-sm text-rc-muted">No breaches logged.</li>}
+          {breaches.map((b) => (
+            <li key={b.id} className="text-sm">
+              <span className="font-medium text-rc-ink">{b.identified_date}</span>{" "}
+              <span className="text-rc-muted">
+                — {b.category} · {b.severity} · {b.description} · {b.status}
+                {b.corrective_action ? ` · action: ${b.corrective_action}` : " · no corrective action recorded"}
+                {b.notifiable ? (b.notified_date ? ` · notified ${b.notified_date}` : " · NOTIFICATION OUTSTANDING") : ""}
               </span>
             </li>
           ))}

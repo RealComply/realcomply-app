@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { IdCard, ShieldCheck, Gift, Mail } from "lucide-react";
+import { IdCard, ShieldCheck, Gift, Mail, TriangleAlert } from "lucide-react";
 
 const TABS = [
   { key: "licence", label: "Licence register", icon: IdCard },
   { key: "insurance", label: "Insurance register", icon: ShieldCheck },
   { key: "gifts", label: "Gift register", icon: Gift },
   { key: "complaints", label: "Complaints register", icon: Mail },
+  { key: "breaches", label: "Breach register", icon: TriangleAlert },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -21,18 +22,22 @@ export function RegistersTabs({
   insurance,
   gifts,
   complaints,
+  breaches,
   insuranceBadge,
   giftsBadge,
   complaintsBadge,
+  breachesBadge,
   defaultTab = "licence",
 }: {
   licence: ReactNode;
   insurance: ReactNode;
   gifts: ReactNode;
   complaints: ReactNode;
+  breaches: ReactNode;
   insuranceBadge?: number;
   giftsBadge?: number;
   complaintsBadge?: number;
+  breachesBadge?: number;
   // Lets a link elsewhere in the app (e.g. the Home page's Gifts widget,
   // or an agent's own nav shortcut) land directly on a specific tab
   // instead of always opening on Licence register — see ?tab= on
@@ -40,7 +45,12 @@ export function RegistersTabs({
   defaultTab?: TabKey;
 }) {
   const [active, setActive] = useState<TabKey>(defaultTab);
-  const badges: Partial<Record<TabKey, number>> = { insurance: insuranceBadge, gifts: giftsBadge, complaints: complaintsBadge };
+  const badges: Partial<Record<TabKey, number>> = {
+    insurance: insuranceBadge,
+    gifts: giftsBadge,
+    complaints: complaintsBadge,
+    breaches: breachesBadge,
+  };
 
   return (
     <div>
@@ -81,6 +91,9 @@ export function RegistersTabs({
       </div>
       <div className="mt-4" style={{ display: active === "complaints" ? "block" : "none" }}>
         {complaints}
+      </div>
+      <div className="mt-4" style={{ display: active === "breaches" ? "block" : "none" }}>
+        {breaches}
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
-import type { GiftDirection, InsurancePolicyType, LicenceType } from "@/lib/types";
+import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType, LicenceType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -316,7 +316,11 @@ export async function addGift(_prev: ActionState, formData: FormData): Promise<A
     .select("gift_threshold")
     .eq("id", profile.agency_id)
     .maybeSingle();
-  const threshold = (agencyRow as { gift_threshold: number } | null)?.gift_threshold ?? 150;
+  // Fallback matches the statutory figure — Property and Stock Agents
+  // Regulation 2022 (NSW) cl 20 prescribes $60 for s53F(2)(d), the point at
+  // which a gift stops being exempt from the conflict-of-interest
+  // prohibition. See 0011_gift_threshold_statutory_amount.sql.
+  const threshold = (agencyRow as { gift_threshold: number } | null)?.gift_threshold ?? 60;
 
   const giftDate = str(formData, "giftDate");
   const description = str(formData, "description");
@@ -479,4 +483,113 @@ export async function addSgManualVersion(
 
   revalidatePath("/dashboard/sg-manual");
   return { error: error ? "Couldn't save that version — try again." : null };
+}
+
+// ── Breach / corrective-actions register — Supervision Guidelines Req 3. ───
+// The requirement is to document the non-compliance *and* the corrective
+// action, so logging a breach and recording what was done about it are
+// separate steps rather than one long form: a breach usually gets logged the
+// moment it's spotted, and the remedy lands later. See
+// supabase/migrations/0012_breach_register.sql for the s89 notification
+// clock behind `notifiable` / `notified_date`.
+export async function addBreach(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const identifiedDate = str(formData, "identifiedDate");
+  const description = str(formData, "description");
+  const category = (str(formData, "category") ?? "other") as BreachCategory;
+  const severity = (str(formData, "severity") ?? "minor") as BreachSeverity;
+  const agentId = str(formData, "agentId");
+  const propertyId = str(formData, "propertyId");
+  const notifiable = formData.get("notifiable") === "on";
+  const notes = str(formData, "notes");
+
+  if (!identifiedDate) return { error: "Enter the date this was identified." };
+  if (!description) return { error: "Describe what happened." };
+
+  const { error } = await supabase.from("breaches").insert({
+    agency_id: profile.agency_id,
+    identified_date: identifiedDate,
+    description,
+    category,
+    severity,
+    agent_id: agentId,
+    property_id: propertyId,
+    notifiable,
+    status: "open",
+    notes,
+    created_by: profile.id,
+  });
+
+  if (error) return { error: "Couldn't save that breach — try again." };
+  revalidatePath("/dashboard/registers");
+  return ok;
+}
+
+// Recording the remedy is what actually satisfies Req 3, so this also moves
+// the breach out of "open" — an entry with a corrective action still showing
+// as open would misrepresent the register's own summary counts.
+export async function recordCorrectiveAction(
+  breachId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireAuthContext();
+
+  const correctiveAction = str(formData, "correctiveAction");
+  const correctiveActionDate = str(formData, "correctiveActionDate") ?? new Date().toISOString().slice(0, 10);
+
+  if (!correctiveAction) return { error: "Describe the corrective action taken." };
+
+  const { error } = await supabase
+    .from("breaches")
+    .update({
+      corrective_action: correctiveAction,
+      corrective_action_date: correctiveActionDate,
+      status: "action_taken",
+    })
+    .eq("id", breachId);
+
+  if (error) return { error: "Couldn't save that — try again." };
+  revalidatePath("/dashboard/registers");
+  return ok;
+}
+
+// Separate from the corrective action: notifying Fair Trading is its own
+// obligation with its own date, and for a trust account overdrawn under s89
+// it carries a 5-day deadline from the date the agency became aware.
+export async function recordBreachNotification(
+  breachId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireAuthContext();
+
+  const notifiedDate = str(formData, "notifiedDate") ?? new Date().toISOString().slice(0, 10);
+
+  const { error } = await supabase.from("breaches").update({ notified_date: notifiedDate }).eq("id", breachId);
+
+  if (error) return { error: "Couldn't record that notification — try again." };
+  revalidatePath("/dashboard/registers");
+  return ok;
+}
+
+// Closing is licensee-only: signing off that a breach is dealt with is a
+// supervision judgement, the same trust level as the other licensee-gated
+// actions in this app.
+export async function closeBreach(breachId: string): Promise<void> {
+  const { supabase, profile } = await requireAuthContext();
+  if (!profile.is_licensee_in_charge) return;
+  await supabase
+    .from("breaches")
+    .update({ status: "closed", closed_date: new Date().toISOString().slice(0, 10) })
+    .eq("id", breachId);
+  revalidatePath("/dashboard/registers");
+}
+
+export async function deleteBreach(breachId: string): Promise<void> {
+  const { supabase, profile } = await requireAuthContext();
+  if (!profile.is_licensee_in_charge) return;
+  await supabase.from("breaches").delete().eq("id", breachId);
+  revalidatePath("/dashboard/registers");
 }

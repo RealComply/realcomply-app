@@ -90,6 +90,43 @@ export type SgManualVersion = {
   created_at: string;
 };
 
+// Breach / corrective-actions register — Supervision Guidelines Req 3.
+// See supabase/migrations/0012_breach_register.sql for the design note and
+// the s89 (trust account overdrawn) notification clock that `notifiable` /
+// `notified_date` exist to track.
+export type BreachStatus = "open" | "action_taken" | "closed";
+export type BreachSeverity = "minor" | "material" | "serious";
+export type BreachCategory =
+  | "pricing"
+  | "agency_agreement"
+  | "material_facts"
+  | "trust_account"
+  | "advertising"
+  | "record_keeping"
+  | "conduct"
+  | "supervision"
+  | "other";
+
+export type Breach = {
+  id: string;
+  agency_id: string;
+  identified_date: string;
+  description: string;
+  category: BreachCategory;
+  severity: BreachSeverity;
+  agent_id: string | null;
+  property_id: string | null;
+  corrective_action: string | null;
+  corrective_action_date: string | null;
+  notifiable: boolean;
+  notified_date: string | null;
+  status: BreachStatus;
+  closed_date: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
 // Document sign-offs — see supabase/migrations/0009_document_signoffs.sql
 // for the full design note. 'other' exists so a one-off document can be
 // published without inventing a new category.
