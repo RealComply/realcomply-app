@@ -27,10 +27,21 @@ export type Agency = {
   pi_insurer: string | null;
   pi_policy_number: string | null;
   pi_expiry: string | null;
+  cyber_insurer: string | null;
+  cyber_policy_number: string | null;
+  cyber_expiry: string | null;
+  icare_insurer: string | null;
+  icare_policy_number: string | null;
+  icare_expiry: string | null;
   gift_threshold: number;
   complaint_resolution_target_days: number;
   created_at: string;
 };
+
+// The three agency-level insurance policies tracked in the Insurance
+// register — same insurer/policy-number/expiry shape, different legal
+// grounding and column prefix on the `agencies` row.
+export type InsurancePolicyType = "pi" | "cyber" | "icare";
 
 export type GiftDirection = "received" | "given";
 export type GiftStatus = "recorded" | "flagged" | "reviewed";

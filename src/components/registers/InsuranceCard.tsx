@@ -1,25 +1,46 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { updatePiInsurance, type ActionState } from "@/lib/actions/registers";
+import { updateInsurancePolicy, type ActionState } from "@/lib/actions/registers";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
-import type { Agency, Profile } from "@/lib/types";
+import type { InsurancePolicyType, Profile } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
 
-export function PiInsuranceCard({ agency, viewerProfile }: { agency: Agency; viewerProfile: Profile }) {
+// One card per agency-level policy — PI, cyber, iCare workers — generalised
+// out of what used to be a PI-only card (Adam, 13 Aug 2026: "separate
+// insurance from licences ... make room for cybersecurity insurance,
+// professional indemnity insurance, and also iCare workers insurance").
+// Same insurer/policy-number/expiry shape for all three; policyType picks
+// which agency columns updateInsurancePolicy writes to.
+export function InsuranceCard({
+  policyType,
+  title,
+  note,
+  insurer,
+  policyNumber,
+  expiry,
+  viewerProfile,
+}: {
+  policyType: InsurancePolicyType;
+  title: string;
+  note: string;
+  insurer: string | null;
+  policyNumber: string | null;
+  expiry: string | null;
+  viewerProfile: Profile;
+}) {
   const [editing, setEditing] = useState(false);
-  const [state, formAction, pending] = useActionState(updatePiInsurance, initialState);
-  const status = expiryStatus(agency.pi_expiry);
+  const boundAction = updateInsurancePolicy.bind(null, policyType);
+  const [state, formAction, pending] = useActionState(boundAction, initialState);
+  const status = expiryStatus(expiry);
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-rc-ink">Professional indemnity insurance</h3>
-          <p className="mt-1 text-xs text-rc-muted">
-            Mandatory condition of every licence in the agency — s22, Property and Stock Agents Act 2002 (NSW).
-          </p>
+          <h3 className="text-sm font-semibold text-rc-ink">{title}</h3>
+          <p className="mt-1 text-xs text-rc-muted">{note}</p>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${EXPIRY_STATUS_STYLES[status]}`}>
           {EXPIRY_STATUS_LABELS[status]}
@@ -30,14 +51,14 @@ export function PiInsuranceCard({ agency, viewerProfile }: { agency: Agency; vie
         {!editing ? (
           <div className="flex items-center justify-between gap-3">
             <div className="text-neutral-600">
-              {agency.pi_insurer ? (
+              {insurer ? (
                 <>
-                  <span className="font-medium text-rc-ink">{agency.pi_insurer}</span>
-                  {agency.pi_policy_number && <> · {agency.pi_policy_number}</>}
-                  {agency.pi_expiry && <> · expires {agency.pi_expiry}</>}
+                  <span className="font-medium text-rc-ink">{insurer}</span>
+                  {policyNumber && <> · {policyNumber}</>}
+                  {expiry && <> · expires {expiry}</>}
                 </>
               ) : (
-                "No PI insurance details on file yet."
+                "No details on file yet."
               )}
             </div>
             {viewerProfile.is_licensee_in_charge && (
@@ -61,22 +82,22 @@ export function PiInsuranceCard({ agency, viewerProfile }: { agency: Agency; vie
             <div className="flex flex-wrap gap-2">
               <input
                 type="text"
-                name="piInsurer"
+                name="insurer"
                 placeholder="Insurer"
-                defaultValue={agency.pi_insurer ?? ""}
+                defaultValue={insurer ?? ""}
                 className="w-40 rounded-md border border-rc-border px-2 py-1 text-sm"
               />
               <input
                 type="text"
-                name="piPolicyNumber"
+                name="policyNumber"
                 placeholder="Policy number"
-                defaultValue={agency.pi_policy_number ?? ""}
+                defaultValue={policyNumber ?? ""}
                 className="w-40 rounded-md border border-rc-border px-2 py-1 text-sm"
               />
               <input
                 type="date"
-                name="piExpiry"
-                defaultValue={agency.pi_expiry ?? ""}
+                name="expiry"
+                defaultValue={expiry ?? ""}
                 className="rounded-md border border-rc-border px-2 py-1 text-sm"
               />
             </div>
@@ -100,7 +121,7 @@ export function PiInsuranceCard({ agency, viewerProfile }: { agency: Agency; vie
           </form>
         )}
       </div>
-      {!viewerProfile.is_licensee_in_charge && !agency.pi_insurer && (
+      {!viewerProfile.is_licensee_in_charge && !insurer && (
         <p className="mt-2 text-xs text-rc-faint">Only the licensee in charge can enter these details.</p>
       )}
     </div>

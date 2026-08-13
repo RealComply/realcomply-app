@@ -1,21 +1,22 @@
 "use client";
 
-import { PiInsuranceCard } from "@/components/registers/PiInsuranceCard";
 import { StaffRegisterCard } from "@/components/registers/StaffRegisterCard";
 import { expiryStatus } from "@/lib/expiry-status";
 import { CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
-import type { Agency, CpdRecord, Profile } from "@/lib/types";
+import type { CpdRecord, Profile } from "@/lib/types";
 
+// Insurance (PI/cyber/iCare) lives in its own Insurance register tab now
+// (InsurancePanel) — this used to also render a PI insurance card, but
+// bundling insurance into "Licence register" left no room for anything else
+// (Adam, 13 Aug 2026).
 export function LicencePanel({
   staff,
   cpdByProfile,
-  agency,
   viewerProfile,
   cpdYearLabel,
 }: {
   staff: Profile[];
   cpdByProfile: Record<string, CpdRecord[]>;
-  agency: Agency;
   viewerProfile: Profile;
   cpdYearLabel: string;
 }) {
@@ -38,10 +39,6 @@ export function LicencePanel({
         <Tile n={expiringSoon} l="Expiring ≤ 30 days" warn={expiringSoon > 0} />
         <Tile n={expired} l="Expired" bad={expired > 0} ok={expired === 0} />
         <Tile n={cpdOutstanding} l="CPD outstanding" warn={cpdOutstanding > 0} ok={cpdOutstanding === 0} />
-      </div>
-
-      <div className="mt-4">
-        <PiInsuranceCard agency={agency} viewerProfile={viewerProfile} />
       </div>
 
       <div className="mt-4 space-y-4">

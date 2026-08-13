@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { IdCard, Gift, Mail } from "lucide-react";
+import { IdCard, ShieldCheck, Gift, Mail } from "lucide-react";
 
 const TABS = [
   { key: "licence", label: "Licence register", icon: IdCard },
+  { key: "insurance", label: "Insurance register", icon: ShieldCheck },
   { key: "gifts", label: "Gift register", icon: Gift },
   { key: "complaints", label: "Complaints register", icon: Mail },
 ] as const;
@@ -17,15 +18,19 @@ type TabKey = (typeof TABS)[number]["key"];
 // "server component renders, client component only switches" pattern.
 export function RegistersTabs({
   licence,
+  insurance,
   gifts,
   complaints,
+  insuranceBadge,
   giftsBadge,
   complaintsBadge,
   defaultTab = "licence",
 }: {
   licence: ReactNode;
+  insurance: ReactNode;
   gifts: ReactNode;
   complaints: ReactNode;
+  insuranceBadge?: number;
   giftsBadge?: number;
   complaintsBadge?: number;
   // Lets a link elsewhere in the app (e.g. the Home page's Gifts widget,
@@ -35,7 +40,7 @@ export function RegistersTabs({
   defaultTab?: TabKey;
 }) {
   const [active, setActive] = useState<TabKey>(defaultTab);
-  const badges: Partial<Record<TabKey, number>> = { gifts: giftsBadge, complaints: complaintsBadge };
+  const badges: Partial<Record<TabKey, number>> = { insurance: insuranceBadge, gifts: giftsBadge, complaints: complaintsBadge };
 
   return (
     <div>
@@ -67,6 +72,9 @@ export function RegistersTabs({
 
       <div className="mt-4" style={{ display: active === "licence" ? "block" : "none" }}>
         {licence}
+      </div>
+      <div className="mt-4" style={{ display: active === "insurance" ? "block" : "none" }}>
+        {insurance}
       </div>
       <div className="mt-4" style={{ display: active === "gifts" ? "block" : "none" }}>
         {gifts}

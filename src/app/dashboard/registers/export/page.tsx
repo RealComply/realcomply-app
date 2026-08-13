@@ -59,12 +59,6 @@ export default async function RegistersExportPage() {
 
       <section className="mt-8">
         <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Licence register</h2>
-        {agency && (
-          <p className="mt-2 text-sm">
-            <span className="font-medium">PI insurance:</span>{" "}
-            {agency.pi_insurer ? `${agency.pi_insurer} · ${agency.pi_policy_number ?? "no policy #"} · expires ${agency.pi_expiry ?? "—"}` : "not on file"}
-          </p>
-        )}
         <ul className="mt-2 space-y-1">
           {staff.map((s) => {
             const isAssistant = s.licence_type === "certificate_of_registration";
@@ -83,6 +77,38 @@ export default async function RegistersExportPage() {
             );
           })}
         </ul>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Insurance register</h2>
+        {agency && (
+          <ul className="mt-2 space-y-1">
+            <li className="text-sm">
+              <span className="font-medium text-rc-ink">Professional indemnity:</span>{" "}
+              <span className="text-rc-muted">
+                {agency.pi_insurer
+                  ? `${agency.pi_insurer} · ${agency.pi_policy_number ?? "no policy #"} · expires ${agency.pi_expiry ?? "—"}`
+                  : "not on file"}
+              </span>
+            </li>
+            <li className="text-sm">
+              <span className="font-medium text-rc-ink">Cybersecurity:</span>{" "}
+              <span className="text-rc-muted">
+                {agency.cyber_insurer
+                  ? `${agency.cyber_insurer} · ${agency.cyber_policy_number ?? "no policy #"} · expires ${agency.cyber_expiry ?? "—"}`
+                  : "not on file"}
+              </span>
+            </li>
+            <li className="text-sm">
+              <span className="font-medium text-rc-ink">iCare workers:</span>{" "}
+              <span className="text-rc-muted">
+                {agency.icare_insurer
+                  ? `${agency.icare_insurer} · ${agency.icare_policy_number ?? "no policy #"} · expires ${agency.icare_expiry ?? "—"}`
+                  : "not on file"}
+              </span>
+            </li>
+          </ul>
+        )}
       </section>
 
       <section className="mt-8">

@@ -4,12 +4,14 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { TopNav } from "@/components/TopNav";
 import { RegistersTabs } from "@/components/registers/RegistersTabs";
 import { LicencePanel } from "@/components/registers/LicencePanel";
+import { InsurancePanel } from "@/components/registers/InsurancePanel";
 import { GiftsPanel } from "@/components/registers/GiftsPanel";
 import { ComplaintsPanel } from "@/components/registers/ComplaintsPanel";
 import { currentCpdYear } from "@/lib/cpd-year";
+import { expiryStatus } from "@/lib/expiry-status";
 import type { Agency, Complaint, CpdRecord, Gift, Profile, Property } from "@/lib/types";
 
-const TAB_KEYS = new Set(["licence", "gifts", "complaints"]);
+const TAB_KEYS = new Set(["licence", "insurance", "gifts", "complaints"]);
 
 // Registers — RealComply-website-IA.md's "Registers" screen, all three tabs
 // from the mockup: licence register (+ PI insurance + CPD), gift register
@@ -28,7 +30,7 @@ export default async function RegistersPage({
   const profile = await requireProfile();
   const supabase = await createClient();
   const { tab, add } = await searchParams;
-  const defaultTab = (tab && TAB_KEYS.has(tab) ? tab : "licence") as "licence" | "gifts" | "complaints";
+  const defaultTab = (tab && TAB_KEYS.has(tab) ? tab : "licence") as "licence" | "insurance" | "gifts" | "complaints";
 
   const cpdYear = currentCpdYear();
 
@@ -61,6 +63,12 @@ export default async function RegistersPage({
 
   const giftsBadge = gifts.filter((g) => g.status === "flagged").length;
   const complaintsBadge = complaints.filter((c) => c.status !== "resolved").length;
+  const insuranceBadge = agency
+    ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry].filter((d) => {
+        const s = expiryStatus(d);
+        return s === "expired" || s === "urgent";
+      }).length
+    : 0;
 
   return (
     <>
@@ -89,12 +97,14 @@ export default async function RegistersPage({
         {agency && (
           <div className="mt-6">
             <RegistersTabs
+              insuranceBadge={insuranceBadge}
               giftsBadge={giftsBadge}
               complaintsBadge={complaintsBadge}
               defaultTab={defaultTab}
               licence={
-                <LicencePanel staff={staff} cpdByProfile={cpdByProfile} agency={agency} viewerProfile={profile} cpdYearLabel={cpdYear.label} />
+                <LicencePanel staff={staff} cpdByProfile={cpdByProfile} viewerProfile={profile} cpdYearLabel={cpdYear.label} />
               }
+              insurance={<InsurancePanel agency={agency} viewerProfile={profile} />}
               gifts={
                 <GiftsPanel
                   gifts={gifts}

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
-import type { GiftDirection, LicenceType } from "@/lib/types";
+import type { GiftDirection, InsurancePolicyType, LicenceType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -46,25 +46,40 @@ export async function updateLicence(profileId: string, _prev: ActionState, formD
   return ok;
 }
 
-// ── PI insurance (agency-level — s22 PSA Act, a condition of every licence
-// in the agency, so this is the licensee's to maintain, not any one agent's) ─
-export async function updatePiInsurance(_prev: ActionState, formData: FormData): Promise<ActionState> {
+// ── Insurance register (agency-level policies — PI insurance is a condition
+// of every licence in the agency under s22 PSA Act; cyber and iCare workers
+// insurance aren't PSA Act requirements but sit alongside it as the same
+// kind of agency-level "policy on file, tracked to expiry" record, so they
+// share one action and one card component rather than three near-identical
+// copies. All three are the licensee's to maintain, not any one agent's.) ──
+const POLICY_COLUMNS: Record<InsurancePolicyType, { insurer: string; policyNumber: string; expiry: string }> = {
+  pi: { insurer: "pi_insurer", policyNumber: "pi_policy_number", expiry: "pi_expiry" },
+  cyber: { insurer: "cyber_insurer", policyNumber: "cyber_policy_number", expiry: "cyber_expiry" },
+  icare: { insurer: "icare_insurer", policyNumber: "icare_policy_number", expiry: "icare_expiry" },
+};
+
+export async function updateInsurancePolicy(
+  policyType: InsurancePolicyType,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
 
   if (!profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can update the agency's PI insurance details." };
+    return { error: "Only the licensee in charge can update the agency's insurance details." };
   }
 
-  const piInsurer = str(formData, "piInsurer");
-  const piPolicyNumber = str(formData, "piPolicyNumber");
-  const piExpiry = str(formData, "piExpiry");
+  const columns = POLICY_COLUMNS[policyType];
+  const insurer = str(formData, "insurer");
+  const policyNumber = str(formData, "policyNumber");
+  const expiry = str(formData, "expiry");
 
   const { error } = await supabase
     .from("agencies")
-    .update({ pi_insurer: piInsurer, pi_policy_number: piPolicyNumber, pi_expiry: piExpiry })
+    .update({ [columns.insurer]: insurer, [columns.policyNumber]: policyNumber, [columns.expiry]: expiry })
     .eq("id", profile.agency_id);
 
-  if (error) return { error: "Couldn't save PI insurance details — try again." };
+  if (error) return { error: "Couldn't save insurance details — try again." };
 
   revalidatePath("/dashboard/registers");
   return ok;
