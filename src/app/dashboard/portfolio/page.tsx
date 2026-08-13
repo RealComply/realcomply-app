@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Building2, ClipboardCheck, Flag, ShieldCheck, MessageSquareWarning } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { TopNav } from "@/components/TopNav";
 import { StatTile } from "@/components/home/WidgetCard";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
@@ -80,7 +79,6 @@ export default async function PortfolioPage() {
 
   return (
     <>
-      <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
         <div className="relative isolate overflow-hidden rounded-card">
           <div className="rc-mesh-bg" />

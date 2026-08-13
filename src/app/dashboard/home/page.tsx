@@ -1,7 +1,6 @@
 import { Building2, FileWarning, ShieldCheck, MessageSquareWarning, Gift as GiftIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { TopNav } from "@/components/TopNav";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear, CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
@@ -147,7 +146,6 @@ export default async function HomeDashboardPage() {
 
   return (
     <>
-      <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
         <div className="relative isolate overflow-hidden rounded-card px-3">
           <div className="rc-mesh-bg" />

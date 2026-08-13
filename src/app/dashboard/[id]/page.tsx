@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { TopNav } from "@/components/TopNav";
 import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
 import { DeletePropertySection } from "@/components/compliance/DeletePropertySection";
@@ -57,7 +56,6 @@ export default async function PropertyPage({
 
   return (
     <>
-      <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">

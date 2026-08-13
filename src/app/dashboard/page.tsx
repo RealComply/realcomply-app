@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Home as HomeIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { TopNav } from "@/components/TopNav";
 import { STAGE_LABELS, type Property } from "@/lib/types";
 
 export default async function DashboardPage() {
@@ -18,7 +17,6 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Your properties</h1>

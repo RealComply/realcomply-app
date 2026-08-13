@@ -31,6 +31,21 @@
   --rc-ink-line: rgba(255, 255, 255, 0.09);
   --rc-ink-muted: #9db3a9;
 
+  /* Sidebar surface. A deliberate step up in lightness from --rc-ink-bg,
+     which read as near-black once it covered a whole column rather than a
+     small punctuation block (Adam, 13 Aug 2026: "it's almost black").
+     Picked from a 5-step ladder as the lightest shade that still holds
+     contrast throughout: white nav text 10.6:1, the muted group labels
+     4.8:1 (AA needs 4.5), and the green active pill 3.4:1 against it (UI
+     elements need 3.0). One step lighter and the last two both fail, which
+     is why the ladder stops here. */
+  --rc-nav-bg: #24453a;
+  --rc-nav-muted: #8aa294;
+
+  /* Sidebar width, read by the dashboard layout's grid template. Overridden
+     by .rc-nav-rail below when the sidebar is collapsed to icons. */
+  --rc-sidebar-w: 236px;
+
   /* New: a real "critical" red (status palette, not generic Tailwind red) so
      danger states — expired licence, overdue complaint — sit in the same
      token system as everything else instead of a one-off Tailwind color. */
@@ -63,6 +78,8 @@
   --color-rc-panel: var(--rc-panel);
   --color-rc-ink-line: var(--rc-ink-line);
   --color-rc-ink-muted: var(--rc-ink-muted);
+  --color-rc-nav-bg: var(--rc-nav-bg);
+  --color-rc-nav-muted: var(--rc-nav-muted);
   --color-rc-red: var(--rc-red);
   --color-rc-red-soft: var(--rc-red-soft);
   --font-sans: var(--font-plus-jakarta);
@@ -116,4 +133,82 @@ body {
   width: 400px;
   height: 400px;
   background: radial-gradient(circle at center, rgba(226, 169, 74, 0.4), rgba(226, 169, 74, 0) 72%);
+}
+
+/* ---------------------------------------------------------------------------
+   Collapsed sidebar ("rail" mode) — Adam, 13 Aug 2026: "the option to
+   condense the side bar so that only the icons show".
+
+   Driven by a class on <html> rather than React state. Three reasons:
+   the width is consumed by a grid template in the server-rendered dashboard
+   layout, which client state can't reach without making the whole shell a
+   client component; an inline script in the root layout can apply the class
+   before first paint, so there's no flash of the wrong width; and it avoids
+   both the hydration mismatch and the set-state-in-effect lint error that a
+   state-based version runs into.
+
+   Everything is scoped to the md breakpoint, which conveniently also excludes
+   the mobile drawer — that shares this markup but must always show labels,
+   since a rail of unlabelled icons on a phone is a guessing game.
+--------------------------------------------------------------------------- */
+@media (min-width: 768px) {
+  html.rc-nav-rail {
+    --rc-sidebar-w: 68px;
+  }
+  /* Text that disappears in rail mode: link labels, group headings, the
+     wordmark, the footer line, the collapse button's own label. */
+  html.rc-nav-rail [data-rail-hide] {
+    display: none;
+  }
+  /* Rows become centred icon buttons rather than icon + label. */
+  html.rc-nav-rail [data-rail-center] {
+    justify-content: center;
+    gap: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  /* Group boundaries still need to read as boundaries once the headings are
+     gone, or the rail is one undifferentiated stack of icons. */
+  html.rc-nav-rail [data-rail-divider] {
+    display: block;
+  }
+  html.rc-nav-rail [data-rail-pad] {
+    padding-left: 0.625rem;
+    padding-right: 0.625rem;
+  }
+  html.rc-nav-rail [data-rail-only] {
+    display: flex;
+  }
+  html.rc-nav-rail [data-expanded-only] {
+    display: none;
+  }
+}
+/* Defaults outside rail mode (and at every width on mobile). */
+[data-rail-divider],
+[data-rail-only] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Printing. Two dashboard routes exist to be printed rather than read on
+   screen — the per-property finalised summary (/dashboard/[id]/summary) and
+   the registers export (/dashboard/registers/export), both of which rely on
+   the browser's own Print → Save as PDF. Neither had navigation before the
+   sidebar moved into the shared dashboard layout, and neither should carry it
+   into a PDF that goes to a regulator or into a compliance file.
+
+   Rather than excluding those routes from the shell (which would mean moving
+   ten page directories into a route group), the chrome is simply dropped at
+   print time and the grid collapses to a single full-width column. On screen
+   those pages now do show the sidebar, which is a small gain: you can
+   navigate away without using the back button.
+--------------------------------------------------------------------------- */
+@media print {
+  .rc-app-chrome {
+    display: none !important;
+  }
+  .rc-app-shell {
+    display: block !important;
+    background: #fff !important;
+  }
 }

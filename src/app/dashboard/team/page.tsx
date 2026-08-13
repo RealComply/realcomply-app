@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { TopNav } from "@/components/TopNav";
 import { InviteAgentForm } from "@/components/team/InviteAgentForm";
 import { PendingInvitesList } from "@/components/team/PendingInvitesList";
 import type { AgencyInvite, Profile } from "@/lib/types";
@@ -28,7 +27,6 @@ export default async function TeamPage() {
 
   return (
     <>
-      <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>

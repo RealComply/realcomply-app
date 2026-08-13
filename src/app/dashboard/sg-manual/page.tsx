@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Paperclip } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { TopNav } from "@/components/TopNav";
 import { SgManualUploader } from "@/components/registers/SgManualUploader";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
@@ -44,7 +43,6 @@ export default async function SgManualPage() {
 
   return (
     <>
-      <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>

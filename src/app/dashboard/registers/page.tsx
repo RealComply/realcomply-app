@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { TopNav } from "@/components/TopNav";
 import { RegistersTabs } from "@/components/registers/RegistersTabs";
 import { LicencePanel } from "@/components/registers/LicencePanel";
 import { InsurancePanel } from "@/components/registers/InsurancePanel";
@@ -81,7 +80,6 @@ export default async function RegistersPage({
 
   return (
     <>
-      <TopNav profile={profile} />
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>

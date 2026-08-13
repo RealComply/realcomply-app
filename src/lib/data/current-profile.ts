@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
@@ -11,7 +12,10 @@ import type { Profile } from "@/lib/types";
 // here from the full_name/agency_name stashed in user_metadata at signup,
 // rather than sending the user to a dead-end /signup page (they can't
 // re-signup with an email that's already registered).
-export async function requireProfile(): Promise<Profile> {
+// Wrapped in React's cache() so the dashboard layout and the page rendering
+// inside it share one lookup per request instead of each hitting the database.
+// Both need the profile now that the layout owns the sidebar and user bar.
+export const requireProfile = cache(async function requireProfile(): Promise<Profile> {
   const supabase = await createClient();
 
   const {
@@ -64,4 +68,4 @@ export async function requireProfile(): Promise<Profile> {
   }
 
   redirect("/signup");
-}
+});
