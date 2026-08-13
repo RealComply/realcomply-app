@@ -187,45 +187,6 @@ export async function setItemStatus(
   return error ? { error: error.message } : ok;
 }
 
-// d1 — ESP review log. Appends a dated note; doesn't gate stage completion.
-export async function addReviewEntry(
-  propertyId: string,
-  _prevState: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const { supabase, user, profile } = await requireAuthContext();
-  const note = String(formData.get("note") ?? "").trim();
-
-  if (!note) {
-    return { error: "Add a note for this review." };
-  }
-
-  const { data: existing } = await supabase
-    .from("property_items")
-    .select("data")
-    .eq("property_id", propertyId)
-    .eq("item_key", "d1")
-    .maybeSingle();
-
-  const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as Array<{
-    note: string;
-    recordedAt: string;
-  }>;
-  entries.unshift({ note, recordedAt: new Date().toISOString() });
-
-  const { error } = await upsertItem(supabase, {
-    agencyId: profile.agency_id,
-    propertyId,
-    itemKey: "d1",
-    status: "done",
-    data: { entries },
-    completedBy: user.id,
-  });
-
-  revalidatePath(`/dashboard/${propertyId}`);
-  return error ? { error: error.message } : ok;
-}
-
 // f3 — pre-purchase inspection report register (cl 37, Property and Stock
 // Agents Regulation 2022). The agent just uploads the report; every cl 37
 // field here comes from extractReportDetails (see ItemCard.tsx's

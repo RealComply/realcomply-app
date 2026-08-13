@@ -23,7 +23,6 @@ export type ItemKind =
   | "checklist" // confirm/done/flag, optional note + agent-asserted date
   | "guide" // advertised price guide vs ESP live underquoting check
   | "offers" // offers log (repeating entries)
-  | "review" // ESP review log (repeating entries)
   | "reduction" // price reduction / revise-ESP workflow
   | "quotes" // verbal price-quote log (repeating entries) — the written record of a verbal price statement
   | "sale" // final sale price + ESP-diff check
@@ -368,17 +367,17 @@ const items: ComplianceItem[] = [
   },
 
   // ── Stage 3 — Campaign ────────────────────────────────────────────────
-  {
-    key: "d1",
-    stage: 3,
-    kind: "review",
-    label: "ESP review log",
-    description:
-      "Log a weekly ESP review (and on triggers — a price change, a new offer, a comparable-sales report). Newest first.",
-    legalBasis: "s72A review obligation",
-    requiresDate: false,
-    requiredForStageCompletion: false,
-  },
+  // No ESP review-log item here, deliberately (Adam, 13 Aug 2026). s72A(3)
+  // imposes a *substantive* duty — the ESP "is, and remains" a reasonable
+  // estimate — not a documentation duty. The Act's record obligations are
+  // triggered only on revision: s72A(4)(a) written notice of the revised ESP
+  // to the vendor, s72A(4)(b) amending the agency agreement, and s72A(5)
+  // evidence of reasonableness given to the seller when specifying OR
+  // revising. Nothing requires logging a review that concluded the estimate
+  // still held, so the app no longer asks for one — the previous item cited
+  // a "s72A review obligation" that does not exist, which overstates the law
+  // in a product whose defence depends on citing it accurately. Revisions
+  // are captured by d3 below.
   {
     key: "d2",
     stage: 3,
@@ -396,8 +395,8 @@ const items: ComplianceItem[] = [
     kind: "reduction",
     label: "Price reduction / ESP revision",
     description:
-      "If the price guide or ESP changes during the campaign, log it here. An ESP revision requires written notice to the vendor and an amended agreement — RealComply tracks that this happened.",
-    legalBasis: "s72A revise loop",
+      "If the price guide or ESP changes during the campaign, log it here. Revising an ESP is where the Act's record obligations actually bite: written notice of the revised ESP to the vendor, an amended agency agreement, and evidence of the new price's reasonableness given to the seller.",
+    legalBasis: "s72A(4)(a)-(b), s72A(5), Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: false,
   },

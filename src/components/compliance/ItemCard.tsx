@@ -8,7 +8,6 @@ import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import {
   setItemStatus,
-  addReviewEntry,
   addOfferEntry,
   addReportEntry,
   markEspRevised,
@@ -449,45 +448,6 @@ function GuideItem({
         <ul className="mt-2 space-y-1 text-sm text-rc-amber-deep">
           {data.flagReasons.map((r) => (
             <li key={r}>{r}</li>
-          ))}
-        </ul>
-      )}
-    </ItemShell>
-  );
-}
-
-function ReviewLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
-  const boundAction = addReviewEntry.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(boundAction, initialState);
-  const entries = ((current?.data ?? {}) as { entries?: Array<{ note: string; recordedAt: string }> }).entries ?? [];
-
-  return (
-    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form action={formAction} className="flex gap-2">
-        <input
-          type="text"
-          name="note"
-          placeholder="e.g. reviewed against 3 new comparables, ESP still holds"
-          className="flex-1 rounded-md border border-rc-border px-2 py-1 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
-        >
-          Log review
-        </button>
-      </form>
-      <FieldError error={state.error} />
-      {entries.length > 0 && (
-        <ul className="mt-3 space-y-2 text-sm text-rc-muted">
-          {entries.map((e, i) => (
-            <li key={i} className="border-t border-rc-border pt-2">
-              <span className="text-xs text-rc-faint">
-                {new Date(e.recordedAt).toLocaleDateString("en-AU")}
-              </span>{" "}
-              — {e.note}
-            </li>
           ))}
         </ul>
       )}
@@ -1090,8 +1050,6 @@ export function ItemCard({
   allItems: Record<string, PropertyItem>;
 }) {
   switch (item.kind) {
-    case "review":
-      return <ReviewLogItem item={item} propertyId={propertyId} current={current} />;
     case "offers":
       return <OffersLogItem item={item} propertyId={propertyId} current={current} />;
     case "reports":
