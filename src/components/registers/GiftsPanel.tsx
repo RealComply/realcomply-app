@@ -22,13 +22,18 @@ export function GiftsPanel({
   staff,
   threshold,
   viewerProfile,
+  autoOpenAdd = false,
 }: {
   gifts: Gift[];
   staff: Profile[];
   threshold: number;
   viewerProfile: Profile;
+  // Opens the "Record a gift / benefit" form straight away — used by the
+  // Home page's "+ Log a gift" shortcut (?tab=gifts&add=1) so an agent
+  // coming from there lands on a ready-to-fill form, not just the tab.
+  autoOpenAdd?: boolean;
 }) {
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(autoOpenAdd);
   const [state, formAction, pending] = useActionState(addGift, initialState);
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdState, thresholdAction, thresholdPending] = useActionState(updateGiftThreshold, initialState);

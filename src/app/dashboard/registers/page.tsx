@@ -9,12 +9,26 @@ import { ComplaintsPanel } from "@/components/registers/ComplaintsPanel";
 import { currentCpdYear } from "@/lib/cpd-year";
 import type { Agency, Complaint, CpdRecord, Gift, Profile, Property } from "@/lib/types";
 
+const TAB_KEYS = new Set(["licence", "gifts", "complaints"]);
+
 // Registers — RealComply-website-IA.md's "Registers" screen, all three tabs
 // from the mockup: licence register (+ PI insurance + CPD), gift register
 // (threshold-flagged), complaints register (cross-linked to files).
-export default async function RegistersPage() {
+//
+// ?tab= and ?add= let a link elsewhere in the app open straight onto a
+// specific tab, ready to use — added for the Home page's "+ Log a gift"
+// shortcut so an ordinary agent can get from Home to a filled-in gift
+// register entry in one click, instead of landing on Licence register (the
+// default) and having to find + open the Gift register tab themselves.
+export default async function RegistersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; add?: string }>;
+}) {
   const profile = await requireProfile();
   const supabase = await createClient();
+  const { tab, add } = await searchParams;
+  const defaultTab = (tab && TAB_KEYS.has(tab) ? tab : "licence") as "licence" | "gifts" | "complaints";
 
   const cpdYear = currentCpdYear();
 
@@ -77,10 +91,19 @@ export default async function RegistersPage() {
             <RegistersTabs
               giftsBadge={giftsBadge}
               complaintsBadge={complaintsBadge}
+              defaultTab={defaultTab}
               licence={
                 <LicencePanel staff={staff} cpdByProfile={cpdByProfile} agency={agency} viewerProfile={profile} cpdYearLabel={cpdYear.label} />
               }
-              gifts={<GiftsPanel gifts={gifts} staff={staff} threshold={agency.gift_threshold} viewerProfile={profile} />}
+              gifts={
+                <GiftsPanel
+                  gifts={gifts}
+                  staff={staff}
+                  threshold={agency.gift_threshold}
+                  viewerProfile={profile}
+                  autoOpenAdd={add === "1"}
+                />
+              }
               complaints={
                 <ComplaintsPanel
                   complaints={complaints}

@@ -21,14 +21,20 @@ export function RegistersTabs({
   complaints,
   giftsBadge,
   complaintsBadge,
+  defaultTab = "licence",
 }: {
   licence: ReactNode;
   gifts: ReactNode;
   complaints: ReactNode;
   giftsBadge?: number;
   complaintsBadge?: number;
+  // Lets a link elsewhere in the app (e.g. the Home page's Gifts widget,
+  // or an agent's own nav shortcut) land directly on a specific tab
+  // instead of always opening on Licence register — see ?tab= on
+  // /dashboard/registers.
+  defaultTab?: TabKey;
 }) {
-  const [active, setActive] = useState<TabKey>("licence");
+  const [active, setActive] = useState<TabKey>(defaultTab);
   const badges: Partial<Record<TabKey, number>> = { gifts: giftsBadge, complaints: complaintsBadge };
 
   return (
