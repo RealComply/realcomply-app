@@ -104,6 +104,12 @@ const items: ComplianceItem[] = [
     legalBasis: "s56, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: true,
     requiredForStageCompletion: true,
+    // No note box (Adam, 14 Aug 2026): this is a plain yes-or-no with a date.
+    // Either the guide was given before signing or it wasn't, and the date is
+    // the thing that proves it — s56 turns on timing, since the guide must be
+    // given before the agreement is signed and no more than a month before.
+    // A free-text box invites commentary that adds nothing to that.
+    hideNote: true,
   },
   {
     key: "a4",

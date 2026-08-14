@@ -93,6 +93,22 @@ export async function setItemStatus(
   const note = String(formData.get("note") ?? "").trim();
   const eventDate = rule?.requiresDate ? String(formData.get("eventDate") ?? "") || null : null;
 
+  // A required date was collected but never actually required: you could mark
+  // one of these done with the field empty and the item would close and pass
+  // the stage gate (Adam, 14 Aug 2026, on a2). That matters because on every
+  // item carrying requiresDate the date IS the obligation, not a detail beside
+  // it — s56 turns on the guide being given before signing and within a month
+  // of it, s55/Sch 1 r16 on service within 48 hours, Sch 2 r17 on service
+  // within 2 business days. An item marked done with no date records that
+  // something happened while omitting the only fact that shows it happened in
+  // time.
+  //
+  // Only blocks "done". Reopening or flagging an item you have no date for has
+  // to stay possible, or a mistake becomes unfixable.
+  if (status === "done" && rule?.requiresDate && !eventDate) {
+    return { error: "Enter the date this happened before marking it done." };
+  }
+
   const data: Record<string, unknown> = { note };
 
   // a7 (material facts) carries a structured yes/no alongside the generic
