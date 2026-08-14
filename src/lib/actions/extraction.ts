@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { getItem } from "@/lib/rules/nsw-sales";
 import type { PropertyItem } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -392,7 +393,23 @@ async function extractOneDocument(
 // other item stays "open" and untouched either way; ItemCard reads aiDraft
 // as a pre-fill default that the agent can edit or discard before saving,
 // per the product's diligence-support framing.
+// onlyItemKey scopes the run to a single attachment. Used when a document is
+// attached, where re-reading the other two would burn AI calls on files that
+// have not changed. Omitted for the page-level "Extract from uploaded
+// documents" button, which still sweeps everything.
 export async function extractFromDocuments(propertyId: string): Promise<ActionState> {
+  return runExtraction(propertyId);
+}
+
+// Called after a document is attached. No-ops silently unless the file landed
+// on one of the three items the AI actually reads, so attaching a pool
+// certificate or a photo does not spend an AI call.
+export async function extractForAttachment(propertyId: string, itemKey: string): Promise<ActionState> {
+  if (!(SOURCE_ITEM_KEYS as readonly string[]).includes(itemKey)) return ok;
+  return runExtraction(propertyId, itemKey);
+}
+
+async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -407,7 +424,9 @@ export async function extractFromDocuments(propertyId: string): Promise<ActionSt
     .eq("property_id", propertyId)
     .in("item_key", SOURCE_ITEM_KEYS);
 
-  const withEvidence = ((rows ?? []) as PropertyItem[]).filter((i) => i.evidence_path);
+  const withEvidence = ((rows ?? []) as PropertyItem[])
+    .filter((i) => i.evidence_path)
+    .filter((i) => !onlyItemKey || i.item_key === onlyItemKey);
 
   if (withEvidence.length === 0) {
     return {
@@ -457,6 +476,11 @@ export async function extractFromDocuments(propertyId: string): Promise<ActionSt
         status: autoComplete ? "done" : existing?.status ?? "open",
         data: {
           ...(existing?.data ?? {}),
+          // See the note above getItem: on findings-only items the AI owns
+          // this text, so a fresh reading replaces it. On items with a real
+          // note box the agent owns it, and extraction stays in aiDraft where
+          // it is offered rather than imposed.
+          ...(getItem(patch.itemKey)?.showFindings && patch.note ? { note: patch.note } : {}),
           aiDraft: {
             note: patch.note,
             espLow: patch.espLow,

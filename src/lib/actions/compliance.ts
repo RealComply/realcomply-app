@@ -599,8 +599,33 @@ export async function uploadEvidence(
     fileName,
   });
 
+  if (error) {
+    revalidatePath(`/dashboard/${propertyId}`);
+    return { error };
+  }
+
+  // Read the document straight away rather than waiting for someone to press
+  // "Extract from uploaded documents" at the top of the page (Adam, 14 Aug
+  // 2026). He attached a comparable-sales report and reasonably expected the
+  // findings to reflect it; nothing re-read the file, so the card kept saying
+  // no comparables were present. No-ops unless the file landed on one of the
+  // three items the AI reads.
+  //
+  // A failure here is deliberately not surfaced as an upload error: the file
+  // did attach, which is the thing the agent asked for, and the page-level
+  // button remains as the retry. Reporting "upload failed" over a successful
+  // upload would be worse than a stale finding.
+  // Imported at call time, not at the top of the file: extraction.ts imports
+  // requireAuthContext from this module, so a static import here would close a
+  // cycle between the two.
+  const { extractForAttachment } = await import("@/lib/actions/extraction");
+  const extraction = await extractForAttachment(propertyId, itemKey);
+  if (extraction.error) {
+    console.error("post-attach extraction failed:", itemKey, extraction.error);
+  }
+
   revalidatePath(`/dashboard/${propertyId}`);
-  return error ? { error } : ok;
+  return ok;
 }
 
 // Removes the attached evidence file (storage object + the pointer/filename

@@ -229,20 +229,45 @@ function EvidenceUploader({
           </form>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="mt-1 flex flex-wrap items-center gap-2">
-          <input
-            type="file"
-            required
-            onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-            className="text-xs text-rc-muted file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
-          />
-          <button
-            type="submit"
-            disabled={uploading || uploadPending}
-            className="rounded-md border border-rc-border px-2 py-1 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt disabled:opacity-60"
-          >
-            {uploading ? "Uploading…" : uploadPending ? "Saving…" : "Attach file"}
-          </button>
+        // Choosing a file and attaching it are two steps, and missing the
+        // second one used to leave no trace: the browser prints the chosen
+        // filename next to the picker, which reads exactly like confirmation
+        // that something was saved. Adam lost a comparable-sales report that
+        // way on 14 Aug 2026 and believed it was on file for days. Adam's
+        // call was to keep both steps but make the gap unmissable, so a
+        // pending choice now turns the whole row amber and says plainly that
+        // nothing has been attached yet.
+        <form
+          onSubmit={handleSubmit}
+          className={`mt-1 rounded-lg border p-2 transition ${
+            selectedFile ? "border-rc-amber bg-rc-amber/10" : "border-transparent"
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="file"
+              required
+              onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+              className="text-xs text-rc-muted file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
+            />
+            <button
+              type="submit"
+              disabled={uploading || uploadPending}
+              className={
+                selectedFile
+                  ? "rounded-md bg-rc-green-deep px-3 py-1 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+                  : "rounded-md border border-rc-border px-2 py-1 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt disabled:opacity-60"
+              }
+            >
+              {uploading ? "Uploading…" : uploadPending ? "Saving…" : "Attach file"}
+            </button>
+          </div>
+          {selectedFile && !uploading && !uploadPending && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-rc-amber-deep">
+              <AlertTriangle size={12} className="shrink-0" />
+              Not attached yet — press Attach file to save it.
+            </p>
+          )}
         </form>
       )}
       <FieldError error={clientError ?? uploadState.error} />
