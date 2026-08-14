@@ -41,20 +41,21 @@ function StatusPill({ status }: { status?: PropertyItem["status"] }) {
       </span>
     );
   }
+  // Labelled, like Open and Flagged. It used to be an icon-only tick circle,
+  // which made the one state you most want confirmation of the least legible
+  // of the three (Adam, 14 Aug 2026: a completed item "can be confusing and
+  // look like the task has not been marked as complete"). The word carries it
+  // where a small glyph did not.
   return (
-    <span
-      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rc-green-deep text-white"
-      role="img"
-      aria-label="Done"
-      title="Done"
-    >
-      <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-rc-green-soft px-2.5 py-0.5 text-xs font-semibold text-rc-green-deep">
+      <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3" aria-hidden="true">
         <path
           fillRule="evenodd"
           d="M16.704 5.29a1 1 0 010 1.415l-7.25 7.25a1 1 0 01-1.415 0l-3.25-3.25a1 1 0 111.415-1.414l2.542 2.543 6.543-6.543a1 1 0 011.415 0z"
           clipRule="evenodd"
         />
       </svg>
+      Done
     </span>
   );
 }
@@ -263,6 +264,8 @@ function ChecklistItem({
 }) {
   const boundAction = setItemStatus.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
+  const status = current?.status;
+  const isDone = status === "done";
   const data = (current?.data ?? {}) as {
     note?: string;
     espLow?: number;
@@ -376,25 +379,39 @@ function ChecklistItem({
             </div>
           )
         )}
+        {/* The actions reflect the item's state rather than being fixed.
+            Previously "Mark done" stayed full-strength green after an item was
+            completed, which reads as an outstanding action and had Adam
+            doubting whether his tick had saved (14 Aug 2026). It still submits
+            status=done either way, since the form also carries the date, note
+            and findings and re-submitting is how you edit those — only the
+            label and weight change. "Reopen" is hidden on an item that is
+            already open, where it did nothing. */}
         <div className="flex gap-2">
           <button
             type="submit"
             name="status"
             value="done"
             disabled={pending}
-            className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+            className={
+              isDone
+                ? "rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink disabled:opacity-60"
+                : "rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+            }
           >
-            Mark done
+            {isDone ? "Save changes" : "Mark done"}
           </button>
-          <button
-            type="submit"
-            name="status"
-            value="open"
-            disabled={pending}
-            className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt disabled:opacity-60"
-          >
-            Reopen
-          </button>
+          {(isDone || status === "flagged") && (
+            <button
+              type="submit"
+              name="status"
+              value="open"
+              disabled={pending}
+              className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt disabled:opacity-60"
+            >
+              Reopen
+            </button>
+          )}
         </div>
       </form>
       <FieldError error={state.error} />
@@ -437,9 +454,23 @@ function GuideItem({
           <input type="number" name="guideHigh" placeholder="Guide high (optional)" className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm" />
         </div>
         <textarea name="note" defaultValue={data.note ?? ""} placeholder="Exact wording used in the ad" rows={2} className="w-full rounded-md border border-rc-border px-2 py-1 text-sm" />
+        {/* Same state-aware treatment as ChecklistItem. This one stays fully
+            usable once recorded, because re-recording is a real action here (a
+            guide genuinely changes during a campaign) — it just stops shouting
+            once a guide is on file. */}
         <div className="flex gap-2">
-          <button type="submit" name="status" value="done" disabled={pending} className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60">
-            Record guide
+          <button
+            type="submit"
+            name="status"
+            value="done"
+            disabled={pending}
+            className={
+              current?.status === "done"
+                ? "rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink disabled:opacity-60"
+                : "rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+            }
+          >
+            {current?.status === "done" ? "Update guide" : "Record guide"}
           </button>
         </div>
       </form>
