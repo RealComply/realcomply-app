@@ -191,8 +191,17 @@ export function Sidebar() {
           the "Diligence support" line, which is what shipped. A flex column
           with the panel taking the free space keeps them apart at any
           height. */}
-      <aside className="rc-app-chrome hidden bg-rc-nav-bg md:flex md:flex-col">
-        <div className="min-h-0 flex-1">{panel}</div>
+      {/* Pinned to the viewport. It was an ordinary column in the page grid,
+          so it scrolled away with everything else and navigation vanished the
+          moment you went down a long property file (Adam, 14 Aug 2026) —
+          exactly where you most want to jump somewhere else. sticky rather
+          than fixed keeps it inside the grid, so the column still gets its
+          width from --rc-sidebar-w and the collapse toggle keeps working; a
+          fixed element would leave the grid holding an empty track. h-screen
+          bounds it to the viewport, and the panel below scrolls inside that if
+          the list ever outgrows the height. */}
+      <aside className="rc-app-chrome hidden self-start bg-rc-nav-bg md:sticky md:top-0 md:flex md:h-screen md:flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto">{panel}</div>
         <button
           type="button"
           onClick={(e) => toggleRail(e.currentTarget)}
