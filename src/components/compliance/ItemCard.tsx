@@ -384,7 +384,13 @@ function ChecklistItem({
             <label className="block text-xs text-rc-muted">
               Findings <span className="font-normal text-rc-faint">(from AI extraction, not for manual entry)</span>
             </label>
-            <p className="mt-1 rounded-md border border-rc-border bg-rc-bg-alt px-2 py-1.5 text-sm text-rc-ink">
+            {/* whitespace-pre-line so a finding that genuinely needs more than
+                one line keeps its breaks instead of collapsing into a block of
+                run-on text. Most findings are a single sentence, and the a4b
+                prompt was tightened so they stay that way — this is for the
+                ones that legitimately are not. leading-relaxed because these
+                are read, not skimmed. */}
+            <p className="mt-1 whitespace-pre-line rounded-md border border-rc-border bg-rc-bg-alt px-2.5 py-2 text-sm leading-relaxed text-rc-ink">
               {(data.note ?? draft?.note ?? "").trim() || "No findings to action"}
             </p>
             {/* Carries the current finding through Mark done/Flag/Reopen so it isn't wiped by

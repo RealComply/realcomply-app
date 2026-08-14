@@ -348,7 +348,13 @@ async function extractOneDocument(
               "if that's stated; if the document doesn't address this at all, leave a2 out rather than guessing), " +
               "a3 (the date the " +
               "agency agreement was signed), a4 (an ESP range, only if a " +
-              "figure is explicitly stated in this document), a4b (what comparable-sales evidence is present), " +
+              "figure is explicitly stated in this document), a4b (whether comparable-sales evidence is present " +
+              "at all — say so in ONE short sentence and stop. Do not list the comparable addresses, prices or " +
+              "counts: the agent uploaded this document and has it open, so enumerating its contents back at " +
+              "them is the restatement the rule above forbids. Do not comment on whether the agent has explained " +
+              "how the comparables relate to the ESP, or on the absence of that reasoning — that belongs to a4c, " +
+              "which has its own card directly below this one for exactly that purpose, and flagging it here " +
+              "reads as a gap in the wrong place), " +
               "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
               "note-flagging rule: if the document contains that reasoning text, paraphrase it as a short " +
               "editable starting draft for the agent to refine, not just a gap-flag), a5 " +
