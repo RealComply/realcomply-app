@@ -343,9 +343,21 @@ async function extractOneDocument(
             text:
               `This document was uploaded as the ${sourceLabel}. Call record_findings with any facts it ` +
               "explicitly and literally states that are relevant to these compliance items: a2 (whether the " +
-              "approved consumer guide was given to the vendor before the agency agreement was signed — set " +
-              "consumerGuideProvided true only on an explicit confirmation, with eventDate set to the date given " +
-              "if that's stated; if the document doesn't address this at all, leave a2 out rather than guessing), " +
+              "approved consumer guide was given to the vendor before the agency agreement was signed. LOOK FOR " +
+              "THIS DELIBERATELY — in a NSW residential agency agreement it is normally a short acknowledgement " +
+              "by the vendor, near the signing block or among the vendor declarations, worded along the lines of " +
+              "acknowledging receipt of the approved guide, the consumer guide, or the approved consumer guide " +
+              "for agency agreements, sometimes as a tick-box and sometimes with its own date beside it. It is " +
+              "easy to skim past because it sits among boilerplate, so read the declarations and signing pages " +
+              "specifically rather than only the front schedule. Set consumerGuideProvided true ONLY on an " +
+              "explicit acknowledgement actually present in this document — never infer it from the agreement " +
+              "merely existing, or from the guide being a legal requirement. If the acknowledgement IS there and " +
+              "states the date the guide was given, set eventDate to that date. If the acknowledgement is there " +
+              "but no date is stated anywhere, still set consumerGuideProvided true, leave eventDate out, and say " +
+              "in the note that the agreement confirms the guide was given but does not state the date, so the " +
+              "agent needs to enter it — that is genuinely useful to them, and is an exception to the " +
+              "no-restatement rule. If the document does not address the guide at all, leave a2 out rather than " +
+              "guessing), " +
               "a3 (the date the " +
               "agency agreement was signed), a4 (an ESP range, only if a " +
               "figure is explicitly stated in this document), a4b (whether comparable-sales evidence is present " +
