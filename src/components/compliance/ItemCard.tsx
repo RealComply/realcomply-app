@@ -382,11 +382,21 @@ function ChecklistItem({
         {/* The actions reflect the item's state rather than being fixed.
             Previously "Mark done" stayed full-strength green after an item was
             completed, which reads as an outstanding action and had Adam
-            doubting whether his tick had saved (14 Aug 2026). It still submits
-            status=done either way, since the form also carries the date, note
-            and findings and re-submitting is how you edit those — only the
-            label and weight change. "Reopen" is hidden on an item that is
-            already open, where it did nothing. */}
+            doubting whether his tick had saved (14 Aug 2026).
+
+            The LABEL DELIBERATELY DOES NOT CHANGE. An earlier pass swapped it
+            to "Save changes" once done; Adam preferred "Mark done" throughout
+            and he is right — a control whose wording moves under you is harder
+            to learn than one that only changes weight. Only the styling
+            differs: solid green while outstanding, then a faded white box with
+            grey text once complete, returning to full strength on hover so it
+            is still obviously reachable.
+
+            It submits status=done in both states and stays enabled when
+            complete, because this same form carries the date, note and
+            findings, and re-submitting is how those get edited. Disabling it
+            would make a finished item uneditable. "Reopen" is hidden on an
+            item that is already open, where it did nothing. */}
         <div className="flex gap-2">
           <button
             type="submit"
@@ -395,11 +405,11 @@ function ChecklistItem({
             disabled={pending}
             className={
               isDone
-                ? "rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink disabled:opacity-60"
+                ? "rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted opacity-70 transition hover:border-rc-ink/20 hover:opacity-100 disabled:opacity-40"
                 : "rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
             }
           >
-            {isDone ? "Save changes" : "Mark done"}
+            Mark done
           </button>
           {(isDone || status === "flagged") && (
             <button
@@ -466,11 +476,11 @@ function GuideItem({
             disabled={pending}
             className={
               current?.status === "done"
-                ? "rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink disabled:opacity-60"
+                ? "rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted opacity-70 transition hover:border-rc-ink/20 hover:opacity-100 disabled:opacity-40"
                 : "rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
             }
           >
-            {current?.status === "done" ? "Update guide" : "Record guide"}
+            Record guide
           </button>
         </div>
       </form>
