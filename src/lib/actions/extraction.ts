@@ -359,7 +359,11 @@ async function extractOneDocument(
               "no-restatement rule. If the document does not address the guide at all, leave a2 out rather than " +
               "guessing), " +
               "a3 (the date the " +
-              "agency agreement was signed), a4 (an ESP range, only if a " +
+              "agency agreement was signed — put it in eventDate and write NO note. Do not report that the " +
+              "agreement was signed, or by whom: the agent uploaded it and can see the signatures, so naming the " +
+              "vendors back at them is the restatement the rule above forbids. Only write a note here if " +
+              "something is genuinely wrong with the execution, for example it appears unsigned by a party, or " +
+              "carries no date at all), a4 (an ESP range, only if a " +
               "figure is explicitly stated in this document), a4b (whether comparable-sales evidence is present " +
               "at all — say so in ONE short sentence and stop. Do not list the comparable addresses, prices or " +
               "counts: the agent uploaded this document and has it open, so enumerating its contents back at " +
@@ -446,6 +450,11 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
     .filter((i) => i.evidence_path)
     .filter((i) => !onlyItemKey || i.item_key === onlyItemKey);
 
+  // Whether the agency agreement itself was among the documents read. Only if
+  // it was can we conclude anything about the consumer-guide acknowledgement:
+  // a run scoped to the contract or the comparables says nothing either way.
+  const readAgencyAgreement = withEvidence.some((i) => i.item_key === "a3");
+
   if (withEvidence.length === 0) {
     return {
       error: "No documents attached yet — attach the agency agreement, contract, or comparable-sales report first.",
@@ -519,6 +528,45 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
       },
       { onConflict: "property_id,item_key" },
     );
+  }
+
+  // The agreement was read and produced nothing for a2, meaning the vendor's
+  // acknowledgement of the approved guide is not in it. That is a real, useful
+  // conclusion and distinct from nobody having looked yet, so it is recorded
+  // rather than left as silence — otherwise the card looks identical whether
+  // the document was checked or not (Adam, 14 Aug 2026). Never touches an item
+  // already marked done: a human decision outranks this.
+  if (readAgencyAgreement && !patches.some((p) => p.itemKey === "a2")) {
+    const { data: a2Row } = await supabase
+      .from("property_items")
+      .select("*")
+      .eq("property_id", propertyId)
+      .eq("item_key", "a2")
+      .maybeSingle();
+    const a2 = a2Row as PropertyItem | null;
+
+    if ((a2?.status ?? "open") !== "done") {
+      await supabase.from("property_items").upsert(
+        {
+          agency_id: profile.agency_id,
+          property_id: propertyId,
+          item_key: "a2",
+          status: a2?.status ?? "open",
+          data: {
+            ...(a2?.data ?? {}),
+            aiDraft: {
+              ...((a2?.data as { aiDraft?: Record<string, unknown> } | undefined)?.aiDraft ?? {}),
+              guideNotFound: true,
+              generatedAt: new Date().toISOString(),
+            },
+          },
+          event_date: a2?.event_date ?? null,
+          completed_by: a2?.completed_by ?? null,
+          evidence_path: a2?.evidence_path ?? null,
+        },
+        { onConflict: "property_id,item_key" },
+      );
+    }
   }
 
   revalidatePath(`/dashboard/${propertyId}`);

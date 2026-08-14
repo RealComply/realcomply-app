@@ -303,6 +303,7 @@ function ChecklistItem({
       eventDate?: string;
       consumerGuideProvided?: boolean;
       autoCompleted?: boolean;
+      guideNotFound?: boolean;
     };
   };
   const draft = data.aiDraft;
@@ -316,6 +317,18 @@ function ChecklistItem({
             <span>
               Auto-marked done — the agency agreement explicitly confirmed the guide was given, dated{" "}
               {draft.eventDate}. Check it against the source; use Reopen below if that&apos;s not right.
+            </span>
+          </p>
+        ) : draft?.guideNotFound ? (
+          // Distinct from an untouched item. The agreement WAS read and the
+          // vendor's acknowledgement was not in it, which is worth saying out
+          // loud: silence looks identical to nobody having checked, and this
+          // card has no note box to carry the message.
+          <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>
+              Read the agency agreement and couldn&apos;t find the vendor&apos;s acknowledgement that the guide was
+              given. It may still have been given separately — confirm it yourself and enter the date.
             </span>
           </p>
         ) : (
