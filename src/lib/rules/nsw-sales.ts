@@ -261,12 +261,27 @@ const items: ComplianceItem[] = [
     //     they need their own items (disclosure statement, Sch 1 Pt 2), not a
     //     clause bolted onto this one.
     description:
-      "A pool safety certificate is required in the contract — unless the pool is common property in a strata or community scheme of more than 2 lots (the owners corporation or association handles compliance). If the property is in a scheme, confirm which applies: certificate held, or the exemption applies because it's common property in a scheme of more than 2 lots.",
+      "A pool safety certificate is required in the contract for a pool on the land being sold.",
     legalBasis:
       "Swimming Pools Act 1992 (NSW); Conveyancing (Sale of Land) Regulation 2022, Sch 1 item 15",
     requiresDate: false,
     requiredForStageCompletion: true,
-    showIf: (p) => Boolean(p.has_pool),
+    // Single-lot properties only (Adam, 15 Aug 2026). A pool in a unit block or
+    // a townhouse complex is the owners corporation's compliance problem, not
+    // the selling agent's, and item 15(2)(a) exempts the contract, so asking
+    // the question at all only invited a wrong answer.
+    //
+    // The narrow case this gives up: item 15(2)(a) exempts a scheme of MORE
+    // THAN 2 lots, so a 2-lot strata with a shared pool does still need the
+    // certificate and will no longer be asked. Raised with Adam, who took the
+    // trade knowingly. Reinstating it needs a lot count at property setup,
+    // which is a question every strata listing would answer to catch a case
+    // that is close to hypothetical.
+    //
+    // is_strata is nullable, and null falls through to showing the item. That
+    // is the right way round: an unanswered question should surface the
+    // certificate check, not silently skip it.
+    showIf: (p) => Boolean(p.has_pool) && !p.is_strata,
   },
   {
     key: "t1",
