@@ -173,11 +173,20 @@ export function Sidebar() {
         </div>
       ))}
 
+      {/* The standing liability line. Reworded 15 Aug 2026 (Adam) from
+          "Diligence support — the licensee decides." The old wording named
+          only the licensee, which read as though the person actually working
+          the file had no part in it. This names both roles the way the agency
+          runs: the listing agent does the work with this as support, and the
+          authority to sign it off stays with the licensee. Two short
+          sentences rather than one with a dash, per house style. Do not soften
+          "Authority stays with the licensee" — that clause is the product's
+          liability framing, not decoration. */}
       <p
         data-rail-hide
         className="mt-auto border-t border-rc-ink-line px-3 pt-3.5 text-[11px] leading-relaxed text-rc-nav-muted"
       >
-        Diligence support — the licensee decides.
+        Diligence support for the listing agent. Authority stays with the licensee.
       </p>
     </div>
   );
