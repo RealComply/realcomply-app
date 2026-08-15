@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { getItem } from "@/lib/rules/nsw-sales";
+import {
+  PRESCRIBED_DOC_KEYS,
+  prescribedDocumentsFor,
+  type PrescribedDoc,
+} from "@/lib/rules/nsw-prescribed-documents";
 import type { PropertyItem } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -34,6 +39,16 @@ const SOURCE_LABELS: Record<string, string> = {
 // item here.
 const TARGET_ITEM_KEYS = new Set(["a2", "a3", "a4", "a4b", "a4c", "a5", "a6", "a7", "b1"]);
 
+// One verdict per prescribed document, for item b1. "found" and "not_found"
+// are both real answers; there is no "unclear" because a document the model
+// cannot positively identify has, for the agent's purposes, not been found —
+// and the wording shown to them says exactly that rather than claiming the
+// contract is deficient.
+export type PrescribedDocVerdict = {
+  key: string;
+  found: boolean;
+};
+
 type DraftPatch = {
   itemKey: string;
   note?: string;
@@ -41,6 +56,13 @@ type DraftPatch = {
   espHigh?: number;
   eventDate?: string;
   consumerGuideProvided?: boolean;
+  prescribedDocs?: PrescribedDocVerdict[];
+  /**
+   * Set on a b1 patch when the uploaded file is not a contract for sale at
+   * all, so the card can say so plainly instead of showing a document
+   * checklist run against the wrong document.
+   */
+  notAContract?: boolean;
 };
 
 const EXTRACTION_TOOL: Anthropic.Tool = {
@@ -83,6 +105,28 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
               description:
                 "Item a2 only — true only if the document explicitly confirms the approved consumer guide (the approved guide required by s56 of the Property and Stock Agents Act) was given to the vendor before the agency agreement was signed — e.g. an acknowledgement clause, a signed receipt, a ticked box referencing the guide. Do not set this from the agreement's mere existence or from silence on the point. If the document doesn't explicitly address it, omit this field and leave a2 out of the patches entirely rather than guessing. When you do set this true, also set that a2 patch's eventDate to the date the guide was given, only if that specific date is stated — if provision is confirmed but no date is given, omit eventDate and use note instead to flag it for the agent so they can supply the date manually.",
             },
+            prescribedDocs: {
+              type: "array",
+              description:
+                "Item b1 only, and only when the document really is a contract for sale of land. One entry for each prescribed document named in the instructions for this property — every one of them, whether or not you found it. This is a positive check: the agent wants to see which are present as much as which are missing.",
+              items: {
+                type: "object",
+                properties: {
+                  key: { type: "string", enum: PRESCRIBED_DOC_KEYS },
+                  found: {
+                    type: "boolean",
+                    description:
+                      "True only if you can actually see that document in what you were shown. An entry in a 'List of Documents' index page is not the document itself — do not mark found on the strength of the index alone.",
+                  },
+                },
+                required: ["key", "found"],
+              },
+            },
+            notAContract: {
+              type: "boolean",
+              description:
+                "Item b1 only. Set true if the file uploaded as the contract for sale is plainly a different kind of document (most commonly the agency agreement). When true, omit prescribedDocs entirely and put one short sentence in note naming what the document actually is.",
+            },
           },
           required: ["itemKey"],
         },
@@ -91,6 +135,46 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
     required: ["patches"],
   },
 };
+
+// The b1 half of the extraction prompt, built per property because the
+// applicable list depends on whether the listing is strata.
+//
+// REWRITTEN 15 Aug 2026 (Adam) after the previous version produced a finding
+// that was wrong twice over on a real file. It had said the document was not a
+// contract because it contained "no purchaser details, price agreed for sale,
+// or settlement terms" — but a contract for sale at listing stage has none of
+// those by definition, since s52A requires it to exist BEFORE a buyer or a
+// price does. That test would reject every compliant contract it ever saw. It
+// then reported that the s52A check "does not apply to this document and was
+// not performed", which is narration of work not done and of no use to anyone.
+function prescribedDocsPrompt(docs: PrescribedDoc[]): string {
+  const list = docs
+    .map((d) => `    - ${d.key} — ${d.label} (${d.source}). Looks like: ${d.hint}`)
+    .join("\n");
+
+  return (
+    "b1 (the contract for sale and its s52A prescribed documents). Work in two steps.\n" +
+    "  STEP 1 — is this actually a contract for sale of land? Decide this from what the document IS, not " +
+    "from what it lacks. A contract for sale is headed as a contract for the sale of land, names a vendor and " +
+    "the vendor's solicitor or conveyancer, carries the cooling-off statement, and usually has a 'List of " +
+    "Documents' page followed by annexures. CRITICAL: a contract prepared for a new listing has NO purchaser " +
+    "named, NO agreed price, and NO settlement date, because it must exist before the property is offered for " +
+    "sale. Those absences are completely normal and must NEVER be cited as evidence that a document is not a " +
+    "contract. The document most often mistaken for one is the Sales Inspection Report and Selling Agency " +
+    "Agreement, which is the agency's appointment document. If what you were shown is not a contract for sale, " +
+    "set notAContract true, write ONE short sentence naming what it actually is, and stop. Do not list the " +
+    "checks you did not run, and do not explain that the s52A check does not apply — the agent knows what they " +
+    "uploaded and only needs to be told it was the wrong file.\n" +
+    "  STEP 2 — if it IS a contract, check for each of these prescribed documents and return a prescribedDocs " +
+    "entry for EVERY one, found true or false:\n" +
+    list +
+    "\n  Look through the whole document, including the annexures after the contract's own pages. Judge found " +
+    "on seeing the actual document, not on its name appearing in a List of Documents index. Do not write a " +
+    "note describing which ones you found or did not find — the prescribedDocs array carries all of that and " +
+    "the agent is shown it as a list. Leave note empty unless there is something genuinely odd that the " +
+    "found/not-found answers cannot express, such as a certificate that is visibly for a different property."
+  );
+}
 
 // f3 — pre-purchase inspection report register (cl 37, Property and Stock
 // Agents Regulation 2022). Separate tool/schema from record_findings above:
@@ -269,6 +353,7 @@ async function extractOneDocument(
   supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>,
   anthropic: Anthropic,
   item: PropertyItem,
+  prescribedDocs: PrescribedDoc[],
 ): Promise<DraftPatch[]> {
   const path = item.evidence_path;
   if (!path) return [];
@@ -380,17 +465,9 @@ async function extractOneDocument(
               "note-flagging rule: if the document contains that reasoning text, paraphrase it as a short " +
               "editable starting draft for the agent to refine, not just a gap-flag), a5 " +
               "(commission/rebate/VPA terms), a6 " +
-              "(cooling-off), a7 (material facts disclosed), b1 (the s52A prescribed documents — planning " +
-              "certificate, sewer/sewerage diagram, title/plan. First check this actually looks like a real " +
-              "contract for sale of land — vendor/purchaser details, price, settlement terms, that kind of " +
-              "substance. If it doesn't, say so in one line and stop there; don't attempt the s52A check at all " +
-              "on something that isn't genuinely a contract, even though it was labelled as one when uploaded. " +
-              "If it does look like a real contract, keep this simple: just say plainly which of those three " +
-              "documents, if any, you can't find anywhere in what was shown. Don't cross-check a 'List of " +
-              "Documents' index page against the annexures, don't name issuers/dates/certificate numbers, and " +
-              "don't describe what IS present — the agent has the document open in front of them. If all three " +
-              "are there, leave b1 out of the patches entirely; that's the normal, expected outcome, not a " +
-              "reason to keep looking for something to say). For every item: only report what is directly readable in the content above; " +
+              "(cooling-off), a7 (material facts disclosed).\n\n" +
+              prescribedDocsPrompt(prescribedDocs) +
+              "\n\nFor every item: only report what is directly readable in the content above; " +
               "if you're not looking at something substantial enough to ground a finding, leave that item out " +
               "rather than filling it in.",
           },
@@ -445,6 +522,21 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
     };
   }
 
+  // Drives which s52A prescribed documents the contract is checked against —
+  // a strata lot needs the strata plan and by-laws where a house needs the
+  // deposited plan. Defaults to the non-strata list if the flag was never set
+  // at property setup, which is the more common listing and errs towards
+  // asking about a document that turns out not to apply rather than silently
+  // skipping one that does.
+  const { data: propertyRow } = await supabase
+    .from("properties")
+    .select("is_strata")
+    .eq("id", propertyId)
+    .maybeSingle();
+  const prescribedDocs = prescribedDocumentsFor({
+    isStrata: (propertyRow as { is_strata?: boolean | null } | null)?.is_strata ?? false,
+  });
+
   const { data: rows } = await supabase
     .from("property_items")
     .select("*")
@@ -472,7 +564,7 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
 
   for (const item of withEvidence) {
     try {
-      patches.push(...(await extractOneDocument(supabase, anthropic, item)));
+      patches.push(...(await extractOneDocument(supabase, anthropic, item, prescribedDocs)));
     } catch (err) {
       failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${err instanceof Error ? err.message : "extraction failed"}`);
     }
@@ -519,6 +611,12 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
             espHigh: patch.espHigh,
             eventDate: patch.eventDate,
             consumerGuideProvided: patch.consumerGuideProvided,
+            // b1 only. Filtered against the current rules list so a stale key
+            // from an older ruleset version can never render as a mystery row.
+            prescribedDocs: patch.prescribedDocs?.filter((d) =>
+              PRESCRIBED_DOC_KEYS.includes(d.key),
+            ),
+            notAContract: patch.notAContract,
             // Flags the ItemCard banner to explain *why* this is already
             // done rather than just pre-filled, and that it was AI-set, not
             // agent-confirmed — reversible any time via the existing Reopen

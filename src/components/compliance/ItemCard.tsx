@@ -1,8 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Paperclip, Sparkles, AlertTriangle } from "lucide-react";
+import { Paperclip, Sparkles, AlertTriangle, Check, X } from "lucide-react";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
+import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
 import type { Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
@@ -306,6 +307,8 @@ function ChecklistItem({
       consumerGuideProvided?: boolean;
       autoCompleted?: boolean;
       guideNotFound?: boolean;
+      prescribedDocs?: { key: string; found: boolean }[];
+      notAContract?: boolean;
     };
   };
   const draft = data.aiDraft;
@@ -474,6 +477,66 @@ function ChecklistItem({
             />
           </div>
         )}
+        {/* The s52A prescribed-document check, item b1 only.
+            Adam, 15 Aug 2026: "we do wanna perform a search on the prescribed
+            documents, and we wanna flag it if they are not there, but we also
+            wanna confirm the ones that are." Hence a list with both answers on
+            it, rather than the previous behaviour of mentioning only what was
+            missing and staying silent when everything was found. Silence is
+            ambiguous — it reads the same as the check never having run.
+
+            Not-found is worded as "not found in the file" rather than "missing"
+            and does NOT set the item's status. The AI is reading a PDF that may
+            be one part of a contract assembled by a solicitor, so a false
+            not-found is entirely possible; letting it flag the item outright
+            would put a red mark on a compliant file. It goes to the agent, who
+            decides, which is the same rule every other AI output here follows. */}
+        {draft?.prescribedDocs && draft.prescribedDocs.length > 0 && (
+          <div>
+            <label className="block text-xs text-rc-muted">
+              s52A prescribed documents{" "}
+              <span className="font-normal text-rc-faint">(checked against the uploaded contract)</span>
+            </label>
+            <ul className="mt-1 divide-y divide-rc-border rounded-md border border-rc-border bg-white">
+              {draft.prescribedDocs.map((d) => {
+                const meta = getPrescribedDoc(d.key);
+                if (!meta) return null;
+                return (
+                  <li key={d.key} className="flex items-start gap-2.5 px-2.5 py-2">
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
+                        d.found ? "bg-rc-green-deep text-white" : "bg-rc-amber-deep text-white"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {d.found ? <Check size={11} strokeWidth={3} /> : <X size={11} strokeWidth={3} />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm leading-snug text-rc-ink">
+                        {meta.label}
+                        {!d.found && (
+                          <span className="font-medium text-rc-amber-deep"> — not found in the file</span>
+                        )}
+                      </span>
+                      <span className="block text-[11px] leading-snug text-rc-faint">{meta.source}</span>
+                      {!d.found && meta.conditional && (
+                        <span className="mt-0.5 block text-[11px] leading-snug text-rc-muted">
+                          {meta.conditional}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">
+              {draft.prescribedDocs.every((d) => d.found)
+                ? "All of them were found in the contract as uploaded. Your solicitor prepares and confirms the contract; this is a second look, not their sign-off."
+                : "Anything not found may still be there — it could sit in a part of the contract that was not uploaded. Check with the solicitor who prepared it before the property goes to market."}
+            </p>
+          </div>
+        )}
+
         {item.showFindings ? (
           <div>
             <label className="block text-xs text-rc-muted">

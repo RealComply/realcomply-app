@@ -224,9 +224,13 @@ const items: ComplianceItem[] = [
     stage: 1,
     kind: "checklist",
     label: "Contract of sale prepared with prescribed documents",
+    // The document list itself lives in nsw-prescribed-documents.ts, built
+    // from Sch 1 Pt 1 of the Conveyancing (Sale of Land) Regulation 2022 and
+    // varied by whether the listing is strata. Not repeated here: naming three
+    // of them in this description was how the list quietly stayed at three.
     description:
-      "Contract available before marketing, with the s52A prescribed documents attached (planning certificate, sewer diagram, title/plan).",
-    legalBasis: "s52A, Conveyancing Act 1919 (NSW)",
+      "Contract available before marketing, with the s52A prescribed documents attached. Attach the contract and the documents are checked off one by one.",
+    legalBasis: "s52A, Conveyancing Act 1919 (NSW); Conveyancing (Sale of Land) Regulation 2022, Sch 1",
     requiresDate: false,
     requiredForStageCompletion: true,
     hideNote: true,
