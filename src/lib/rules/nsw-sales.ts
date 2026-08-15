@@ -224,9 +224,13 @@ const items: ComplianceItem[] = [
     stage: 1,
     kind: "checklist",
     label: "Contract of sale prepared with prescribed documents",
+    // The document list itself lives in nsw-prescribed-documents.ts, built
+    // from Sch 1 Pt 1 of the Conveyancing (Sale of Land) Regulation 2022 and
+    // varied by whether the listing is strata. Not repeated here: naming three
+    // of them in this description was how the list quietly stayed at three.
     description:
-      "Contract available before marketing, with the s52A prescribed documents attached (planning certificate, sewer diagram, title/plan).",
-    legalBasis: "s52A, Conveyancing Act 1919 (NSW)",
+      "Contract available before marketing, with the s52A prescribed documents attached. Attach the contract and the documents are checked off one by one.",
+    legalBasis: "s52A, Conveyancing Act 1919 (NSW); Conveyancing (Sale of Land) Regulation 2022, Sch 1",
     requiresDate: false,
     requiredForStageCompletion: true,
     hideNote: true,
@@ -237,12 +241,47 @@ const items: ComplianceItem[] = [
     stage: 1,
     kind: "checklist",
     label: "Pool compliance certificate",
+    // Exemption source: Conveyancing (Sale of Land) Regulation 2022, Sch 1
+    // item 15(2). Corrected 15 Aug 2026 — the wording said "strata scheme"
+    // where item 15(2)(a) reads "a lot in a strata scheme or in a community
+    // scheme". A pool in a community-title estate was being asked for a
+    // certificate the Regulation does not require there.
+    //
+    // TWO THINGS THIS DELIBERATELY DOES NOT DO, both because loosening a
+    // requirement wrongly means a contract goes out without a certificate that
+    // was required, and the purchaser gets a right to rescind:
+    //   - Item 15(2)(a) as written exempts any lot in a scheme of more than 2
+    //     lots, without distinguishing a pool on common property from one on
+    //     the individual lot. The wording below keeps the common-property
+    //     qualifier, so the app asks in a case the Regulation may not require.
+    //     Raised with Adam 15 Aug 2026 to put to the compliance adviser before
+    //     it is relaxed.
+    //   - Item 15(2)(b) also exempts off-the-plan contracts. Not reflected
+    //     here because off-the-plan sales are out of scope for this ruleset;
+    //     they need their own items (disclosure statement, Sch 1 Pt 2), not a
+    //     clause bolted onto this one.
     description:
-      "A pool safety certificate is required in the contract — unless the pool is common property in a strata scheme of more than 2 lots (owners corporation handles compliance). If strata, confirm which applies: certificate held, or the exemption applies because it's common property in a scheme of more than 2 lots.",
-    legalBasis: "Swimming Pools Act 1992 (NSW); Conveyancing (Sale of Land) Regulation",
+      "A pool safety certificate is required in the contract for a pool on the land being sold.",
+    legalBasis:
+      "Swimming Pools Act 1992 (NSW); Conveyancing (Sale of Land) Regulation 2022, Sch 1 item 15",
     requiresDate: false,
     requiredForStageCompletion: true,
-    showIf: (p) => Boolean(p.has_pool),
+    // Single-lot properties only (Adam, 15 Aug 2026). A pool in a unit block or
+    // a townhouse complex is the owners corporation's compliance problem, not
+    // the selling agent's, and item 15(2)(a) exempts the contract, so asking
+    // the question at all only invited a wrong answer.
+    //
+    // The narrow case this gives up: item 15(2)(a) exempts a scheme of MORE
+    // THAN 2 lots, so a 2-lot strata with a shared pool does still need the
+    // certificate and will no longer be asked. Raised with Adam, who took the
+    // trade knowingly. Reinstating it needs a lot count at property setup,
+    // which is a question every strata listing would answer to catch a case
+    // that is close to hypothetical.
+    //
+    // is_strata is nullable, and null falls through to showing the item. That
+    // is the right way round: an unanswered question should surface the
+    // certificate check, not silently skip it.
+    showIf: (p) => Boolean(p.has_pool) && !p.is_strata,
   },
   {
     key: "t1",
