@@ -112,14 +112,15 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
 
           <EarlyAccessForm source={src} />
 
+          {/* "Built inside a working agency" removed here (Adam, 15 Aug 2026)
+              — same personal-identifiability reason as the tagline removal
+              above. Parked, not deleted for good: see the "Paused copy" list
+              in RealComply-brand-and-site-status.md for the exact wording to
+              restore. */}
           <div className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm font-semibold text-rc-muted">
             <span className="inline-flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
               Grounded in NSW legislation
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
-              Built inside a working agency
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
