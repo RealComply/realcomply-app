@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   // snippet. Replaced with the same wording the landing page already uses,
   // which describes the product rather than its origin.
   description:
-    "Compliance support for NSW real estate agencies. Less paperwork, fewer things slipping through, and a clear record of what you have done.",
+    "AI compliance support for NSW real estate agencies. Less paperwork, fewer things slipping past you, and a record that keeps itself.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

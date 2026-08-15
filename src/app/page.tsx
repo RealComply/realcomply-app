@@ -31,11 +31,11 @@ import { EarlyAccessForm } from "@/components/EarlyAccessForm";
 export const metadata: Metadata = {
   title: "RealComply — Stay on top of compliance, without a full-time hire",
   description:
-    "Compliance support for NSW real estate agencies. Less paperwork, fewer things slipping through, and a clear record of what you have done.",
+    "AI compliance support for NSW real estate agencies. Less paperwork, fewer things slipping past you, and a record that keeps itself.",
   openGraph: {
     title: "RealComply — Stay on top of compliance, without a full-time hire",
     description:
-      "Compliance support for NSW real estate agencies. Less paperwork, fewer things slipping through, and a clear record of what you have done.",
+      "AI compliance support for NSW real estate agencies. Less paperwork, fewer things slipping past you, and a record that keeps itself.",
     url: "https://www.realcomply.com.au",
     siteName: "RealComply",
     locale: "en_AU",
@@ -105,12 +105,54 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           <h1 className="text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
             Stay on top of compliance. <span className="text-rc-green-deep">Without a full-time hire.</span>
           </h1>
+          {/* Names the AI, which the page previously never did (Adam, 15 Aug
+              2026: "it's important that we mention the AI element because
+              that's what's unique to what we're doing").
+
+              "A record that keeps itself" is the differentiating claim and is
+              deliberately the vaguest part of the sentence. It points at the
+              living-records idea without describing how any of it works, which
+              is the line this page does not cross. Two other drafts were
+              rejected for crossing it: one listed what the AI reads and flags,
+              the other spent half the sentence on the sign-off framing.
+
+              Kept shorter than the line it replaced, on a page Adam judged too
+              wordy. Same sentence is the search-result and link-preview
+              description in the metadata above and in layout.tsx — change all
+              three together or the ad, the search result and the page start
+              saying different things. */}
           <p className="mx-auto mt-4 max-w-md text-lg text-rc-muted">
-            Compliance support for NSW agencies. Less paperwork, fewer things slipping through, and a clear record of
-            what you have done.
+            AI compliance support for NSW agencies. Less paperwork, fewer things slipping past you, and a record that
+            keeps itself.
           </p>
 
           <EarlyAccessForm source={src} />
+
+          {/* RISK REVERSAL. Adam, 15 Aug 2026: "I really want the person who
+              lands on the landing page to feel like there is absolutely no
+              risk and nothing to lose."
+
+              Given its own band rather than two more dots in the strip below,
+              because it answers a different question. The dotted items are
+              credibility ("can I trust this?"); this is commitment ("what am I
+              signing up to?"), and commitment is what stops someone typing
+              their email. It sits directly under the button for the same
+              reason: that is the moment the hesitation happens.
+
+              One line, not two. A second line reading "joining the list costs
+              nothing and commits you to nothing" was drafted and cut by Adam
+              on the mockup: it restates what the first line already says, and
+              this page is close to its limit on words. The bold line alone
+              hits harder than the bold line plus an explanation of itself.
+
+              These are promises about future pricing. Keep them honest: if
+              pricing ever gains a joining fee or a minimum term, these come
+              off the page BEFORE it ships, not after. */}
+          <div className="mx-auto mt-5 max-w-md rounded-card border border-rc-green-deep/25 bg-rc-green-soft px-5 py-4">
+            <p className="text-base font-extrabold leading-snug tracking-tight text-rc-green-deep-600 sm:text-lg">
+              No set-up fee. No lock-in contracts.
+            </p>
+          </div>
 
           {/* "Built inside a working agency" removed here (Adam, 15 Aug 2026)
               — same personal-identifiability reason as the tagline removal
@@ -125,25 +167,6 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
             <span className="inline-flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
               The licensee stays in charge
-            </span>
-            {/* Commercial terms, added 15 Aug 2026 (Adam). They sit in the
-                same strip as the credibility claims rather than getting their
-                own block: the objection they answer ("what am I committing
-                to?") arrives at the same moment as the ask, so it belongs
-                directly under the form, not further down the page.
-
-                THESE ARE PROMISES, not descriptions. Everything else on this
-                page describes what the product does; these two commit the
-                business to how it charges. They cannot be quietly walked back
-                once ads have run against them, so they need to survive
-                whatever pricing is eventually set. */}
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
-              No set-up fee
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
-              No lock-in contracts
             </span>
           </div>
         </div>
@@ -190,9 +213,18 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           </h2>
           <p className="mt-3 text-base text-rc-ink-muted">
             We are opening RealComply to a small number of NSW agencies at a time. Leave your email and we will be in
-            touch before the next round. No set-up fee, and no lock-in contracts.
+            touch before the next round.
           </p>
           <EarlyAccessForm source={src} tone="dark" />
+          {/* Same risk reversal as the hero, restated at the second ask. On the
+              dark band it is a plain line rather than a tinted card: a second
+              green box this far down would read as a repeated advert rather
+              than a reassurance. Trailing clause ("nothing to lose by putting
+              your name down") cut for the same reason as the hero's second
+              line — it explained a sentence that did not need explaining. */}
+          <p className="mt-4 text-base font-bold tracking-tight text-white">
+            No set-up fee. No lock-in contracts.
+          </p>
         </div>
       </section>
 
