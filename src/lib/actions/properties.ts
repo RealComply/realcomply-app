@@ -182,3 +182,56 @@ export async function deleteProperty(
   revalidatePath("/dashboard/portfolio");
   redirect("/dashboard");
 }
+
+// Editing a listing's setup answers after the fact.
+//
+// The setup form asks these once, at creation, and until now there was no way
+// to change any of them — Adam ticked "has a pool" on a listing to try the
+// pool item and then had no way to untick it (15 Aug 2026). That is a bad
+// shape for answers that genuinely change: a listing becomes tenanted, or the
+// strata question was answered wrong in a hurry.
+//
+// WHAT HAPPENS TO AN ITEM THAT DISAPPEARS. Nothing is deleted. b2 (pool
+// certificate) only renders while has_pool is true, so unticking hides the
+// card and leaves its row untouched in property_items. Tick it again and
+// whatever was recorded is still there. Deleting on the way out would lose a
+// real record because someone corrected a checkbox.
+//
+// test_mode is deliberately in the same panel. It is the flag that unlocks
+// every stage for viewing (see maxViewable in the property page), which is
+// what makes it possible to try the later-stage items — licensee sign-off in
+// particular — without pushing a real listing through five stages first.
+export async function updatePropertyDetails(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const supabase = await createClient();
+
+  const address = String(formData.get("address") ?? "").trim();
+  if (!address) {
+    return { error: "Address is required." };
+  }
+
+  const { error } = await supabase
+    .from("properties")
+    .update({
+      address,
+      property_type: String(formData.get("propertyType") ?? "House"),
+      is_strata: formData.get("isStrata") === "yes",
+      is_tenanted: formData.get("isTenanted") === "yes",
+      has_pool: formData.get("hasPool") === "yes",
+      agent_interest: formData.get("agentInterest") === "yes",
+      test_mode: formData.get("testMode") === "yes",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", propertyId);
+
+  if (error) {
+    return { error: "Couldn't save those details. Try again." };
+  }
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  revalidatePath("/dashboard");
+  return { error: null };
+}

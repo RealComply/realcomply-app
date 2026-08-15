@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { EditPropertyDetails } from "@/components/property/EditPropertyDetails";
 import { requireProfile } from "@/lib/data/current-profile";
 import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
@@ -150,6 +151,11 @@ export default async function PropertyPage({
         </div>
 
         {isCurrentStage && p.stage < 5 && <CompleteStageButton propertyId={p.id} stage={p.stage} />}
+
+        {/* Setup answers, editable after the fact. Below the items and
+            collapsed by default: revisited rarely, and given space up top it
+            would compete with the compliance work the page exists for. */}
+        <EditPropertyDetails property={p} />
 
         {profile.is_licensee_in_charge && <DeletePropertySection propertyId={p.id} address={p.address} />}
       </main>
