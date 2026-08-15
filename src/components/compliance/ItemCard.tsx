@@ -291,6 +291,7 @@ function ChecklistItem({
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const status = current?.status;
   const isDone = status === "done";
+
   const data = (current?.data ?? {}) as {
     note?: string;
     espLow?: number;
@@ -307,6 +308,35 @@ function ChecklistItem({
     };
   };
   const draft = data.aiDraft;
+
+  // Live ESP spread. s72A(2) allows a range only where the high exceeds the low
+  // by no more than 10% OF THE LOW — not 10% of the high, and not a flat
+  // 10-point gap, both of which are easy to eyeball wrong on a big number.
+  // Shown as you type rather than only after saving, because finding out you
+  // breached once the figures are already on the agreement is finding out too
+  // late (Adam, 15 Aug 2026).
+  //
+  // This decides nothing. setItemStatus recomputes the same sum server-side and
+  // is what actually flags the item; this only tells the agent before they
+  // commit. Two implementations of one rule is a real risk, so if the threshold
+  // ever moves, both move together.
+  const [espLowIn, setEspLowIn] = useState<string>(String(data.espLow ?? draft?.espLow ?? ""));
+  const [espHighIn, setEspHighIn] = useState<string>(String(data.espHigh ?? draft?.espHigh ?? ""));
+  const lowNum = Number(espLowIn) || 0;
+  const highNum = Number(espHighIn) || 0;
+  const spreadPct =
+    lowNum > 0 && highNum > 0 && highNum >= lowNum ? ((highNum - lowNum) / lowNum) * 100 : null;
+  const spreadOver = spreadPct !== null && spreadPct > 10;
+  // The highest compliant top figure, so a breach arrives with its own fix.
+  const maxHigh = lowNum > 0 ? Math.floor(lowNum * 1.1) : null;
+  // A spread barely over the limit rounds to "10.0" at any sane precision — a
+  // dollar over on a million still prints as 10.000% — so showing the number
+  // beside a red "over the limit" reads as a contradiction, and adding decimals
+  // only moves the problem. Where the figure cannot distinguish itself from the
+  // threshold, say so in words instead of pretending precision. The fix (the
+  // highest compliant top figure) is shown either way, and that is the part the
+  // agent actually acts on.
+  const spreadMarginal = spreadOver && spreadPct !== null && spreadPct.toFixed(1) === "10.0";
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -360,25 +390,76 @@ function ChecklistItem({
           </div>
         )}
         {item.key === "a4" && (
-          <div className="flex gap-3">
-            <div>
-              <label className="block text-xs text-rc-muted">ESP low</label>
-              <input
-                type="number"
-                name="espLow"
-                defaultValue={data.espLow ?? draft?.espLow ?? ""}
-                className="mt-1 w-32 rounded-md border border-rc-border px-2 py-1 text-sm"
-              />
+          <div>
+            <div className="flex gap-3">
+              <div>
+                <label className="block text-xs text-rc-muted" htmlFor="esp-low">
+                  ESP low
+                </label>
+                <input
+                  id="esp-low"
+                  type="number"
+                  name="espLow"
+                  value={espLowIn}
+                  onChange={(e) => setEspLowIn(e.target.value)}
+                  className="mt-1 w-32 rounded-md border border-rc-border px-2 py-1 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-rc-muted" htmlFor="esp-high">
+                  ESP high (optional)
+                </label>
+                <input
+                  id="esp-high"
+                  type="number"
+                  name="espHigh"
+                  value={espHighIn}
+                  onChange={(e) => setEspHighIn(e.target.value)}
+                  className={`mt-1 w-32 rounded-md border px-2 py-1 text-sm ${
+                    spreadOver ? "border-rc-red bg-rc-red-soft" : "border-rc-border"
+                  }`}
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs text-rc-muted">ESP high (optional)</label>
-              <input
-                type="number"
-                name="espHigh"
-                defaultValue={data.espHigh ?? draft?.espHigh ?? ""}
-                className="mt-1 w-32 rounded-md border border-rc-border px-2 py-1 text-sm"
-              />
-            </div>
+
+            {/* The one thing worth saying about a range, said with arithmetic
+                rather than by a model. Silent for a single figure, since a
+                spread needs two numbers to exist. */}
+            {spreadPct !== null && (
+              <p
+                className={`mt-2 flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
+                  spreadOver ? "bg-rc-red-soft text-rc-red" : "bg-rc-green-soft text-rc-green-deep"
+                }`}
+                role={spreadOver ? "alert" : undefined}
+              >
+                {spreadOver ? (
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                ) : (
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true">
+                    <path
+                      fillRule="evenodd"
+                      d="M16.704 5.29a1 1 0 010 1.415l-7.25 7.25a1 1 0 01-1.415 0l-3.25-3.25a1 1 0 111.415-1.414l2.542 2.543 6.543-6.543a1 1 0 011.415 0z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                )}
+                <span>
+                  {spreadMarginal ? (
+                    <>
+                      Just over the 10% limit in s72A(2). The highest this range can go on a $
+                      {lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
+                    </>
+                  ) : spreadOver ? (
+                    <>
+                      {spreadPct.toFixed(1)}% spread. Over the 10% limit in s72A(2). The highest this range can go
+                      on a ${lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
+                    </>
+                  ) : (
+                    <>{spreadPct.toFixed(1)}% spread. Within the 10% limit in s72A(2).</>
+                  )}
+                </span>
+              </p>
+            )}
           </div>
         )}
         {item.requiresDate && (

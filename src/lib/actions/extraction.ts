@@ -363,8 +363,13 @@ async function extractOneDocument(
               "agreement was signed, or by whom: the agent uploaded it and can see the signatures, so naming the " +
               "vendors back at them is the restatement the rule above forbids. Only write a note here if " +
               "something is genuinely wrong with the execution, for example it appears unsigned by a party, or " +
-              "carries no date at all), a4 (an ESP range, only if a " +
-              "figure is explicitly stated in this document), a4b (whether comparable-sales evidence is present " +
+              "carries no date at all), a4 (the ESP figures, only if explicitly stated in this " +
+              "document — put them in espLow and espHigh and write NO note whatsoever. Do not describe the " +
+              "figures, and above all do not characterise where they came from or what kind of estimate they " +
+              "are: you cannot tell an agent's own appraisal from an automated valuation by looking at a number, " +
+              "and guessing wrong puts a false claim about provenance beside a figure the agent has to defend " +
+              "under s72A. Whether the range breaches the 10% spread is arithmetic, calculated from the figures " +
+              "elsewhere, and is not your job), a4b (whether comparable-sales evidence is present " +
               "at all — say so in ONE short sentence and stop. Do not list the comparable addresses, prices or " +
               "counts: the agent uploaded this document and has it open, so enumerating its contents back at " +
               "them is the restatement the rule above forbids. Do not comment on whether the agent has explained " +

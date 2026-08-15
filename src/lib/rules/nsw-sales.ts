@@ -121,7 +121,19 @@ const items: ComplianceItem[] = [
     legalBasis: "s72A, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
-    showFindings: true,
+    // No findings box and no note (Adam, 15 Aug 2026). The AI's job here is to
+    // read the two figures off the agreement and nothing else. It had written
+    // "PropTrack automated sale estimate range shown, not necessarily the
+    // agent's own appraisal figure" — which was simply untrue of the document,
+    // an invented provenance claim sitting beside a number the agent has to
+    // defend under s72A. Worse than restatement, because a reader cannot tell
+    // it is wrong.
+    //
+    // The one thing genuinely worth saying about a range is whether it breaches
+    // the 10% spread, and that is arithmetic. It is computed from the figures
+    // (live in ItemCard, authoritatively on save in setItemStatus) rather than
+    // described by a model, so it cannot be wrong and cannot drift.
+    hideNote: true,
   },
   {
     key: "a4b",
