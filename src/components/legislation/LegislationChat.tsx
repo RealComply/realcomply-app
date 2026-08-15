@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { X, MessageCircleQuestion } from "lucide-react";
 import { askLegislationQuestion, type ChatMessage } from "@/lib/actions/legislation-chat";
+import { DictateButton, appendDictated } from "@/components/Dictate";
 
 export function LegislationChat() {
   const [open, setOpen] = useState(false);
@@ -102,22 +103,35 @@ export function LegislationChat() {
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="flex gap-2 border-t border-rc-border bg-white p-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about the Act…"
-              disabled={pending}
-              className="flex-1 rounded-full border border-rc-border px-3.5 py-1.5 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={pending || !input.trim()}
-              className="rounded-full bg-rc-green-deep px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
-            >
-              Ask
-            </button>
+          <form onSubmit={handleSubmit} className="border-t border-rc-border bg-white p-3">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask about the Act…"
+                disabled={pending}
+                className="flex-1 rounded-full border border-rc-border px-3.5 py-1.5 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft disabled:opacity-60"
+              />
+              <button
+                type="submit"
+                disabled={pending || !input.trim()}
+                className="rounded-full bg-rc-green-deep px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+              >
+                Ask
+              </button>
+            </div>
+            {/* This input is controlled, so dictation appends through setInput
+                rather than writing to the element. It fills the box and stops
+                there — asking is still a deliberate press of Ask, because a
+                question sent on a mis-transcription wastes a call and reads as
+                the app acting on its own. */}
+            <span className="mt-2 block">
+              <DictateButton
+                label="Speak your question"
+                onText={(t) => setInput((prev) => appendDictated(prev, t))}
+              />
+            </span>
           </form>
         </div>
       )}

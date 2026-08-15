@@ -23,6 +23,7 @@ import {
   type ActionState,
 } from "@/lib/actions/compliance";
 import { extractReportDetails, type ReportExtractionFields } from "@/lib/actions/extraction";
+import { DictatableTextarea } from "@/components/Dictate";
 
 const initialState: ActionState = { error: null };
 
@@ -495,7 +496,7 @@ function ChecklistItem({
           !item.hideNote && (
             <div>
               <label className="block text-xs text-rc-muted">Note</label>
-              <textarea
+              <DictatableTextarea
                 name="note"
                 defaultValue={data.note ?? draft?.note ?? ""}
                 rows={2}
@@ -588,7 +589,7 @@ function GuideItem({
           <input type="number" name="guideLow" placeholder="Guide low" className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm" />
           <input type="number" name="guideHigh" placeholder="Guide high (optional)" className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm" />
         </div>
-        <textarea name="note" defaultValue={data.note ?? ""} placeholder="Exact wording used in the ad" rows={2} className="w-full rounded-md border border-rc-border px-2 py-1 text-sm" />
+        <DictatableTextarea name="note" defaultValue={data.note ?? ""} placeholder="Exact wording used in the ad" rows={2} className="w-full rounded-md border border-rc-border px-2 py-1 text-sm" />
         {/* Same state-aware treatment as ChecklistItem. This one stays fully
             usable once recorded, because re-recording is a real action here (a
             guide genuinely changes during a campaign) — it just stops shouting
@@ -659,7 +660,7 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
         <label className="flex items-center gap-2 text-xs text-rc-muted">
           <input type="checkbox" name="belowFloor" /> Below the vendor&rsquo;s written offer-floor instruction (exempt)
         </label>
-        <textarea
+        <DictatableTextarea
           name="note"
           placeholder="Note"
           rows={2}
@@ -879,7 +880,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
           </div>
         )}
 
-        <textarea
+        <DictatableTextarea
           name="note"
           placeholder="Note — e.g. who requested this report, or anything else worth recording (optional)"
           rows={2}
