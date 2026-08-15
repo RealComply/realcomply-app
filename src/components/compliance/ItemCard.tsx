@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState, type FormEvent, type React
 import { Paperclip, Sparkles, AlertTriangle, Check, X } from "lucide-react";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
+import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
 import type { Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
@@ -536,6 +537,12 @@ function ChecklistItem({
             </p>
           </div>
         )}
+
+        {/* Sign-off by link, for a licensee in charge who does not use
+            RealComply. Sits on send_licensee rather than sign_licensee
+            because sign_licensee is licenseeOnly and an agent cannot touch
+            it — which is the whole problem this solves. */}
+        {item.key === "send_licensee" && <SignoffLinkPanel propertyId={propertyId} />}
 
         {item.showFindings ? (
           <div>

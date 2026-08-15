@@ -37,7 +37,15 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/signup") ||
     request.nextUrl.pathname.startsWith("/auth");
 
-  const isPublicRoute = request.nextUrl.pathname === "/" || isAuthRoute;
+  // /signoff/<token> is public by design: it is opened by a licensee in charge
+  // who has no RealComply account and never will. Bouncing them to /login would
+  // make the whole sign-off-by-link feature impossible. The token in the URL is
+  // the credential, and the page reads nothing except through the two
+  // SECURITY DEFINER functions in 0014_licensee_signoff_links.sql.
+  const isPublicRoute =
+    request.nextUrl.pathname === "/" ||
+    request.nextUrl.pathname.startsWith("/signoff/") ||
+    isAuthRoute;
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
