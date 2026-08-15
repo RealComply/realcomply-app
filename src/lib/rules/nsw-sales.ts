@@ -241,9 +241,29 @@ const items: ComplianceItem[] = [
     stage: 1,
     kind: "checklist",
     label: "Pool compliance certificate",
+    // Exemption source: Conveyancing (Sale of Land) Regulation 2022, Sch 1
+    // item 15(2). Corrected 15 Aug 2026 — the wording said "strata scheme"
+    // where item 15(2)(a) reads "a lot in a strata scheme or in a community
+    // scheme". A pool in a community-title estate was being asked for a
+    // certificate the Regulation does not require there.
+    //
+    // TWO THINGS THIS DELIBERATELY DOES NOT DO, both because loosening a
+    // requirement wrongly means a contract goes out without a certificate that
+    // was required, and the purchaser gets a right to rescind:
+    //   - Item 15(2)(a) as written exempts any lot in a scheme of more than 2
+    //     lots, without distinguishing a pool on common property from one on
+    //     the individual lot. The wording below keeps the common-property
+    //     qualifier, so the app asks in a case the Regulation may not require.
+    //     Raised with Adam 15 Aug 2026 to put to the compliance adviser before
+    //     it is relaxed.
+    //   - Item 15(2)(b) also exempts off-the-plan contracts. Not reflected
+    //     here because off-the-plan sales are out of scope for this ruleset;
+    //     they need their own items (disclosure statement, Sch 1 Pt 2), not a
+    //     clause bolted onto this one.
     description:
-      "A pool safety certificate is required in the contract — unless the pool is common property in a strata scheme of more than 2 lots (owners corporation handles compliance). If strata, confirm which applies: certificate held, or the exemption applies because it's common property in a scheme of more than 2 lots.",
-    legalBasis: "Swimming Pools Act 1992 (NSW); Conveyancing (Sale of Land) Regulation",
+      "A pool safety certificate is required in the contract — unless the pool is common property in a strata or community scheme of more than 2 lots (the owners corporation or association handles compliance). If the property is in a scheme, confirm which applies: certificate held, or the exemption applies because it's common property in a scheme of more than 2 lots.",
+    legalBasis:
+      "Swimming Pools Act 1992 (NSW); Conveyancing (Sale of Land) Regulation 2022, Sch 1 item 15",
     requiresDate: false,
     requiredForStageCompletion: true,
     showIf: (p) => Boolean(p.has_pool),
