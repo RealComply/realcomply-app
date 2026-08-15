@@ -49,6 +49,9 @@ export async function signup(
   // src/lib/actions/team.ts / 0006_agency_invites.sql) — joins the existing
   // agency the invite was issued for instead of bootstrapping a new one.
   const inviteToken = String(formData.get("inviteToken") ?? "").trim() || null;
+  // Where licensee sign-off links get sent. Optional, and never taken from an
+  // invite signup — see the field's comment in src/app/signup/page.tsx.
+  const licenseeEmail = String(formData.get("licenseeEmail") ?? "").trim();
 
   if (!inviteToken && !agencyName.trim()) {
     return { error: "Agency name is required." };
@@ -65,7 +68,15 @@ export async function signup(
       // email-confirmation callback and requireProfile's self-heal path
       // (for whichever one actually ends up running the join) know to call
       // accept_invite instead of bootstrap_agency.
-      data: { full_name: fullName, agency_name: agencyName, invite_token: inviteToken },
+      // licensee_email rides along for the same reason as agency_name: when
+      // email confirmation is on there is no session here, so the value has to
+      // survive until /auth/callback runs the bootstrap.
+      data: {
+        full_name: fullName,
+        agency_name: agencyName,
+        invite_token: inviteToken,
+        licensee_email: licenseeEmail || null,
+      },
       // Without this, Supabase falls back to its configured Site URL —
       // which sends the confirmation link to the bare site root instead
       // of /auth/callback, so the code exchange (and the agency/profile
@@ -95,6 +106,15 @@ export async function signup(
 
   if (joinError) {
     return { error: joinError.message };
+  }
+
+  // After the agency exists, never before — the RPC writes to the caller's
+  // own agency row, which does not exist until bootstrap_agency has run.
+  // Deliberately not awaited into an error path: a missing sign-off address is
+  // a prompt at Stage 5, not a reason to fail a signup that has otherwise
+  // succeeded and already created the account.
+  if (!inviteToken && licenseeEmail) {
+    await supabase.rpc("set_agency_licensee_email", { p_email: licenseeEmail });
   }
 
   // Only for a brand-new agency, not someone joining an existing one via

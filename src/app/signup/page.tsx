@@ -82,6 +82,37 @@ function InviteAwareForm() {
           />
         </div>
       )}
+      {/* Licensee in charge email, captured once at agency setup (Adam,
+          15 Aug 2026). It is what sign-off links are sent to, and asking here
+          rather than per listing was his call — one licensee supervises
+          everything in the agencies this is aimed at.
+
+          Optional on purpose. A principal who is their own licensee has no
+          second address to give, and blocking signup over a field that only
+          matters at Stage 5 would cost real signups to save a later prompt.
+          Left blank, the sign-off step asks for it when it is first needed.
+
+          Not shown on an invite signup: the person joining an existing agency
+          is not setting that agency up, and letting them overwrite the
+          licensee's address would be an obvious way to redirect sign-off
+          links away from the person who is supposed to receive them. */}
+      {!invite && (
+        <div>
+          <label htmlFor="licenseeEmail" className="block text-sm font-medium text-rc-ink">
+            Licensee in charge email <span className="font-normal text-rc-muted">(optional)</span>
+          </label>
+          <input
+            id="licenseeEmail"
+            name="licenseeEmail"
+            type="email"
+            placeholder="licensee@youragency.com.au"
+            className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+          />
+          <p className="mt-1 text-xs leading-relaxed text-rc-muted">
+            Where sign-off requests go. Leave blank if that is you.
+          </p>
+        </div>
+      )}
       <div>
         <label htmlFor="fullName" className="block text-sm font-medium text-rc-ink">
           Your name

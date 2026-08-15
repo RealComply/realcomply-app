@@ -33,6 +33,33 @@ alter table public.agencies
 comment on column public.agencies.licensee_email is
   'Email of the licensee in charge, for sign-off links. Captured at agency setup. May be the same as a profile email where the principal wears both hats.';
 
+-- Setting it needs its own function rather than an UPDATE policy on agencies.
+-- agencies has a SELECT policy only (see 0001_init.sql) and is created solely
+-- through bootstrap_agency(), so there is no route by which a member can write
+-- to their agency row today. Opening a general UPDATE policy would expose
+-- every column on the table to anyone in the agency in order to set one field;
+-- this exposes exactly the one field.
+--
+-- Not folded into bootstrap_agency() as a third argument, which was the
+-- obvious alternative: that function is called from three separate places
+-- (auth.ts signup, the /auth/callback confirmation path, and requireProfile's
+-- self-heal) and Postgres cannot add a parameter to an existing function
+-- without either dropping it or creating an overload that named-argument RPC
+-- calls can resolve ambiguously. A separate one-line call at each site is
+-- duller and cannot break the signup path.
+create function public.set_agency_licensee_email(p_email text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.agencies
+     set licensee_email = nullif(btrim(p_email), '')
+   where id = public.current_agency_id();
+$$;
+
+grant execute on function public.set_agency_licensee_email(text) to authenticated;
+
 -- ─────────────────────────────────────────────────────────────────────────
 -- One row per link issued.
 --

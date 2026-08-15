@@ -36,12 +36,24 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     return profile as Profile;
   }
 
-  const meta = user.user_metadata as { full_name?: string; agency_name?: string; invite_token?: string };
+  const meta = user.user_metadata as {
+    full_name?: string;
+    agency_name?: string;
+    invite_token?: string;
+    licensee_email?: string | null;
+  };
 
   if (meta.invite_token || meta.agency_name) {
     const { error: joinError } = meta.invite_token
       ? await supabase.rpc("accept_invite", { p_token: meta.invite_token, p_full_name: meta.full_name ?? "" })
       : await supabase.rpc("bootstrap_agency", { p_agency_name: meta.agency_name!, p_full_name: meta.full_name ?? "" });
+
+    // Same sign-off address write as the other two bootstrap call sites. This
+    // is the last of the three, for a confirmation redirect that missed
+    // /auth/callback entirely.
+    if (!joinError && !meta.invite_token && typeof meta.licensee_email === "string" && meta.licensee_email) {
+      await supabase.rpc("set_agency_licensee_email", { p_email: meta.licensee_email });
+    }
 
     if (!joinError) {
       const { data: healedProfile } = await supabase
