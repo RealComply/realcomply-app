@@ -98,11 +98,11 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
       <section className="relative isolate overflow-hidden" data-section="hero">
         <div className="rc-mesh-bg" />
         <div className="mx-auto max-w-2xl px-4 py-14 text-center sm:px-6 sm:py-20">
-          <span className="inline-flex items-center gap-2 rounded-full bg-rc-green-soft px-3.5 py-1.5 text-xs font-bold text-rc-green-deep">
-            <span className="h-2 w-2 rounded-full bg-rc-green-deep" />
-            Built by agents, for agents
-          </span>
-          <h1 className="mt-5 text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
+          {/* The "Built by agents, for agents" eyebrow pill was removed here
+              (Adam, 15 Aug 2026). Taken out rather than reworded: a pill
+              containing only a dot is not a design element, it is a leftover.
+              The headline now opens the page. */}
+          <h1 className="text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
             Stay on top of compliance. <span className="text-rc-green-deep">Without a full-time hire.</span>
           </h1>
           <p className="mx-auto mt-4 max-w-md text-lg text-rc-muted">
@@ -178,8 +178,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
 
       <footer className="bg-rc-panel py-8 text-center text-white">
         <div className="mx-auto max-w-2xl px-4 sm:px-6">
-          <p className="text-xs font-semibold text-rc-ink-muted">Built by agents, for agents.</p>
-          <p className="mx-auto mt-2 max-w-xl text-xs leading-relaxed text-rc-ink-muted/80">
+          <p className="mx-auto max-w-xl text-xs leading-relaxed text-rc-ink-muted/80">
             RealComply Pty Ltd. RealComply provides diligence support to help licensees and agents stay on top of
             their compliance obligations. It is not a law firm and does not provide legal advice; it does not
             guarantee compliance. The licensee remains responsible for decisions and sign-off. © 2026 RealComply Pty

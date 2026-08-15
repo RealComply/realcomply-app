@@ -21,7 +21,14 @@ const plusJakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: "RealComply",
-  description: "Built by agents, for agents.",
+  // The site-wide fallback description. It read "Built by agents, for agents."
+  // until 15 Aug 2026, when Adam pulled that line. It could not simply be
+  // deleted: this is what search results and shared links show for any page
+  // that does not set its own, so an empty one leaves Google to invent a
+  // snippet. Replaced with the same wording the landing page already uses,
+  // which describes the product rather than its origin.
+  description:
+    "Compliance support for NSW real estate agencies. Less paperwork, fewer things slipping through, and a clear record of what you have done.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
