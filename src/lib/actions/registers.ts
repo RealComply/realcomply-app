@@ -593,3 +593,31 @@ export async function deleteBreach(breachId: string): Promise<void> {
   await supabase.from("breaches").delete().eq("id", breachId);
   revalidatePath("/dashboard/registers");
 }
+
+// ── Corporation licence — the entity's own licence, not a person's.
+// Agency-level, so it lives on agencies alongside the insurance policies
+// rather than in the per-profile licence_* columns. See
+// 0015_corporation_licence.sql. ────────────────────────────────────────────
+export async function updateCorporationLicence(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  // Same gate as the insurance policies: an agency-level record that an agent
+  // should be able to read but not rewrite.
+  if (!profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can update the corporation licence." };
+  }
+
+  const { error } = await supabase
+    .from("agencies")
+    .update({
+      corporation_licence_holder: str(formData, "holder"),
+      corporation_licence_number: str(formData, "licenceNumber"),
+      corporation_licence_expiry: str(formData, "expiry"),
+    })
+    .eq("id", profile.agency_id);
+
+  if (error) return { error: "Couldn't save the corporation licence — try again." };
+
+  revalidatePath("/dashboard/registers");
+  return ok;
+}

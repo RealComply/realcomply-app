@@ -1,9 +1,10 @@
 "use client";
 
 import { StaffRegisterCard } from "@/components/registers/StaffRegisterCard";
+import { CorporationLicenceCard } from "@/components/registers/CorporationLicenceCard";
 import { expiryStatus } from "@/lib/expiry-status";
 import { CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
-import type { CpdRecord, Profile } from "@/lib/types";
+import type { Agency, CpdRecord, Profile } from "@/lib/types";
 
 // Insurance (PI/cyber/iCare) lives in its own Insurance register tab now
 // (InsurancePanel) — this used to also render a PI insurance card, but
@@ -14,11 +15,13 @@ export function LicencePanel({
   cpdByProfile,
   viewerProfile,
   cpdYearLabel,
+  agency,
 }: {
   staff: Profile[];
   cpdByProfile: Record<string, CpdRecord[]>;
   viewerProfile: Profile;
   cpdYearLabel: string;
+  agency: Agency | null;
 }) {
   const statuses = staff.map((s) => expiryStatus(s.licence_expiry));
   const current = statuses.filter((s) => s === "ok" || s === "soon").length;
@@ -40,6 +43,20 @@ export function LicencePanel({
         <Tile n={expired} l="Expired" bad={expired > 0} ok={expired === 0} />
         <Tile n={cpdOutstanding} l="CPD outstanding" warn={cpdOutstanding > 0} ok={cpdOutstanding === 0} />
       </div>
+
+      {/* The entity's own licence, above the people. The individuals' licences
+          hang off the corporation licence, not the other way around. */}
+      {agency && (
+        <div className="mt-4">
+          <CorporationLicenceCard
+            holder={agency.corporation_licence_holder ?? null}
+            licenceNumber={agency.corporation_licence_number ?? null}
+            expiry={agency.corporation_licence_expiry ?? null}
+            agencyName={agency.name}
+            canEdit={Boolean(viewerProfile.is_licensee_in_charge)}
+          />
+        </div>
+      )}
 
       <div className="mt-4 space-y-4">
         {staff.map((s) => (

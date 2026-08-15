@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { Settings2 } from "lucide-react";
 import { updatePropertyDetails } from "@/lib/actions/properties";
-import type { Property } from "@/lib/types";
+import type { Property, PropertyType } from "@/lib/types";
 
 // Edit the setup answers on an existing listing.
 //
@@ -90,7 +90,11 @@ export function EditPropertyDetails({ property }: { property: Property }) {
         defaultValue={property.property_type ?? "House"}
         className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
       >
-        {["House", "Unit", "Townhouse", "Villa", "Land", "Other"].map((t) => (
+        {/* Exactly the values in PropertyType (src/lib/types.ts). Typed as a
+            plain string on the way through the form, so an option that is not
+            in that union would be written to the row without TypeScript
+            noticing — this list has to be kept in step by hand. */}
+        {(["House", "Unit", "Townhouse", "Duplex", "Land"] satisfies PropertyType[]).map((t) => (
           <option key={t} value={t}>
             {t}
           </option>

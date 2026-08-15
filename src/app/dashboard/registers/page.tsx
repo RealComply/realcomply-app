@@ -110,7 +110,7 @@ export default async function RegistersPage({
               breachesBadge={breachesBadge}
               defaultTab={defaultTab}
               licence={
-                <LicencePanel staff={staff} cpdByProfile={cpdByProfile} viewerProfile={profile} cpdYearLabel={cpdYear.label} />
+                <LicencePanel staff={staff} cpdByProfile={cpdByProfile} viewerProfile={profile} cpdYearLabel={cpdYear.label} agency={agency} />
               }
               insurance={<InsurancePanel agency={agency} viewerProfile={profile} />}
               gifts={

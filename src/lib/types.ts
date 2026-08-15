@@ -30,6 +30,12 @@ export type Agency = {
   cyber_insurer: string | null;
   cyber_policy_number: string | null;
   cyber_expiry: string | null;
+  // The corporation's own licence — the entity holds one in its own right,
+  // separate from each person's Class 1/2 licence in profiles. See
+  // 0015_corporation_licence.sql.
+  corporation_licence_holder: string | null;
+  corporation_licence_number: string | null;
+  corporation_licence_expiry: string | null;
   icare_insurer: string | null;
   icare_policy_number: string | null;
   icare_expiry: string | null;
