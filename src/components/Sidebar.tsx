@@ -173,21 +173,30 @@ export function Sidebar() {
         </div>
       ))}
 
-      {/* The standing liability line. Reworded 15 Aug 2026 (Adam) from
-          "Diligence support — the licensee decides." The old wording named
-          only the licensee, which read as though the person actually working
-          the file had no part in it. This names both roles the way the agency
-          runs. Both roles are supported, not just one: the agent working the
-          file and the licensee overseeing it (Adam, 15 Aug 2026 — "it's
-          diligence support for both"). Naming only the agent implied the
-          licensee was merely a rubber stamp, which is the wrong way round.
-          Do not drop the second sentence: that clause is the product's
-          liability framing, not decoration. */}
+      {/* The standing liability line, settled with Adam on 15 Aug 2026 after
+          working through a dozen drafts. It replaces "Diligence support — the
+          licensee decides."
+
+          Two rules govern any future edit, both learned from the drafts that
+          were rejected:
+
+          1. NEVER address the reader as "you" about sign-off. Salespeople see
+             this sidebar as well as the licensee, and "the work you sign off"
+             tells an agent they hold a sign-off that is actually the licensee
+             in charge's. The product's own words would then undercut the
+             supervision structure they exist to protect.
+          2. NEVER use an advisory verb. "We guide, you decide" was the
+             tempting version; "guide" implies advice, and not giving advice is
+             the whole defensive posture. Same reason there is no "we" here:
+             the software keeps a record, it is not a party giving counsel.
+
+          The second sentence is the liability framing, not decoration. It
+          stays. */}
       <p
         data-rail-hide
         className="mt-auto border-t border-rc-ink-line px-3 pt-3.5 text-[11px] leading-relaxed text-rc-nav-muted"
       >
-        Diligence support for the agent and the licensee. The licensee signs off.
+        Supports the work. The licensee signs off.
       </p>
     </div>
   );
