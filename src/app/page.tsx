@@ -126,6 +126,25 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
               The licensee stays in charge
             </span>
+            {/* Commercial terms, added 15 Aug 2026 (Adam). They sit in the
+                same strip as the credibility claims rather than getting their
+                own block: the objection they answer ("what am I committing
+                to?") arrives at the same moment as the ask, so it belongs
+                directly under the form, not further down the page.
+
+                THESE ARE PROMISES, not descriptions. Everything else on this
+                page describes what the product does; these two commit the
+                business to how it charges. They cannot be quietly walked back
+                once ads have run against them, so they need to survive
+                whatever pricing is eventually set. */}
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
+              No set-up fee
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
+              No lock-in contracts
+            </span>
           </div>
         </div>
       </section>
@@ -171,7 +190,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           </h2>
           <p className="mt-3 text-base text-rc-ink-muted">
             We are opening RealComply to a small number of NSW agencies at a time. Leave your email and we will be in
-            touch before the next round.
+            touch before the next round. No set-up fee, and no lock-in contracts.
           </p>
           <EarlyAccessForm source={src} tone="dark" />
         </div>
