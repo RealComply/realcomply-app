@@ -79,3 +79,41 @@ export async function revokeInvite(inviteId: string): Promise<void> {
   await supabase.from("agency_invites").update({ status: "revoked" }).eq("id", inviteId);
   revalidatePath("/dashboard/team");
 }
+
+// Agency-level licensee email — the address sign-off links are addressed to.
+// See 0014_licensee_signoff_links.sql for why this goes through an RPC rather
+// than a direct update: agencies has a SELECT policy only, and opening a
+// general UPDATE policy would expose every column on the table to set one
+// field.
+//
+// Licensee-only. This decides where a sign-off request lands, so letting an
+// agent change it would be a clean way to route their own file's sign-off to
+// an address they control. The RPC scopes the write to the caller's own
+// agency; this check is about which role may make it.
+export async function saveLicenseeEmail(
+  _prev: { error: string | null; saved: boolean },
+  formData: FormData,
+): Promise<{ error: string | null; saved: boolean }> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (!profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can change this.", saved: false };
+  }
+
+  const email = String(formData.get("licenseeEmail") ?? "").trim();
+  // Deliberately permissive: the input is type="email" so the browser has
+  // already caught the obvious mistakes, and a stricter server-side pattern
+  // mostly succeeds at rejecting valid addresses. Blank is allowed — it clears
+  // the field, which is the only way to undo a wrong entry.
+  if (email && !email.includes("@")) {
+    return { error: "That doesn't look like an email address.", saved: false };
+  }
+
+  const { error } = await supabase.rpc("set_agency_licensee_email", { p_email: email });
+  if (error) {
+    return { error: "Couldn't save that. Try again.", saved: false };
+  }
+
+  revalidatePath("/dashboard/team");
+  return { error: null, saved: true };
+}

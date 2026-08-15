@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { LicenseeEmailForm } from "@/components/team/LicenseeEmailForm";
 import { requireProfile } from "@/lib/data/current-profile";
 import { InviteAgentForm } from "@/components/team/InviteAgentForm";
 import { PendingInvitesList } from "@/components/team/PendingInvitesList";
@@ -22,6 +23,15 @@ export default async function TeamPage() {
     supabase.from("agency_invites").select("*").eq("status", "pending").order("created_at", { ascending: false }),
   ]);
 
+  // Read here rather than in the component so the form is a client component
+  // with a plain prop, not another round trip.
+  const { data: agencyRow } = await supabase
+    .from("agencies")
+    .select("licensee_email")
+    .eq("id", profile.agency_id)
+    .maybeSingle();
+  const licenseeEmail = (agencyRow as { licensee_email?: string | null } | null)?.licensee_email ?? null;
+
   const staff = (staffRows ?? []) as Profile[];
   const invites = (inviteRows ?? []) as AgencyInvite[];
 
@@ -37,6 +47,15 @@ export default async function TeamPage() {
             ← Home
           </Link>
         </div>
+
+        {profile.is_licensee_in_charge && (
+          <div className="mt-6">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">
+              Sign-off
+            </h3>
+            <LicenseeEmailForm current={licenseeEmail} />
+          </div>
+        )}
 
         <div className="mt-6">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">
