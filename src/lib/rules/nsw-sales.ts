@@ -155,6 +155,12 @@ const items: ComplianceItem[] = [
     description:
       "In your own words, note how this property sits against the comparables and how you arrived at the ESP. This is your record of how the estimate was formed, not a black-letter requirement to justify every difference.",
     legalBasis: "s72A (evidence of how the estimate was formed)",
+    // No attachment here. The evidence for the ESP reasoning is the
+    // comparable-sales report, which is already attached to a4b directly
+    // above — asking for a second upload on the reasoning itself invites the
+    // same file twice and makes the card look incomplete when it is not
+    // (Adam, 15 Aug 2026).
+    hideEvidence: true,
     requiresDate: false,
     requiredForStageCompletion: true,
   },
@@ -166,6 +172,9 @@ const items: ComplianceItem[] = [
     description:
       "Commission/rebate disclosure to the vendor, and any vendor-paid advertising authorised in writing.",
     legalBasis: "s57, Property and Stock Agents Act 2002 (NSW)",
+    // The disclosure lives inside the signed agency agreement, which is
+    // attached to a3. Nothing separate exists to upload (Adam, 15 Aug 2026).
+    hideEvidence: true,
     requiresDate: false,
     requiredForStageCompletion: true,
     showFindings: true,
@@ -177,6 +186,8 @@ const items: ComplianceItem[] = [
     label: "Cooling-off status recorded",
     description: "Agency-agreement cooling-off (1 business day) acknowledged.",
     legalBasis: "Property and Stock Agents Act 2002 (NSW)",
+    // Also inside the signed agency agreement, same as a5 (Adam, 15 Aug 2026).
+    hideEvidence: true,
     requiresDate: false,
     requiredForStageCompletion: true,
     showFindings: true,
