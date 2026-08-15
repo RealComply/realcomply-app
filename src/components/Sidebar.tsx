@@ -177,15 +177,17 @@ export function Sidebar() {
           "Diligence support — the licensee decides." The old wording named
           only the licensee, which read as though the person actually working
           the file had no part in it. This names both roles the way the agency
-          runs: the listing agent does the work with this as support, and the
-          authority to sign it off stays with the licensee. Wording chosen by
-          Adam from three options. Do not drop "under the licensee's authority"
-          — that clause is the product's liability framing, not decoration. */}
+          runs. Both roles are supported, not just one: the agent working the
+          file and the licensee overseeing it (Adam, 15 Aug 2026 — "it's
+          diligence support for both"). Naming only the agent implied the
+          licensee was merely a rubber stamp, which is the wrong way round.
+          Do not drop the second sentence: that clause is the product's
+          liability framing, not decoration. */}
       <p
         data-rail-hide
         className="mt-auto border-t border-rc-ink-line px-3 pt-3.5 text-[11px] leading-relaxed text-rc-nav-muted"
       >
-        Diligence support for the listing agent, under the licensee&rsquo;s authority.
+        Diligence support for the agent and the licensee. The licensee signs off.
       </p>
     </div>
   );
