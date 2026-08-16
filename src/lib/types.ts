@@ -250,6 +250,9 @@ export type Property = {
   is_tenanted: boolean | null;
   has_pool: boolean | null;
   agent_interest: boolean | null;
+  // Public URL of the agency's own listing page, read by the weekly
+  // advertised-price check. See 0016_listing_url.sql.
+  listing_url: string | null;
   stage: PropertyStage;
   test_mode: boolean;
   created_at: string;

@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/listing-scan",
+      "schedule": "0 20 * * 0"
+    },
+    {
       "path": "/api/cron/weekly-digest",
       "schedule": "0 21 * * 0"
     }

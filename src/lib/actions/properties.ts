@@ -217,6 +217,9 @@ export async function updatePropertyDetails(
     .from("properties")
     .update({
       address,
+      // Empty string clears it rather than storing "", so "no listing page yet"
+      // is one value (null) instead of two.
+      listing_url: String(formData.get("listingUrl") ?? "").trim() || null,
       property_type: String(formData.get("propertyType") ?? "House"),
       is_strata: formData.get("isStrata") === "yes",
       is_tenanted: formData.get("isTenanted") === "yes",

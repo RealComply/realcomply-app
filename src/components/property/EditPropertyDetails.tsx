@@ -101,6 +101,25 @@ export function EditPropertyDetails({ property }: { property: Property }) {
         ))}
       </select>
 
+      {/* The page the weekly advertised-price check reads. Optional: a listing
+          that is not advertised anywhere yet has no page to check, and the
+          check simply skips it. */}
+      <label htmlFor="listingUrl" className="mt-3 block text-xs font-medium text-rc-muted">
+        Listing page address <span className="font-normal text-rc-faint">(optional)</span>
+      </label>
+      <input
+        id="listingUrl"
+        name="listingUrl"
+        type="url"
+        inputMode="url"
+        defaultValue={property.listing_url ?? ""}
+        placeholder="https://www.youragency.com.au/listing/..."
+        className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+      />
+      <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
+        Your own listing page for this property. Checked weekly against the ESP on file.
+      </p>
+
       <div className="mt-3 divide-y divide-rc-border border-y border-rc-border">
         <YesNo name="isStrata" label="Strata or community title" value={Boolean(property.is_strata)} />
         <YesNo name="isTenanted" label="Currently tenanted" value={Boolean(property.is_tenanted)} />

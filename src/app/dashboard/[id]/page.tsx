@@ -146,7 +146,8 @@ export default async function PropertyPage({
               current={allItems[item.key]}
               profile={profile}
               allItems={allItems}
-            />
+              listingUrl={p.listing_url}
+              />
           ))}
         </div>
 

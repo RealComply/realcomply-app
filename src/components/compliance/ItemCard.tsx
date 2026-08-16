@@ -5,6 +5,7 @@ import { Paperclip, Sparkles, AlertTriangle, Check, X } from "lucide-react";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
+import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import type { Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
@@ -634,15 +635,21 @@ function GuideItem({
   propertyId,
   current,
   espItem,
+  listingUrl,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   espItem?: PropertyItem;
+  listingUrl?: string | null;
 }) {
   const boundAction = setItemStatus.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
-  const data = (current?.data ?? {}) as { note?: string; flagReasons?: string[] };
+  const data = (current?.data ?? {}) as {
+    note?: string;
+    flagReasons?: string[];
+    websiteScan?: ScanFinding;
+  };
   const esp = (espItem?.data ?? {}) as { espLow?: number; espHigh?: number };
 
   return (
@@ -688,6 +695,11 @@ function GuideItem({
           ))}
         </ul>
       )}
+
+      {/* The independent read of the live page. Sits below the agent's own
+          record rather than replacing it: the form above is what the agent
+          says is advertised, this is what the website actually shows. */}
+      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} hasUrl={Boolean(listingUrl)} />
     </ItemShell>
   );
 }
@@ -1279,12 +1291,15 @@ export function ItemCard({
   current,
   profile,
   allItems,
+  listingUrl,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   profile: Profile;
   allItems: Record<string, PropertyItem>;
+  /** Only c1 uses this — the page the advertised-price check reads. */
+  listingUrl?: string | null;
 }) {
   switch (item.kind) {
     case "offers":
@@ -1304,7 +1319,15 @@ export function ItemCard({
     case "export":
       return <ExportItem item={item} propertyId={propertyId} current={current} />;
     case "guide":
-      return <GuideItem item={item} propertyId={propertyId} current={current} espItem={allItems["a4"]} />;
+      return (
+        <GuideItem
+          item={item}
+          propertyId={propertyId}
+          current={current}
+          espItem={allItems["a4"]}
+          listingUrl={listingUrl}
+        />
+      );
     case "checklist":
     default:
       return <ChecklistItem item={item} propertyId={propertyId} current={current} />;
