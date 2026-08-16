@@ -635,13 +635,11 @@ function GuideItem({
   propertyId,
   current,
   espItem,
-  listingUrl,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   espItem?: PropertyItem;
-  listingUrl?: string | null;
 }) {
   const boundAction = setItemStatus.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -699,7 +697,7 @@ function GuideItem({
       {/* The independent read of the live page. Sits below the agent's own
           record rather than replacing it: the form above is what the agent
           says is advertised, this is what the website actually shows. */}
-      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} hasUrl={Boolean(listingUrl)} />
+      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} />
     </ItemShell>
   );
 }
@@ -1291,15 +1289,12 @@ export function ItemCard({
   current,
   profile,
   allItems,
-  listingUrl,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   profile: Profile;
   allItems: Record<string, PropertyItem>;
-  /** Only c1 uses this — the page the advertised-price check reads. */
-  listingUrl?: string | null;
 }) {
   switch (item.kind) {
     case "offers":
@@ -1325,7 +1320,6 @@ export function ItemCard({
           propertyId={propertyId}
           current={current}
           espItem={allItems["a4"]}
-          listingUrl={listingUrl}
         />
       );
     case "checklist":

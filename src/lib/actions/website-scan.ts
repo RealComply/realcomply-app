@@ -35,6 +35,17 @@ export type ScanFinding = {
   checkedAt: string;
   url: string;
   ok: boolean;
+  /**
+   * Whether the page itself showed this property's address.
+   *
+   * This is what replaced asking the agent to confirm the page once, by hand
+   * (Adam, 16 Aug 2026: a button they have to press "may as well just eyeball
+   * their own website"). The danger in finding the page automatically is a
+   * wrong match producing a silent all-clear. Corroborating against the address
+   * printed on the page removes that without costing anyone a click: an
+   * unconfirmed page never produces a clean result and never flags an item.
+   */
+  addressConfirmed: boolean;
   /** Plain-English outcome shown on the card. */
   summary: string;
   /** Specific breaches or concerns, each traceable to a section. */
@@ -78,10 +89,15 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
       pageLooksWrong: {
         type: "boolean",
         description:
-          "True if this does not look like a property listing page at all — an error page, a search results page, a page for a different property, or a page that failed to load properly.",
+          "True if this does not look like a property listing page at all — an error page, a search results page, or a page that failed to load properly.",
+      },
+      addressMatches: {
+        type: "boolean",
+        description:
+          "True ONLY if the page itself shows an address that is clearly the same property as the one named in the request. This is the safety check on the whole result: if the page does not state an address, or states a different one, report false. Do not infer a match from the page merely being on the right website.",
       },
     },
-    required: ["priceShown", "prohibitedTerms", "pageLooksWrong"],
+    required: ["priceShown", "prohibitedTerms", "pageLooksWrong", "addressMatches"],
   },
 };
 
@@ -182,7 +198,7 @@ export async function scanOneProperty(
   if (!property.listing_url) return null;
 
   const checkedAt = new Date().toISOString();
-  const base = { checkedAt, url: property.listing_url, priceShown: false };
+  const base = { checkedAt, url: property.listing_url, priceShown: false, addressConfirmed: false };
 
   let finding: ScanFinding;
 
@@ -220,6 +236,7 @@ export async function scanOneProperty(
         priceHigh?: number;
         prohibitedTerms?: string[];
         pageLooksWrong?: boolean;
+        addressMatches?: boolean;
       };
 
       // The ESP to compare against, read from the file rather than the page.
@@ -233,8 +250,25 @@ export async function scanOneProperty(
 
       const issues: string[] = [];
 
-      if (read.pageLooksWrong) {
-        issues.push("That address doesn't look like this property's listing page — check the link.");
+      const addressConfirmed = Boolean(read.addressMatches) && !read.pageLooksWrong;
+
+      // An unconfirmed page produces no verdict at all — neither a clean result
+      // nor a breach. Everything below this point assumes we are looking at the
+      // right property, and reporting either way on a page we cannot tie to the
+      // address is how an automated check quietly misleads someone.
+      if (!addressConfirmed) {
+        const unconfirmed: ScanFinding = {
+          ...base,
+          addressConfirmed: false,
+          ok: false,
+          priceShown: Boolean(read.priceShown),
+          priceText: read.priceText,
+          issues: [],
+          summary:
+            "Couldn't confirm this page is for this property, so nothing was checked. Open it and, if it's wrong, set the right link in Edit listing details.",
+        };
+        await writeFinding(supabase, property, unconfirmed);
+        return unconfirmed;
       }
 
       // Arithmetic, not judgement.
@@ -258,6 +292,7 @@ export async function scanOneProperty(
 
       finding = {
         ...base,
+        addressConfirmed,
         ok: issues.length === 0,
         priceShown: Boolean(read.priceShown),
         priceText: read.priceText,
@@ -280,6 +315,33 @@ export async function scanOneProperty(
     };
   }
 
+  await writeFinding(supabase, property, finding);
+  return finding;
+}
+
+/**
+ * Records a finding on c1.
+ *
+ * Never touches guideLow/guideHigh — the agent's own record of the advertised
+ * guide is theirs, and a page read must not overwrite it.
+ *
+ * DOES set the item to flagged, but only where the page was confirmed to be
+ * this property and the arithmetic found a breach. Adam, 16 Aug 2026: the point
+ * is that RealComply "routinely check the website and come back to the agent
+ * and let them know if their advertised price has slipped below the ESP" —
+ * a finding nobody is told about is not a check. Flagging is what puts it in
+ * front of them, on Office overview and in the Monday digest, without anyone
+ * opening the file.
+ *
+ * The flag is only ever raised, never cleared: an agent who has resolved
+ * something and marked the item done should not have it silently reopened by
+ * next Sunday's run while they are looking the other way.
+ */
+async function writeFinding(
+  supabase: Db,
+  property: { id: string; agency_id: string },
+  finding: ScanFinding,
+): Promise<void> {
   const { data: existing } = await supabase
     .from("property_items")
     .select("*")
@@ -288,12 +350,14 @@ export async function scanOneProperty(
     .maybeSingle();
   const row = existing as PropertyItem | null;
 
+  const shouldFlag = finding.addressConfirmed && finding.issues.length > 0;
+
   await supabase.from("property_items").upsert(
     {
       agency_id: property.agency_id,
       property_id: property.id,
       item_key: "c1",
-      status: row?.status ?? "open",
+      status: shouldFlag ? "flagged" : row?.status ?? "open",
       data: { ...(row?.data ?? {}), websiteScan: finding },
       event_date: row?.event_date ?? null,
       completed_by: row?.completed_by ?? null,
@@ -301,8 +365,6 @@ export async function scanOneProperty(
     },
     { onConflict: "property_id,item_key" },
   );
-
-  return finding;
 }
 
 /** The agent's "check it now" button. */
@@ -320,12 +382,23 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
     .maybeSingle();
 
   if (!property) return { error: "Couldn't find that property." };
-  if (!(property as { listing_url: string | null }).listing_url) {
-    return { error: "Add the listing's web address in Edit listing details first." };
-  }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  await scanOneProperty(supabase, anthropic, property as Parameters<typeof scanOneProperty>[2]);
+  const p = property as { id: string; agency_id: string; address: string; listing_url: string | null };
+
+  // Same path as the weekly run: find the page if we do not have one yet.
+  let url = p.listing_url;
+  if (!url) {
+    url = await discoverListingUrl(supabase, anthropic, p);
+    if (!url) {
+      return {
+        error:
+          "Couldn't find this listing on your website. If it's published, paste the link in Edit listing details; if it isn't yet, there's nothing to check.",
+      };
+    }
+  }
+
+  await scanOneProperty(supabase, anthropic, { ...p, listing_url: url });
 
   revalidatePath(`/dashboard/${propertyId}`);
   return { error: null };
@@ -345,10 +418,12 @@ export async function runWeeklyListingScan(): Promise<{ checked: number; withIss
   const supabase = createServiceClient();
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  // Every on-market listing, not only the ones already linked to a page. A
+  // listing with no page recorded gets one found for it first — that is the
+  // whole point of doing this on a schedule rather than behind a button.
   const { data: rows } = await supabase
     .from("properties")
     .select("id, agency_id, address, listing_url, stage")
-    .not("listing_url", "is", null)
     .gte("stage", 2)
     .lte("stage", 4);
 
@@ -359,15 +434,27 @@ export async function runWeeklyListingScan(): Promise<{ checked: number; withIss
     listing_url: string | null;
   }>;
 
+  const db = supabase as unknown as Db;
+  let checked = 0;
   let withIssues = 0;
+
   for (const property of properties) {
     // Sequential rather than parallel. A dozen listings a week is not worth
     // hammering an agency's own website with concurrent requests.
-    const finding = await scanOneProperty(supabase as unknown as Db, anthropic, property);
-    if (finding && !finding.ok) withIssues += 1;
+    let url = property.listing_url;
+    if (!url) {
+      url = await discoverListingUrl(db, anthropic, property);
+      if (!url) continue; // not published yet, or not findable — try again next week
+    }
+
+    const finding = await scanOneProperty(db, anthropic, { ...property, listing_url: url });
+    if (finding) {
+      checked += 1;
+      if (!finding.ok) withIssues += 1;
+    }
   }
 
-  return { checked: properties.length, withIssues };
+  return { checked, withIssues };
 }
 
 // ── Finding the listing page ───────────────────────────────────────────────
@@ -442,41 +529,38 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
 };
 
 /**
- * Proposes the listing page for a property, from the agency's website.
+ * Finds and stores this property's listing page, from the agency's website.
+ *
+ * Runs automatically as part of the weekly check for any on-market listing that
+ * has no page recorded yet. There is deliberately no button for this.
+ *
+ * Adam, 16 Aug 2026: a "find the listing page" button is "another step that the
+ * agent has to do ... may as well just eyeball their own website. The whole
+ * point of this is for RealComply to routinely check the website and come back
+ * to the agent and let them know if their advertised price has slipped below
+ * the ESP." A check the agent has to set up per listing is not a check that
+ * happens.
+ *
+ * What replaced the confirmation step is corroboration: whatever page this
+ * finds, the scan only reports on it if the page itself shows this property's
+ * address. A wrong match therefore produces "couldn't confirm this page",
+ * never a false all-clear. See addressConfirmed on ScanFinding.
  *
  * Returns null when nothing convincing was found, which is a normal outcome —
- * a listing that is not published yet has no page, and saying so is better than
- * offering a wrong guess.
+ * a listing not yet published has no page, and next week it will.
  */
-export async function findListingPage(propertyId: string): Promise<{
-  error: string | null;
-  candidate?: ListingCandidate;
-}> {
-  const { supabase } = await requireAuthContext();
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { error: "The listing finder isn't set up yet — ANTHROPIC_API_KEY is missing." };
-  }
-
-  const { data: propertyRow } = await supabase
-    .from("properties")
-    .select("id, agency_id, address")
-    .eq("id", propertyId)
-    .maybeSingle();
-  const property = propertyRow as { id: string; agency_id: string; address: string } | null;
-  if (!property) return { error: "Couldn't find that property." };
-
+async function discoverListingUrl(
+  supabase: Db,
+  anthropic: Anthropic,
+  property: { id: string; agency_id: string; address: string },
+): Promise<string | null> {
   const { data: agencyRow } = await supabase
     .from("agencies")
     .select("website_url")
     .eq("id", property.agency_id)
     .maybeSingle();
   const website = (agencyRow as { website_url?: string | null } | null)?.website_url;
-  if (!website) {
-    return { error: "Add your agency website in Team settings first, then I can find the listing page." };
-  }
-
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  if (!website) return null;
 
   try {
     let current = assertSafeUrl(website);
@@ -487,7 +571,7 @@ export async function findListingPage(propertyId: string): Promise<{
     for (let hop = 0; hop < 2; hop++) {
       const html = await readListingPage(current);
       const links = linksFrom(html, current);
-      if (links.length === 0) break;
+      if (links.length === 0) return null;
 
       const response = await anthropic.messages.create({
         model: "claude-sonnet-5",
@@ -511,51 +595,25 @@ export async function findListingPage(propertyId: string): Promise<{
       const toolUse = response.content.find(
         (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
       );
-      const choice = (toolUse?.input ?? {}) as { listingUrl?: string; indexUrl?: string; why?: string };
+      const choice = (toolUse?.input ?? {}) as { listingUrl?: string; indexUrl?: string };
 
       // Only ever accept a link that was actually in the list we supplied.
       const known = new Set(links.map((l) => l.href));
 
       if (choice.listingUrl && known.has(choice.listingUrl)) {
-        return {
-          error: null,
-          candidate: {
-            url: choice.listingUrl,
-            label: links.find((l) => l.href === choice.listingUrl)?.text ?? choice.listingUrl,
-            why: choice.why ?? "Matched to this listing on your website.",
-          },
-        };
+        await supabase.from("properties").update({ listing_url: choice.listingUrl }).eq("id", property.id);
+        return choice.listingUrl;
       }
-
       if (choice.indexUrl && known.has(choice.indexUrl)) {
         current = new URL(choice.indexUrl);
         continue;
       }
-
-      break;
+      return null;
     }
-
-    return {
-      error:
-        "Couldn't find a page for this property on your website. If it's published, paste the link in Edit listing details.",
-    };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Couldn't read your website just now." };
+    return null;
+  } catch {
+    // A website that cannot be read is next week's problem, not an error the
+    // agent needs to see — they did not ask for this to run.
+    return null;
   }
-}
-
-/** Stores the confirmed URL on the property, then checks it straight away. */
-export async function confirmListingPage(propertyId: string, url: string): Promise<{ error: string | null }> {
-  const { supabase } = await requireAuthContext();
-
-  try {
-    assertSafeUrl(url);
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "That address can't be used." };
-  }
-
-  const { error } = await supabase.from("properties").update({ listing_url: url }).eq("id", propertyId);
-  if (error) return { error: "Couldn't save that address." };
-
-  return checkListingNow(propertyId);
 }

@@ -2,21 +2,28 @@
 
 import { useState, useTransition } from "react";
 import { Globe, AlertTriangle, Check } from "lucide-react";
-import { checkListingNow, findListingPage, confirmListingPage, type ListingCandidate } from "@/lib/actions/website-scan";
+import { checkListingNow } from "@/lib/actions/website-scan";
 
 // The advertised-price check, as shown on c1.
 //
-// Reports; it does not decide. The check never sets the item's status and never
-// touches the guide figures the agent recorded — a mis-parsed page would
-// otherwise put a red mark on a compliant listing, or quietly overwrite the
-// agent's own record with something scraped off a web page. Both are worse
-// failures than missing a discrepancy, because neither is visible to the person
-// who would have to answer for it.
+// NOTHING HERE IS SET-UP. There is no "link this listing" step and no page to
+// confirm. Adam, 16 Aug 2026: a button the agent has to press "may as well just
+// eyeball their own website. The whole point of this is for RealComply to
+// routinely check the website and come back to the agent and let them know if
+// their advertised price has slipped below the ESP." So the weekly run finds
+// the page itself, and this panel is a read-out of what it found. Check now
+// exists only for the impatient.
+//
+// It reports; the agent decides what to do about it. The one thing it does
+// decide is whether to flag the item, and only where the page was confirmed to
+// be this property and the arithmetic found a breach — because a finding nobody
+// is told about is not a check.
 
 export type ScanFinding = {
   checkedAt: string;
   url: string;
   ok: boolean;
+  addressConfirmed: boolean;
   summary: string;
   issues: string[];
   priceShown: boolean;
@@ -32,35 +39,12 @@ function when(iso: string): string {
 export function ListingScanPanel({
   propertyId,
   finding,
-  hasUrl,
 }: {
   propertyId: string;
   finding?: ScanFinding;
-  hasUrl: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [candidate, setCandidate] = useState<ListingCandidate | null>(null);
-
-  function find() {
-    setError(null);
-    setCandidate(null);
-    startTransition(async () => {
-      const result = await findListingPage(propertyId);
-      if (result.error) setError(result.error);
-      else if (result.candidate) setCandidate(result.candidate);
-    });
-  }
-
-  function confirm() {
-    if (!candidate) return;
-    setError(null);
-    startTransition(async () => {
-      const result = await confirmListingPage(propertyId, candidate.url);
-      if (result.error) setError(result.error);
-      else setCandidate(null);
-    });
-  }
 
   function check() {
     setError(null);
@@ -70,67 +54,24 @@ export function ListingScanPanel({
     });
   }
 
-  const tone = !finding ? "none" : finding.issues.length > 0 ? "warn" : finding.ok ? "ok" : "unknown";
+  const tone = !finding
+    ? "none"
+    : finding.issues.length > 0
+      ? "warn"
+      : finding.addressConfirmed
+        ? "ok"
+        : "unknown";
 
   return (
     <div className="mt-3 border-t border-rc-border pt-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium text-rc-muted">The live ad</p>
-          {!hasUrl ? (
-            candidate ? (
-              /* Proposed, not adopted. The agent confirms once and it becomes
-                 the stored address; a match accepted silently would mean the
-                 weekly check reporting all clear on somebody else's page. */
-              <div className="mt-1 rounded-md border border-rc-border bg-rc-bg-alt px-2.5 py-2">
-                <p className="text-[11px] font-semibold text-rc-ink">Is this the right page?</p>
-                <p className="mt-1 break-all text-[11px] leading-relaxed text-rc-muted">{candidate.url}</p>
-                <p className="mt-1 text-[11px] leading-relaxed text-rc-faint">{candidate.why}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <a
-                    href={candidate.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:text-rc-ink"
-                  >
-                    Open it
-                  </a>
-                  <button
-                    type="button"
-                    onClick={confirm}
-                    disabled={pending}
-                    className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
-                  >
-                    {pending ? "Saving…" : "Yes, that's it"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCandidate(null)}
-                    className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:text-rc-ink"
-                  >
-                    No
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-1">
-                <p className="text-[11px] leading-relaxed text-rc-muted">
-                  Not linked to a listing page yet. I can look for it on your website, or you can paste the link in
-                  Edit listing details.
-                </p>
-                <button
-                  type="button"
-                  onClick={find}
-                  disabled={pending}
-                  className="mt-2 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20 disabled:opacity-60"
-                >
-                  {pending ? "Looking…" : "Find the listing page"}
-                </button>
-              </div>
-            )
-          ) : !finding ? (
+
+          {!finding ? (
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-              Not checked yet. Runs automatically each week, or check it now.
+              Your website is checked against this listing&rsquo;s ESP each week, once it&rsquo;s advertised. Nothing
+              to set up.
             </p>
           ) : (
             <div className="mt-1">
@@ -148,6 +89,7 @@ export function ListingScanPanel({
                 )}
                 <span>{finding.summary}</span>
               </p>
+
               {finding.issues.length > 0 && (
                 <ul className="mt-1.5 space-y-1">
                   {finding.issues.map((issue, i) => (
@@ -157,24 +99,38 @@ export function ListingScanPanel({
                   ))}
                 </ul>
               )}
-              <p className="mt-1.5 text-[11px] text-rc-faint">
-                Checked {when(finding.checkedAt)}. This is a read of your own listing page, not a compliance
-                decision.
+
+              {/* Always show which page was read. The check finds the page
+                  itself, so the agent's only way to catch it having read the
+                  wrong one is to be told which one it was. */}
+              <p className="mt-1.5 text-[11px] leading-relaxed text-rc-faint">
+                Checked {when(finding.checkedAt)} ·{" "}
+                <a
+                  href={finding.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="break-all underline hover:text-rc-muted"
+                >
+                  {finding.url}
+                </a>
+              </p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-rc-faint">
+                A read of your own listing page, not a compliance decision.
               </p>
             </div>
           )}
         </div>
-        {hasUrl && (
-          <button
-            type="button"
-            onClick={check}
-            disabled={pending}
-            className="shrink-0 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20 disabled:opacity-60"
-          >
-            {pending ? "Checking…" : "Check now"}
-          </button>
-        )}
+
+        <button
+          type="button"
+          onClick={check}
+          disabled={pending}
+          className="shrink-0 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20 disabled:opacity-60"
+        >
+          {pending ? "Checking…" : "Check now"}
+        </button>
       </div>
+
       {error && (
         <p className="mt-2 text-[11px] font-medium text-rc-amber-deep" role="alert">
           {error}
