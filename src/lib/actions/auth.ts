@@ -52,6 +52,7 @@ export async function signup(
   // Where licensee sign-off links get sent. Optional, and never taken from an
   // invite signup — see the field's comment in src/app/signup/page.tsx.
   const licenseeEmail = String(formData.get("licenseeEmail") ?? "").trim();
+  const websiteUrl = String(formData.get("websiteUrl") ?? "").trim();
 
   if (!inviteToken && !agencyName.trim()) {
     return { error: "Agency name is required." };
@@ -76,6 +77,7 @@ export async function signup(
         agency_name: agencyName,
         invite_token: inviteToken,
         licensee_email: licenseeEmail || null,
+        website_url: websiteUrl || null,
       },
       // Without this, Supabase falls back to its configured Site URL —
       // which sends the confirmation link to the bare site root instead
@@ -115,6 +117,9 @@ export async function signup(
   // succeeded and already created the account.
   if (!inviteToken && licenseeEmail) {
     await supabase.rpc("set_agency_licensee_email", { p_email: licenseeEmail });
+  }
+  if (!inviteToken && websiteUrl) {
+    await supabase.rpc("set_agency_website", { p_url: websiteUrl });
   }
 
   // Only for a brand-new agency, not someone joining an existing one via

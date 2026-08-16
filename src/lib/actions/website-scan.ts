@@ -369,3 +369,193 @@ export async function runWeeklyListingScan(): Promise<{ checked: number; withIss
 
   return { checked: properties.length, withIssues };
 }
+
+// ── Finding the listing page ───────────────────────────────────────────────
+//
+// Pasting a URL per listing is the kind of unnecessary work this product exists
+// to remove (Adam, 16 Aug 2026). With the agency's website recorded once, the
+// app goes and finds the page itself.
+//
+// CONFIRM ONCE, THEN IT IS A FACT. Matching an address to a link is inference,
+// and a check that silently matched the wrong page would report a clean result
+// for a listing nobody looked at — the worst failure available to this feature,
+// because it is invisible. So discovery proposes; the agent confirms; the exact
+// URL is then stored on the property and never guessed again.
+//
+// SAME HOST ONLY, and at most one hop from the site's own pages. This is a
+// server fetching a URL chosen by a model reading a web page, which is a short
+// route to fetching something nobody intended. Constraining candidates to the
+// agency's own domain keeps the model's choice inside the set of pages the
+// agency already publishes.
+
+export type ListingCandidate = { url: string; label: string; why: string };
+
+const LINK_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+/** Same-host links with their anchor text, deduplicated, capped. */
+function linksFrom(html: string, base: URL): Array<{ href: string; text: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ href: string; text: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = LINK_RE.exec(html)) !== null) {
+    let abs: URL;
+    try {
+      abs = new URL(m[1], base);
+    } catch {
+      continue;
+    }
+    if (abs.protocol !== "https:" || abs.hostname !== base.hostname) continue;
+    abs.hash = "";
+    const key = abs.toString();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+    out.push({ href: key, text });
+    if (out.length >= 400) break;
+  }
+  return out;
+}
+
+const CANDIDATE_TOOL: Anthropic.Tool = {
+  name: "choose_listing_page",
+  description:
+    "Pick the link most likely to be this property's own listing page, or the link most likely to be the agency's for-sale index if the listing itself is not in this list.",
+  input_schema: {
+    type: "object",
+    properties: {
+      listingUrl: {
+        type: "string",
+        description: "The link that is this property's own listing page. Omit if none of the links is clearly that page.",
+      },
+      indexUrl: {
+        type: "string",
+        description:
+          "The link most likely to be the agency's for-sale / current-listings index, to look at next. Omit if the listing itself was found or no such index is present.",
+      },
+      why: {
+        type: "string",
+        description: "One short sentence on why this link matches the address, for the agent to sanity-check.",
+      },
+    },
+    required: [],
+  },
+};
+
+/**
+ * Proposes the listing page for a property, from the agency's website.
+ *
+ * Returns null when nothing convincing was found, which is a normal outcome —
+ * a listing that is not published yet has no page, and saying so is better than
+ * offering a wrong guess.
+ */
+export async function findListingPage(propertyId: string): Promise<{
+  error: string | null;
+  candidate?: ListingCandidate;
+}> {
+  const { supabase } = await requireAuthContext();
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { error: "The listing finder isn't set up yet — ANTHROPIC_API_KEY is missing." };
+  }
+
+  const { data: propertyRow } = await supabase
+    .from("properties")
+    .select("id, agency_id, address")
+    .eq("id", propertyId)
+    .maybeSingle();
+  const property = propertyRow as { id: string; agency_id: string; address: string } | null;
+  if (!property) return { error: "Couldn't find that property." };
+
+  const { data: agencyRow } = await supabase
+    .from("agencies")
+    .select("website_url")
+    .eq("id", property.agency_id)
+    .maybeSingle();
+  const website = (agencyRow as { website_url?: string | null } | null)?.website_url;
+  if (!website) {
+    return { error: "Add your agency website in Team settings first, then I can find the listing page." };
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  try {
+    let current = assertSafeUrl(website);
+
+    // Two passes at most: the site's own page, then one index it points at.
+    // Anything deeper is a crawl, and a crawl of someone's website is not a
+    // thing to start doing quietly on a weekly schedule.
+    for (let hop = 0; hop < 2; hop++) {
+      const html = await readListingPage(current);
+      const links = linksFrom(html, current);
+      if (links.length === 0) break;
+
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-5",
+        max_tokens: 300,
+        system:
+          "You match a property address to the correct link on a real estate agency's own website. Choose only " +
+          "from the links given. If no link clearly corresponds to that specific property, say nothing rather " +
+          "than choosing the closest one — a wrong match is worse than no match here.",
+        messages: [
+          {
+            role: "user",
+            content:
+              `Property: ${property.address}\n\nLinks on ${current.toString()}:\n` +
+              links.map((l) => `${l.href} — ${l.text}`).join("\n"),
+          },
+        ],
+        tools: [CANDIDATE_TOOL],
+        tool_choice: { type: "tool", name: "choose_listing_page" },
+      });
+
+      const toolUse = response.content.find(
+        (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+      );
+      const choice = (toolUse?.input ?? {}) as { listingUrl?: string; indexUrl?: string; why?: string };
+
+      // Only ever accept a link that was actually in the list we supplied.
+      const known = new Set(links.map((l) => l.href));
+
+      if (choice.listingUrl && known.has(choice.listingUrl)) {
+        return {
+          error: null,
+          candidate: {
+            url: choice.listingUrl,
+            label: links.find((l) => l.href === choice.listingUrl)?.text ?? choice.listingUrl,
+            why: choice.why ?? "Matched to this listing on your website.",
+          },
+        };
+      }
+
+      if (choice.indexUrl && known.has(choice.indexUrl)) {
+        current = new URL(choice.indexUrl);
+        continue;
+      }
+
+      break;
+    }
+
+    return {
+      error:
+        "Couldn't find a page for this property on your website. If it's published, paste the link in Edit listing details.",
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't read your website just now." };
+  }
+}
+
+/** Stores the confirmed URL on the property, then checks it straight away. */
+export async function confirmListingPage(propertyId: string, url: string): Promise<{ error: string | null }> {
+  const { supabase } = await requireAuthContext();
+
+  try {
+    assertSafeUrl(url);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "That address can't be used." };
+  }
+
+  const { error } = await supabase.from("properties").update({ listing_url: url }).eq("id", propertyId);
+  if (error) return { error: "Couldn't save that address." };
+
+  return checkListingNow(propertyId);
+}

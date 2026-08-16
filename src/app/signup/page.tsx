@@ -111,6 +111,26 @@ function InviteAwareForm() {
           <p className="mt-1 text-xs leading-relaxed text-rc-muted">
             Where sign-off requests go. Leave blank if that is you.
           </p>
+
+          {/* The agency's public website. Asked here for both tiers: an
+              individual agent enters their employing agency's site (Adam,
+              16 Aug 2026), since the listings are published there either way.
+              Used to find each listing's own page for the advertised-price
+              check, so nobody pastes a URL per listing. */}
+          <label htmlFor="websiteUrl" className="mt-4 block text-sm font-medium text-rc-ink">
+            Agency website <span className="font-normal text-rc-muted">(optional)</span>
+          </label>
+          <input
+            id="websiteUrl"
+            name="websiteUrl"
+            type="url"
+            inputMode="url"
+            placeholder="https://www.youragency.com.au"
+            className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+          />
+          <p className="mt-1 text-xs leading-relaxed text-rc-muted">
+            Where your listings are published. Used to check advertised prices against the ESP.
+          </p>
         </div>
       )}
       <div>

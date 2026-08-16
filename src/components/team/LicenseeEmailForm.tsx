@@ -16,7 +16,13 @@ import { saveLicenseeEmail } from "@/lib/actions/team";
 
 const initial = { error: null as string | null, saved: false };
 
-export function LicenseeEmailForm({ current }: { current: string | null }) {
+export function LicenseeEmailForm({
+  current,
+  website,
+}: {
+  current: string | null;
+  website: string | null;
+}) {
   const [state, action, pending] = useActionState(saveLicenseeEmail, initial);
 
   return (
@@ -27,13 +33,36 @@ export function LicenseeEmailForm({ current }: { current: string | null }) {
       <p className="mt-1 text-xs leading-relaxed text-rc-muted">
         Where sign-off requests are addressed. Used when you create a sign-off link for a listing.
       </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-2">
         <input
           id="licenseeEmail"
           name="licenseeEmail"
           type="email"
           defaultValue={current ?? ""}
           placeholder="licensee@youragency.com.au"
+          className="w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+        />
+      </div>
+
+      {/* The agency's public website. Used to find each listing's own page for
+          the weekly advertised-price check, so nobody has to paste a URL per
+          listing. For an individual agent subscription this is their employing
+          agency's site — the listings live there either way. */}
+      <label htmlFor="websiteUrl" className="mt-4 block text-sm font-medium text-rc-ink">
+        Agency website
+      </label>
+      <p className="mt-1 text-xs leading-relaxed text-rc-muted">
+        Where your listings are published. RealComply uses it to find each listing&rsquo;s page and check the
+        advertised price against the ESP.
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input
+          id="websiteUrl"
+          name="websiteUrl"
+          type="url"
+          inputMode="url"
+          defaultValue={website ?? ""}
+          placeholder="https://www.youragency.com.au"
           className="min-w-0 flex-1 rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
         />
         <button

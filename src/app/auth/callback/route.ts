@@ -27,6 +27,7 @@ export async function GET(request: Request) {
           agency_name?: string;
           invite_token?: string;
           licensee_email?: string | null;
+          website_url?: string | null;
         };
         if (meta.invite_token) {
           await supabase.rpc("accept_invite", { p_token: meta.invite_token, p_full_name: meta.full_name ?? "" });
@@ -42,6 +43,9 @@ export async function GET(request: Request) {
           // once the agency row exists, and never for an invite signup.
           if (!bootstrapError && typeof meta.licensee_email === "string" && meta.licensee_email) {
             await supabase.rpc("set_agency_licensee_email", { p_email: meta.licensee_email });
+          }
+          if (!bootstrapError && typeof meta.website_url === "string" && meta.website_url) {
+            await supabase.rpc("set_agency_website", { p_url: meta.website_url });
           }
           // Only notify once the agency actually exists — an RPC error here
           // means there's no new signup to report.

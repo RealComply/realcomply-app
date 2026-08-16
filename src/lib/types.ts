@@ -33,6 +33,7 @@ export type Agency = {
   // The corporation's own licence — the entity holds one in its own right,
   // separate from each person's Class 1/2 licence in profiles. See
   // 0015_corporation_licence.sql.
+  website_url: string | null;
   corporation_licence_holder: string | null;
   corporation_licence_number: string | null;
   corporation_licence_expiry: string | null;

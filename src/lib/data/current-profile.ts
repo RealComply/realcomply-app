@@ -41,6 +41,7 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     agency_name?: string;
     invite_token?: string;
     licensee_email?: string | null;
+    website_url?: string | null;
   };
 
   if (meta.invite_token || meta.agency_name) {
@@ -53,6 +54,9 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     // /auth/callback entirely.
     if (!joinError && !meta.invite_token && typeof meta.licensee_email === "string" && meta.licensee_email) {
       await supabase.rpc("set_agency_licensee_email", { p_email: meta.licensee_email });
+    }
+    if (!joinError && !meta.invite_token && typeof meta.website_url === "string" && meta.website_url) {
+      await supabase.rpc("set_agency_website", { p_url: meta.website_url });
     }
 
     if (!joinError) {

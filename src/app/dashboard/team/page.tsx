@@ -27,10 +27,12 @@ export default async function TeamPage() {
   // with a plain prop, not another round trip.
   const { data: agencyRow } = await supabase
     .from("agencies")
-    .select("licensee_email")
+    .select("licensee_email, website_url")
     .eq("id", profile.agency_id)
     .maybeSingle();
-  const licenseeEmail = (agencyRow as { licensee_email?: string | null } | null)?.licensee_email ?? null;
+  const agencyDetails = agencyRow as { licensee_email?: string | null; website_url?: string | null } | null;
+  const licenseeEmail = agencyDetails?.licensee_email ?? null;
+  const websiteUrl = agencyDetails?.website_url ?? null;
 
   const staff = (staffRows ?? []) as Profile[];
   const invites = (inviteRows ?? []) as AgencyInvite[];
@@ -53,7 +55,7 @@ export default async function TeamPage() {
             <h3 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">
               Sign-off
             </h3>
-            <LicenseeEmailForm current={licenseeEmail} />
+            <LicenseeEmailForm current={licenseeEmail} website={websiteUrl} />
           </div>
         )}
 

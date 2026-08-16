@@ -114,6 +114,20 @@ export async function saveLicenseeEmail(
     return { error: "Couldn't save that. Try again.", saved: false };
   }
 
+  // Saved in the same submission as the licensee email — one form, one button,
+  // two agency-level settings. Validated only for shape: anything stricter here
+  // rejects valid addresses more often than it catches bad ones, and a wrong
+  // website surfaces immediately the first time the app tries to find a listing.
+  const website = String(formData.get("websiteUrl") ?? "").trim();
+  if (website && !/^https?:\/\//i.test(website)) {
+    return { error: "The website address needs to start with https://", saved: false };
+  }
+
+  const { error: siteError } = await supabase.rpc("set_agency_website", { p_url: website });
+  if (siteError) {
+    return { error: "Saved the email, but couldn't save the website. Try again.", saved: false };
+  }
+
   revalidatePath("/dashboard/team");
   return { error: null, saved: true };
 }
