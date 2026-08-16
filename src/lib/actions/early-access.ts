@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { sendEmail } from "@/lib/email/send";
 
 // Early-access signup from the public landing page. Runs unauthenticated —
 // this is the one action in the app reachable by a stranger — so it stays
@@ -10,6 +11,13 @@ import { createClient } from "@/lib/supabase/server";
 // bypasses RLS and its own file says never to reach it from a request driven
 // by end-user input. The table's insert-only policy (0013) is what makes the
 // anon path safe: this can add a row and cannot read one back.
+//
+// NOTIFICATION ADDED 16 Aug 2026. Until then a registration landed in the table
+// and told nobody — Adam had to remember to open the Supabase dashboard. With
+// paid ads pointing at this page that is the wrong way round: the whole cost of
+// a click is wasted if the lead sits unread for a week. It emails
+// ADMIN_NOTIFICATION_EMAIL, which is a verified SES identity, so this works
+// despite the sandbox — unlike anything addressed to a customer.
 
 export type EarlyAccessState = { ok: boolean; error: string | null };
 
@@ -54,5 +62,46 @@ export async function joinEarlyAccess(
     return { ok: false, error: "Something went wrong at our end. Please try again." };
   }
 
+  await notifyEarlyAccessSignup(email, source);
+
   return { ok: true, error: null };
+}
+
+/**
+ * Tells us someone registered.
+ *
+ * Only on a genuinely new row: a duplicate returns above without reaching here,
+ * so re-submitting the same address does not send a second email.
+ *
+ * Never awaited into the result. A registration that succeeded must not be
+ * reported as failed because the mail server had a bad moment — the row is
+ * already saved, and the list in Supabase remains the source of truth. Failures
+ * are logged, not surfaced.
+ */
+async function notifyEarlyAccessSignup(email: string, source: string | null): Promise<void> {
+  const to = process.env.ADMIN_NOTIFICATION_EMAIL;
+  if (!to) {
+    console.error("Early-access signup not notified: ADMIN_NOTIFICATION_EMAIL is not set.", { email });
+    return;
+  }
+
+  const sent = await sendEmail({
+    to,
+    subject: `RealComply early access — ${email}`,
+    text: [
+      "Someone registered for early access on the landing page.",
+      "",
+      `Email: ${email}`,
+      // ?src= on the ad's link, so a run of these reads as which ad is working
+      // without going to Meta's own attribution for it.
+      `Came from: ${source ?? "no source recorded (typed the address in, or an ad with no ?src= tag)"}`,
+      `When: ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney" })} (Sydney)`,
+      "",
+      "The full list is in the Supabase dashboard, table early_access.",
+    ].join("\n"),
+  });
+
+  if (!sent) {
+    console.error("Early-access signup saved but not notified:", email);
+  }
 }
