@@ -274,7 +274,7 @@ export async function scanOneProperty(
       // Arithmetic, not judgement.
       if (read.priceLow != null && esp.espLow != null && read.priceLow < esp.espLow) {
         issues.push(
-          `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the recorded ESP of $${esp.espLow.toLocaleString("en-AU")} (s73(1)).`,
+          `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the ESP of $${esp.espLow.toLocaleString("en-AU")} on this file (s73(1)). If the ESP was revised, s73(3) requires the advertising to be amended as soon as practicable.`,
         );
       }
       if (read.priceLow != null && read.priceHigh != null && read.priceLow > 0) {

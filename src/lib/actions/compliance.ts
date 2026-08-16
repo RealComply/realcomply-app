@@ -119,12 +119,34 @@ export async function setItemStatus(
     data.materialFactDisclosed = String(formData.get("materialFactDisclosed") ?? "") === "yes";
   }
 
+  // Set by the a4 branch below, acted on after the save succeeds.
+  let espChanged = false;
+
   // a4 (ESP) carries structured figures alongside the generic note, since
   // the live underquoting checks (c1, offers floor, final-sale diff) need
   // real numbers to compare against, not free text.
   if (itemKey === "a4") {
     const espLow = Number(formData.get("espLow") ?? 0) || null;
     const espHigh = Number(formData.get("espHigh") ?? espLow ?? 0) || espLow;
+
+    // Whether this save actually changes the figures, decided before they are
+    // written. A revised ESP is the moment s73(3) starts running — "as soon as
+    // practicable ... amend or retract any advertisement" showing less than the
+    // revised figure — so the live ad is re-read now rather than waiting for
+    // Sunday's sweep (Adam, 16 Aug 2026).
+    const { data: previousRow } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", propertyId)
+      .eq("item_key", "a4")
+      .maybeSingle();
+    const previous = ((previousRow as { data?: { espLow?: number; espHigh?: number } } | null)?.data ?? {}) as {
+      espLow?: number;
+      espHigh?: number;
+    };
+    espChanged =
+      (previous.espLow ?? null) !== espLow || (previous.espHigh ?? null) !== espHigh;
+
     data.espLow = espLow;
     data.espHigh = espHigh;
     if (espLow && espHigh && espLow > 0) {
@@ -139,6 +161,7 @@ export async function setItemStatus(
           data: { ...data, flagReason: "ESP range spread exceeds 10% (s72A)." },
           completedBy: user.id,
         });
+        await recheckAdvertisedPrice(propertyId, espChanged);
         revalidatePath(`/dashboard/${propertyId}`);
         return error ? { error: error.message } : ok;
       }
@@ -198,6 +221,10 @@ export async function setItemStatus(
     eventDate,
     completedBy: status === "done" ? user.id : null,
   });
+
+  if (!error && itemKey === "a4") {
+    await recheckAdvertisedPrice(propertyId, espChanged);
+  }
 
   revalidatePath(`/dashboard/${propertyId}`);
   return error ? { error: error.message } : ok;
@@ -733,4 +760,31 @@ export async function completeStage(
 
   revalidatePath(`/dashboard/${propertyId}`);
   return error ? { error: error.message } : ok;
+}
+
+/**
+ * Re-reads the live ad after the ESP changes.
+ *
+ * The weekly sweep already compares against whatever the ESP is at the time it
+ * runs, so the figures were never stale. What was missing is the timing: an ESP
+ * revised on Tuesday would not be checked against the advertising until Sunday,
+ * and s73(3) requires the advertisement to be amended "as soon as practicable"
+ * after a revision. A week is not that (Adam, 16 Aug 2026).
+ *
+ * Deferred import, same reason as extractForAttachment above: website-scan
+ * imports requireAuthContext from this file, and a static import here would
+ * close the circle.
+ *
+ * Never surfaces an error. This runs as a side effect of the agent saving a
+ * figure; a website that is slow or down must not turn a successful save into a
+ * failed one. If it does not run, Sunday catches it.
+ */
+async function recheckAdvertisedPrice(propertyId: string, espChanged: boolean): Promise<void> {
+  if (!espChanged) return;
+  try {
+    const { checkListingNow } = await import("@/lib/actions/website-scan");
+    await checkListingNow(propertyId);
+  } catch {
+    // Deliberately silent — see above.
+  }
 }
