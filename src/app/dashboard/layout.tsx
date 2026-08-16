@@ -1,4 +1,4 @@
-import { LegislationChat } from "@/components/legislation/LegislationChat";
+import { AssistantChat } from "@/components/chat/AssistantChat";
 import { Sidebar } from "@/components/Sidebar";
 import { UserBar } from "@/components/UserBar";
 import { requireProfile } from "@/lib/data/current-profile";
@@ -26,7 +26,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex min-h-screen flex-col">
         <UserBar profile={profile} />
         {children}
-        <LegislationChat />
+        <AssistantChat />
       </div>
     </div>
   );

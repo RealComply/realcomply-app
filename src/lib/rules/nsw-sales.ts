@@ -645,6 +645,21 @@ export function allItemsFor(property: Property, allItems: Record<string, Propert
   return items.filter((item) => (item.showIf ? item.showIf(property, allItems) : true)).map(stripShowIf);
 }
 
+/**
+ * Every item in the ruleset, unconditionally — including the ones that only
+ * appear on a strata listing, a tenanted one, or a listing with a pool.
+ *
+ * Used by the help assistant (src/lib/help/product-guide.ts), which has to
+ * describe the product as a whole rather than one property's file. Everything
+ * else should keep using allItemsFor/itemsForStage, which filter to what an
+ * actual listing shows — this is the one legitimate reason to want the raw
+ * set, and taking it from here means the help answers cannot drift out of
+ * step with what the app really does.
+ */
+export function allItemsInRuleset(): ComplianceItem[] {
+  return items.map(stripShowIf);
+}
+
 export function getItem(key: string): ComplianceItem | undefined {
   return items.find((item) => item.key === key);
 }
