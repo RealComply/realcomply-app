@@ -80,7 +80,13 @@ export default async function PortfolioPage() {
   return (
     <>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
-        <div className="relative isolate overflow-hidden rounded-card">
+        {/* px-3 matches gap-3 on the tile grid below, so the outer edges get
+            the same breathing room as the gaps between tiles instead of the
+            first and last tile sitting flush against the band. Home has had
+            this since 9 Aug 2026 (Adam raised it there first); this page was
+            built from the same shape but never picked the fix up, which is why
+            the two looked subtly different side by side. */}
+        <div className="relative isolate overflow-hidden rounded-card px-3">
           <div className="rc-mesh-bg" />
           <div className="flex items-center justify-between">
             <div>
