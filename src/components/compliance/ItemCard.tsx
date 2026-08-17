@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { Paperclip, Sparkles, AlertTriangle, Check, X } from "lucide-react";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
@@ -17,6 +17,7 @@ import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/
 import {
   setItemStatus,
   addOfferEntry,
+  updateOfferEntry,
   addReportEntry,
   markEspRevised,
   markNoPriceRevision,
@@ -787,12 +788,14 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const data = (current?.data ?? {}) as {
     entries?: Array<{
+      id?: string;
       amount: number;
       outcome: string;
       vendorInformed: boolean;
       belowFloor: boolean;
       note: string;
       recordedAt: string;
+      updatedAt?: string;
     }>;
     flagReason?: string;
     espRevisionPrompt?: string;
@@ -802,31 +805,7 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       <form action={formAction} className="space-y-2 rounded-lg bg-rc-bg-alt p-3">
-        <div className="flex flex-wrap gap-2">
-          <input
-            type="number"
-            name="amount"
-            placeholder="Offer amount"
-            className="w-40 rounded-md border border-rc-border px-2 py-1 text-sm"
-          />
-          <select name="outcome" className="rounded-md border border-rc-border px-2 py-1 text-sm">
-            <option value="pending">Pending</option>
-            <option value="accepted">Accepted</option>
-            <option value="rejected">Rejected</option>
-          </select>
-        </div>
-        <label className="flex items-center gap-2 text-xs text-rc-muted">
-          <input type="checkbox" name="vendorInformed" /> Vendor informed in writing
-        </label>
-        <label className="flex items-center gap-2 text-xs text-rc-muted">
-          <input type="checkbox" name="belowFloor" /> Below the vendor&rsquo;s written offer-floor instruction (exempt)
-        </label>
-        <DictatableTextarea
-          name="note"
-          placeholder="Note"
-          rows={2}
-          className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
-        />
+        <OfferFields />
         <button
           type="submit"
           disabled={pending}
@@ -860,15 +839,162 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
       {entries.length > 0 && (
         <ul className="mt-3 space-y-2 text-sm text-rc-muted">
           {entries.map((e, i) => (
-            <li key={i} className="border-t border-rc-border pt-2">
-              <span className="font-medium text-rc-ink">${e.amount.toLocaleString()}</span> — {e.outcome}
-              {e.vendorInformed ? " · vendor informed" : " · vendor not yet informed"}
-              {e.note && <> — {e.note}</>}
-            </li>
+            <OfferRow key={e.id ?? i} propertyId={propertyId} entry={e} />
           ))}
         </ul>
       )}
     </ItemShell>
+  );
+}
+
+// One logged offer, with an edit mode.
+//
+// Adam, 17 Aug 2026: "we need the ability to re-open and edit an offer." An
+// offer is not a one-shot event — it starts pending and becomes accepted or
+// rejected, and amounts get mistyped. Without this the only options were to
+// log a duplicate or leave the record wrong, and a duplicate offer in a
+// compliance log is worse than either.
+//
+// Editing shows "edited" with the date rather than silently presenting the new
+// version as though it had always said that. This is a record a regulator may
+// read, and a log that rewrites itself invisibly is worth less than one that
+// shows its corrections.
+function OfferRow({
+  propertyId,
+  entry,
+}: {
+  propertyId: string;
+  entry: {
+    id?: string;
+    amount: number;
+    outcome: string;
+    vendorInformed: boolean;
+    belowFloor: boolean;
+    note: string;
+    recordedAt: string;
+    updatedAt?: string;
+  };
+}) {
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  // Submitted directly rather than through useActionState, because the form has
+  // to close itself on success — and closing it from an effect that watches the
+  // action's state means writing state during render, which React rightly
+  // objects to. Doing it here keeps the "did it work" decision in one place.
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(async () => {
+      const result = await updateOfferEntry(propertyId, entry.id ?? "", { error: null }, formData);
+      setError(result.error);
+      if (!result.error) setEditing(false);
+    });
+  }
+
+  if (!editing) {
+    return (
+      <li className="border-t border-rc-border pt-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <span className="font-medium text-rc-ink">${entry.amount.toLocaleString()}</span> — {entry.outcome}
+            {entry.vendorInformed ? " · vendor informed" : " · vendor not yet informed"}
+            {entry.belowFloor && " · below vendor floor"}
+            {entry.note && <> — {entry.note}</>}
+            {entry.updatedAt && (
+              <span className="ml-1 text-[11px] text-rc-faint">
+                (edited {new Date(entry.updatedAt).toLocaleDateString("en-AU")})
+              </span>
+            )}
+          </div>
+          {/* Absent on entries logged before ids existed — those cannot be
+              addressed unambiguously, and editing the wrong row on a legal
+              record is worse than not offering the button. Logging one new
+              offer backfills ids for the whole list. */}
+          {entry.id && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="shrink-0 text-xs font-medium text-rc-green-deep hover:underline"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="border-t border-rc-border pt-2">
+      <form onSubmit={save} className="space-y-2 rounded-lg bg-rc-bg-alt p-3">
+        <OfferFields defaults={entry} />
+        <div className="flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+          >
+            {pending ? "Saving…" : "Save changes"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt"
+          >
+            Cancel
+          </button>
+        </div>
+        <FieldError error={error} />
+      </form>
+    </li>
+  );
+}
+
+// The offer fields, shared by the log-new form and the edit form so the two
+// can never drift apart.
+function OfferFields({
+  defaults,
+}: {
+  defaults?: { amount: number; outcome: string; vendorInformed: boolean; belowFloor: boolean; note: string };
+}) {
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        <input
+          type="number"
+          name="amount"
+          defaultValue={defaults?.amount ?? ""}
+          placeholder="Offer amount"
+          className="w-40 rounded-md border border-rc-border px-2 py-1 text-sm"
+        />
+        <select
+          name="outcome"
+          defaultValue={defaults?.outcome ?? "pending"}
+          className="rounded-md border border-rc-border px-2 py-1 text-sm"
+        >
+          <option value="pending">Pending</option>
+          <option value="accepted">Accepted</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-rc-muted">
+        <input type="checkbox" name="vendorInformed" defaultChecked={defaults?.vendorInformed} /> Vendor informed in
+        writing
+      </label>
+      <label className="flex items-center gap-2 text-xs text-rc-muted">
+        <input type="checkbox" name="belowFloor" defaultChecked={defaults?.belowFloor} /> Below the vendor&rsquo;s
+        written offer-floor instruction (exempt)
+      </label>
+      <DictatableTextarea
+        name="note"
+        defaultValue={defaults?.note}
+        placeholder="Note"
+        rows={2}
+        className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
+      />
+    </>
   );
 }
 

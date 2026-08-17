@@ -391,58 +391,54 @@ export async function addReportEntry(
   return error ? { error: error.message } : ok;
 }
 
-// d2 — offers log. Live underquoting check: a rejected offer above the
-// advertised guide (c1) can never be advertised below again (s73A) — we
-// flag the offers item so it's visible, we don't silently pass it.
-export async function addOfferEntry(
-  propertyId: string,
-  _prevState: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const { supabase, user, profile } = await requireAuthContext();
+// d2 — offers log.
+//
+// Entries carry an id so they can be edited later (Adam, 17 Aug 2026: "we need
+// the ability to re-open and edit an offer"). Addressed by id rather than by
+// position because entries are unshifted onto the front of the array, so every
+// index shifts when a new offer is logged — and an off-by-one edit on a legal
+// record is the kind of bug you only notice in a dispute.
+export type OfferEntry = {
+  id: string;
+  amount: number;
+  outcome: string;
+  vendorInformed: boolean;
+  belowFloor: boolean;
+  note: string;
+  recordedAt: string;
+  /** Set the first time an entry is edited. The original recordedAt is kept. */
+  updatedAt?: string;
+};
 
-  const amount = Number(formData.get("amount") ?? 0);
-  const outcome = String(formData.get("outcome") ?? "pending"); // pending | accepted | rejected
-  const vendorInformed = formData.get("vendorInformed") === "on";
-  const belowFloor = formData.get("belowFloor") === "on";
-  const note = String(formData.get("note") ?? "").trim();
+/** Backfills ids onto entries written before ids existed. */
+function withIds(entries: OfferEntry[]): OfferEntry[] {
+  return entries.map((e) => (e.id ? e : { ...e, id: crypto.randomUUID() }));
+}
 
-  if (!amount) {
-    return { error: "Enter the offer amount." };
-  }
-
-  const { data: existing } = await supabase
-    .from("property_items")
-    .select("data")
-    .eq("property_id", propertyId)
-    .eq("item_key", "d2")
-    .maybeSingle();
-
-  const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as Array<{
-    amount: number;
-    outcome: string;
-    vendorInformed: boolean;
-    belowFloor: boolean;
-    note: string;
-    recordedAt: string;
-  }>;
-  entries.unshift({ amount, outcome, vendorInformed, belowFloor, note, recordedAt: new Date().toISOString() });
-
-  // s73A check: a rejected offer, once made in writing and not below an
-  // agreed vendor floor, sets a floor the advertised price can't go under.
+/**
+ * Everything the offers item derives from its entries, computed in one place
+ * so adding an offer and editing one can never disagree.
+ *
+ * Recomputed across the WHOLE list every time rather than only for the entry
+ * being touched. That is the point of making entries editable: changing an
+ * outcome from pending to rejected has to be able to raise the ESP prompt, and
+ * correcting an amount downwards has to be able to withdraw it.
+ */
+function assessOffers(entries: OfferEntry[], threshold: number | null, thresholdSource: string) {
+  // s73A safeguard already in place: a rejected offer, in writing and not
+  // below an agreed vendor floor, sets a floor the advertised price can't go
+  // under.
   const rejectedFloor = entries
     .filter((e) => e.outcome === "rejected" && !e.belowFloor)
     .reduce((max, e) => Math.max(max, e.amount), 0);
 
-  let status: "open" | "done" | "flagged" = "done";
-  let flagReason: string | undefined;
+  const unreported = entries.find((e) => !e.vendorInformed && !e.belowFloor);
+  const status: "open" | "done" | "flagged" = unreported ? "flagged" : "done";
+  const flagReason = unreported
+    ? "An offer here has not yet been put to the vendor in writing (Sch 2 r5)."
+    : undefined;
 
-  if (!vendorInformed && !belowFloor) {
-    status = "flagged";
-    flagReason = "Vendor not yet informed of this offer in writing (Sch 2 r5).";
-  }
-
-  // ── Rejected at or above the advertised price → the estimate is stale.
+  // Rejected at or above the advertised price → the estimate is stale.
   //
   // Adam, 17 Aug 2026. If a buyer offers inside the advertised range, at the
   // advertised single figure, or above it, and the vendor rejects it, the
@@ -450,112 +446,154 @@ export async function addOfferEntry(
   // advertised. Continuing to advertise from that figure is quoting a price
   // the vendor has already refused.
   //
-  // THE CITATION MATTERS HERE, and it is NOT s73A. s73A(1) prohibits a
-  // statement suggesting a property may sell for less than THE ESTIMATED
-  // SELLING PRICE — it says nothing about rejected offers. The rejected-offer
-  // rule people quote is part of the announced NSW reforms and has not
-  // commenced. Citing it as current law would be inventing an obligation,
-  // which the product philosophy treats as worse than omitting a feature.
+  // THE CITATION IS NOT s73A. s73A(1) prohibits a statement suggesting a
+  // property may sell for less than THE ESTIMATED SELLING PRICE — it says
+  // nothing about rejected offers. The rejected-offer rule is part of the
+  // announced NSW reforms and has not commenced; citing it as current law
+  // would be inventing an obligation.
   //
-  // The real, current duty is s72A(3): the agent must ensure the ESP "is, and
-  // remains, a reasonable estimate of the likely selling price". A rejection
-  // at or above the advertised figure is direct market evidence that it no
-  // longer is — and it is stale UPWARDS, the estimate being too low rather
-  // than too high. s72A(4) then requires the revision be made properly
-  // (written notice to the vendor, agreement amended), s72A(5) requires
-  // evidence of reasonableness, and s73(3) requires any advertisement below
-  // the revised figure to be amended or retracted as soon as practicable.
+  // The real, current duty is s72A(3): the ESP must "be, and remain" a
+  // reasonable estimate. A rejection at or above the advertised figure is
+  // direct market evidence that it no longer is — and it is stale UPWARDS,
+  // the estimate being too low rather than too high. s72A(4) then governs how
+  // a revision is made, s72A(5) the evidence, s73(3) the advertising deadline.
   //
-  // Compared against the ADVERTISED guide (c1) where one exists, because that
-  // is what Adam described and what a buyer actually sees. Falls back to the
-  // recorded ESP (a4) before the listing is advertised. Silent if neither is
-  // recorded — there is no threshold to be at or above.
-  //
-  // No belowFloor carve-out, deliberately. That flag means the offer sat under
-  // a standing vendor instruction; if such an offer is still at or above the
-  // advertised price, the advertised price is below the vendor's own floor,
-  // which makes the estimate more questionable rather than less.
-  //
-  // This REPORTS. It does not revise anything, does not touch a4, and does not
-  // decide that the estimate is wrong — only the agent, with the vendor, can
-  // do that.
-  let espRevisionPrompt: string | undefined;
+  // Reports only. Never revises the ESP, never touches a4.
+  const highestRejectedAtOrAbove =
+    threshold != null && threshold > 0
+      ? entries
+          .filter((e) => e.outcome === "rejected" && e.amount >= threshold)
+          .reduce((max, e) => Math.max(max, e.amount), 0)
+      : 0;
 
-  if (outcome === "rejected") {
-    const [{ data: guideRow }, { data: espRow }] = await Promise.all([
-      supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "c1").maybeSingle(),
-      supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "a4").maybeSingle(),
-    ]);
-
-    const guideLow = (guideRow?.data as { guideLow?: number } | null)?.guideLow ?? null;
-    const espLow = (espRow?.data as { espLow?: number } | null)?.espLow ?? null;
-
-    const threshold = guideLow ?? espLow;
-    const source = guideLow != null ? "advertised price" : "recorded ESP";
-
-    if (threshold != null && threshold > 0 && amount >= threshold) {
-      espRevisionPrompt =
-        `This offer of $${amount.toLocaleString()} was at or above your ${source} of ` +
+  const espRevisionPrompt =
+    highestRejectedAtOrAbove > 0 && threshold != null
+      ? `An offer of $${highestRejectedAtOrAbove.toLocaleString()} was at or above your ${thresholdSource} of ` +
         `$${threshold.toLocaleString()} and was rejected. The estimated selling price may no longer be a ` +
         `reasonable estimate (s72A(3)). If you revise it, the vendor must be notified in writing and the ` +
         `agency agreement amended (s72A(4)), and any advertising below the revised figure amended or ` +
-        `retracted as soon as practicable (s73(3)).`;
-    }
-  }
+        `retracted as soon as practicable (s73(3)).`
+      : undefined;
+
+  return { rejectedFloor, status, flagReason, espRevisionPrompt };
+}
+
+/** The figure a rejected offer is measured against: what is advertised if
+ *  anything is, otherwise the recorded ESP. */
+async function offerThreshold(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+): Promise<{ threshold: number | null; source: string }> {
+  const [{ data: guideRow }, { data: espRow }] = await Promise.all([
+    supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "c1").maybeSingle(),
+    supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "a4").maybeSingle(),
+  ]);
+  const guideLow = (guideRow?.data as { guideLow?: number } | null)?.guideLow ?? null;
+  const espLow = (espRow?.data as { espLow?: number } | null)?.espLow ?? null;
+  return {
+    threshold: guideLow ?? espLow,
+    source: guideLow != null ? "advertised price" : "recorded ESP",
+  };
+}
+
+async function readOffers(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+): Promise<OfferEntry[]> {
+  const { data } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d2")
+    .maybeSingle();
+  return withIds(((data?.data as { entries?: OfferEntry[] } | null)?.entries ?? []) as OfferEntry[]);
+}
+
+async function saveOffers(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  params: { agencyId: string; propertyId: string; userId: string; entries: OfferEntry[] },
+): Promise<ActionState> {
+  const { threshold, source } = await offerThreshold(supabase, params.propertyId);
+  const assessment = assessOffers(params.entries, threshold, source);
 
   const { error } = await upsertItem(supabase, {
-    agencyId: profile.agency_id,
-    propertyId,
+    agencyId: params.agencyId,
+    propertyId: params.propertyId,
     itemKey: "d2",
-    status,
-    data: { entries, rejectedFloor, flagReason, espRevisionPrompt },
-    completedBy: user.id,
+    status: assessment.status,
+    data: {
+      entries: params.entries,
+      rejectedFloor: assessment.rejectedFloor,
+      flagReason: assessment.flagReason,
+      espRevisionPrompt: assessment.espRevisionPrompt,
+    },
+    completedBy: params.userId,
   });
 
-  // d3 is the item where an ESP revision actually gets answered. If it has
-  // already been answered "no revision needed", that answer was given before
-  // this offer existed and is now stale, so it reopens. An answered "yes,
-  // revised" is left alone — the revision it records may well be this one.
-  if (!error && espRevisionPrompt) {
-    await reopenStaleNoRevision(supabase, propertyId, espRevisionPrompt);
+  if (!error && assessment.espRevisionPrompt) {
+    await reopenStaleNoRevision(supabase, params.propertyId, assessment.espRevisionPrompt);
   }
 
-  revalidatePath(`/dashboard/${propertyId}`);
+  revalidatePath(`/dashboard/${params.propertyId}`);
   return error ? { error: error.message } : ok;
 }
 
-/**
- * Reopens d3 where it was answered "no revision needed" before an offer
- * arrived that calls the estimate into question.
- *
- * Reopened rather than flagged: nothing has gone wrong, a question has simply
- * been re-asked. A flag would put an amber mark on a file whose agent has done
- * nothing but log an offer honestly, and this product does not accuse people
- * for volunteering information.
- */
-async function reopenStaleNoRevision(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+function offerFromForm(formData: FormData) {
+  return {
+    amount: Number(formData.get("amount") ?? 0),
+    outcome: String(formData.get("outcome") ?? "pending"),
+    vendorInformed: formData.get("vendorInformed") === "on",
+    belowFloor: formData.get("belowFloor") === "on",
+    note: String(formData.get("note") ?? "").trim(),
+  };
+}
+
+export async function addOfferEntry(
   propertyId: string,
-  reason: string,
-): Promise<void> {
-  const { data: row } = await supabase
-    .from("property_items")
-    .select("id, status, data")
-    .eq("property_id", propertyId)
-    .eq("item_key", "d3")
-    .maybeSingle();
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
 
-  const d3 = (row as { id?: string; status?: string; data?: { espRevised?: boolean } } | null) ?? null;
-  if (!d3?.id || d3.status !== "done" || d3.data?.espRevised !== false) return;
+  const fields = offerFromForm(formData);
+  if (!fields.amount) return { error: "Enter the offer amount." };
 
-  await supabase
-    .from("property_items")
-    .update({
-      status: "open",
-      completed_by: null,
-      data: { ...d3.data, espRevised: undefined, reopenedReason: reason },
-    })
-    .eq("id", d3.id);
+  const entries = await readOffers(supabase, propertyId);
+  entries.unshift({ id: crypto.randomUUID(), ...fields, recordedAt: new Date().toISOString() });
+
+  return saveOffers(supabase, { agencyId: profile.agency_id, propertyId, userId: user.id, entries });
+}
+
+/**
+ * Edits an offer already in the log.
+ *
+ * An offer is not a one-shot event — it starts pending, becomes accepted or
+ * rejected, and amounts get mistyped. Without this the agent's only options
+ * were to log a duplicate or leave the record wrong, and a duplicate offer in
+ * a compliance log is worse than either.
+ *
+ * The original recordedAt survives and updatedAt is stamped, so the log shows
+ * an entry was revised rather than quietly presenting the new version as
+ * though it had always said that. This is a record a regulator may read.
+ */
+export async function updateOfferEntry(
+  propertyId: string,
+  entryId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const fields = offerFromForm(formData);
+  if (!fields.amount) return { error: "Enter the offer amount." };
+
+  const entries = await readOffers(supabase, propertyId);
+  const index = entries.findIndex((e) => e.id === entryId);
+  if (index === -1) return { error: "Couldn't find that offer — reload the page and try again." };
+
+  entries[index] = { ...entries[index], ...fields, updatedAt: new Date().toISOString() };
+
+  return saveOffers(supabase, { agencyId: profile.agency_id, propertyId, userId: user.id, entries });
 }
 
 // d3 — price reduction / ESP revision, simplified (12 Aug 2026) to a plain
@@ -1001,6 +1039,43 @@ async function revokePreCommencementIfAgreementIsNew(
       },
     })
     .eq("id", existing.id);
+}
+
+/**
+ * Reopens d3 where it was answered "no revision needed" before an offer
+ * arrived that calls the estimate into question.
+ *
+ * The answer was given honestly, on the information available at the time;
+ * this offer is new information. Reopened rather than flagged — nothing has
+ * gone wrong, a question has simply been re-asked, and an agent who logs an
+ * offer truthfully should not collect an amber mark for it.
+ *
+ * Only touches an item still answered "no". An answered "yes, revised" is left
+ * alone, since the revision it records may well be the response to this.
+ */
+async function reopenStaleNoRevision(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+  reason: string,
+): Promise<void> {
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("id, status, data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3")
+    .maybeSingle();
+
+  const d3 = (row as { id?: string; status?: string; data?: { espRevised?: boolean } } | null) ?? null;
+  if (!d3?.id || d3.status !== "done" || d3.data?.espRevised !== false) return;
+
+  await supabase
+    .from("property_items")
+    .update({
+      status: "open",
+      completed_by: null,
+      data: { ...d3.data, espRevised: undefined, reopenedReason: reason },
+    })
+    .eq("id", d3.id);
 }
 
 async function recheckAdvertisedPrice(propertyId: string, espChanged: boolean): Promise<void> {
