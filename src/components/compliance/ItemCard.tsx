@@ -408,11 +408,11 @@ function ChecklistItem({
         {item.key === "amv" && data.preCommencement === true && (
           <div className="rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
             <p className="text-xs font-semibold text-rc-ink">
-              Closed as a pre-commencement customer, not by CDD
+              Closed as a pre-commencement customer, without a provider check
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
               Agency agreement signed {data.preCommencementAgreementDate}, before{" "}
-              {AML_COMMENCEMENT_DATE}. Ongoing CDD obligations still apply, and this reverses
+              {AML_COMMENCEMENT_DATE}. Ongoing monitoring obligations still apply, and this reverses
               automatically if the agreement is renewed or re-signed.
             </p>
           </div>
@@ -422,7 +422,7 @@ function ChecklistItem({
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             <span>
               Reopened automatically — the agreement is now dated {data.preCommencementRevokedOn}, so
-              the pre-commencement basis no longer applies and the vendor needs CDD.
+              the pre-commencement basis no longer applies and the vendor needs a provider check.
             </span>
           </p>
         )}
@@ -434,7 +434,7 @@ function ChecklistItem({
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
               Signed {preCommencementOffer.agreementDate}, before {AML_COMMENCEMENT_DATE}. Your
               agency treats vendors under agreements from before that date as pre-commencement
-              customers, which means initial CDD is not required to keep acting. Record CDD above if
+              customers, which means no provider check is required to keep acting. Record one above if
               it was done anyway — that is always the stronger record.
             </p>
             <ul className="mt-2 space-y-1">

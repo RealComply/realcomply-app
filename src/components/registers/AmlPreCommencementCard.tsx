@@ -42,13 +42,13 @@ export function AmlPreCommencementCard({
       <p className="mt-1.5 text-sm leading-relaxed text-rc-muted">
         Real estate became a reporting sector on {AML_COMMENCEMENT_DATE}. For a seller&rsquo;s agent the
         designated service starts when the agency agreement is signed, and AUSTRAC does not require
-        initial customer due diligence to keep serving a customer whose relationship already existed
+        an identity check to keep serving a customer whose relationship already existed
         on that date.
       </p>
       <p className="mt-2 text-sm leading-relaxed text-rc-muted">
         Turning this on lets an agent close the vendor AML item on a listing whose agreement predates
-        that date by recording pre-commencement status instead of CDD. It changes nothing on any
-        other file, and it never satisfies the licensee AML sign-off at Under offer.
+        that date by recording pre-commencement status instead of a provider check. It changes nothing on any
+        other file, and it never satisfies the licensee AML sign-off at Settled.
       </p>
 
       <div className="mt-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
@@ -88,7 +88,7 @@ export function AmlPreCommencementCard({
         <p className="mt-3 text-xs text-rc-faint">
           {enabled
             ? "Your agency has taken this position."
-            : "Your agency has not taken this position, so CDD is required on every vendor."}{" "}
+            : "Your agency has not taken this position, so every vendor needs a provider check."}{" "}
           Only the licensee in charge can change it.
         </p>
       )}

@@ -248,9 +248,18 @@ const items: ComplianceItem[] = [
     key: "amv",
     stage: 0,
     kind: "checklist",
-    label: "Vendor AML check (via your provider)",
+    label: "Vendor check with your AML provider",
+    // Plain English, 17 Aug 2026. The old wording ran three pieces of jargon
+    // together — "AML/CDD", "CDD has been completed", "reference/outcome
+    // pointer" — and Adam, a licensee, had to ask what CDD meant. If he had
+    // to ask, an agent certainly would.
+    //
+    // PEXA Clear removed. Naming Cass's provider inside a rule is exactly the
+    // hard-coding the REINSW forms mapping flagged as a hit on the separable
+    // rules layer: an agency using a different provider reads a rule that
+    // names a competitor's product.
     description:
-      "RealComply doesn't perform AML/CDD — your provider (e.g. PEXA Clear) does. Confirm CDD has been completed for the vendor(s) and note the reference/outcome pointer.",
+      "Run each vendor through your AML provider and note the reference. RealComply doesn't do the check itself.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -394,7 +403,7 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "AML red flags escalated to the licensee",
     description:
-      "Confirm there's nothing to escalate from the vendor AML/CTF check, or that any red flags / enhanced due diligence requirements have been raised with the licensee in charge.",
+      "Confirm the vendor check threw up nothing that needs escalating — or that anything it did throw up has been raised with the licensee in charge.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -528,20 +537,35 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: true,
     showIf: (_p, allItems) => Boolean((allItems["a7"]?.data as { materialFactDisclosed?: boolean } | undefined)?.materialFactDisclosed),
   },
+  // ── Stage 5 — Settled ─────────────────────────────────────────────────
+  //
+  // The two purchaser-side AML items sit here rather than at Under offer
+  // (Adam, 17 Aug 2026): "we don't want the purchaser AML check at under
+  // offer stage, as it's premature. We want the purchaser AML check after
+  // unconditional exchange."
+  //
+  // He is right about the waste. An accepted offer is not a transaction —
+  // cooling off runs, finance falls through, deals collapse — and running a
+  // check on every hopeful purchaser means paying for and storing personal
+  // information about people who never buy anything. Stage 4 covers the
+  // period through exchange (e1 is the 2-business-day contract service after
+  // it), so Stage 5 is the first point at which the exchange has happened.
   {
     key: "amp",
-    stage: 4,
+    stage: 5,
     kind: "checklist",
-    label: "Purchaser AML check (via your provider)",
+    label: "Purchaser check with your AML provider",
     description:
-      "Confirm CDD has been completed for the purchaser(s) (+ any beneficial owner) via your AML provider, and note the reference/outcome pointer.",
+      "Once the exchange is unconditional, run each purchaser through your AML provider and note the reference. Not before — an offer that never becomes a sale isn't a transaction to check.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
   },
   {
     key: "amc",
-    stage: 4,
+    // Follows amp. This confirms the position on BOTH parties, so it cannot
+    // sit a stage earlier than the purchaser item it depends on.
+    stage: 5,
     kind: "checklist",
     label: "AML COMPLETE — licensee sign-off",
     // Wording widened 17 Aug 2026. It used to say flatly that CDD is complete
@@ -551,14 +575,13 @@ const items: ComplianceItem[] = [
     // "Properly dealt with" covers both endings; the file shows which one, and
     // the licensee is the person who reads it.
     description:
-      "Confirms the AML/CTF position is properly dealt with for both the vendor and the purchaser — CDD completed, or, for a vendor under an agreement predating 1 July 2026, recorded as a pre-commencement customer. This must be signed off by the licensee in charge — never the sales agent, never auto-ticked. The AML/CTF compliance officer must be a named human.",
+      "Confirms the AML position is properly dealt with for both the vendor and the purchaser — checked with your provider, or, for a vendor under an agreement predating 1 July 2026, recorded as a pre-commencement customer. This must be signed off by the licensee in charge — never the sales agent, never auto-ticked. The AML compliance officer must be a named human.",
     legalBasis: "AML/CTF Act 2006 (Cth)",
     licenseeOnly: true,
     requiresDate: false,
     requiredForStageCompletion: true,
   },
 
-  // ── Stage 5 — Settled ─────────────────────────────────────────────────
   {
     // Gap-analysis finding, 7 Aug 2026: the Price Reps checklist requires
     // every price statement made "in the course of marketing" to be

@@ -47,10 +47,10 @@ export function agreementPredatesAml(allItems: Record<string, PropertyItem>): bo
  */
 export const PRE_COMMENCEMENT_CONDITIONS = [
   "The relationship must be a business relationship, not an occasional transaction. This is the unsettled point — confirm the agency's position with your adviser.",
-  "Ongoing CDD still applies from 1 July 2026: monitoring, and keeping customer information current.",
-  "If a suspicious matter report obligation arises for this vendor, initial CDD must be completed.",
-  "If the nature or purpose of the relationship changes significantly and the risk becomes medium or high, initial CDD must be completed.",
-  "The exemption dies with the agreement. A renewal, extension or new agreement signed on or after 1 July 2026 is a new service and needs CDD.",
+  "Ongoing monitoring still applies from 1 July 2026, including keeping customer information current.",
+  "If a suspicious matter report obligation arises for this vendor, the full check must be completed.",
+  "If the nature or purpose of the relationship changes significantly and the risk becomes medium or high, the full check must be completed.",
+  "The exemption dies with the agreement. A renewal, extension or new agreement signed on or after 1 July 2026 is a new service and needs the full check.",
 ] as const;
 
 /**
@@ -59,9 +59,9 @@ export const PRE_COMMENCEMENT_CONDITIONS = [
  */
 export function preCommencementNote(agreementDate: string): string {
   return [
-    `No initial CDD recorded: treated as a pre-commencement customer.`,
+    `No identity check recorded with an AML provider: treated as a pre-commencement customer.`,
     `The agency agreement was signed ${agreementDate}, before the sector's commencement date of ${AML_COMMENCEMENT_DATE}.`,
     `This is the agency's position under AUSTRAC's pre-commencement customer guidance, taken by the licensee in charge, not a determination by RealComply.`,
-    `Ongoing CDD obligations continue to apply.`,
+    `Ongoing monitoring obligations continue to apply.`,
   ].join(" ");
 }
