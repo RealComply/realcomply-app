@@ -471,7 +471,7 @@ function ChecklistItem({
               <option value="yes">Yes — disclosed</option>
             </select>
             <p className="mt-1 text-xs text-rc-faint">
-              Answering &ldquo;yes&rdquo; adds an item at Under offer to confirm it&rsquo;s been passed on to the purchaser.
+              Answering &ldquo;yes&rdquo; adds an item at Sold to confirm it&rsquo;s been passed on to the purchaser.
             </p>
           </div>
         )}

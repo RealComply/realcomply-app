@@ -231,15 +231,23 @@ export type PropertyStage =
   | 1 // Pre-market
   | 2 // On market
   | 3 // Campaign
-  | 4 // Under offer
+  | 4 // Sold
   | 5; // Settled
 
+// Stage 4 renamed from "Under offer" to "Sold" (Adam, 17 Aug 2026).
+//
+// The old name described the wrong moment. "Under offer" reads as an accepted
+// offer — a deal that may still evaporate in cooling off or on finance — and
+// the stage actually begins at exchange: e1, the 2-business-day contract
+// service, is the first thing in it. Naming it "Sold" is what makes the
+// purchaser AML check sit correctly, because a check run on a hopeful buyer
+// who never exchanges is money spent and personal data held for nothing.
 export const STAGE_LABELS: Record<PropertyStage, string> = {
   0: "Listing set-up",
   1: "Pre-market",
   2: "On market",
   3: "Campaign",
-  4: "Under offer",
+  4: "Sold",
   5: "Settled",
 };
 

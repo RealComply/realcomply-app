@@ -48,7 +48,7 @@ export function AmlPreCommencementCard({
       <p className="mt-2 text-sm leading-relaxed text-rc-muted">
         Turning this on lets an agent close the vendor AML item on a listing whose agreement predates
         that date by recording pre-commencement status instead of a provider check. It changes nothing on any
-        other file, and it never satisfies the licensee AML sign-off at Settled.
+        other file, and it never satisfies the licensee AML sign-off at Sold.
       </p>
 
       <div className="mt-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">

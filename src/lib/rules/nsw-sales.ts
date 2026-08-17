@@ -505,7 +505,7 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: false,
   },
 
-  // ── Stage 4 — Under offer / exchange ─────────────────────────────────
+  // ── Stage 4 — Sold (exchanged) ────────────────────────────────────────
   {
     key: "e1",
     stage: 4,
@@ -524,7 +524,7 @@ const items: ComplianceItem[] = [
     // purchasers. Only appears at all when a7 records that a material fact
     // WAS disclosed (data.materialFactDisclosed) — most files never see
     // this item, per Adam's call: "only if a material fact has been
-    // disclosed by the vendor." Placed at Under offer rather than earlier,
+    // disclosed by the vendor." Placed at Sold rather than earlier,
     // since that's the point a real purchaser exists to disclose it to.
     key: "e2",
     stage: 4,
@@ -537,26 +537,26 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: true,
     showIf: (_p, allItems) => Boolean((allItems["a7"]?.data as { materialFactDisclosed?: boolean } | undefined)?.materialFactDisclosed),
   },
-  // ── Stage 5 — Settled ─────────────────────────────────────────────────
+  // The two purchaser-side AML items, at Sold (Adam, 17 Aug 2026).
   //
-  // The two purchaser-side AML items sit here rather than at Under offer
-  // (Adam, 17 Aug 2026): "we don't want the purchaser AML check at under
-  // offer stage, as it's premature. We want the purchaser AML check after
-  // unconditional exchange."
+  // They spent a few hours at Settled. He first said the purchaser check was
+  // premature at "Under offer" and belonged after unconditional exchange —
+  // correct, and for a good reason: an accepted offer is not a transaction,
+  // cooling off runs and finance falls through, so checking every hopeful
+  // purchaser means paying for and holding personal information about people
+  // who never buy anything.
   //
-  // He is right about the waste. An accepted offer is not a transaction —
-  // cooling off runs, finance falls through, deals collapse — and running a
-  // check on every hopeful purchaser means paying for and storing personal
-  // information about people who never buy anything. Stage 4 covers the
-  // period through exchange (e1 is the 2-business-day contract service after
-  // it), so Stage 5 is the first point at which the exchange has happened.
+  // The real problem was the STAGE NAME, not the placement. "Under offer"
+  // described an accepted offer; the stage actually starts at exchange. Once
+  // it was renamed "Sold" — and Adam confirmed his files reach it unconditional
+  // — this became its correct home, and Settled was simply late.
   {
     key: "amp",
-    stage: 5,
+    stage: 4,
     kind: "checklist",
     label: "Purchaser check with your AML provider",
     description:
-      "Once the exchange is unconditional, run each purchaser through your AML provider and note the reference. Not before — an offer that never becomes a sale isn't a transaction to check.",
+      "Now the property is sold, run each purchaser through your AML provider and note the reference.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -565,7 +565,7 @@ const items: ComplianceItem[] = [
     key: "amc",
     // Follows amp. This confirms the position on BOTH parties, so it cannot
     // sit a stage earlier than the purchaser item it depends on.
-    stage: 5,
+    stage: 4,
     kind: "checklist",
     label: "AML COMPLETE — licensee sign-off",
     // Wording widened 17 Aug 2026. It used to say flatly that CDD is complete
