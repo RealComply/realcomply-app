@@ -33,10 +33,16 @@ export default async function PropertyPage({
 
   const p = property as Property;
 
-  const { data: propertyItemRows } = await supabase
-    .from("property_items")
-    .select("*")
-    .eq("property_id", id);
+  const [{ data: propertyItemRows }, { data: agencyRow }] = await Promise.all([
+    supabase.from("property_items").select("*").eq("property_id", id),
+    // One lookup for the page, passed down to every card, rather than each
+    // card asking. Only amv ever uses it.
+    supabase
+      .from("agencies")
+      .select("aml_precommencement_enabled")
+      .eq("id", profile.agency_id)
+      .maybeSingle(),
+  ]);
 
   const allItems = Object.fromEntries(
     ((propertyItemRows ?? []) as PropertyItem[]).map((item) => [item.item_key, item]),
@@ -146,6 +152,7 @@ export default async function PropertyPage({
               current={allItems[item.key]}
               profile={profile}
               allItems={allItems}
+              amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
               />
           ))}
         </div>

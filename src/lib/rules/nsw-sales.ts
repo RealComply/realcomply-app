@@ -517,8 +517,14 @@ const items: ComplianceItem[] = [
     stage: 4,
     kind: "checklist",
     label: "AML COMPLETE — licensee sign-off",
+    // Wording widened 17 Aug 2026. It used to say flatly that CDD is complete
+    // on both parties, which stops being true the moment a vendor is closed as
+    // a pre-commencement customer — and asking the licensee to attest to
+    // something the file itself contradicts is worse than asking nothing.
+    // "Properly dealt with" covers both endings; the file shows which one, and
+    // the licensee is the person who reads it.
     description:
-      "Confirms CDD is complete on both the vendor and the purchaser. This must be signed off by the licensee in charge — never the sales agent, never auto-ticked. The AML/CTF compliance officer must be a named human.",
+      "Confirms the AML/CTF position is properly dealt with for both the vendor and the purchaser — CDD completed, or, for a vendor under an agreement predating 1 July 2026, recorded as a pre-commencement customer. This must be signed off by the licensee in charge — never the sales agent, never auto-ticked. The AML/CTF compliance officer must be a named human.",
     legalBasis: "AML/CTF Act 2006 (Cth)",
     licenseeOnly: true,
     requiresDate: false,

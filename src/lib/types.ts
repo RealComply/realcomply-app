@@ -42,6 +42,10 @@ export type Agency = {
   icare_expiry: string | null;
   gift_threshold: number;
   complaint_resolution_target_days: number;
+  // The agency's position on AUSTRAC pre-commencement customers — see
+  // 0018_aml_precommencement.sql and lib/rules/aml-precommencement.ts.
+  // Off unless the licensee has turned it on.
+  aml_precommencement_enabled: boolean;
   created_at: string;
 };
 

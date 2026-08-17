@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
+import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { finalizeEvidenceRecord, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem, PropertyStage } from "@/lib/types";
 
@@ -110,6 +111,71 @@ export async function setItemStatus(
   }
 
   const data: Record<string, unknown> = { note };
+
+  // amv — closing the vendor AML item by pre-commencement rather than by CDD.
+  //
+  // Re-checked here from scratch and never taken on the browser's word. The
+  // form only says "the agent pressed the pre-commencement button"; whether
+  // that is allowed depends on two facts the server owns — the agency has
+  // taken the position, and the agreement on this file actually predates
+  // commencement. A hand-rolled POST must not be able to close an AML item.
+  //
+  // The note is overwritten rather than appended to. This item's note is the
+  // reason the item is closed, and "no initial CDD, here is why" has to be the
+  // whole of it — a stale sentence about a PEXA reference sitting above it
+  // would read as though CDD was done after all.
+  if (itemKey === "amv" && String(formData.get("preCommencement") ?? "") === "yes") {
+    const { data: agency } = await supabase
+      .from("agencies")
+      .select("aml_precommencement_enabled")
+      .eq("id", profile.agency_id)
+      .maybeSingle();
+
+    if (!agency?.aml_precommencement_enabled) {
+      return {
+        error:
+          "Your agency has not turned on the pre-commencement position. The licensee in charge can enable it in Registers.",
+      };
+    }
+
+    const { data: agreementRow } = await supabase
+      .from("property_items")
+      .select("event_date")
+      .eq("property_id", propertyId)
+      .eq("item_key", "a3")
+      .maybeSingle();
+
+    const signed = (agreementRow as { event_date?: string | null } | null)?.event_date ?? null;
+
+    if (!signed) {
+      return {
+        error:
+          "Record the agency agreement date first — pre-commencement depends on when the agreement was signed.",
+      };
+    }
+    if (signed >= AML_COMMENCEMENT_DATE) {
+      return {
+        error: `This agreement was signed ${signed}, on or after ${AML_COMMENCEMENT_DATE}. CDD is required.`,
+      };
+    }
+
+    const { error: preError } = await upsertItem(supabase, {
+      agencyId: profile.agency_id,
+      propertyId,
+      itemKey,
+      status: "done",
+      data: {
+        note: preCommencementNote(signed),
+        preCommencement: true,
+        preCommencementAgreementDate: signed,
+        preCommencementRecordedBy: user.id,
+      },
+      completedBy: user.id,
+    });
+
+    revalidatePath(`/dashboard/${propertyId}`);
+    return preError ? { error: preError.message } : ok;
+  }
 
   // a7 (material facts) carries a structured yes/no alongside the generic
   // note — e2 (Stage 4) reads this to decide whether "disclosed to the
@@ -224,6 +290,10 @@ export async function setItemStatus(
 
   if (!error && itemKey === "a4") {
     await recheckAdvertisedPrice(propertyId, espChanged);
+  }
+
+  if (!error && itemKey === "a3") {
+    await revokePreCommencementIfAgreementIsNew(supabase, propertyId, eventDate);
   }
 
   revalidatePath(`/dashboard/${propertyId}`);
@@ -779,6 +849,57 @@ export async function completeStage(
  * figure; a website that is slow or down must not turn a successful save into a
  * failed one. If it does not run, Sunday catches it.
  */
+/**
+ * Reopens the vendor AML item when the agreement stops predating commencement.
+ *
+ * The pre-commencement exemption attaches to the relationship that existed on
+ * 1 July 2026, and that relationship ends when the agreement does. A renewal,
+ * an extension or a fresh agreement signed on or after that date is a new
+ * designated service, and the vendor needs CDD like anyone else.
+ *
+ * In the file that shows up as the a3 date moving forward. When it does, an
+ * amv closed on the old basis is now closed on a reason that is no longer
+ * true, and leaving it green would hide a live AML obligation behind a tick
+ * nobody would think to look at again.
+ *
+ * Only ever touches an item that was closed BY the pre-commencement route —
+ * a real CDD record is untouched, because re-signing an agreement does not
+ * undo due diligence that was actually performed.
+ *
+ * Reopened rather than flagged. Nothing has gone wrong; a thing that was not
+ * required has become required, which is an open item, not a breach.
+ */
+async function revokePreCommencementIfAgreementIsNew(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+  agreementDate: string | null,
+): Promise<void> {
+  if (!agreementDate || agreementDate < AML_COMMENCEMENT_DATE) return;
+
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("id, data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "amv")
+    .maybeSingle();
+
+  const existing = (row as { id?: string; data?: { preCommencement?: boolean } } | null) ?? null;
+  if (!existing?.id || existing.data?.preCommencement !== true) return;
+
+  await supabase
+    .from("property_items")
+    .update({
+      status: "open",
+      completed_by: null,
+      data: {
+        note: `Reopened automatically. The agency agreement is now dated ${agreementDate}, on or after ${AML_COMMENCEMENT_DATE}, so the pre-commencement basis no longer applies and customer due diligence is required for the vendor.`,
+        preCommencement: false,
+        preCommencementRevokedOn: agreementDate,
+      },
+    })
+    .eq("id", existing.id);
+}
+
 async function recheckAdvertisedPrice(propertyId: string, espChanged: boolean): Promise<void> {
   if (!espChanged) return;
   try {

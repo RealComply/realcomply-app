@@ -621,3 +621,27 @@ export async function updateCorporationLicence(_prev: ActionState, formData: For
   revalidatePath("/dashboard/registers");
   return ok;
 }
+
+// ── AML/CTF pre-commencement position — the agency's standing answer, not a
+// per-file decision. See 0018_aml_precommencement.sql and
+// lib/rules/aml-precommencement.ts for the reasoning. ───────────────────────
+export async function setAmlPreCommencement(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  // Checked here and again inside the RPC. This one produces a readable
+  // message; the RPC is the guard that actually holds if this is bypassed.
+  if (!profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can take this position." };
+  }
+
+  const enabled = String(formData.get("enabled") ?? "") === "on";
+
+  const { error } = await supabase.rpc("set_agency_aml_precommencement", { p_enabled: enabled });
+  if (error) return { error: "Couldn't save that — try again." };
+
+  // Both paths: the switch lives here, but what it changes is what agents see
+  // on every Stage 0 file.
+  revalidatePath("/dashboard/sg-manual");
+  revalidatePath("/dashboard", "layout");
+  return ok;
+}

@@ -4,6 +4,11 @@ import { useActionState, useEffect, useRef, useState, type FormEvent, type React
 import { Paperclip, Sparkles, AlertTriangle, Check, X } from "lucide-react";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
+import {
+  AML_COMMENCEMENT_DATE,
+  PRE_COMMENCEMENT_CONDITIONS,
+  agreementPredatesAml,
+} from "@/lib/rules/aml-precommencement";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import type { Profile, PropertyItem } from "@/lib/types";
@@ -286,10 +291,15 @@ function ChecklistItem({
   item,
   propertyId,
   current,
+  preCommencementOffer,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
+  // Present only on amv, and only where the agency has taken the position AND
+  // this file's agreement predates commencement. Absent means the choice is
+  // not on the table and the card looks exactly as it always has.
+  preCommencementOffer?: { agreementDate: string };
 }) {
   const boundAction = setItemStatus.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -301,6 +311,9 @@ function ChecklistItem({
     espLow?: number;
     espHigh?: number;
     materialFactDisclosed?: boolean;
+    preCommencement?: boolean;
+    preCommencementAgreementDate?: string;
+    preCommencementRevokedOn?: string;
     aiDraft?: {
       note?: string;
       espLow?: number;
@@ -375,6 +388,71 @@ function ChecklistItem({
               Pre-filled from an uploaded document — check it against the source, then save.
             </p>
           )
+        )}
+        {/* amv — the pre-commencement route.
+            Only rendered where the agency has turned the position on and this
+            file's agreement predates 1 July 2026; otherwise the card is
+            unchanged and CDD is the only way through. Deliberately NOT a
+            default, a pre-tick or a suggestion: the ordinary path is still to
+            record CDD, and this sits below it as the other answer.
+
+            The conditions are printed in full rather than summarised. They are
+            the substance of the exemption, and an agent closing an AML item on
+            a legal technicality should be reading what the technicality
+            actually requires — particularly the first one, which is unsettled.
+
+            The server re-checks both facts. This block only decides what to
+            show. */}
+        {item.key === "amv" && data.preCommencement === true && (
+          <div className="rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
+            <p className="text-xs font-semibold text-rc-ink">
+              Closed as a pre-commencement customer, not by CDD
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
+              Agency agreement signed {data.preCommencementAgreementDate}, before{" "}
+              {AML_COMMENCEMENT_DATE}. Ongoing CDD obligations still apply, and this reverses
+              automatically if the agreement is renewed or re-signed.
+            </p>
+          </div>
+        )}
+        {item.key === "amv" && data.preCommencementRevokedOn && (
+          <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>
+              Reopened automatically — the agreement is now dated {data.preCommencementRevokedOn}, so
+              the pre-commencement basis no longer applies and the vendor needs CDD.
+            </span>
+          </p>
+        )}
+        {item.key === "amv" && preCommencementOffer && !isDone && (
+          <div className="rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
+            <p className="text-xs font-semibold text-rc-ink">
+              This agreement predates the AML/CTF start date
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
+              Signed {preCommencementOffer.agreementDate}, before {AML_COMMENCEMENT_DATE}. Your
+              agency treats vendors under agreements from before that date as pre-commencement
+              customers, which means initial CDD is not required to keep acting. Record CDD above if
+              it was done anyway — that is always the stronger record.
+            </p>
+            <ul className="mt-2 space-y-1">
+              {PRE_COMMENCEMENT_CONDITIONS.map((c) => (
+                <li key={c} className="flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-muted">
+                  <span aria-hidden="true" className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-rc-faint" />
+                  <span>{c}</span>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="submit"
+              name="preCommencement"
+              value="yes"
+              disabled={pending}
+              className="mt-2.5 rounded-md border border-rc-border bg-white px-2.5 py-1 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20 disabled:opacity-60"
+            >
+              Record as pre-commencement
+            </button>
+          </div>
         )}
         {item.key === "a7" && (
           <div>
@@ -1289,12 +1367,16 @@ export function ItemCard({
   current,
   profile,
   allItems,
+  amlPreCommencementEnabled = false,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   profile: Profile;
   allItems: Record<string, PropertyItem>;
+  // The agency's standing position. Passed in rather than fetched here so the
+  // page does one agency lookup for the whole list instead of one per card.
+  amlPreCommencementEnabled?: boolean;
 }) {
   switch (item.kind) {
     case "offers":
@@ -1324,6 +1406,20 @@ export function ItemCard({
       );
     case "checklist":
     default:
-      return <ChecklistItem item={item} propertyId={propertyId} current={current} />;
+      return (
+        <ChecklistItem
+          item={item}
+          propertyId={propertyId}
+          current={current}
+          // Both halves of the test, together: the agency has taken the
+          // position, and this file's agreement actually predates it. Either
+          // one alone offers nothing.
+          preCommencementOffer={
+            item.key === "amv" && amlPreCommencementEnabled && agreementPredatesAml(allItems)
+              ? { agreementDate: allItems["a3"]!.event_date! }
+              : undefined
+          }
+        />
+      );
   }
 }

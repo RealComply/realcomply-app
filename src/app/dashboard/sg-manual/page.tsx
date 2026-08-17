@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { SgManualUploader } from "@/components/registers/SgManualUploader";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
+import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Profile, SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
 
@@ -17,11 +18,12 @@ export default async function SgManualPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: versionRows }, { data: staffRows }, { data: signoffDocRows }, { data: signoffSigRows }] = await Promise.all([
+  const [{ data: versionRows }, { data: staffRows }, { data: signoffDocRows }, { data: signoffSigRows }, { data: agency }] = await Promise.all([
     supabase.from("sg_manual_versions").select("*").order("created_at", { ascending: false }),
     supabase.from("profiles").select("*"),
     supabase.from("signoff_documents").select("*").eq("category", "sg_manual").order("created_at", { ascending: false }),
     supabase.from("signoff_signatures").select("*"),
+    supabase.from("agencies").select("aml_precommencement_enabled").eq("id", profile.agency_id).maybeSingle(),
   ]);
 
   const versions = (versionRows ?? []) as SgManualVersion[];
@@ -95,6 +97,14 @@ export default async function SgManualPage() {
         ) : (
           <p className="mt-6 text-xs text-rc-faint">Only the licensee in charge can publish a new version.</p>
         )}
+
+        {/* The agency's standing positions — things confirmed once here rather
+            than re-answered on every file. Sits with the SG because that is
+            where the agency's own standard is written down. */}
+        <AmlPreCommencementCard
+          enabled={Boolean(agency?.aml_precommencement_enabled)}
+          isLicensee={profile.is_licensee_in_charge}
+        />
 
         {versions.length > 1 && (
           <div className="mt-8">
