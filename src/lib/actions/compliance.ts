@@ -442,17 +442,120 @@ export async function addOfferEntry(
     flagReason = "Vendor not yet informed of this offer in writing (Sch 2 r5).";
   }
 
+  // ── Rejected at or above the advertised price → the estimate is stale.
+  //
+  // Adam, 17 Aug 2026. If a buyer offers inside the advertised range, at the
+  // advertised single figure, or above it, and the vendor rejects it, the
+  // property demonstrably will not sell at the bottom of what is being
+  // advertised. Continuing to advertise from that figure is quoting a price
+  // the vendor has already refused.
+  //
+  // THE CITATION MATTERS HERE, and it is NOT s73A. s73A(1) prohibits a
+  // statement suggesting a property may sell for less than THE ESTIMATED
+  // SELLING PRICE — it says nothing about rejected offers. The rejected-offer
+  // rule people quote is part of the announced NSW reforms and has not
+  // commenced. Citing it as current law would be inventing an obligation,
+  // which the product philosophy treats as worse than omitting a feature.
+  //
+  // The real, current duty is s72A(3): the agent must ensure the ESP "is, and
+  // remains, a reasonable estimate of the likely selling price". A rejection
+  // at or above the advertised figure is direct market evidence that it no
+  // longer is — and it is stale UPWARDS, the estimate being too low rather
+  // than too high. s72A(4) then requires the revision be made properly
+  // (written notice to the vendor, agreement amended), s72A(5) requires
+  // evidence of reasonableness, and s73(3) requires any advertisement below
+  // the revised figure to be amended or retracted as soon as practicable.
+  //
+  // Compared against the ADVERTISED guide (c1) where one exists, because that
+  // is what Adam described and what a buyer actually sees. Falls back to the
+  // recorded ESP (a4) before the listing is advertised. Silent if neither is
+  // recorded — there is no threshold to be at or above.
+  //
+  // No belowFloor carve-out, deliberately. That flag means the offer sat under
+  // a standing vendor instruction; if such an offer is still at or above the
+  // advertised price, the advertised price is below the vendor's own floor,
+  // which makes the estimate more questionable rather than less.
+  //
+  // This REPORTS. It does not revise anything, does not touch a4, and does not
+  // decide that the estimate is wrong — only the agent, with the vendor, can
+  // do that.
+  let espRevisionPrompt: string | undefined;
+
+  if (outcome === "rejected") {
+    const [{ data: guideRow }, { data: espRow }] = await Promise.all([
+      supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "c1").maybeSingle(),
+      supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "a4").maybeSingle(),
+    ]);
+
+    const guideLow = (guideRow?.data as { guideLow?: number } | null)?.guideLow ?? null;
+    const espLow = (espRow?.data as { espLow?: number } | null)?.espLow ?? null;
+
+    const threshold = guideLow ?? espLow;
+    const source = guideLow != null ? "advertised price" : "recorded ESP";
+
+    if (threshold != null && threshold > 0 && amount >= threshold) {
+      espRevisionPrompt =
+        `This offer of $${amount.toLocaleString()} was at or above your ${source} of ` +
+        `$${threshold.toLocaleString()} and was rejected. The estimated selling price may no longer be a ` +
+        `reasonable estimate (s72A(3)). If you revise it, the vendor must be notified in writing and the ` +
+        `agency agreement amended (s72A(4)), and any advertising below the revised figure amended or ` +
+        `retracted as soon as practicable (s73(3)).`;
+    }
+  }
+
   const { error } = await upsertItem(supabase, {
     agencyId: profile.agency_id,
     propertyId,
     itemKey: "d2",
     status,
-    data: { entries, rejectedFloor, flagReason },
+    data: { entries, rejectedFloor, flagReason, espRevisionPrompt },
     completedBy: user.id,
   });
 
+  // d3 is the item where an ESP revision actually gets answered. If it has
+  // already been answered "no revision needed", that answer was given before
+  // this offer existed and is now stale, so it reopens. An answered "yes,
+  // revised" is left alone — the revision it records may well be this one.
+  if (!error && espRevisionPrompt) {
+    await reopenStaleNoRevision(supabase, propertyId, espRevisionPrompt);
+  }
+
   revalidatePath(`/dashboard/${propertyId}`);
   return error ? { error: error.message } : ok;
+}
+
+/**
+ * Reopens d3 where it was answered "no revision needed" before an offer
+ * arrived that calls the estimate into question.
+ *
+ * Reopened rather than flagged: nothing has gone wrong, a question has simply
+ * been re-asked. A flag would put an amber mark on a file whose agent has done
+ * nothing but log an offer honestly, and this product does not accuse people
+ * for volunteering information.
+ */
+async function reopenStaleNoRevision(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+  reason: string,
+): Promise<void> {
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("id, status, data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3")
+    .maybeSingle();
+
+  const d3 = (row as { id?: string; status?: string; data?: { espRevised?: boolean } } | null) ?? null;
+  if (!d3?.id || d3.status !== "done" || d3.data?.espRevised !== false) return;
+
+  await supabase
+    .from("property_items")
+    .update({
+      status: "open",
+      completed_by: null,
+      data: { ...d3.data, espRevised: undefined, reopenedReason: reason },
+    })
+    .eq("id", d3.id);
 }
 
 // d3 — price reduction / ESP revision, simplified (12 Aug 2026) to a plain

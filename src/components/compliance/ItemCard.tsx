@@ -795,6 +795,7 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
       recordedAt: string;
     }>;
     flagReason?: string;
+    espRevisionPrompt?: string;
   };
   const entries = data.entries ?? [];
 
@@ -837,6 +838,24 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
       <FieldError error={state.error} />
       {data.flagReason && (
         <p className="mt-2 text-sm text-rc-amber-deep">{data.flagReason}</p>
+      )}
+      {/* The rejected-at-or-above-advertised prompt. Given its own box rather
+          than folded in with flagReason above: that one is a compliance gap
+          (the vendor has not been told about an offer), this one is a decision
+          the agent now has to make with the vendor. Different things, and
+          collapsing them would make the second read as a telling-off for
+          honestly logging an offer. */}
+      {data.espRevisionPrompt && (
+        <div className="mt-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
+          <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>Worth reviewing the estimated selling price</span>
+          </p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.espRevisionPrompt}</p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-rc-faint">
+            A prompt, not a determination — you and the vendor decide whether the estimate still holds.
+          </p>
+        </div>
       )}
       {entries.length > 0 && (
         <ul className="mt-3 space-y-2 text-sm text-rc-muted">
@@ -1100,7 +1119,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
 function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const yesAction = markEspRevised.bind(null, propertyId);
   const noAction = markNoPriceRevision.bind(null, propertyId);
-  const data = (current?.data ?? {}) as { espRevised?: boolean };
+  const data = (current?.data ?? {}) as { espRevised?: boolean; reopenedReason?: string };
   const [reconsidering, setReconsidering] = useState(false);
   const answered = data.espRevised !== undefined && !reconsidering;
 
@@ -1108,6 +1127,19 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
         <div className="space-y-2">
+          {/* Says why the question came back. A previously-answered item that
+              silently reverts to unanswered looks like the app lost the
+              answer, and the agent re-answers it the same way without ever
+              learning what changed. */}
+          {data.reopenedReason && (
+            <div className="rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
+              <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                <span>Asking again — an offer came in that changes this</span>
+              </p>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.reopenedReason}</p>
+            </div>
+          )}
           <p className="text-sm text-rc-muted">Did the ESP need to be revised during this campaign?</p>
           <div className="flex gap-2">
             <form action={noAction} onSubmit={() => setReconsidering(false)}>
