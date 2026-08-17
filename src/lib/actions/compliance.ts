@@ -588,7 +588,12 @@ export async function updateOfferEntry(
   if (!fields.amount) return { error: "Enter the offer amount." };
 
   const entries = await readOffers(supabase, propertyId);
-  const index = entries.findIndex((e) => e.id === entryId);
+  // Matches on the id, or on recordedAt for entries logged before ids existed.
+  // recordedAt is an ISO timestamp stamped at insert, so it is already unique
+  // per entry and needs no backfill to be usable as a handle. Without this,
+  // an offer logged before 17 Aug 2026 could not be edited until an unrelated
+  // new offer was logged, which is a silly thing to ask of anyone.
+  const index = entries.findIndex((e) => e.id === entryId || e.recordedAt === entryId);
   if (index === -1) return { error: "Couldn't find that offer — reload the page and try again." };
 
   entries[index] = { ...entries[index], ...fields, updatedAt: new Date().toISOString() };

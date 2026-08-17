@@ -879,6 +879,11 @@ function OfferRow({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  // The handle the server matches on. Falls back to recordedAt for entries
+  // logged before ids existed, so an older offer is editable straight away
+  // rather than only after some unrelated new offer backfills the list.
+  const handle = entry.id ?? entry.recordedAt;
+
   // Submitted directly rather than through useActionState, because the form has
   // to close itself on success — and closing it from an effect that watches the
   // action's state means writing state during render, which React rightly
@@ -887,7 +892,7 @@ function OfferRow({
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     startTransition(async () => {
-      const result = await updateOfferEntry(propertyId, entry.id ?? "", { error: null }, formData);
+      const result = await updateOfferEntry(propertyId, handle, { error: null }, formData);
       setError(result.error);
       if (!result.error) setEditing(false);
     });
@@ -908,11 +913,10 @@ function OfferRow({
               </span>
             )}
           </div>
-          {/* Absent on entries logged before ids existed — those cannot be
-              addressed unambiguously, and editing the wrong row on a legal
-              record is worse than not offering the button. Logging one new
-              offer backfills ids for the whole list. */}
-          {entry.id && (
+          {/* Shown on every entry. Older ones are addressed by their recorded
+              timestamp, which is unique per entry, so nothing has to be
+              backfilled first. */}
+          {handle && (
             <button
               type="button"
               onClick={() => setEditing(true)}
