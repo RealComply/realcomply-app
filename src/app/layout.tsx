@@ -27,8 +27,13 @@ export const metadata: Metadata = {
   // that does not set its own, so an empty one leaves Google to invent a
   // snippet. Replaced with the same wording the landing page already uses,
   // which describes the product rather than its origin.
+  // Kept identical to the landing page's own description and openGraph text.
+  // Updated 17 Aug 2026 with the rewrite: the old line ("AI compliance support
+  // for NSW real estate agencies...") never said what the product is, which is
+  // exactly the fault the rewrite exists to fix. If the three ever diverge,
+  // the ad, the search result and the page start saying different things.
   description:
-    "AI compliance support for NSW real estate agencies. Less paperwork, fewer things slipping past you, and a record that keeps itself.",
+    "RealComply is software for NSW real estate agencies. It runs the compliance file for every listing you sell, from the agency agreement through to settlement, and builds the record as you go.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
