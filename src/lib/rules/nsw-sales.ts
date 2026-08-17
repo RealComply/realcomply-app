@@ -85,11 +85,38 @@ const items: ComplianceItem[] = [
     key: "a1",
     stage: 0,
     kind: "checklist",
-    label: "Vendor identity & ownership verified",
+    label: "Vendor identity verified",
+    // Rewritten 17 Aug 2026 after Adam caught two errors in the old wording.
+    //
+    // It said this "happens externally as part of your AML/CTF customer due
+    // diligence — the confirmation is registered with AUSTRAC there". Both
+    // halves were wrong. AUSTRAC receives suspicious matter and threshold
+    // transaction reports; routine CDD outcomes are never sent to it. And
+    // folding a state obligation into a federal one is the wrong regulator
+    // and the wrong purpose: CDD establishes who your CUSTOMER is, it does
+    // not establish who owns the land. A clean CDD result on someone with no
+    // right to sell is exactly the title-fraud case this check exists for.
+    //
+    // "& ownership" also dropped from the label. Bundling identity and title
+    // into one tick was the original error; ownership is a separate question
+    // and is tracked as an open gap rather than pretended away here.
+    //
+    // legalBasis narrowed from the vague "Rules of Conduct Sch 1". There is
+    // no express vendor-VOI provision in the PSA Act or Regulation — the duty
+    // is carried by Sch 1 r4 (skill, care and diligence) and r8 (an agent
+    // must not act without the person's written authority, which presupposes
+    // knowing who that person is). The formal VOI regime under the
+    // Conveyancing Rules binds the lodging solicitor/conveyancer, not the
+    // agent. Citing a provision that does not exist inflates the obligation,
+    // which the product philosophy treats as worse than omitting a feature.
     description:
-      "Identity verified for every vendor (+ any beneficial owner) and confirmed they own what they're selling. This happens externally as part of your AML/CTF customer due diligence — the confirmation is registered with AUSTRAC there, not stored here. Just confirm it's been done.",
-    legalBasis: "Rules of Conduct Sch 1",
-    requiresDate: false,
+      "Identity confirmed for every vendor before you acted on the sale. Separate from your AML/CTF check — that identifies your customer, it doesn't confirm who owns the land. No ID copies are kept here.",
+    legalBasis: "Sch 1 rr 4 & 8, Property and Stock Agents Regulation 2022 (NSW)",
+    // Now dated. The date is the point of the record: it evidences that
+    // verification happened before the agent acted, not merely that someone
+    // ticked a box at some later time. Also what lets the AI fill this in
+    // from the agreement without the agent re-keying anything.
+    requiresDate: true,
     requiredForStageCompletion: true,
     hideNote: true,
     hideEvidence: true,

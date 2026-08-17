@@ -320,6 +320,7 @@ function ChecklistItem({
       espHigh?: number;
       eventDate?: string;
       consumerGuideProvided?: boolean;
+      identityVerified?: boolean;
       autoCompleted?: boolean;
       guideNotFound?: boolean;
       prescribedDocs?: { key: string; found: boolean }[];
@@ -364,8 +365,9 @@ function ChecklistItem({
           <p className="flex items-start gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-1.5 text-xs text-rc-green-deep">
             <Sparkles size={13} className="mt-0.5 shrink-0" />
             <span>
-              Auto-marked done — the agency agreement explicitly confirmed the guide was given, dated{" "}
-              {draft.eventDate}. Check it against the source; use Reopen below if that&apos;s not right.
+              Auto-marked done — the agency agreement confirmed{" "}
+              {item.key === "a1" ? "identity was verified" : "the guide was given"}, dated {draft.eventDate}. Check
+              it against the source; use Reopen below if that&apos;s not right.
             </span>
           </p>
         ) : draft?.guideNotFound ? (

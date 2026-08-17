@@ -37,7 +37,7 @@ const SOURCE_LABELS: Record<string, string> = {
 // the consumerGuideProvided field below and the autoComplete logic in
 // extractFromDocuments for why it's handled differently from every other
 // item here.
-const TARGET_ITEM_KEYS = new Set(["a2", "a3", "a4", "a4b", "a4c", "a5", "a6", "a7", "b1"]);
+const TARGET_ITEM_KEYS = new Set(["a1", "a2", "a3", "a4", "a4b", "a4c", "a5", "a6", "a7", "b1"]);
 
 // One verdict per prescribed document, for item b1. "found" and "not_found"
 // are both real answers; there is no "unclear" because a document the model
@@ -56,6 +56,7 @@ type DraftPatch = {
   espHigh?: number;
   eventDate?: string;
   consumerGuideProvided?: boolean;
+  identityVerified?: boolean;
   prescribedDocs?: PrescribedDocVerdict[];
   /**
    * Set on a b1 patch when the uploaded file is not a contract for sale at
@@ -104,6 +105,11 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
               type: "boolean",
               description:
                 "Item a2 only — true only if the document explicitly confirms the approved consumer guide (the approved guide required by s56 of the Property and Stock Agents Act) was given to the vendor before the agency agreement was signed — e.g. an acknowledgement clause, a signed receipt, a ticked box referencing the guide. Do not set this from the agreement's mere existence or from silence on the point. If the document doesn't explicitly address it, omit this field and leave a2 out of the patches entirely rather than guessing. When you do set this true, also set that a2 patch's eventDate to the date the guide was given, only if that specific date is stated — if provision is confirmed but no date is given, omit eventDate and use note instead to flag it for the agent so they can supply the date manually.",
+            },
+            identityVerified: {
+              type: "boolean",
+              description:
+                "Item a1 only — true only if the document explicitly confirms the vendor's identity was verified. In a NSW residential agency agreement this usually appears as a short statement among the vendor declarations or near the signing block: an agent's confirmation that identity documents were sighted, a completed proof-of-identity or verification-of-identity section, a reference to VOI having been completed, or a ticked box to that effect. It may also appear as a digital verification record attached to or referenced by the agreement. Set this true ONLY on an explicit confirmation actually present in this document. Never infer it from the agreement merely existing, from the vendor having signed, from the vendor's name appearing, or from identity verification being good practice. If the document does not address identity verification at all, omit this field and leave a1 out of the patches entirely — its absence is normal and expected, because verification is commonly recorded in a separate audit trail rather than in the agreement, so silence here is NOT a finding and must not be reported as one. When you do set this true, also set that a1 patch's eventDate to the date verification was carried out, only if that specific date is stated.",
             },
             prescribedDocs: {
               type: "array",
@@ -427,7 +433,16 @@ async function extractOneDocument(
             type: "text",
             text:
               `This document was uploaded as the ${sourceLabel}. Call record_findings with any facts it ` +
-              "explicitly and literally states that are relevant to these compliance items: a2 (whether the " +
+              "explicitly and literally states that are relevant to these compliance items: " +
+              "a1 (whether the vendor's identity was verified. Look among the vendor declarations and the " +
+              "signing pages for an explicit confirmation — a proof-of-identity or verification-of-identity " +
+              "section, a statement that identity documents were sighted, a reference to VOI being completed, " +
+              "or a ticked box to that effect. Set identityVerified true ONLY on an explicit confirmation, and " +
+              "set eventDate to the verification date if one is stated. IMPORTANT: if the agreement says " +
+              "nothing about identity verification, that is entirely normal — verification is usually recorded " +
+              "in a separate audit trail, not in the agreement — so leave a1 out of the patches entirely and " +
+              "write no note about it. Do not report its absence as a gap, a risk, or anything at all), " +
+              "a2 (whether the " +
               "approved consumer guide was given to the vendor before the agency agreement was signed. LOOK FOR " +
               "THIS DELIBERATELY — in a NSW residential agency agreement it is normally a short acknowledgement " +
               "by the vendor, near the signing block or among the vendor declarations, worded along the lines of " +
@@ -579,18 +594,27 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
       .maybeSingle();
     const existing = existingRow as PropertyItem | null;
 
-    // The one auto-complete exception in this file. Fires only when: it's
-    // a2, the model gave an explicit positive confirmation AND a date (both
-    // required — a confirmation with no date falls through to the normal
-    // pre-fill/flag path so the agent supplies the date), and the item is
-    // still untouched ("open"). That last condition matters: this must
-    // never downgrade a "flagged" item or silently redo something a human
-    // already set — it only fills in a genuinely blank item.
+    // The auto-complete exceptions in this file — a2 (consumer guide) and a1
+    // (vendor identity). Each fires only when the model gave an explicit
+    // positive confirmation AND a date (both required — a confirmation with
+    // no date falls through to the normal pre-fill path so the agent supplies
+    // the date), and the item is still untouched ("open"). That last
+    // condition matters: this must never downgrade a "flagged" item or
+    // silently redo something a human already set — it only fills in a
+    // genuinely blank item.
+    //
+    // a1 added 17 Aug 2026 (Adam): where the agency agreement itself carries
+    // the VOI confirmation, there is nothing for the agent to re-key. Note
+    // the deliberate asymmetry with a2 below — a2 has a "not found" path
+    // because the guide acknowledgement BELONGS in the agreement, so its
+    // absence is meaningful. Identity verification normally lives in a
+    // separate audit trail (FLK), so an agreement silent on it is the normal
+    // case and flagging that would cry wolf on nearly every listing.
     const autoComplete =
-      patch.itemKey === "a2" &&
-      patch.consumerGuideProvided === true &&
       !!patch.eventDate &&
-      (existing?.status ?? "open") === "open";
+      (existing?.status ?? "open") === "open" &&
+      ((patch.itemKey === "a2" && patch.consumerGuideProvided === true) ||
+        (patch.itemKey === "a1" && patch.identityVerified === true));
 
     await supabase.from("property_items").upsert(
       {
@@ -611,6 +635,7 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
             espHigh: patch.espHigh,
             eventDate: patch.eventDate,
             consumerGuideProvided: patch.consumerGuideProvided,
+            identityVerified: patch.identityVerified,
             // b1 only. Filtered against the current rules list so a stale key
             // from an older ruleset version can never render as a mystery row.
             prescribedDocs: patch.prescribedDocs?.filter((d) =>
