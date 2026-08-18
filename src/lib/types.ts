@@ -280,6 +280,19 @@ export type CpdRecord = {
   created_at: string;
 };
 
+// Per person, per CPD year: the confirmation the year is done. The
+// certificates are the evidence; this is the tick. No row = not confirmed.
+// See 0023_cpd_year_signoff.sql.
+export type CpdYearSignoff = {
+  id: string;
+  agency_id: string;
+  profile_id: string;
+  cpd_year_start: string;
+  confirmed_by: string | null;
+  confirmed_at: string;
+  created_at: string;
+};
+
 export type TrainingSession = {
   id: string;
   agency_id: string;

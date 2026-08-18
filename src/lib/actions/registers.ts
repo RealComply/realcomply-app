@@ -136,6 +136,141 @@ export async function addCpdRecord(profileId: string, _prev: ActionState, formDa
   return ok;
 }
 
+/**
+ * The whole CPD flow, in one call: the agent uploads a certificate and this
+ * creates the register entry from what the document says.
+ *
+ * Adam, 18 Aug 2026 — "upload that certificate and tick that the CPD's been
+ * done for that year. All the information we need will be on the certificate.
+ * Less friction, less manual data entry."
+ *
+ * The extracted values are written straight in rather than staged for review,
+ * which is a deliberate departure from the confirm-before-save pattern used
+ * for property documents. Two reasons it is safe here and not there: a record
+ * of completion is a prescribed, highly structured document rather than a
+ * free-form contract, and every field lands on a card the agent is looking at
+ * with the source document one click away — so review happens, it just
+ * happens after rather than before, and correcting a row is a smaller act
+ * than filling in a form.
+ *
+ * Where the model reads nothing useful, the entry is still created against
+ * the file with the filename as its title. An unreadable certificate is still
+ * evidence; refusing to record it would lose the document to save face.
+ */
+export async function addCpdFromCertificate(
+  profileId: string,
+  path: string,
+  fileName: string,
+): Promise<{ error: string | null }> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can add CPD for someone else." };
+  }
+
+  const { extractCpdCertificate } = await import("@/lib/actions/extraction");
+  const { fields } = await extractCpdCertificate(path, fileName);
+  const f = fields ?? {};
+
+  // Units and hours are stored in the same column — the convention set in
+  // 0004_registers.sql — with the category telling them apart.
+  const isUnit = typeof f.units === "number" && f.units > 0;
+
+  const { error } = await supabase.from("cpd_records").insert({
+    agency_id: profile.agency_id,
+    profile_id: profileId,
+    activity_name: f.activityName?.trim() || fileName.replace(/\.[^.]+$/, ""),
+    category: isUnit ? "assistant_unit" : "general",
+    hours: isUnit ? f.units : (f.hours ?? 0),
+    completed_date: f.completedDate ?? new Date().toISOString().slice(0, 10),
+    provider: f.provider?.trim() || null,
+    evidence_path: path,
+    evidence_file_name: fileName,
+    notes: f.deliveryMode ? `Delivery: ${f.deliveryMode}` : null,
+    created_by: profile.id,
+  });
+
+  if (error) return { error: "Couldn't save that certificate — try again." };
+
+  revalidatePath("/dashboard/cpd");
+  return { error: null };
+}
+
+/** Corrects anything the reading got wrong. The document stays attached. */
+export async function updateCpdRecord(recordId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const { data: row } = await supabase.from("cpd_records").select("profile_id").eq("id", recordId).maybeSingle();
+  const ownerId = (row as { profile_id: string } | null)?.profile_id;
+  if (!ownerId) return { error: "Couldn't find that entry." };
+  if (ownerId !== profile.id && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can change someone else's CPD." };
+  }
+
+  const activityName = str(formData, "activityName");
+  if (!activityName) return { error: "Give the activity a name." };
+
+  const hoursRaw = str(formData, "hours");
+  const hours = hoursRaw ? Number(hoursRaw) : 0;
+  if (!Number.isFinite(hours) || hours < 0) return { error: "Hours must be a number." };
+
+  const { error } = await supabase
+    .from("cpd_records")
+    .update({
+      activity_name: activityName,
+      provider: str(formData, "provider"),
+      hours,
+      completed_date: str(formData, "completedDate") ?? undefined,
+    })
+    .eq("id", recordId);
+
+  if (error) return { error: "Couldn't save — try again." };
+  revalidatePath("/dashboard/cpd");
+  return ok;
+}
+
+/**
+ * The year's tick. Un-ticking deletes the row rather than storing a false,
+ * so there is never a record that reads like someone actively declared they
+ * had NOT done their CPD — see 0023_cpd_year_signoff.sql.
+ */
+export async function setCpdYearComplete(
+  profileId: string,
+  cpdYearStart: string,
+  complete: boolean,
+): Promise<{ error: string | null }> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can confirm this for someone else." };
+  }
+
+  if (!complete) {
+    await supabase
+      .from("cpd_year_signoffs")
+      .delete()
+      .eq("profile_id", profileId)
+      .eq("cpd_year_start", cpdYearStart);
+    revalidatePath("/dashboard/cpd");
+    return { error: null };
+  }
+
+  const { error } = await supabase.from("cpd_year_signoffs").insert({
+    agency_id: profile.agency_id,
+    profile_id: profileId,
+    cpd_year_start: cpdYearStart,
+    confirmed_by: profile.id,
+  });
+
+  // Unique on (profile, year) — a double-click is a success, not a failure.
+  if (error && !String(error.message).includes("duplicate")) {
+    return { error: "Couldn't save that — try again." };
+  }
+
+  revalidatePath("/dashboard/cpd");
+  return { error: null };
+}
+
 // Records where the provider's certificate landed in Storage. Same
 // upload-then-record-path pattern as licence documents — a Server Action
 // can't carry the file itself, so the browser uploads and this saves the

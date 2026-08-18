@@ -1,61 +1,89 @@
 "use client";
 
 import { useActionState, useEffect, useState, type ChangeEvent } from "react";
-import { CircleAlert, Paperclip, Trash2 } from "lucide-react";
+import { Check, Paperclip, Trash2 } from "lucide-react";
 import {
-  addCpdRecord,
+  addCpdFromCertificate,
   deleteCpdRecord,
-  finalizeCpdEvidence,
-  removeCpdEvidence,
+  setCpdYearComplete,
+  updateCpdRecord,
   type ActionState,
 } from "@/lib/actions/registers";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildCpdDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
-import { updateCpdPracticeCategory } from "@/lib/actions/training-plans";
-import { CPD_PRACTICE_CATEGORY_LABELS, type CpdRequirement } from "@/lib/rules/nsw-cpd";
-import type { CpdRecord, Profile } from "@/lib/types";
+import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
 
 const initial: ActionState = { error: null };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  general: "Compulsory topic",
-  fair_trading_forum: "Fair Trading forum",
-  austrac_aml: "AUSTRAC AML training",
-  assistant_unit: "Unit of competency",
+const LICENCE_LABELS: Record<string, string> = {
+  class_1: "Class 1 licence",
+  class_2: "Class 2 licence",
+  certificate_of_registration: "Certificate of registration",
 };
 
-// One person's CPD for the year. Lifted out of the licence register, where it
-// was a progress bar under a licence number — see the note at the top of
-// dashboard/cpd/page.tsx.
+// One person's CPD for the year: their certificates, and a tick.
+//
+// Rebuilt 18 Aug 2026. The previous version asked for a category of practice,
+// a provider, an activity name, hours and a date — every one of which is
+// printed on the record of completion the provider issues. Adam: "all the
+// information we need will be on the certificate. Less friction, less manual
+// data entry." That is the product's own evidence model, and this screen had
+// drifted from it.
 export function CpdPersonCard({
   subject,
   viewerProfile,
   records,
-  requirement,
+  signoff,
+  cpdYearStart,
   cpdYearLabel,
 }: {
   subject: Profile;
   viewerProfile: Profile;
   records: CpdRecord[];
-  requirement: CpdRequirement;
+  signoff: CpdYearSignoff | null;
+  cpdYearStart: string;
   cpdYearLabel: string;
 }) {
   const canEdit = viewerProfile.id === subject.id || Boolean(viewerProfile.is_licensee_in_charge);
-  const isAssistant = subject.licence_type === "certificate_of_registration";
-  const target = requirement.units ?? requirement.coreHours;
-  const logged = records.reduce((sum, r) => sum + Number(r.hours), 0);
-  const unit = isAssistant ? "units" : "hrs";
+  const done = Boolean(signoff);
 
-  const [adding, setAdding] = useState(false);
-  const [addState, addAction, addPending] = useActionState(addCpdRecord.bind(null, subject.id), initial);
-  const [catState, catAction, catPending] = useActionState(updateCpdPracticeCategory.bind(null, subject.id), initial);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ticking, setTicking] = useState(false);
+
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setError(null);
+    setUploading(true);
+    const supabase = createBrowserClient();
+    const path = buildCpdDocPath(subject.agency_id, subject.id, file.name);
+    const { error: uploadError } = await uploadEvidenceObject(supabase, { path, file });
+    if (uploadError) {
+      setError(uploadError);
+      setUploading(false);
+      return;
+    }
+    const { error: saveError } = await addCpdFromCertificate(subject.id, path, file.name);
+    setUploading(false);
+    if (saveError) setError(saveError);
+  }
+
+  async function toggleDone() {
+    setTicking(true);
+    const { error: e } = await setCpdYearComplete(subject.id, cpdYearStart, !done);
+    setTicking(false);
+    if (e) setError(e);
+  }
 
   return (
-    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
+    <div className="rounded-card border border-rc-border bg-white p-5 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-rc-ink">{subject.full_name ?? subject.email}</h3>
+            <h3 className="text-[15px] font-semibold text-rc-ink">{subject.full_name ?? subject.email}</h3>
             {subject.is_licensee_in_charge && (
               <span className="rounded-full bg-rc-green/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rc-green-deep">
                 Licensee
@@ -63,202 +91,71 @@ export function CpdPersonCard({
             )}
           </div>
           <p className="mt-0.5 text-xs text-rc-muted">
-            {subject.cpd_practice_category
-              ? CPD_PRACTICE_CATEGORY_LABELS[subject.cpd_practice_category]
-              : isAssistant
-                ? "Assistant agent"
-                : "No category of practice recorded"}
+            {subject.licence_type ? LICENCE_LABELS[subject.licence_type] : "No licence on file"}
           </p>
         </div>
         <span
-          className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            target === null
-              ? "bg-neutral-100 text-neutral-500"
-              : logged >= target
-                ? "bg-rc-green/15 text-rc-green-deep"
-                : "bg-rc-amber/20 text-rc-amber-deep"
+          className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+            done ? "bg-rc-green/15 text-rc-green-deep" : "bg-rc-amber/20 text-rc-amber-deep"
           }`}
         >
-          {target === null ? `${logged} ${unit} logged` : `${logged}/${target} ${unit}`}
+          {done ? `Done for ${cpdYearLabel}` : "Not yet"}
         </span>
       </div>
 
-      {target !== null && (
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
-          <div
-            className={`h-full ${logged >= target ? "bg-rc-green-deep" : "bg-rc-amber-deep"}`}
-            style={{ width: `${Math.min(100, (logged / target) * 100)}%` }}
-          />
-        </div>
+      {records.map((r) => (
+        <CertificateRow key={r.id} record={r} canEdit={canEdit} />
+      ))}
+
+      {canEdit && (
+        <label
+          className={`mt-3 block cursor-pointer rounded-xl border border-dashed border-rc-border bg-white px-4 py-4 text-center transition hover:border-rc-green-deep hover:bg-rc-green-soft ${
+            uploading ? "opacity-60" : ""
+          }`}
+        >
+          <span className="text-sm font-semibold text-rc-green-deep">
+            {uploading ? "Reading certificate…" : "+ Attach certificate"}
+          </span>
+          <span className="mt-1 block text-[11px] text-rc-faint">
+            PDF or photo. RealComply reads the provider, topic, hours and date off it.
+          </span>
+          <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
+        </label>
       )}
 
-      {requirement.unpublished.length > 0 && (
-        <div className="mt-3 rounded-md border border-rc-amber/40 bg-rc-amber/10 px-3 py-2 text-[11px] leading-relaxed text-rc-amber-deep">
-          {requirement.unpublished.map((u, i) => (
-            <p key={i} className={i > 0 ? "mt-1" : undefined}>
-              <CircleAlert size={11} className="mr-1 inline align-[-1px]" />
-              {u}
-            </p>
-          ))}
+      <div className="mt-4 flex items-start gap-2.5 border-t border-rc-border pt-3">
+        <button
+          type="button"
+          onClick={canEdit ? toggleDone : undefined}
+          disabled={!canEdit || ticking}
+          aria-pressed={done}
+          className={`mt-0.5 grid h-[18px] w-[18px] shrink-0 place-items-center rounded-[5px] border transition ${
+            done ? "border-rc-green-deep bg-rc-green-deep text-white" : "border-rc-border bg-white"
+          } ${canEdit ? "cursor-pointer" : "cursor-default opacity-70"}`}
+        >
+          {done && <Check size={12} strokeWidth={3} />}
+        </button>
+        <div className="text-[13px]">
+          <p className="font-medium text-rc-ink">CPD complete for {cpdYearLabel}</p>
+          <p className="text-[11px] text-rc-faint">
+            {signoff
+              ? `Ticked ${signoff.confirmed_at.slice(0, 10)}`
+              : canEdit
+                ? "Tick once everything's done for the year"
+                : "Not yet confirmed"}
+          </p>
         </div>
-      )}
-
-      {/* The category is what the hours depend on, so it's asked here as well
-          as on the plan — whichever screen someone is on when they notice. */}
-      {canEdit && !subject.cpd_practice_category && !isAssistant && (
-        <form action={catAction} className="mt-3 flex flex-wrap items-center gap-2 rounded-md bg-neutral-50 px-3 py-2">
-          <span className="text-xs text-rc-muted">Category of practice:</span>
-          <select name="cpdPracticeCategory" defaultValue="" className="rounded-md border border-rc-border px-2 py-1 text-xs">
-            <option value="">Choose…</option>
-            {Object.entries(CPD_PRACTICE_CATEGORY_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            disabled={catPending}
-            className="rounded-md bg-rc-green-deep px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-          >
-            Save
-          </button>
-          {catState.error && <span className="text-xs text-rc-amber-deep">{catState.error}</span>}
-        </form>
-      )}
-
-      <div className="mt-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-rc-muted">{cpdYearLabel} activities</p>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => setAdding((v) => !v)}
-              className="text-xs font-medium text-rc-green-deep hover:underline"
-            >
-              {adding ? "Cancel" : "+ Log CPD"}
-            </button>
-          )}
-        </div>
-
-        {records.length === 0 ? (
-          <p className="mt-1 text-xs text-rc-faint">Nothing logged for this year yet.</p>
-        ) : (
-          <ul className="mt-2 space-y-1.5">
-            {records.map((r) => (
-              <li key={r.id} className="flex items-start justify-between gap-3 text-xs">
-                <div className="min-w-0">
-                  <p className="text-rc-ink">
-                    {r.activity_name}{" "}
-                    <span className="text-neutral-600">
-                      — {CATEGORY_LABELS[r.category] ?? r.category} · {r.hours}
-                      {isAssistant && r.category === "assistant_unit" ? "u" : "h"} · {r.completed_date}
-                    </span>
-                  </p>
-                  {r.provider ? (
-                    <p className="mt-0.5 text-rc-faint">{r.provider}</p>
-                  ) : (
-                    <p className="mt-0.5 text-rc-amber-deep">No provider recorded — won&rsquo;t count.</p>
-                  )}
-                  {r.notes?.includes("NEEDS CHECK") && (
-                    <p className="mt-0.5 text-rc-amber-deep">
-                      Logged from an office session before providers were checked. Confirm or remove it.
-                    </p>
-                  )}
-                  <CpdCertificate record={r} canEdit={canEdit} profileId={subject.id} agencyId={subject.agency_id} />
-                </div>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => deleteCpdRecord(r.id)}
-                    aria-label="Remove"
-                    className="shrink-0 text-rc-faint transition hover:text-rc-amber-deep"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {adding && (
-          <form
-            action={async (fd) => {
-              await addAction(fd);
-              setAdding(false);
-            }}
-            className="mt-3 space-y-2 rounded-md border border-rc-border p-2"
-          >
-            <input
-              type="text"
-              name="activityName"
-              placeholder="Activity name (e.g. 'Underquoting and pricing obligations')"
-              className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
-            />
-            <input
-              type="text"
-              name="provider"
-              placeholder="Approved provider (e.g. REINSW) — required"
-              className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
-            />
-            <div className="flex flex-wrap gap-2">
-              <select name="category" defaultValue={isAssistant ? "assistant_unit" : "general"} className="rounded-md border border-rc-border px-2 py-1 text-sm">
-                <option value="general">Compulsory topic</option>
-                <option value="fair_trading_forum">Fair Trading forum</option>
-                <option value="austrac_aml">AUSTRAC AML training</option>
-                <option value="assistant_unit">Unit of competency</option>
-              </select>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                name="hours"
-                placeholder={isAssistant ? "Units" : "Hours"}
-                className="w-24 rounded-md border border-rc-border px-2 py-1 text-sm"
-              />
-              <input type="date" name="completedDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
-            </div>
-            <textarea name="notes" rows={1} placeholder="Notes (optional)" className="w-full rounded-md border border-rc-border px-2 py-1 text-sm" />
-            <button
-              type="submit"
-              disabled={addPending}
-              className="rounded-md bg-rc-green-deep px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-            >
-              Save
-            </button>
-            {addState.error && <p className="text-xs text-rc-amber-deep">{addState.error}</p>}
-          </form>
-        )}
       </div>
+
+      {error && <p className="mt-2 text-xs text-rc-amber-deep">{error}</p>}
     </div>
   );
 }
 
-// The provider's record of completion, attached to one CPD entry.
-//
-// Fair Trading requires the agent to hold this — it names the topic, the
-// assessment result, the hours and the trainer, and it has to be kept for
-// 3 years (4 for an assistant agent's statement of attainment). A CPD
-// register that records a claim with no document behind it is the same
-// problem as a 45-box checklist: a tick with nothing under it.
-//
-// Same upload-then-record-path pattern as licence documents: the browser
-// uploads to Storage, then a Server Action saves the pointer.
-function CpdCertificate({
-  record,
-  canEdit,
-  profileId,
-  agencyId,
-}: {
-  record: CpdRecord;
-  canEdit: boolean;
-  profileId: string;
-  agencyId: string;
-}) {
+function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boolean }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [state, action, pending] = useActionState(updateCpdRecord.bind(null, record.id), initial);
 
   useEffect(() => {
     if (!record.evidence_path) return;
@@ -275,63 +172,122 @@ function CpdCertificate({
     };
   }, [record.evidence_path]);
 
-  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  const isUnit = record.category === "assistant_unit";
+  const amount = Number(record.hours);
 
-    setError(null);
-    setUploading(true);
-    const supabase = createBrowserClient();
-    const path = buildCpdDocPath(agencyId, profileId, file.name);
-    const { error: uploadError } = await uploadEvidenceObject(supabase, { path, file });
-    if (uploadError) {
-      setError(uploadError);
-      setUploading(false);
-      return;
-    }
-    const { error: saveError } = await finalizeCpdEvidence(record.id, path, file.name);
-    setUploading(false);
-    if (saveError) setError(saveError);
+  if (editing) {
+    return (
+      <form
+        action={async (fd) => {
+          await action(fd);
+          setEditing(false);
+        }}
+        className="mt-3 space-y-2 rounded-xl border border-rc-border bg-neutral-50 p-3"
+      >
+        <p className="text-[11px] text-rc-muted">Fix anything the reading got wrong. The certificate stays attached.</p>
+        <input
+          name="activityName"
+          defaultValue={record.activity_name}
+          placeholder="Topic or unit"
+          className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
+        />
+        <div className="flex flex-wrap gap-2">
+          <input
+            name="provider"
+            defaultValue={record.provider ?? ""}
+            placeholder="Provider"
+            className="w-44 rounded-md border border-rc-border px-2 py-1 text-sm"
+          />
+          <input
+            name="hours"
+            type="number"
+            step="0.5"
+            min="0"
+            defaultValue={amount}
+            placeholder={isUnit ? "Units" : "Hours"}
+            className="w-24 rounded-md border border-rc-border px-2 py-1 text-sm"
+          />
+          <input
+            name="completedDate"
+            type="date"
+            defaultValue={record.completed_date}
+            className="rounded-md border border-rc-border px-2 py-1 text-sm"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-md bg-rc-green-deep px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="rounded-md border border-rc-border px-3 py-1 text-xs font-medium text-rc-muted hover:bg-white"
+          >
+            Cancel
+          </button>
+        </div>
+        {state.error && <p className="text-xs text-rc-amber-deep">{state.error}</p>}
+      </form>
+    );
   }
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-2">
-      {record.evidence_path ? (
-        <>
-          {signedUrl ? (
-            <a
-              href={signedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-rc-green-deep hover:underline"
-            >
-              <Paperclip size={11} /> {record.evidence_file_name ?? "Certificate"}
-            </a>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-rc-faint">
-              <Paperclip size={11} /> loading…
-            </span>
+    <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-rc-border bg-white px-3.5 py-3">
+      <div className="min-w-0">
+        {/* Says where the values came from. The evidence model requires the
+            source to be visible rather than a silently-filled field — the
+            agent should always be able to see what was read, and correct it. */}
+        <span className="mb-1.5 inline-block rounded bg-rc-green-soft px-1.5 py-0.5 text-[10px] font-semibold text-rc-green-deep">
+          Read from certificate
+        </span>
+        <p className="text-[13px] font-medium text-rc-ink">
+          {record.activity_name}
+          {record.provider && <span className="font-normal text-rc-muted"> — {record.provider}</span>}
+        </p>
+        <p className="mt-0.5 text-[11px] text-rc-faint">
+          {amount > 0 && (
+            <>
+              {amount} {isUnit ? (amount === 1 ? "unit" : "units") : "hours"} ·{" "}
+            </>
           )}
-          {canEdit && (
+          completed {record.completed_date}
+          {record.notes && <> · {record.notes.replace(/^Delivery: /, "")}</>}
+        </p>
+        {!record.provider && <p className="mt-1 text-[11px] text-rc-amber-deep">No provider read off this one — worth adding.</p>}
+      </div>
+      <div className="flex shrink-0 items-center gap-2.5 text-xs">
+        {signedUrl ? (
+          <a
+            href={signedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-medium text-rc-green-deep hover:underline"
+          >
+            <Paperclip size={11} /> View
+          </a>
+        ) : (
+          <span className="text-rc-faint">…</span>
+        )}
+        {canEdit && (
+          <>
+            <button type="button" onClick={() => setEditing(true)} className="font-medium text-rc-muted hover:text-rc-ink">
+              Edit
+            </button>
             <button
               type="button"
-              onClick={() => removeCpdEvidence(record.id)}
+              onClick={() => deleteCpdRecord(record.id)}
+              aria-label="Remove"
               className="text-rc-faint transition hover:text-rc-amber-deep"
             >
-              Replace
+              <Trash2 size={13} />
             </button>
-          )}
-        </>
-      ) : canEdit ? (
-        <label className="cursor-pointer text-rc-green-deep hover:underline">
-          {uploading ? "Uploading…" : "Attach certificate"}
-          <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
-        </label>
-      ) : (
-        <span className="text-rc-faint">No certificate attached.</span>
-      )}
-      {error && <span className="text-rc-amber-deep">{error}</span>}
+          </>
+        )}
+      </div>
     </div>
   );
 }

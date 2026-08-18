@@ -241,6 +241,149 @@ const REPORT_EXTRACTION_TOOL: Anthropic.Tool = {
   },
 };
 
+// ── CPD certificate ────────────────────────────────────────────────────────
+//
+// A record of completion from an approved provider states everything the CPD
+// register needs: the provider, the topic, the hours, the date and whether
+// assessment was passed. Fair Trading requires providers to issue it within
+// 10 business days and prescribes what it contains — which makes it about the
+// most reliably structured document this product reads.
+//
+// So the agent uploads it and types nothing (Adam, 18 Aug 2026: "all the
+// information we need will be on the certificate... less friction, less
+// manual data entry"). Same diligence-support framing as every other
+// extraction: this returns what it found, the agent confirms it, and nothing
+// is written to the database by the model.
+const CPD_CERTIFICATE_TOOL: Anthropic.Tool = {
+  name: "record_cpd_certificate",
+  description:
+    "Record the details stated on a CPD record of completion or statement of attainment. Omit any field the " +
+    "document does not explicitly state — never guess a provider, a date or an hours figure.",
+  input_schema: {
+    type: "object",
+    properties: {
+      provider: {
+        type: "string",
+        description:
+          "The organisation that delivered the training and issued this record — e.g. REINSW, or the RTO named " +
+          "on a statement of attainment. Only if stated.",
+      },
+      activityName: {
+        type: "string",
+        description:
+          "The title of the topic, course or unit of competency completed, as printed. For a unit of " +
+          "competency include its code if shown (e.g. 'CPPREP4001 Prepare for professional practice').",
+      },
+      hours: {
+        type: "number",
+        description:
+          "Duration in hours, only if the document states it numerically. Do not convert a session time range " +
+          "into hours yourself, and do not state hours for a unit of competency that is measured in units.",
+      },
+      units: {
+        type: "number",
+        description:
+          "Number of units of competency this document evidences — normally 1 for a statement of attainment " +
+          "covering a single unit. Only set this for units of competency, never alongside hours.",
+      },
+      completedDate: {
+        type: "string",
+        description: "The date the activity was completed or the assessment passed, if stated. Format YYYY-MM-DD.",
+      },
+      deliveryMode: {
+        type: "string",
+        description:
+          "How it was delivered, if stated — e.g. 'face-to-face', 'live webinar', 'online'. Copy what the " +
+          "document says rather than categorising it.",
+      },
+      assessmentPassed: {
+        type: "boolean",
+        description:
+          "True only if the document explicitly records a satisfactory or competent assessment result. Omit " +
+          "entirely if assessment is not mentioned — never assume false.",
+      },
+      looksLikeCpdCertificate: {
+        type: "boolean",
+        description:
+          "False if this document does not appear to be a CPD record of completion or statement of attainment " +
+          "at all. Set this rather than inventing fields for an unrelated document.",
+      },
+    },
+    required: [],
+  },
+};
+
+export type CpdCertificateFields = {
+  provider?: string;
+  activityName?: string;
+  hours?: number;
+  units?: number;
+  completedDate?: string;
+  deliveryMode?: string;
+  assessmentPassed?: boolean;
+  looksLikeCpdCertificate?: boolean;
+};
+
+/** Reads an uploaded CPD certificate. Never writes — the agent confirms. */
+export async function extractCpdCertificate(
+  path: string,
+  fileName: string,
+): Promise<{ error: string | null; fields?: CpdCertificateFields }> {
+  const { supabase } = await requireAuthContext();
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { error: "AI reading isn't set up yet — add ANTHROPIC_API_KEY in Vercel's Environment Variables first." };
+  }
+
+  const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
+  if (error || !blob) return { error: "Couldn't download the uploaded file." };
+
+  const arrayBuffer = await blob.arrayBuffer();
+  const base64 = Buffer.from(arrayBuffer).toString("base64");
+  const contentType = blob.type || "application/octet-stream";
+
+  const documentBlock = buildDocumentBlock(contentType, base64, fileName);
+  if (!documentBlock) {
+    return { error: `That file type can't be read yet (${contentType}) — the details can be typed in instead.` };
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-5",
+    max_tokens: 1024,
+    system:
+      "You are reading a continuing professional development record of completion, or a statement of " +
+      "attainment, for a NSW licensed real estate agent's CPD register (RealComply). Record only what the " +
+      "document explicitly and literally states. Never infer, estimate or convert — if it gives a start and " +
+      "end time but no duration, do not calculate hours. If it does not name a provider, do not guess one from " +
+      "a logo or a filename. You have been shown the complete content available to you; do not assume further " +
+      "pages exist. You must call record_cpd_certificate exactly once, but calling it with few fields set is a " +
+      "completely normal and successful outcome — the agent reviews and completes it, you do not.",
+    messages: [
+      {
+        role: "user",
+        content: [
+          documentBlock,
+          {
+            type: "text",
+            text: `This was uploaded as "${fileName}" for a CPD register. Call record_cpd_certificate with whatever it explicitly states.`,
+          },
+        ],
+      },
+    ],
+    tools: [CPD_CERTIFICATE_TOOL],
+    tool_choice: { type: "tool", name: "record_cpd_certificate" },
+  });
+
+  const toolUse = response.content.find(
+    (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+  );
+  if (!toolUse) return { error: null, fields: {} };
+
+  return { error: null, fields: toolUse.input as CpdCertificateFields };
+}
+
 export type ReportExtractionFields = {
   pestInspection?: boolean;
   buildingInspection?: boolean;
