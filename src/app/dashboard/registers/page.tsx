@@ -9,7 +9,9 @@ import { ComplaintsPanel } from "@/components/registers/ComplaintsPanel";
 import { BreachesPanel } from "@/components/registers/BreachesPanel";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { expiryStatus } from "@/lib/expiry-status";
-import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile, Property } from "@/lib/types";
+import { nextReminderDate } from "@/lib/licence-reminders";
+import type { ReminderInfo } from "@/components/registers/ReminderLine";
+import type { Agency, Breach, Complaint, CpdRecord, Gift, LicenceReminder, Profile, Property } from "@/lib/types";
 
 const TAB_KEYS = new Set(["licence", "insurance", "gifts", "complaints", "breaches"]);
 
@@ -42,6 +44,7 @@ export default async function RegistersPage({
     { data: complaintRows },
     { data: propertyRows },
     { data: breachRows },
+    { data: reminderRows },
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
@@ -50,6 +53,10 @@ export default async function RegistersPage({
     supabase.from("complaints").select("*").order("received_date", { ascending: false }),
     supabase.from("properties").select("*").order("address", { ascending: true }),
     supabase.from("breaches").select("*").order("identified_date", { ascending: false }),
+    // Most-recent-first so the register can show each person's last reminder
+    // without sorting per card. Read-only (0019_licence_reminders.sql grants
+    // select and nothing else) — these are written by the daily cron.
+    supabase.from("licence_reminders").select("*").order("sent_at", { ascending: false }),
   ]);
 
   const staff = (staffRows ?? []) as Profile[];
@@ -58,6 +65,38 @@ export default async function RegistersPage({
   const complaints = (complaintRows ?? []) as Complaint[];
   const properties = (propertyRows ?? []) as Property[];
   const breaches = (breachRows ?? []) as Breach[];
+
+  // Latest reminder per person (and one for the corporation licence, keyed
+  // separately since it has no profile behind it). The query is already
+  // sorted newest-first, so the first hit for a key is the latest.
+  //
+  // The "next reminder" date is computed HERE, in the server component,
+  // rather than inside the cards. The cards are client components, and
+  // anything derived from today's date that gets rendered on the server and
+  // then re-rendered in the browser will mismatch on hydration if the two
+  // sides land either side of midnight UTC. Passing a finished string down
+  // removes the possibility entirely.
+  const lastReminderByProfile: Record<string, LicenceReminder> = {};
+  let lastCorporationReminder: LicenceReminder | null = null;
+  for (const row of (reminderRows ?? []) as LicenceReminder[]) {
+    if (row.subject_kind === "corporation") {
+      lastCorporationReminder ??= row;
+    } else if (row.profile_id) {
+      lastReminderByProfile[row.profile_id] ??= row;
+    }
+  }
+
+  const reminderInfoByProfile: Record<string, ReminderInfo> = {};
+  for (const s of staff) {
+    reminderInfoByProfile[s.id] = {
+      next: s.licence_expiry ? nextReminderDate(s.licence_expiry) : null,
+      last: lastReminderByProfile[s.id]?.sent_at ?? null,
+    };
+  }
+  const corporationReminderInfo: ReminderInfo = {
+    next: agency?.corporation_licence_expiry ? nextReminderDate(agency.corporation_licence_expiry) : null,
+    last: lastCorporationReminder?.sent_at ?? null,
+  };
 
   const cpdByProfile: Record<string, CpdRecord[]> = {};
   for (const row of (cpdRows ?? []) as CpdRecord[]) {
@@ -110,7 +149,15 @@ export default async function RegistersPage({
               breachesBadge={breachesBadge}
               defaultTab={defaultTab}
               licence={
-                <LicencePanel staff={staff} cpdByProfile={cpdByProfile} viewerProfile={profile} cpdYearLabel={cpdYear.label} agency={agency} />
+                <LicencePanel
+                  staff={staff}
+                  cpdByProfile={cpdByProfile}
+                  viewerProfile={profile}
+                  cpdYearLabel={cpdYear.label}
+                  agency={agency}
+                  reminderInfoByProfile={reminderInfoByProfile}
+                  corporationReminderInfo={corporationReminderInfo}
+                />
               }
               insurance={<InsurancePanel agency={agency} viewerProfile={profile} />}
               gifts={

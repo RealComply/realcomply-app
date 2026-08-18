@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { Building2 } from "lucide-react";
 import { updateCorporationLicence } from "@/lib/actions/registers";
 import { expiryStatus } from "@/lib/expiry-status";
+import { ReminderLine, type ReminderInfo } from "@/components/registers/ReminderLine";
 import type { ActionState } from "@/lib/actions/auth";
 
 // The corporation's own licence.
@@ -27,12 +28,14 @@ export function CorporationLicenceCard({
   expiry,
   agencyName,
   canEdit,
+  reminderInfo = { next: null, last: null },
 }: {
   holder: string | null;
   licenceNumber: string | null;
   expiry: string | null;
   agencyName: string;
   canEdit: boolean;
+  reminderInfo?: ReminderInfo;
 }) {
   const [state, action, pending] = useActionState(updateCorporationLicence, initial);
   const status = expiryStatus(expiry);
@@ -98,6 +101,10 @@ export function CorporationLicenceCard({
           </div>
         </form>
       )}
+
+      {/* The corporation licence has no holder to email, so its reminders go
+          to the licensee in charge alone — see lib/email/licence-reminders.ts. */}
+      <ReminderLine info={reminderInfo} hasExpiry={Boolean(expiry)} />
     </div>
   );
 }

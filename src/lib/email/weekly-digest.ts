@@ -2,6 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { sendEmail } from "@/lib/email/send";
 import { computePropertyDigests, daysSinceActivity, type PropertyDigest } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
+import { credentialLabel } from "@/lib/licence-reminders";
 import { STAGE_LABELS, type Agency, type Profile, type Property, type PropertyItem, type TrainingSession } from "@/lib/types";
 
 // Office training frequency isn't prescribed — s32 is outcome-based, the
@@ -98,25 +99,65 @@ function renderDigestSection(title: string, digests: PropertyDigest[], profiles:
   return lines.join("\n");
 }
 
+// Widened from 30 days to 90 (Adam, 18 Aug 2026), matching the first
+// reminder threshold in lib/licence-reminders.ts. Thirty days is late for a
+// licensee: it is not enough time to arrange cover if someone's certificate
+// isn't going to be renewed, and a certificate of registration can't be
+// renewed a second time at all — an assistant at the end of theirs has to
+// have qualified for a Class 2 licence, which is months of work, not weeks.
+//
+// The corporation licence is included here too. It sits on the agency row
+// rather than on anyone's profile, so it was silently absent from the one
+// email whose whole job is telling the licensee what is about to lapse.
 function renderLicenceAndPiSection(agency: Agency, profiles: Profile[]): string {
-  const expiringStaff = profiles.filter((p) => {
-    const status = expiryStatus(p.licence_expiry);
-    return status === "expired" || status === "urgent";
-  });
-  const piConcern = expiryStatus(agency.pi_expiry);
+  const concerning = (s: ReturnType<typeof expiryStatus>) => s === "expired" || s === "urgent" || s === "soon";
+  const phrase = (s: ReturnType<typeof expiryStatus>) =>
+    s === "expired" ? "has expired" : s === "urgent" ? "expires within 30 days" : "expires within 3 months";
 
-  if (expiringStaff.length === 0 && piConcern !== "expired" && piConcern !== "urgent") {
+  const expiringStaff = profiles.filter((p) => concerning(expiryStatus(p.licence_expiry)));
+  const piConcern = expiryStatus(agency.pi_expiry);
+  const corpConcern = expiryStatus(agency.corporation_licence_expiry);
+
+  if (expiringStaff.length === 0 && !concerning(piConcern) && !concerning(corpConcern)) {
     return "";
   }
 
   const lines = ["", "Licences & insurance", "===================="];
-  if (piConcern === "expired" || piConcern === "urgent") {
-    lines.push(`  - PI insurance ${piConcern === "expired" ? "has expired" : "expires within 30 days"}.`);
+  if (concerning(piConcern)) {
+    lines.push(`  - PI insurance ${phrase(piConcern)}.`);
+  }
+  if (concerning(corpConcern)) {
+    lines.push(`  - The agency's corporation licence ${phrase(corpConcern)} (${agency.corporation_licence_expiry}).`);
   }
   for (const p of expiringStaff) {
     const status = expiryStatus(p.licence_expiry);
-    lines.push(`  - ${p.full_name ?? p.email}: licence ${status === "expired" ? "has expired" : "expires within 30 days"}.`);
+    lines.push(
+      `  - ${p.full_name ?? p.email}: ${credentialLabel(p.licence_type)} ${phrase(status)} (${p.licence_expiry}).`,
+    );
   }
+  lines.push("  Renewals are made with NSW Fair Trading. Update the date in the register once one comes through.");
+  return lines.join("\n");
+}
+
+// The agent's own credential, in the agent's own email.
+//
+// Before this, the only person told about an expiring licence was the
+// licensee — which is the wrong way round for the person who actually has to
+// renew it. The dedicated daily reminder job (lib/email/licence-reminders.ts)
+// is the real mechanism; this is the weekly backstop, so a credential inside
+// three months is visible in both places rather than depending on one email
+// having been opened three months ago.
+function renderOwnCredentialSection(profile: Profile): string {
+  const status = expiryStatus(profile.licence_expiry);
+  if (status !== "expired" && status !== "urgent" && status !== "soon") return "";
+
+  const label = credentialLabel(profile.licence_type);
+  const lines = ["", "Your licence", "============"];
+  lines.push(
+    status === "expired"
+      ? `  - Your ${label} expired on ${profile.licence_expiry}.`
+      : `  - Your ${label} expires on ${profile.licence_expiry}.`,
+  );
   return lines.join("\n");
 }
 
@@ -171,6 +212,8 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
       if (profile.is_agent) {
         const ownDigests = bundle.digests.filter((d) => d.property.created_by === profile.id);
         sections.push(renderDigestSection("Your listings", ownDigests, bundle.profiles));
+        const ownCredential = renderOwnCredentialSection(profile);
+        if (ownCredential) sections.push(ownCredential);
       }
 
       if (profile.is_licensee_in_charge) {

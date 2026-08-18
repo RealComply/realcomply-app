@@ -118,6 +118,21 @@ export type BreachCategory =
   | "supervision"
   | "other";
 
+// One row per licence/certificate expiry reminder actually sent — see
+// 0019_licence_reminders.sql. Read-only from the app: the daily cron writes
+// them through the service client, and the register displays the most recent
+// one so the office can see the reminders are running.
+export type LicenceReminder = {
+  id: string;
+  agency_id: string;
+  subject_kind: "profile" | "corporation";
+  profile_id: string | null;
+  expiry_date: string;
+  threshold_days: number;
+  recipients: string[];
+  sent_at: string;
+};
+
 export type Breach = {
   id: string;
   agency_id: string;

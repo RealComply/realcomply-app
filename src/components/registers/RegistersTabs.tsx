@@ -4,7 +4,12 @@ import { useState, type ReactNode } from "react";
 import { IdCard, ShieldCheck, Gift, Mail, TriangleAlert } from "lucide-react";
 
 const TABS = [
-  { key: "licence", label: "Licence register", icon: IdCard },
+  // "Licences & certificates", not "Licence register" — a certificate of
+  // registration is a different credential from a licence, assistant agents
+  // hold one and know the difference, and Adam went looking for "a
+  // certificate register" without finding it here (18 Aug 2026). Same tab,
+  // same records; the name now says what's in it.
+  { key: "licence", label: "Licences & certificates", icon: IdCard },
   { key: "insurance", label: "Insurance register", icon: ShieldCheck },
   { key: "gifts", label: "Gift register", icon: Gift },
   { key: "complaints", label: "Complaints register", icon: Mail },

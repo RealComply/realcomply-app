@@ -6,6 +6,7 @@ import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
 import { CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
+import { ReminderLine, type ReminderInfo } from "@/components/registers/ReminderLine";
 import { Paperclip } from "lucide-react";
 import type { CpdRecord, Profile } from "@/lib/types";
 
@@ -29,11 +30,13 @@ export function StaffRegisterCard({
   cpdRecords,
   viewerProfile,
   cpdYearLabel,
+  reminderInfo = { next: null, last: null },
 }: {
   profile: Profile;
   cpdRecords: CpdRecord[];
   viewerProfile: Profile;
   cpdYearLabel: string;
+  reminderInfo?: ReminderInfo;
 }) {
   const canEdit = viewerProfile.id === profile.id || viewerProfile.is_licensee_in_charge;
   const isAssistant = profile.licence_type === "certificate_of_registration";
@@ -79,7 +82,7 @@ export function StaffRegisterCard({
                   {profile.licence_expiry && <> · expires {profile.licence_expiry}</>}
                 </>
               ) : (
-                "No licence details on file yet."
+                "No licence or certificate details on file yet."
               )}
             </div>
             {canEdit && (
@@ -106,7 +109,7 @@ export function StaffRegisterCard({
                 defaultValue={profile.licence_type ?? ""}
                 className="rounded-md border border-rc-border px-2 py-1 text-sm"
               >
-                <option value="">Licence type…</option>
+                <option value="">Licence or certificate…</option>
                 <option value="class_1">Class 1 licence</option>
                 <option value="class_2">Class 2 licence</option>
                 <option value="certificate_of_registration">Certificate of registration</option>
@@ -114,7 +117,7 @@ export function StaffRegisterCard({
               <input
                 type="text"
                 name="licenceNumber"
-                placeholder="Licence number"
+                placeholder="Licence / certificate no."
                 defaultValue={profile.licence_number ?? ""}
                 className="w-40 rounded-md border border-rc-border px-2 py-1 text-sm"
               />
@@ -144,7 +147,13 @@ export function StaffRegisterCard({
             {licenceState.error && <p className="text-xs text-rc-amber-deep">{licenceState.error}</p>}
           </form>
         )}
-        {canEdit && <LicenceDocument profile={profile} />}
+        {/* The document itself. Adam's ask was to hold the actual certificate
+            of registration, not just its number — a register of typed numbers
+            proves nothing to an auditor, and the person who typed it is the
+            one who'd have to find the PDF again. Visible to everyone in the
+            agency; only the holder and the licensee can change it. */}
+        <LicenceDocument profile={profile} canEdit={canEdit} />
+        <ReminderLine info={reminderInfo} hasExpiry={Boolean(profile.licence_expiry)} />
       </div>
 
       <div className="mt-3">
@@ -245,10 +254,16 @@ export function StaffRegisterCard({
 // registers mockup. Same client-side-upload-then-record-path pattern as
 // EvidenceUploader in ItemCard.tsx (a Server Action can't carry a real
 // document upload — see the comment on uploadEvidenceObject).
-function LicenceDocument({ profile }: { profile: Profile }) {
+function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: boolean }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // "Upload certificate of registration" rather than "Upload licence
+  // document" when that's what the person holds. An assistant agent told to
+  // upload their licence goes looking for something they don't have.
+  const uploadLabel =
+    profile.licence_type === "certificate_of_registration" ? "certificate of registration" : "licence document";
 
   useEffect(() => {
     if (!profile.licence_document_path) return;
@@ -298,19 +313,23 @@ function LicenceDocument({ profile }: { profile: Profile }) {
               <Paperclip size={12} /> loading link…
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => removeLicenceDocument(profile.id)}
-            className="text-rc-faint hover:text-rc-amber-deep"
-          >
-            Remove
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => removeLicenceDocument(profile.id)}
+              className="text-rc-faint hover:text-rc-amber-deep"
+            >
+              Remove
+            </button>
+          )}
         </>
-      ) : (
+      ) : canEdit ? (
         <label className="cursor-pointer text-rc-green-deep hover:underline">
-          {uploading ? "Uploading…" : "Upload licence document"}
+          {uploading ? "Uploading…" : `Upload ${uploadLabel}`}
           <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
         </label>
+      ) : (
+        <span className="text-rc-faint">No {uploadLabel} on file.</span>
       )}
       {error && <span className="text-rc-amber-deep">{error}</span>}
     </div>
