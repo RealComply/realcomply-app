@@ -23,6 +23,7 @@ import {
   markNoPriceRevision,
   addVerbalQuoteEntry,
   markNoVerbalQuotes,
+  markNoReports,
   recordSale,
   signItem,
   sendToLicensee,
@@ -1064,6 +1065,16 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
         recordedAt: string;
       }>;
     }).entries ?? [];
+  const noReports = ((current?.data ?? {}) as { noReports?: boolean }).noReports === true;
+
+  // The question comes before the work (Adam, 18 Aug 2026). Most sales have no
+  // reports at all, and an item that opens with an upload box implies one is
+  // expected — so the agent either ignores it or feels they are missing
+  // something. Answering "no" is one press, and it is reversible, because a
+  // report can turn up at any point in a campaign.
+  const [showForm, setShowForm] = useState(false);
+  const unanswered = entries.length === 0 && !noReports && !showForm;
+  const settledNo = entries.length === 0 && noReports && !showForm;
 
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -1128,11 +1139,53 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
         .join(" + ") || "not identified"
     : null;
 
+  if (unanswered) {
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        <div className="space-y-2">
+          <p className="text-sm text-rc-muted">
+            Has a building and pest or strata report been carried out on this property?
+          </p>
+          <div className="flex gap-2">
+            <form action={markNoReports.bind(null, propertyId)}>
+              <button
+                type="submit"
+                className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt"
+              >
+                No
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
+            >
+              Yes
+            </button>
+          </div>
+        </div>
+      </ItemShell>
+    );
+  }
+
+  if (settledNo) {
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        <p className="text-sm text-rc-muted">
+          Marked &mdash; no building, pest or strata reports on this file.{" "}
+          <button type="button" onClick={() => setShowForm(true)} className="text-rc-green-deep hover:underline">
+            Log one
+          </button>
+        </p>
+      </ItemShell>
+    );
+  }
+
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       <form action={formAction} className="space-y-3 rounded-lg bg-rc-bg-alt p-3">
         <div>
-          <label className="block text-xs font-medium text-rc-muted">Upload the report</label>
+          <label className="block text-xs font-medium text-rc-muted">Attach the report</label>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <input
               type="file"
@@ -1150,20 +1203,65 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
           <FieldError error={clientError} />
           <input type="hidden" name="evidencePath" value={evidence?.path ?? ""} readOnly />
           <input type="hidden" name="evidenceFileName" value={evidence?.fileName ?? ""} readOnly />
-          <input type="hidden" name="pestInspection" value={draft?.pestInspection ? "true" : ""} readOnly />
-          <input type="hidden" name="buildingInspection" value={draft?.buildingInspection ? "true" : ""} readOnly />
-          <input type="hidden" name="strata" value={draft?.strata ? "true" : ""} readOnly />
-          <input type="hidden" name="inspectionDate" value={draft?.inspectionDate ?? ""} readOnly />
-          <input type="hidden" name="preparerName" value={draft?.preparerName ?? ""} readOnly />
-          <input type="hidden" name="preparerContact" value={draft?.preparerContact ?? ""} readOnly />
-          <input type="hidden" name="preparerInsured" value={draft?.preparerInsured ? "true" : ""} readOnly />
-          <input
-            type="hidden"
-            name="availableForRepurchase"
-            value={draft?.availableForRepurchase ? "true" : ""}
-            readOnly
-          />
+          {/* Rendered ONLY alongside an attached report. These carry the same
+              names as the manual fields below, and a form containing both would
+              send whichever the browser reached first — which, with no
+              attachment, is an empty hidden input silently beating what the
+              agent typed. Either the document supplies these or the agent does,
+              never both. */}
+          {evidence && (
+            <>
+              <input type="hidden" name="pestInspection" value={draft?.pestInspection ? "true" : ""} readOnly />
+              <input type="hidden" name="buildingInspection" value={draft?.buildingInspection ? "true" : ""} readOnly />
+              <input type="hidden" name="strata" value={draft?.strata ? "true" : ""} readOnly />
+              <input type="hidden" name="inspectionDate" value={draft?.inspectionDate ?? ""} readOnly />
+              <input type="hidden" name="preparerName" value={draft?.preparerName ?? ""} readOnly />
+              <input type="hidden" name="preparerContact" value={draft?.preparerContact ?? ""} readOnly />
+              <input type="hidden" name="preparerInsured" value={draft?.preparerInsured ? "true" : ""} readOnly />
+              <input
+                type="hidden"
+                name="availableForRepurchase"
+                value={draft?.availableForRepurchase ? "true" : ""}
+                readOnly
+              />
+            </>
+          )}
         </div>
+
+        {/* Manual entry, and ONLY where there is no copy to read (Adam, 18 Aug
+            2026). Attaching the report is the expected path and the cl 37
+            details come off the document; typing them is the fallback for a
+            report the agent knows about but cannot produce. Rendered as an
+            either/or rather than both, because two inputs sharing a name would
+            silently send whichever the browser found first. */}
+        {!evidence && (
+          <div className="rounded-lg border border-rc-border bg-white p-3">
+            <p className="text-xs font-medium text-rc-ink">No copy of the report?</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
+              Record what you know instead. The Act needs the kind of report and the date it was carried out.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+              {[
+                { name: "buildingInspection", label: "Building" },
+                { name: "pestInspection", label: "Pest" },
+                { name: "strata", label: "Strata" },
+              ].map((t) => (
+                <label key={t.name} className="flex items-center gap-1.5 text-xs text-rc-muted">
+                  <input type="checkbox" name={t.name} value="true" className="h-3.5 w-3.5 rounded border-rc-border" />
+                  {t.label}
+                </label>
+              ))}
+            </div>
+            <label className="mt-2.5 block text-[11px] text-rc-muted">
+              Date carried out
+              <input
+                type="date"
+                name="inspectionDate"
+                className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm"
+              />
+            </label>
+          </div>
+        )}
 
         {draft && (
           <div className="rounded-lg border border-rc-border bg-white p-3 text-xs text-rc-muted">

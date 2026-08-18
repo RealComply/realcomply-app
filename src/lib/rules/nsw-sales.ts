@@ -612,15 +612,35 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: true,
   },
   {
+    // MOVED FROM SETTLED TO CAMPAIGN, 18 Aug 2026 (Adam). Reports arrive
+    // during the campaign, and cl 37 requires the register to be available to
+    // anyone who asks for a copy of the contract — which is a thing that
+    // happens while the property is on the market, not after it settles.
+    // Sitting at Settled, the item asked for a record at the one moment it
+    // could no longer be used for anything.
+    //
+    // Now a question first, then the work. Adam: "the box should ask a
+    // question, has a building and pest report or strata report been
+    // conducted? If the answer is yes, then we have to upload a copy."
+    // Answering no is one press and reversible, because a report can turn up
+    // at any point in a campaign.
+    //
+    // The upload is the expected path and the cl 37 details are read off the
+    // document. Typing them is the fallback and nothing more: "I only wanna
+    // have a manual entry of those details if the agent can't provide a copy
+    // of the report."
     key: "f3",
-    stage: 5,
+    stage: 3,
     kind: "reports",
-    label: "Pre-purchase inspection report register",
+    label: "Building, pest or strata reports",
     description:
-      "Upload every building, pest, or strata report you're aware of for this property — the details cl 37 requires are read straight off the document, and you'll be shown anything it flags as missing. You must be able to show this register to anyone who asks for a copy of the contract for sale. Not every sale will have entries — that's a valid, normal outcome.",
+      "Has a building and pest or strata report been carried out on this property? If one has, attach it and the details the Act requires are read straight off the document. You must be able to show this register to anyone who asks for a copy of the contract for sale.",
     legalBasis: "cl 37, Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: false,
-    requiredForStageCompletion: false,
+    // Required now that it asks a question. An unanswered question is not the
+    // same as "no reports", and cl 37 is a register the agent has to be able
+    // to produce on request.
+    requiredForStageCompletion: true,
   },
   {
     key: "f1",

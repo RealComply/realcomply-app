@@ -329,8 +329,17 @@ export async function addReportEntry(
   const evidencePath = String(formData.get("evidencePath") ?? "").trim() || null;
   const evidenceFileName = String(formData.get("evidenceFileName") ?? "").trim() || null;
 
-  if (!evidencePath && !note) {
-    return { error: "Attach the report, or add a note describing it, before logging an entry." };
+  // Adam, 18 Aug 2026: "I only wanna have a manual entry of those details if
+  // the agent can't provide a copy of the report." So a copy is the expected
+  // path and is enough on its own — the details get read off it. Where there
+  // is no copy, the two things cl 37 turns on (what kind of report, and when
+  // it was done) have to be typed, because a register entry that records
+  // neither is not a register entry.
+  const typedByHand = pestInspection || buildingInspection || strata;
+  if (!evidencePath && !(typedByHand && inspectionDate)) {
+    return {
+      error: "Attach the report, or if you don't have a copy, say what kind of report it was and when it was done.",
+    };
   }
 
   const missingFields: string[] = [];
@@ -634,6 +643,42 @@ export async function markNoPriceRevision(propertyId: string): Promise<void> {
     itemKey: "d3",
     status: "done",
     data: { espRevised: false },
+    completedBy: user.id,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+}
+
+/**
+ * f3 — the "no reports" answer.
+ *
+ * cl 37 requires a register of the reports the agent is AWARE of, and on most
+ * sales there are none. Without a way to say so, the item sits open forever
+ * and the agent cannot tell "nobody has looked" from "there is nothing to
+ * log" — which is the same failure the consumer-guide item had.
+ *
+ * Reversible on purpose. A report can turn up at any point in a campaign, and
+ * the card keeps a "Change answer" control so a later report can still be
+ * logged against a file already answered "no".
+ */
+export async function markNoReports(propertyId: string): Promise<void> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "f3")
+    .maybeSingle();
+
+  const entries = ((existing?.data as { entries?: unknown[] } | null)?.entries ?? []) as unknown[];
+
+  await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "f3",
+    status: "done",
+    data: { entries, noReports: true },
     completedBy: user.id,
   });
 
