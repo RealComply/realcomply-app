@@ -31,12 +31,20 @@ export async function updateLicence(profileId: string, _prev: ActionState, formD
   const licenceNumber = str(formData, "licenceNumber");
   const licenceExpiry = str(formData, "licenceExpiry");
 
+  // Category of practice is set here and only here (Adam, 18 Aug 2026) — it
+  // decides the CPD hours, changes about as often as a licence does, and was
+  // previously being asked on the CPD screen and the training plan as well.
+  // An assistant agent has no category: their requirement is units.
+  const cpdPracticeCategory =
+    licenceType === "certificate_of_registration" ? null : str(formData, "cpdPracticeCategory");
+
   const { error } = await supabase
     .from("profiles")
     .update({
       licence_type: licenceType,
       licence_number: licenceNumber,
       licence_expiry: licenceExpiry,
+      cpd_practice_category: cpdPracticeCategory,
     })
     .eq("id", profileId);
 

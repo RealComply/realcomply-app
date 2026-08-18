@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { CheckCircle2, CircleAlert, Trash2 } from "lucide-react";
 import {
@@ -10,10 +11,9 @@ import {
   reopenTrainingPlan,
   saveTrainingPlanConsultation,
   signTrainingPlan,
-  updateCpdPracticeCategory,
   type ActionState,
 } from "@/lib/actions/training-plans";
-import { CPD_PRACTICE_CATEGORY_LABELS, type CpdRequirement } from "@/lib/rules/nsw-cpd";
+import type { CpdRequirement } from "@/lib/rules/nsw-cpd";
 import type { CpdRecord, Profile, TrainingPlan, TrainingPlanItem } from "@/lib/types";
 
 const initial: ActionState = { error: null };
@@ -51,7 +51,6 @@ export function TrainingPlanCard({
   const [addingItem, setAddingItem] = useState(false);
 
   const [createState, createAction, creating] = useActionState(createTrainingPlan.bind(null, subject.id), initial);
-  const [catState, catAction, catPending] = useActionState(updateCpdPracticeCategory.bind(null, subject.id), initial);
 
   // What has actually landed in the CPD register this year, which is the
   // number that matters at the end of it — the plan says what should happen,
@@ -97,31 +96,17 @@ export function TrainingPlanCard({
         </div>
       )}
 
-      {/* Category of practice — the thing the hours actually depend on. */}
-      {canEdit && !subject.cpd_practice_category && subject.licence_type !== "certificate_of_registration" && (
-        <form action={catAction} className="mt-3 flex flex-wrap items-center gap-2 rounded-md bg-neutral-50 px-3 py-2">
-          <span className="text-xs text-rc-muted">Category of practice:</span>
-          <select name="cpdPracticeCategory" className="rounded-md border border-rc-border px-2 py-1 text-xs" defaultValue="">
-            <option value="">Choose…</option>
-            {Object.entries(CPD_PRACTICE_CATEGORY_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            disabled={catPending}
-            className="rounded-md bg-rc-green-deep px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-          >
-            Save
-          </button>
-          {catState.error && <span className="text-xs text-rc-amber-deep">{catState.error}</span>}
-        </form>
-      )}
-      {subject.cpd_practice_category && (
-        <p className="mt-2 text-[11px] text-rc-faint">
-          Category: {CPD_PRACTICE_CATEGORY_LABELS[subject.cpd_practice_category]}
+      {/* Category of practice is asked once, in the licence register, and
+          only there (Adam, 18 Aug 2026). Asking again here — and on the CPD
+          screen, as it also did — was three places collecting one fact that
+          changes about as often as someone's licence does. */}
+      {requirement.unpublished.some((u) => u.includes("category")) && (
+        <p className="mt-2 text-[11px] text-rc-amber-deep">
+          Set their category of practice in the{" "}
+          <Link href="/dashboard/registers" className="underline">
+            licence register
+          </Link>{" "}
+          to work out the CPD hours.
         </p>
       )}
 

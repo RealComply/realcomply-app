@@ -347,27 +347,11 @@ export async function reopenTrainingPlan(planId: string): Promise<void> {
   revalidate();
 }
 
-/** Records the category of practice a person's CPD hours are measured against. */
-export async function updateCpdPracticeCategory(
-  profileId: string,
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
-
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can change someone else's category." };
-  }
-
-  const { error } = await supabase
-    .from("profiles")
-    .update({ cpd_practice_category: str(formData, "cpdPracticeCategory") })
-    .eq("id", profileId);
-
-  if (error) return { error: "Couldn't save — try again." };
-  revalidate();
-  return ok;
-}
+// updateCpdPracticeCategory REMOVED 18 Aug 2026. The category of practice is
+// now set in one place only — the licence register, alongside the licence
+// details it sits with — rather than being collected here and on the CPD
+// screen as well. Three places asking for one fact is the friction Adam kept
+// pointing at. See updateLicence in actions/registers.ts.
 
 type SupabaseClient = Awaited<ReturnType<typeof requireAuthContext>>["supabase"];
 

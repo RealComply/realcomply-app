@@ -5,7 +5,7 @@ import { updateLicence, finalizeLicenceDocument, removeLicenceDocument, type Act
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { CPD_PRACTICE_CATEGORY_LABELS, cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import { ReminderLine, type ReminderInfo } from "@/components/registers/ReminderLine";
 import Link from "next/link";
 import { Paperclip } from "lucide-react";
@@ -125,6 +125,30 @@ export function StaffRegisterCard({
                 className="rounded-md border border-rc-border px-2 py-1 text-sm"
               />
             </div>
+            {/* Category of practice lives here and nowhere else (Adam, 18 Aug
+                2026). Fair Trading sets CPD hours per category, so it has to
+                be asked once — but it belongs beside someone's licence
+                details, which change about as often, rather than being asked
+                again on every CPD entry or training plan. Not shown for a
+                certificate of registration: assistant agents are measured in
+                units, and the category doesn't apply. */}
+            {profile.licence_type !== "certificate_of_registration" && (
+              <label className="block">
+                <span className="block text-xs text-rc-muted">Category of practice (sets the CPD hours)</span>
+                <select
+                  name="cpdPracticeCategory"
+                  defaultValue={profile.cpd_practice_category ?? ""}
+                  className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+                >
+                  <option value="">Not set</option>
+                  {Object.entries(CPD_PRACTICE_CATEGORY_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="flex gap-2">
               <button
                 type="submit"
