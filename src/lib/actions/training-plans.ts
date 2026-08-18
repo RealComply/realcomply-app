@@ -136,6 +136,25 @@ export async function addTrainingPlanItem(planId: string, _prev: ActionState, fo
   const gapReason = str(formData, "gapReason");
   if (!gapReason) return { error: "Note the gap this training addresses — that's what makes it a plan." };
 
+  // Whether this program earns CPD, and the provider that decides it.
+  //
+  // NSW CPD can only be delivered by a Fair Trading approved provider, and
+  // every published hour for 2026–27 is a compulsory topic — there is no
+  // elective or self-directed category. So internal coaching and product
+  // training belong on the plan (Requirement 2.4 is expressly broader than
+  // CPD) but must never accrue against the CPD hours.
+  //
+  // The venue is not the test. An approved provider delivering at your own
+  // office does count; your own session does not, wherever it is held.
+  const provider = str(formData, "provider");
+  const countsTowardCpd = formData.get("countsTowardCpd") === "on";
+  if (countsTowardCpd && !provider) {
+    return {
+      error:
+        "Name the approved provider. Only Fair Trading approved providers deliver CPD — for an assistant agent it must be an RTO issuing a statement of attainment.",
+    };
+  }
+
   const { count } = await supabase
     .from("training_plan_items")
     .select("id", { count: "exact", head: true })
@@ -148,7 +167,8 @@ export async function addTrainingPlanItem(planId: string, _prev: ActionState, fo
     classification: str(formData, "classification") ?? "compulsory",
     delivery_type: str(formData, "deliveryType"),
     training_hours: num(formData, "trainingHours"),
-    provider: str(formData, "provider"),
+    provider,
+    counts_toward_cpd: countsTowardCpd,
     gap_reason: gapReason,
     due_date: str(formData, "dueDate"),
     sort_order: count ?? 0,
@@ -198,31 +218,48 @@ export async function completeTrainingPlanItem(
     .maybeSingle();
   const isAssistant = (subjectRow as { licence_type: LicenceType | null } | null)?.licence_type === "certificate_of_registration";
 
-  // Write the CPD record first: if this fails we don't want an item marked
-  // complete with nothing behind it in the register.
-  const { data: cpdRow, error: cpdError } = await supabase
-    .from("cpd_records")
-    .insert({
-      agency_id: plan.agency_id,
-      profile_id: plan.profile_id,
-      activity_name: item.program_name,
-      category: isAssistant ? "assistant_unit" : "general",
-      hours: isAssistant ? 1 : (item.training_hours ?? 0),
-      completed_date: completedDate,
-      notes: item.provider ? `From the ${plan.cpd_year_start.slice(0, 4)} training plan — ${item.provider}` : "From the annual training plan",
-      created_by: profile.id,
-    })
-    .select("id")
-    .maybeSingle();
+  // Only approved-provider training earns CPD. Everything else on the plan —
+  // internal coaching, product training, an in-house session on the agency's
+  // own procedures — is completed here and goes nowhere near the CPD ledger.
+  // See 0021_cpd_provider_gate.sql for why, and note the test is the provider
+  // and the content, not the venue.
+  let cpdRecordId: string | null = null;
+  if (item.counts_toward_cpd) {
+    // Written first: if this fails we don't want an item marked complete with
+    // nothing behind it in the register.
+    const { data: cpdRow, error: cpdError } = await supabase
+      .from("cpd_records")
+      .insert({
+        agency_id: plan.agency_id,
+        profile_id: plan.profile_id,
+        activity_name: item.program_name,
+        category: isAssistant ? "assistant_unit" : "general",
+        hours: isAssistant ? 1 : (item.training_hours ?? 0),
+        completed_date: completedDate,
+        notes: item.provider
+          ? `From the ${plan.cpd_year_start.slice(0, 4)} training plan — ${item.provider}`
+          : "From the annual training plan",
+        created_by: profile.id,
+      })
+      .select("id")
+      .maybeSingle();
 
-  if (cpdError) return { error: "Couldn't record the CPD — try again." };
+    if (cpdError) return { error: "Couldn't record the CPD — try again." };
+    cpdRecordId = (cpdRow as { id: string } | null)?.id ?? null;
+  }
 
   const { error } = await supabase
     .from("training_plan_items")
-    .update({ completed_date: completedDate, cpd_record_id: (cpdRow as { id: string } | null)?.id ?? null })
+    .update({ completed_date: completedDate, cpd_record_id: cpdRecordId })
     .eq("id", itemId);
 
-  if (error) return { error: "Recorded the CPD but couldn't tick the plan item — try again." };
+  if (error) {
+    return {
+      error: cpdRecordId
+        ? "Recorded the CPD but couldn't tick the plan item — try again."
+        : "Couldn't save that — try again.",
+    };
+  }
 
   revalidate();
   return ok;

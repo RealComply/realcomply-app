@@ -157,11 +157,23 @@ export async function addTrainingSession(_prev: ActionState, formData: FormData)
   if (!title) return { error: "Give the session a title." };
   if (!sessionDate) return { error: "Enter the session date." };
 
+  const cpdProvider = str(formData, "cpdProvider");
+
   let cpdHours: number | null = null;
   if (isCpdEligible) {
     cpdHours = cpdHoursRaw ? Number(cpdHoursRaw) : NaN;
     if (!Number.isFinite(cpdHours) || cpdHours <= 0) {
       return { error: "Enter how many CPD hours this session counts for." };
+    }
+    // NSW CPD can only be delivered by a Fair Trading approved provider, and
+    // every published hour for 2026–27 is a compulsory topic. Your own
+    // internal training has no provider behind it and earns nothing, so the
+    // name is the thing that decides whether this is CPD at all.
+    if (!cpdProvider) {
+      return {
+        error:
+          "Name the approved provider who delivered it. Only Fair Trading approved providers can deliver CPD — an internal session doesn't count, wherever it was held.",
+      };
     }
   }
 
@@ -171,6 +183,7 @@ export async function addTrainingSession(_prev: ActionState, formData: FormData)
     session_date: sessionDate,
     is_cpd_eligible: isCpdEligible,
     cpd_hours: cpdHours,
+    cpd_provider: isCpdEligible ? cpdProvider : null,
     trainer_name: trainerName,
     is_external: isExternal,
     notes,
@@ -211,6 +224,7 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
     session_date: string;
     is_cpd_eligible: boolean;
     cpd_hours: number | null;
+    cpd_provider: string | null;
   };
 
   const attendeeIds = formData.getAll("attendee").filter((v): v is string => typeof v === "string");
@@ -228,7 +242,15 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
     );
     if (attendanceError) return { error: "Couldn't save attendance — try again." };
 
-    if (session.is_cpd_eligible && session.cpd_hours) {
+    // The provider is the gate, not the tick-box. NSW CPD can only be
+    // delivered by a Fair Trading approved provider, and for 2026–27 every
+    // published hour is a compulsory topic — there is no elective or
+    // self-directed category to absorb an internal session. So a session with
+    // no named provider records attendance and nothing else, however it was
+    // ticked. (The venue is irrelevant: an approved provider delivering in
+    // your own office does count, which is why this checks the provider
+    // rather than is_external.)
+    if (session.is_cpd_eligible && session.cpd_hours && session.cpd_provider) {
       const { error: cpdError } = await supabase.from("cpd_records").insert(
         attendeeIds.map((profileId) => ({
           agency_id: session.agency_id,

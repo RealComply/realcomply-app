@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { TrainingPlanCard } from "@/components/training/TrainingPlanCard";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { CPD_RULESET, CPD_DELIVERY_NOTE, cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { CPD_RULESET, CPD_DELIVERY_NOTE, CPD_PROVIDER_NOTE, cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import type { CpdRecord, Profile, TrainingPlan, TrainingPlanItem } from "@/lib/types";
 
 // Annual training plans — Requirement 2.4 of the NSW Supervision Guidelines.
@@ -72,7 +72,8 @@ export default async function TrainingPlansPage() {
           staff member, developed in consultation with them, identifying their gaps and the training that addresses
           them. Both parties sign it, and it&rsquo;s reviewed and updated each CPD year.
         </p>
-        <p className="mt-2 text-rc-muted">{CPD_DELIVERY_NOTE}</p>
+        <p className="mt-2 text-rc-muted">{CPD_PROVIDER_NOTE}</p>
+        <p className="mt-1 text-rc-muted">{CPD_DELIVERY_NOTE}</p>
       </div>
 
       {(withoutPlan > 0 || unapproved > 0) && (

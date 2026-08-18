@@ -176,6 +176,10 @@ export type TrainingPlanItem = {
   delivery_type: TrainingDeliveryType | null;
   training_hours: number | null;
   provider: string | null;
+  // True only for approved-provider CPD. Completing an item writes a CPD
+  // record only when this is set — internal training lives on the plan but
+  // never accrues CPD hours. See 0021_cpd_provider_gate.sql.
+  counts_toward_cpd: boolean;
   gap_reason: string | null;
   due_date: string | null;
   completed_date: string | null;
@@ -275,6 +279,9 @@ export type TrainingSession = {
   session_date: string;
   is_cpd_eligible: boolean;
   cpd_hours: number | null;
+  // The Fair Trading approved provider who delivered it. No provider, no CPD
+  // — an internal session records attendance and nothing else.
+  cpd_provider: string | null;
   trainer_name: string | null;
   is_external: boolean;
   notes: string | null;

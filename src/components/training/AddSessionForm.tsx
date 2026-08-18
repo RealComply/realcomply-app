@@ -40,19 +40,51 @@ export function AddSessionForm() {
       </div>
       <label className="flex items-center gap-1.5 text-xs text-rc-muted">
         <input type="checkbox" name="isCpdEligible" checked={cpdEligible} onChange={(e) => setCpdEligible(e.target.checked)} />
-        Counts toward CPD hours
+        Delivered by a Fair Trading approved provider (counts toward CPD)
       </label>
-      {cpdEligible && (
-        <div>
-          <label className="block text-xs text-rc-muted">CPD hours per attendee</label>
-          <input
-            type="number"
-            step="0.5"
-            min="0"
-            name="cpdHours"
-            className="mt-1 w-24 rounded-md border border-rc-border px-2 py-1 text-sm"
-          />
+
+      {/* Said plainly, because the wrong answer here silently tells someone
+          they've met a condition of their licence when they haven't. The test
+          is the provider and the topic, not where it was held — which is the
+          part people get backwards in both directions. */}
+      {cpdEligible ? (
+        <div className="space-y-3 rounded-md border border-rc-border bg-white px-3 py-2">
+          <p className="text-[11px] leading-relaxed text-rc-muted">
+            Only Fair Trading approved providers can deliver CPD, and every published hour this year is a compulsory
+            topic. Your own internal sessions don&rsquo;t count — but an approved provider delivering at your office
+            does, so the venue isn&rsquo;t the test.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <div>
+              <label className="block text-xs text-rc-muted">Approved provider</label>
+              <input
+                type="text"
+                name="cpdProvider"
+                placeholder="e.g. REINSW"
+                className="mt-1 w-48 rounded-md border border-rc-border px-2 py-1 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-rc-muted">CPD hours per attendee</label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                name="cpdHours"
+                className="mt-1 w-24 rounded-md border border-rc-border px-2 py-1 text-sm"
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-rc-faint">
+            Keep each attendee&rsquo;s record of completion from the provider — that&rsquo;s the evidence, and it should
+            arrive within 10 business days.
+          </p>
         </div>
+      ) : (
+        <p className="text-[11px] leading-relaxed text-rc-faint">
+          Logged as office training. It belongs on the annual training plan, but it won&rsquo;t add to anyone&rsquo;s CPD
+          hours.
+        </p>
       )}
       <textarea
         name="notes"

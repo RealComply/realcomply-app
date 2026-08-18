@@ -171,6 +171,19 @@ export const CPD_DELIVERY_NOTE =
  * REINSW training plan template has a Compulsory/Elective column and an agent
  * filling it in will ask.
  */
+/**
+ * What actually earns CPD. The single most misunderstood rule in this area,
+ * and the one the app got wrong until 18 Aug 2026 — it used to credit any
+ * training session an agent ticked as CPD-eligible.
+ *
+ * The test is the PROVIDER and the CONTENT, not the venue. Both directions of
+ * that matter: an approved provider delivering an approved topic at your own
+ * office DOES count, and your own internal session does NOT, wherever it is
+ * held.
+ */
+export const CPD_PROVIDER_NOTE =
+  "Only Fair Trading approved providers can deliver CPD. Your own internal training doesn't count — but an approved provider delivering at your office does, so the venue isn't the test.";
+
 export const CPD_ELECTIVE_NOTE =
   "Fair Trading hasn't published an elective component for 2026–27 — the published hours are all compulsory topics.";
 

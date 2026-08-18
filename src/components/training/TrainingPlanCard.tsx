@@ -290,10 +290,11 @@ function PlanItemRow({ item, canEdit, locked }: { item: TrainingPlanItem; canEdi
             {item.program_name}
           </p>
           <p className="mt-0.5 text-neutral-600">
-            {item.classification === "elective" ? "Elective" : "Compulsory"}
+            {item.counts_toward_cpd ? "CPD" : "Office training"}
             {item.delivery_type && <> · {DELIVERY_LABELS[item.delivery_type] ?? item.delivery_type}</>}
             {item.training_hours !== null && <> · {item.training_hours} hrs</>}
             {item.provider && <> · {item.provider}</>}
+            {!item.counts_toward_cpd && <span className="text-rc-faint"> · doesn&rsquo;t count toward CPD</span>}
           </p>
           {item.gap_reason && <p className="mt-1 text-rc-muted">Gap: {item.gap_reason}</p>}
           <p className="mt-0.5 text-rc-faint">
@@ -335,7 +336,9 @@ function PlanItemRow({ item, canEdit, locked }: { item: TrainingPlanItem; canEdi
           >
             Save
           </button>
-          <span className="text-[11px] text-rc-faint">Also logs it to the CPD register.</span>
+          <span className="text-[11px] text-rc-faint">
+            {item.counts_toward_cpd ? "Also logs it to the CPD register." : "Office training — won't add CPD hours."}
+          </span>
         </form>
       )}
       {state.error && <p className="mt-1 text-xs text-rc-amber-deep">{state.error}</p>}
@@ -389,6 +392,15 @@ function AddItemForm({ planId, onDone }: { planId: string; onDone: () => void })
         <input type="text" name="provider" placeholder="Provider" className="w-36 rounded-md border border-rc-border px-2 py-1 text-sm" />
         <input type="date" name="dueDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
       </div>
+      {/* Off by default. Internal coaching belongs on the plan — Requirement
+          2.4 is broader than CPD — but it must never accrue CPD hours. */}
+      <label className="flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-muted">
+        <input type="checkbox" name="countsTowardCpd" className="mt-0.5" />
+        <span>
+          Counts toward CPD — only if a Fair Trading approved provider delivers it (an RTO statement of attainment for
+          an assistant agent). Internal training goes on the plan but earns no CPD hours.
+        </span>
+      </label>
       <button
         type="submit"
         disabled={pending}
