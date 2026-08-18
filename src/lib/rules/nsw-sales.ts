@@ -17,7 +17,30 @@
 // RealComply-NSW-sales-obligation-register.md and
 // RealComply-listing-lifecycle-stage-map.md (both in the project docs).
 
-import type { Property, PropertyItem, PropertyStage } from "@/lib/types";
+import type { AuctionOutcomeData, Property, PropertyItem, PropertyStage } from "@/lib/types";
+
+// ── Auction visibility ──────────────────────────────────────────────────────
+// Every x-series item is conditional on the listing being an auction. The trap
+// is the pass-in that continues as a private treaty sale, which is completely
+// normal: the moment sale_method flips, a naive showIf hides every auction
+// item AND the evidence attached to them — precisely the wrong behaviour for a
+// compliance record. So the test is "is an auction, OR has ever recorded
+// anything against an auction item". The campaign WAS an auction; that is a
+// fact about the file and it does not stop being true.
+export const AUCTION_ITEM_KEYS = ["x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10"] as const;
+
+// The subset that belongs to the day itself, in the order they happen. The
+// property page groups these into the auction-day sheet.
+export const AUCTION_DAY_KEYS = ["x4", "x5", "x6", "x3", "x7", "x8", "x9", "x10"] as const;
+
+function isAuctionFile(property: Property, allItems: Record<string, PropertyItem>): boolean {
+  if (property.sale_method === "auction") return true;
+  return AUCTION_ITEM_KEYS.some((key) => allItems[key] != null);
+}
+
+function auctionOutcome(allItems: Record<string, PropertyItem>): AuctionOutcomeData {
+  return (allItems["x8"]?.data ?? {}) as AuctionOutcomeData;
+}
 
 export type ItemKind =
   | "checklist" // confirm/done/flag, optional note + agent-asserted date
@@ -29,7 +52,10 @@ export type ItemKind =
   | "reports" // pest & building / strata report register (repeating entries)
   | "export" // generate the finalised compliance file
   | "sign" // typed-signature attestation
-  | "send"; // hand-off to the licensee
+  | "send" // hand-off to the licensee
+  | "auctioneer" // who is calling the auction — name, licence no., business address
+  | "reserve" // the reserve, the time it was given, and the written evidence
+  | "auction"; // the outcome at the fall of the hammer
 
 export type ComplianceItem = {
   key: string;
@@ -283,6 +309,50 @@ const items: ComplianceItem[] = [
     hideNote: true,
     showFindings: true,
   },
+  // ── Auction, before the day ───────────────────────────────────────────
+  // Two items, both plain. Adam's steer, 18 Aug 2026: keep it to tick boxes.
+  //
+  // An earlier draft asked whether the auctioneer was internal or external and
+  // branched the whole module off the answer. That question existed only to
+  // decide who held the bidders record and what we therefore asked for — and
+  // once Adam settled that the record is simply uploaded either way ("the
+  // agent will either have a copy themselves or the auctioneer will give them
+  // a copy after the auction, and we simply need to upload that"), the fork
+  // stopped doing anything and came out.
+  {
+    key: "x1",
+    stage: 1,
+    kind: "auctioneer",
+    label: "Auctioneer appointed and licensed",
+    // The details are typed rather than read off the uploaded record (Adam,
+    // 18 Aug 2026): "I don't know that it's necessarily going to be a
+    // document, though, that we'd upload, with all auctioneer's details."
+    // He's right — a bidders record is a list of bidders, and there is no
+    // guarantee the auctioneer's own particulars appear on it. Since reg
+    // cl 16 makes holding those particulars the SELLING licensee's own
+    // obligation, they cannot depend on what happens to be printed on
+    // someone else's form.
+    description:
+      "Who is calling the auction, and are they licensed to do it? Their details are also what you're required to hold when someone else makes the bidders record.",
+    legalBasis: "ss 8, 9 Property and Stock Agents Act 2002 (NSW); reg cll 14(1), 16",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+    hideNote: true,
+    hideEvidence: true,
+    showIf: isAuctionFile,
+  },
+  {
+    key: "x2",
+    stage: 1,
+    kind: "checklist",
+    label: "Conditions of sale prepared for display",
+    description: "Attach the notice you'll have on display on the day.",
+    legalBasis: "s 77 Property and Stock Agents Act 2002 (NSW); reg cll 18, 19",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+    hideNote: true,
+    showIf: isAuctionFile,
+  },
   {
     key: "b2",
     stage: 1,
@@ -482,6 +552,147 @@ const items: ComplianceItem[] = [
   // a "s72A review obligation" that does not exist, which overstates the law
   // in a product whose defence depends on citing it accurately. Revisions
   // are captured by d3 below.
+  // ── Auction day (Stage 3) ─────────────────────────────────────────────
+  // Six things, four of them a single tick. Declared in the order they
+  // happen, which is also the order the property page renders them in — see
+  // AUCTION_DAY_KEYS above.
+  //
+  // An earlier draft made this a "run-sheet" with grouped headings, nested
+  // sub-checklists and explanatory panels. Adam cut it back: "I think we
+  // still clearly just make a tick box." He is right, and it is the same
+  // note he has given about every text-heavy screen in the product — an
+  // agent standing at the kerb on a Saturday morning needs a list, not a
+  // briefing.
+  {
+    key: "x4",
+    stage: 3,
+    kind: "reserve",
+    label: "Reserve given to the auctioneer in writing, before the auction started",
+    description:
+      "It has to be in writing and it has to be before the auction commences. Attach what you gave them.",
+    legalBasis: "reg cl 18(1)(a), Property and Stock Agents Regulation 2022 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    hideNote: true,
+    showIf: isAuctionFile,
+  },
+  {
+    key: "x5",
+    stage: 3,
+    kind: "checklist",
+    label: "Conditions of sale on display",
+    description: "Exhibited conspicuously, in English, clear and legible, before and during the auction.",
+    legalBasis: "reg cl 19, Property and Stock Agents Regulation 2022 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    hideNote: true,
+    showIf: isAuctionFile,
+  },
+  {
+    key: "x6",
+    stage: 3,
+    kind: "checklist",
+    // All three named in the label rather than split into sub-ticks. Naming
+    // them is what stops one being silently dropped; splitting them into
+    // three boxes was the over-build Adam cut.
+    label: "Required notices on display — dummy bidding, collusive practices, successful bidders",
+    description: "Each in the prescribed wording. A photo of the board is the natural evidence.",
+    legalBasis: "reg cl 20, Property and Stock Agents Regulation 2022 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    hideNote: true,
+    showIf: isAuctionFile,
+  },
+  {
+    key: "x3",
+    stage: 3,
+    // Moved here from On market (Adam, 18 Aug 2026), who framed it as "were
+    // registered bidders given a bidders guide" — which ties it to
+    // registration, and registration happens on the day.
+    //
+    // ⚠️ The precise statutory trigger point for s 71 could not be confirmed
+    // from primary sources and is on the list for the compliance adviser. If
+    // the guide has to be given earlier than registration, this item moves
+    // back a stage; nothing else changes.
+    kind: "checklist",
+    label: "Registered bidders given the bidders guide",
+    description: "The approved guide, given to each person who registered to bid.",
+    legalBasis: "s 71 Property and Stock Agents Act 2002 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    hideNote: true,
+    showIf: isAuctionFile,
+  },
+  {
+    key: "x7",
+    stage: 3,
+    kind: "checklist",
+    label: "Bidders record",
+    // Deliberately NOT required for stage completion. The auctioneer often
+    // sends the record through days later, and a file that cannot close its
+    // stage because of someone else's admin turns a real obligation into an
+    // obstacle. It stays open and visible instead — which is what the Monday
+    // digest is for.
+    description:
+      "Upload a copy — yours if you made it, or the auctioneer's once they send it through. It may not arrive on the day, and that's fine; this stays open until it does.",
+    legalBasis: "s 68 Property and Stock Agents Act 2002 (NSW); reg cll 14, 16",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    hideNote: true,
+    showIf: isAuctionFile,
+  },
+  {
+    key: "x8",
+    stage: 3,
+    kind: "auction",
+    label: "Auction outcome",
+    description:
+      "What happened at the fall of the hammer. This is the one thing here that isn't a tick, and it drives the rest of the file.",
+    legalBasis: "reg cl 14(1), Property and Stock Agents Regulation 2022 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    hideNote: true,
+    showIf: isAuctionFile,
+  },
+  {
+    key: "x9",
+    stage: 3,
+    kind: "checklist",
+    label: "Reserve not set aside without the vendor's permission",
+    description:
+      "The property didn't reach the reserve you recorded this morning. Confirm the reserve wasn't set aside without the vendor saying so.",
+    legalBasis: "reg Sch 2 cl 16, Property and Stock Agents Regulation 2022 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    // Only when the app can see for itself that the question arises: passed
+    // in, or sold under the reserve it already holds from x4. This is the
+    // kind of check worth having — the agent would otherwise be doing the
+    // comparison in their head at the one moment they are busiest.
+    showIf: (property, allItems) => {
+      if (!isAuctionFile(property, allItems)) return false;
+      const outcome = auctionOutcome(allItems);
+      if (outcome.outcome === "passed_in") return true;
+      const reserve = (allItems["x4"]?.data as { reserve?: number } | undefined)?.reserve;
+      return Boolean(
+        outcome.outcome === "sold" && reserve != null && outcome.price != null && outcome.price < reserve,
+      );
+    },
+  },
+  {
+    key: "x10",
+    stage: 3,
+    kind: "checklist",
+    label: "Telephone or absentee bidder authority held",
+    description:
+      "The written authority has to include an acknowledgement that the person was given a copy of the conditions of sale — that's the part that gets missed.",
+    legalBasis: "reg Sch 2 cl 15; s 69(1)(b) Property and Stock Agents Act 2002 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    hideNote: true,
+    showIf: (property, allItems) =>
+      isAuctionFile(property, allItems) && Boolean(auctionOutcome(allItems).phoneBidder),
+  },
+
   {
     key: "d2",
     stage: 3,

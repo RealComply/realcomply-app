@@ -90,7 +90,9 @@ function agentName(profiles: Profile[], id: string): string {
 }
 
 function renderDigestSection(title: string, digests: PropertyDigest[], profiles: Profile[]): string {
-  const needsYou = digests.filter((d) => d.pendingSignoff.length > 0 || d.flagged.length > 0);
+  const needsYou = digests.filter(
+    (d) => d.pendingSignoff.length > 0 || d.flagged.length > 0 || d.awaiting.length > 0,
+  );
   const dueForReview = digests.filter((d) => {
     const days = daysSinceActivity(d.lastActivityAt);
     return d.property.stage < 5 && (days === null || days > 7);
@@ -103,7 +105,7 @@ function renderDigestSection(title: string, digests: PropertyDigest[], profiles:
     lines.push("  Nothing needs attention right now.");
   } else {
     for (const d of needsYou) {
-      const items = [...d.pendingSignoff, ...d.flagged].map((i) => i.label).join(", ");
+      const items = [...d.pendingSignoff, ...d.flagged, ...d.awaiting].map((i) => i.label).join(", ");
       lines.push(`  - ${d.property.address} (${STAGE_LABELS[d.property.stage]}, ${agentName(profiles, d.property.created_by)}): ${items}`);
     }
   }

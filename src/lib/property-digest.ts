@@ -11,6 +11,14 @@ export type PropertyDigest = {
   flagged: ComplianceItem[];
   requiredCurrentStage: ComplianceItem[];
   doneCurrentStage: ComplianceItem[];
+  // Items whose moment has passed and which are still open. Today this is
+  // just the bidders record (x7) after the auction has been run: it is
+  // deliberately not required for stage completion, because the auctioneer
+  // often sends it through days later and a file that can't move on because
+  // of someone else's admin turns a real obligation into an obstacle. But
+  // "not blocking" must not mean "invisible" — without this it would sit
+  // open forever with nothing ever mentioning it again.
+  awaiting: ComplianceItem[];
   lastActivityAt: string | null;
 };
 
@@ -30,12 +38,25 @@ export function computePropertyDigests(
     const requiredCurrentStage = reached.filter((i) => i.stage === property.stage && i.requiredForStageCompletion);
     const doneCurrentStage = requiredCurrentStage.filter((i) => rows.get(i.key)?.status === "done");
 
+    // The auction has been run (an outcome is recorded) but the bidders
+    // record still isn't attached.
+    const awaiting =
+      rows.get("x8") && rows.get("x7")?.status !== "done" ? reached.filter((i) => i.key === "x7") : [];
+
     let lastActivityAt: string | null = null;
     for (const row of rows.values()) {
       if (!lastActivityAt || row.recorded_at > lastActivityAt) lastActivityAt = row.recorded_at;
     }
 
-    return { property, pendingSignoff, flagged, requiredCurrentStage, doneCurrentStage, lastActivityAt };
+    return {
+      property,
+      pendingSignoff,
+      flagged,
+      requiredCurrentStage,
+      doneCurrentStage,
+      awaiting,
+      lastActivityAt,
+    };
   });
 }
 

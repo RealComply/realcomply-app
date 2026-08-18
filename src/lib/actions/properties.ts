@@ -27,6 +27,25 @@ const SETUP_EVIDENCE_FIELDS: Array<{ field: string; itemKey: string }> = [
 // strata, tenanted, pool) — these answers are what drive which compliance
 // items apply later (tenancy sub-module, strata pool-certificate
 // exemption), per the rules schema's agency-binding model.
+// Method of sale, shared by create and edit.
+//
+// The date and time are DELIBERATELY OPTIONAL (Adam, 18 Aug 2026): "on setting
+// a listing for auction, there may not be an auction date or time... we have
+// to leave space for a TBC". A property is very often listed for auction
+// before the date is fixed. Requiring one would either block the listing or
+// invite a made-up date, and a made-up date in a compliance record is worse
+// than no date — so null means TBC and the app says so on screen.
+function readSaleMethod(formData: FormData) {
+  const saleMethod = formData.get("saleMethod") === "auction" ? "auction" : "private_treaty";
+  const isAuction = saleMethod === "auction";
+  return {
+    saleMethod,
+    auctionDate: isAuction ? String(formData.get("auctionDate") ?? "").trim() || null : null,
+    auctionTime: isAuction ? String(formData.get("auctionTime") ?? "").trim() || null : null,
+    auctionVenue: isAuction ? String(formData.get("auctionVenue") ?? "").trim() || null : null,
+  };
+}
+
 export async function createProperty(
   _prevState: ActionState,
   formData: FormData,
@@ -37,6 +56,7 @@ export async function createProperty(
   const isTenanted = formData.get("isTenanted") === "yes";
   const hasPool = formData.get("hasPool") === "yes";
   const agentInterest = formData.get("agentInterest") === "yes";
+  const { saleMethod, auctionDate, auctionTime, auctionVenue } = readSaleMethod(formData);
 
   if (!address) {
     return { error: "Address is required." };
@@ -89,6 +109,10 @@ export async function createProperty(
       is_tenanted: isTenanted,
       has_pool: hasPool,
       agent_interest: agentInterest,
+      sale_method: saleMethod,
+      auction_date: auctionDate,
+      auction_time: auctionTime,
+      auction_venue: auctionVenue,
     })
     .select("id")
     .single();
@@ -219,6 +243,8 @@ export async function updatePropertyDetails(
     return { error: listingUrl.error };
   }
 
+  const sale = readSaleMethod(formData);
+
   const { error } = await supabase
     .from("properties")
     .update({
@@ -232,6 +258,13 @@ export async function updatePropertyDetails(
       is_tenanted: formData.get("isTenanted") === "yes",
       has_pool: formData.get("hasPool") === "yes",
       agent_interest: formData.get("agentInterest") === "yes",
+      // Switching a listing to private treaty does NOT hide the auction items
+      // or their evidence — see isAuctionFile in rules/nsw-sales.ts. If the
+      // campaign ran as an auction, that stays a fact about the file.
+      sale_method: sale.saleMethod,
+      auction_date: sale.auctionDate,
+      auction_time: sale.auctionTime,
+      auction_venue: sale.auctionVenue,
       test_mode: formData.get("testMode") === "yes",
       updated_at: new Date().toISOString(),
     })

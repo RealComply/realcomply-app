@@ -360,6 +360,24 @@ export const STAGE_LABELS: Record<PropertyStage, string> = {
 
 export type PropertyType = "House" | "Unit" | "Townhouse" | "Duplex" | "Land";
 
+export type SaleMethod = "private_treaty" | "auction";
+
+// What the agent records at the fall of the hammer. The one structured
+// answer on the auction-day sheet, and the input to everything downstream:
+// sold moves the file on, passed_in keeps it on market and carries the
+// highest bid into the pricing logic, withdrawn pauses it.
+export type AuctionOutcomeKind = "sold" | "passed_in" | "withdrawn";
+
+export type AuctionOutcomeData = {
+  outcome?: AuctionOutcomeKind;
+  price?: number | null;
+  bidderNumber?: string | null;
+  highestBid?: number | null;
+  vendorBid?: boolean;
+  reason?: string | null;
+  phoneBidder?: boolean;
+};
+
 export type Property = {
   id: string;
   agency_id: string;
@@ -373,6 +391,14 @@ export type Property = {
   // Public URL of the agency's own listing page, read by the weekly
   // advertised-price check. See 0016_listing_url.sql.
   listing_url: string | null;
+  // How the property is being sold. Everything auction-specific hangs off
+  // this one field — see 0024_auction.sql and the x-series items in
+  // rules/nsw-sales.ts. auction_date is nullable because a listing very often
+  // goes to auction before the date is set; null means TBC, not missing.
+  sale_method: SaleMethod;
+  auction_date: string | null;
+  auction_time: string | null;
+  auction_venue: string | null;
   stage: PropertyStage;
   test_mode: boolean;
   created_at: string;

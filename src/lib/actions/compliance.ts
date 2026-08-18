@@ -6,7 +6,13 @@ import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { finalizeEvidenceRecord, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
-import type { Property, PropertyItem, PropertyStage } from "@/lib/types";
+import type {
+  AuctionOutcomeData,
+  AuctionOutcomeKind,
+  Property,
+  PropertyItem,
+  PropertyStage,
+} from "@/lib/types";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -801,6 +807,178 @@ export async function recordSale(
 
   revalidatePath(`/dashboard/${propertyId}`);
   return error ? { error: error.message } : ok;
+}
+
+// ── Auction ─────────────────────────────────────────────────────────────────
+
+// x1 — who is calling the auction. Typed rather than read off the bidders
+// record (Adam, 18 Aug 2026): a bidders record is a list of bidders and there
+// is no guarantee the auctioneer's own particulars are on it, while reg cl 16
+// makes holding those particulars the selling licensee's own obligation. An
+// obligation that is ours cannot depend on what happens to be printed on
+// someone else's form.
+export async function setAuctioneerDetails(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const name = String(formData.get("auctioneerName") ?? "").trim();
+  const licenceNumber = String(formData.get("auctioneerLicence") ?? "").trim();
+  const businessAddress = String(formData.get("auctioneerAddress") ?? "").trim();
+
+  if (!name) return { error: "Enter the auctioneer's name." };
+  if (!licenceNumber) return { error: "Enter the auctioneer's licence number." };
+
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "x1",
+    status: "done",
+    data: { name, licenceNumber, businessAddress: businessAddress || null },
+    completedBy: user.id,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return error ? { error: error.message } : ok;
+}
+
+// x4 — the reserve. The amount is kept as a number because x9 compares it
+// against the outcome; the time is kept as the agent typed it because nothing
+// computes on it.
+export async function setReserve(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const reserve = Number(String(formData.get("reserve") ?? "").replace(/[^0-9.]/g, ""));
+  const givenAt = String(formData.get("givenAt") ?? "").trim();
+
+  if (!reserve) return { error: "Enter the reserve you gave the auctioneer." };
+
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "x4",
+    status: "done",
+    data: { reserve, givenAt: givenAt || null },
+    completedBy: user.id,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return error ? { error: error.message } : ok;
+}
+
+// x8 — the outcome. The compliance payload of the whole module, and the input
+// to the pricing logic: a passed-in bid from a registered bidder is the same
+// signal as a rejected offer, which the product already knows how to handle.
+//
+// NOTE: this deliberately does NOT flip sale_method back to private treaty on
+// a pass-in. The campaign WAS an auction and that is a fact about the file;
+// flipping it would hide every auction item and the evidence attached to them
+// at the exact moment the file most needs to show its working. Converting a
+// passed-in campaign to a private treaty sale is a separate piece of work.
+export async function recordAuctionOutcome(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const outcome = String(formData.get("outcome") ?? "") as AuctionOutcomeKind;
+  if (!["sold", "passed_in", "withdrawn"].includes(outcome)) {
+    return { error: "Choose what happened at the auction." };
+  }
+
+  const money = (field: string): number | null => {
+    const raw = String(formData.get(field) ?? "").replace(/[^0-9.]/g, "");
+    const n = Number(raw);
+    return raw && Number.isFinite(n) && n > 0 ? n : null;
+  };
+
+  const phoneBidder = formData.get("phoneBidder") === "on";
+  const data: AuctionOutcomeData = { outcome, phoneBidder };
+
+  if (outcome === "sold") {
+    const price = money("price");
+    if (!price) return { error: "Enter the sale price." };
+    data.price = price;
+    data.bidderNumber = String(formData.get("bidderNumber") ?? "").trim() || null;
+  } else if (outcome === "passed_in") {
+    // A pass-in with no bid at all is entirely normal — the property was
+    // offered and nobody bid. Not an error, and not a missing field.
+    data.highestBid = money("highestBid");
+    data.bidderNumber = String(formData.get("bidderNumber") ?? "").trim() || null;
+    data.vendorBid = formData.get("vendorBid") === "on";
+  } else {
+    const reason = String(formData.get("reason") ?? "").trim();
+    if (!reason) return { error: "Record why the property was withdrawn." };
+    data.reason = reason;
+  }
+
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "x8",
+    status: "done",
+    data: data as Record<string, unknown>,
+    completedBy: user.id,
+  });
+
+  if (error) return { error: error.message };
+
+  // A passed-in bid made by a registered bidder is evidence a real buyer sat
+  // at that number, which is the same reasoning that reopens the ESP revision
+  // item when an offer at or above the guide is rejected. A vendor bid is not
+  // a buyer and must not trigger it.
+  if (outcome === "passed_in" && data.highestBid && !data.vendorBid) {
+    await reopenEspRevisionForAuction(supabase, propertyId, data.highestBid);
+  }
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return ok;
+}
+
+// Reopens d3 (price reduction / ESP revision) off a passed-in bid. Kept
+// separate and narrow: it only ever reopens, never closes, and it writes the
+// reason in so the agent can see why the item came back.
+async function reopenEspRevisionForAuction(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+  highestBid: number,
+) {
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3")
+    .maybeSingle();
+
+  const current = (existing?.data ?? {}) as Record<string, unknown>;
+  const { data: agencyProperty } = await supabase
+    .from("properties")
+    .select("agency_id")
+    .eq("id", propertyId)
+    .maybeSingle();
+
+  if (!agencyProperty) return;
+
+  await upsertItem(supabase, {
+    agencyId: agencyProperty.agency_id as string,
+    propertyId,
+    itemKey: "d3",
+    status: "open",
+    data: {
+      ...current,
+      auctionPassInPrompt: {
+        highestBid,
+        raisedAt: new Date().toISOString(),
+      },
+    },
+  });
 }
 
 // sign_agent / sign_licensee — typed-name attestation, immutable once set.

@@ -11,7 +11,7 @@ import {
 } from "@/lib/rules/aml-precommencement";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
-import type { Profile, PropertyItem } from "@/lib/types";
+import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import {
@@ -25,6 +25,9 @@ import {
   markNoVerbalQuotes,
   markNoReports,
   recordSale,
+  setAuctioneerDetails,
+  setReserve,
+  recordAuctionOutcome,
   signItem,
   sendToLicensee,
   generateExport,
@@ -1623,6 +1626,381 @@ function ExportItem({ item, propertyId, current }: { item: ComplianceItem; prope
   );
 }
 
+// ── Auction ─────────────────────────────────────────────────────────────────
+
+const money = (n: number) => `$${n.toLocaleString("en-AU")}`;
+
+// x1 — the auctioneer. Three typed fields, shown as a plain line once saved.
+function AuctioneerItem({
+  item,
+  propertyId,
+  current,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+}) {
+  const saved = (current?.data ?? {}) as { name?: string; licenceNumber?: string; businessAddress?: string };
+  const [editing, setEditing] = useState(!saved.name);
+  const action = setAuctioneerDetails.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(action, initialState);
+
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      {!editing ? (
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm text-rc-ink">
+            <span className="font-medium">{saved.name}</span>
+            {saved.licenceNumber && <span className="text-rc-muted"> · lic. {saved.licenceNumber}</span>}
+            {saved.businessAddress && <span className="block text-xs text-rc-muted">{saved.businessAddress}</span>}
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="shrink-0 text-xs font-medium text-rc-green-deep hover:underline"
+          >
+            Edit
+          </button>
+        </div>
+      ) : (
+        <form
+          action={async (fd) => {
+            await formAction(fd);
+            setEditing(false);
+          }}
+          className="space-y-2"
+        >
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              name="auctioneerName"
+              placeholder="Auctioneer's name"
+              defaultValue={saved.name ?? ""}
+              className="min-w-[10rem] flex-1 rounded-md border border-rc-border px-2 py-1.5 text-sm"
+            />
+            <input
+              type="text"
+              name="auctioneerLicence"
+              placeholder="Licence no."
+              defaultValue={saved.licenceNumber ?? ""}
+              className="w-32 rounded-md border border-rc-border px-2 py-1.5 text-sm"
+            />
+          </div>
+          <input
+            type="text"
+            name="auctioneerAddress"
+            placeholder="Business address"
+            defaultValue={saved.businessAddress ?? ""}
+            className="w-full rounded-md border border-rc-border px-2 py-1.5 text-sm"
+          />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            >
+              Save
+            </button>
+            {saved.name && (
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted hover:bg-neutral-100"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+          {state.error && <p className="text-xs text-rc-amber-deep">{state.error}</p>}
+        </form>
+      )}
+    </ItemShell>
+  );
+}
+
+// x4 — the reserve, and the time it went to the auctioneer.
+function ReserveItem({
+  item,
+  propertyId,
+  current,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+}) {
+  const saved = (current?.data ?? {}) as { reserve?: number; givenAt?: string };
+  const [editing, setEditing] = useState(saved.reserve == null);
+  const action = setReserve.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(action, initialState);
+
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      {!editing ? (
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm text-rc-ink">
+            <span className="font-medium">{money(saved.reserve ?? 0)}</span>
+            {saved.givenAt && <span className="text-rc-muted"> · given at {saved.givenAt}</span>}
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="shrink-0 text-xs font-medium text-rc-green-deep hover:underline"
+          >
+            Edit
+          </button>
+        </div>
+      ) : (
+        <form
+          action={async (fd) => {
+            await formAction(fd);
+            setEditing(false);
+          }}
+          className="space-y-2"
+        >
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              name="reserve"
+              inputMode="numeric"
+              placeholder="Reserve"
+              defaultValue={saved.reserve ?? ""}
+              className="w-40 rounded-md border border-rc-border px-2 py-1.5 text-sm"
+            />
+            <input
+              type="text"
+              name="givenAt"
+              placeholder="Given at (e.g. 9:15am)"
+              defaultValue={saved.givenAt ?? ""}
+              className="w-44 rounded-md border border-rc-border px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            >
+              Save
+            </button>
+            {saved.reserve != null && (
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted hover:bg-neutral-100"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+          {state.error && <p className="text-xs text-rc-amber-deep">{state.error}</p>}
+        </form>
+      )}
+    </ItemShell>
+  );
+}
+
+const OUTCOME_CHOICES: Array<{ value: AuctionOutcomeKind; label: string; hint: string }> = [
+  { value: "sold", label: "Sold under the hammer", hint: "Contract service clock starts." },
+  { value: "passed_in", label: "Passed in", hint: "Stays on market." },
+  { value: "withdrawn", label: "Withdrawn", hint: "File pauses." },
+];
+
+// x8 — the outcome. Three choices, and each reveals only its own fields.
+function AuctionOutcomeItem({
+  item,
+  propertyId,
+  current,
+  reserve,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  reserve?: number;
+}) {
+  const saved = (current?.data ?? {}) as AuctionOutcomeData;
+  const [choice, setChoice] = useState<AuctionOutcomeKind | null>(saved.outcome ?? null);
+  const [vendorBid, setVendorBid] = useState(Boolean(saved.vendorBid));
+  const [editing, setEditing] = useState(!saved.outcome);
+  const action = recordAuctionOutcome.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(action, initialState);
+
+  if (!editing) {
+    const chosen = OUTCOME_CHOICES.find((c) => c.value === saved.outcome);
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-sm text-rc-ink">
+            <span className="font-medium">{chosen?.label}</span>
+            {saved.outcome === "sold" && saved.price != null && <> · {money(saved.price)}</>}
+            {saved.outcome === "passed_in" && (
+              <>
+                {saved.highestBid != null ? (
+                  <>
+                    {" "}
+                    · highest bid {money(saved.highestBid)}
+                    {saved.vendorBid ? " (vendor bid)" : ""}
+                  </>
+                ) : (
+                  <span className="text-rc-muted"> · no bids</span>
+                )}
+              </>
+            )}
+            {saved.outcome === "withdrawn" && saved.reason && (
+              <span className="block text-xs text-rc-muted">{saved.reason}</span>
+            )}
+            {saved.outcome === "passed_in" && saved.vendorBid && (
+              <p className="mt-2 rounded-md bg-rc-amber/10 px-3 py-2 text-xs text-rc-amber-deep">
+                Passed in on a vendor bid — that amount must not be used in your marketing unless it is
+                clearly identified as a vendor bid.
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="shrink-0 text-xs font-medium text-rc-green-deep hover:underline"
+          >
+            Edit
+          </button>
+        </div>
+      </ItemShell>
+    );
+  }
+
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      <form
+        action={async (fd) => {
+          await formAction(fd);
+          setEditing(false);
+        }}
+        className="space-y-3"
+      >
+        <input type="hidden" name="outcome" value={choice ?? ""} />
+        <div className="flex flex-wrap gap-2">
+          {OUTCOME_CHOICES.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => setChoice(c.value)}
+              className={`flex-1 min-w-[9rem] rounded-lg border px-3 py-2 text-left text-sm font-medium transition ${
+                choice === c.value
+                  ? "border-rc-green-deep bg-rc-green-soft text-rc-green-deep"
+                  : "border-rc-border bg-white text-rc-ink hover:border-rc-green"
+              }`}
+            >
+              {c.label}
+              <span className="block text-[11px] font-normal text-rc-muted">{c.hint}</span>
+            </button>
+          ))}
+        </div>
+
+        {choice === "sold" && (
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              name="price"
+              inputMode="numeric"
+              placeholder="Sale price"
+              defaultValue={saved.price ?? ""}
+              className="w-40 rounded-md border border-rc-border px-2 py-1.5 text-sm"
+            />
+            <input
+              type="text"
+              name="bidderNumber"
+              placeholder="Successful bidder no."
+              defaultValue={saved.bidderNumber ?? ""}
+              className="w-44 rounded-md border border-rc-border px-2 py-1.5 text-sm"
+            />
+          </div>
+        )}
+
+        {choice === "passed_in" && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="text"
+                name="highestBid"
+                inputMode="numeric"
+                placeholder="Highest bid (leave blank if none)"
+                defaultValue={saved.highestBid ?? ""}
+                className="w-56 rounded-md border border-rc-border px-2 py-1.5 text-sm"
+              />
+              <input
+                type="text"
+                name="bidderNumber"
+                placeholder="Bidder no."
+                defaultValue={saved.bidderNumber ?? ""}
+                className="w-32 rounded-md border border-rc-border px-2 py-1.5 text-sm"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-rc-ink">
+              <input
+                type="checkbox"
+                name="vendorBid"
+                checked={vendorBid}
+                onChange={(e) => setVendorBid(e.target.checked)}
+                className="accent-rc-green-deep"
+              />
+              That highest bid was a vendor bid
+            </label>
+            {vendorBid && (
+              <p className="rounded-md bg-rc-amber/10 px-3 py-2 text-xs text-rc-amber-deep">
+                Don&rsquo;t quote that figure. Where a property passes in on a vendor bid, the amount can&rsquo;t
+                be used in marketing unless it is clearly identified as a vendor bid.
+              </p>
+            )}
+            {reserve != null && (
+              <p className="text-xs text-rc-muted">Reserve recorded this morning: {money(reserve)}.</p>
+            )}
+          </div>
+        )}
+
+        {choice === "withdrawn" && (
+          <textarea
+            name="reason"
+            placeholder="Why was it withdrawn?"
+            defaultValue={saved.reason ?? ""}
+            className="min-h-[3.5rem] w-full rounded-md border border-rc-border px-2 py-1.5 text-sm"
+          />
+        )}
+
+        {choice && (
+          <label className="flex items-center gap-2 text-sm text-rc-ink">
+            <input
+              type="checkbox"
+              name="phoneBidder"
+              defaultChecked={Boolean(saved.phoneBidder)}
+              className="accent-rc-green-deep"
+            />
+            Someone bid by phone, or on another person&rsquo;s behalf
+          </label>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={pending || !choice}
+            className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          >
+            Save the outcome
+          </button>
+          {saved.outcome && (
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="rounded-md border border-rc-border px-3 py-1.5 text-xs font-medium text-rc-muted hover:bg-neutral-100"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+        {state.error && <p className="text-xs text-rc-amber-deep">{state.error}</p>}
+      </form>
+    </ItemShell>
+  );
+}
+
 export function ItemCard({
   item,
   propertyId,
@@ -1657,6 +2035,19 @@ export function ItemCard({
       return <SendItem item={item} propertyId={propertyId} current={current} />;
     case "export":
       return <ExportItem item={item} propertyId={propertyId} current={current} />;
+    case "auctioneer":
+      return <AuctioneerItem item={item} propertyId={propertyId} current={current} />;
+    case "reserve":
+      return <ReserveItem item={item} propertyId={propertyId} current={current} />;
+    case "auction":
+      return (
+        <AuctionOutcomeItem
+          item={item}
+          propertyId={propertyId}
+          current={current}
+          reserve={(allItems["x4"]?.data as { reserve?: number } | undefined)?.reserve}
+        />
+      );
     case "guide":
       return (
         <GuideItem

@@ -6,8 +6,30 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
 import { DeletePropertySection } from "@/components/compliance/DeletePropertySection";
-import { itemsForStage } from "@/lib/rules/nsw-sales";
+import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
+
+function auctionDateLabel(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString("en-AU", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
+// Days until the auction, as a short phrase. Null when there is no date (TBC)
+// or the auction is behind us — a countdown that reads "-6 days" helps nobody.
+function auctionCountdown(date: string | null): string | null {
+  if (!date) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(`${date}T00:00:00`);
+  const days = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return null;
+  if (days === 0) return "Auction today";
+  if (days === 1) return "Auction tomorrow";
+  return `${days} days out`;
+}
 
 export default async function PropertyPage({
   params,
@@ -58,6 +80,17 @@ export default async function PropertyPage({
 
   const stageItems = itemsForStage(viewedStage, p, allItems);
   const isCurrentStage = viewedStage === p.stage;
+  const countdown = auctionCountdown(p.auction_date);
+
+  // The auction-day items are pulled out of the Campaign list and shown
+  // together under one heading, in the order they happen. They are ordinary
+  // items — same cards, same behaviour — they are just grouped, because on the
+  // day they all happen inside about an hour and an agent working through them
+  // on a phone at the property should not have to hunt for them among the
+  // offers log and the reports register.
+  const auctionDaySet = new Set<string>(AUCTION_DAY_KEYS);
+  const auctionDayItems = stageItems.filter((item) => auctionDaySet.has(item.key));
+  const ordinaryItems = stageItems.filter((item) => !auctionDaySet.has(item.key));
   const fileFinalised = p.stage === 5 && allItems["f1"]?.status === "done";
   const hasSourceDocs = ["a3", "b1", "a4b"].some((key) => allItems[key]?.evidence_path);
 
@@ -80,6 +113,30 @@ export default async function PropertyPage({
               {p.is_tenanted ? " · Tenanted" : ""}
               {p.has_pool ? " · Pool" : ""}
             </p>
+            {p.sale_method === "auction" && (
+              <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
+                <span className="rounded-full bg-rc-green-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rc-green-deep">
+                  Auction
+                </span>
+                {p.auction_date ? (
+                  <span className="text-rc-muted">
+                    {auctionDateLabel(p.auction_date)}
+                    {p.auction_time ? `, ${p.auction_time}` : ""}
+                    {p.auction_venue ? ` · ${p.auction_venue.toLowerCase()}` : ""}
+                  </span>
+                ) : (
+                  // Not a warning. A listing that goes to auction before the
+                  // date is fixed is completely normal, and the file should
+                  // say what it knows rather than imply something is wrong.
+                  <span className="text-rc-muted">date TBC</span>
+                )}
+                {countdown && (
+                  <span className="rounded-full bg-rc-amber/15 px-2 py-0.5 text-[11px] font-medium text-rc-amber-deep">
+                    {countdown}
+                  </span>
+                )}
+              </p>
+            )}
           </div>
           <Link
             href={`/dashboard/${p.id}/summary`}
@@ -143,8 +200,34 @@ export default async function PropertyPage({
           </div>
         )}
 
+        {auctionDayItems.length > 0 && (
+          <section className="mt-6 overflow-hidden rounded-card border border-rc-border bg-white shadow-card">
+            <div className="bg-rc-ink px-4 py-3">
+              <h2 className="text-sm font-semibold text-white">Auction day</h2>
+              <p className="mt-0.5 text-xs text-rc-ink-muted">
+                {p.auction_date
+                  ? `${auctionDateLabel(p.auction_date)}${p.auction_time ? `, ${p.auction_time}` : ""}`
+                  : "Date not set yet — set it in the listing details below."}
+              </p>
+            </div>
+            <div className="space-y-4 bg-rc-bg-alt p-4">
+              {auctionDayItems.map((item) => (
+                <ItemCard
+                  key={item.key}
+                  item={item}
+                  propertyId={p.id}
+                  current={allItems[item.key]}
+                  profile={profile}
+                  allItems={allItems}
+                  amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
         <div className="mt-6 space-y-4">
-          {stageItems.map((item) => (
+          {ordinaryItems.map((item) => (
             <ItemCard
               key={item.key}
               item={item}

@@ -48,7 +48,9 @@ export default async function PortfolioPage() {
   for (const p of staffList) agentNames.set(p.id, p.full_name ?? p.email);
 
   const digests = computePropertyDigests(propertyList, itemsByProperty);
-  const needsYou = digests.filter((d) => d.pendingSignoff.length > 0 || d.flagged.length > 0);
+  const needsYou = digests.filter(
+    (d) => d.pendingSignoff.length > 0 || d.flagged.length > 0 || d.awaiting.length > 0,
+  );
   const dueForReview = digests.filter((d) => {
     const days = daysSinceActivity(d.lastActivityAt);
     return d.property.stage < 5 && (days === null || days > 7);
@@ -169,7 +171,7 @@ export default async function PortfolioPage() {
                     {STAGE_LABELS[d.property.stage]} · {agentNames.get(d.property.created_by) ?? "Unknown agent"}
                   </span>
                   <ul className="mt-1 flex flex-wrap gap-1.5">
-                    {[...d.pendingSignoff, ...d.flagged].map((item, i) => (
+                    {[...d.pendingSignoff, ...d.flagged, ...d.awaiting].map((item, i) => (
                       <li key={`${item.key}-${i}`} className="rounded-full bg-rc-amber/15 px-2.5 py-0.5 text-xs font-medium text-rc-amber-deep">
                         {item.label}
                       </li>

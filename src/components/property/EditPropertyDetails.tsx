@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Settings2 } from "lucide-react";
 import { updatePropertyDetails } from "@/lib/actions/properties";
 import type { Property, PropertyType } from "@/lib/types";
+import { SaleMethodFields } from "@/components/property/SaleMethodFields";
 
 // Edit the setup answers on an existing listing.
 //
@@ -125,6 +126,16 @@ export function EditPropertyDetails({ property }: { property: Property }) {
       <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
         Your own listing page for this property. Checked weekly against the ESP on file.
       </p>
+
+      <div className="mt-4">
+        <SaleMethodFields
+          defaultMethod={property.sale_method}
+          defaultDate={property.auction_date}
+          defaultTime={property.auction_time}
+          defaultVenue={property.auction_venue}
+          compact
+        />
+      </div>
 
       <div className="mt-3 divide-y divide-rc-border border-y border-rc-border">
         <YesNo name="isStrata" label="Strata or community title" value={Boolean(property.is_strata)} />

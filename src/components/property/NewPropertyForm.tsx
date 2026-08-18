@@ -7,6 +7,7 @@ import { searchAddress, type AddressSuggestion } from "@/lib/actions/places";
 import type { ActionState } from "@/lib/actions/auth";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildStagingPath, uploadEvidenceObject } from "@/lib/storage/evidence";
+import { SaleMethodFields } from "@/components/property/SaleMethodFields";
 
 const initialState: ActionState = { error: null };
 
@@ -239,6 +240,8 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
             <option value="Land">Land</option>
           </select>
         </div>
+
+        <SaleMethodFields />
 
         <YesNo
           name="isStrata"

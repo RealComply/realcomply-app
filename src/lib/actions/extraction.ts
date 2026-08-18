@@ -64,6 +64,16 @@ type DraftPatch = {
    * checklist run against the wrong document.
    */
   notAContract?: boolean;
+  /**
+   * a3 only — the method of sale, and the auction date and time where the
+   * agreement states them. Adam, 18 Aug 2026: "method of sale, auction date
+   * and time will be in the sales agreement as well." So the agent should not
+   * be typing them in twice. Applied to the PROPERTY row rather than an item,
+   * and only where the agent has not already answered — see runExtraction.
+   */
+  saleMethod?: "private_treaty" | "auction";
+  auctionDate?: string;
+  auctionTime?: string;
 };
 
 const EXTRACTION_TOOL: Anthropic.Tool = {
@@ -127,6 +137,22 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
                 },
                 required: ["key", "found"],
               },
+            },
+            saleMethod: {
+              type: "string",
+              enum: ["private_treaty", "auction"],
+              description:
+                "Item a3 only (the agency agreement). How the property is to be sold, ONLY if the agreement states it — a NSW selling agency agreement normally names the method of sale explicitly, often as a tick box or a named 'Auction' section. Set 'auction' only on an explicit statement that the property is to be offered at auction. Do not infer auction from the presence of an auction-related clause that is part of the printed form regardless. If the agreement does not state the method, omit this field entirely.",
+            },
+            auctionDate: {
+              type: "string",
+              description:
+                "Item a3 only, and only when saleMethod is 'auction'. The auction date, format YYYY-MM-DD, ONLY if the agreement states a specific date. Very often it is blank or reads 'TBC' at the time the agreement is signed — that is completely normal, and in that case omit this field rather than guessing or inferring one from the agreement date or the campaign length.",
+            },
+            auctionTime: {
+              type: "string",
+              description:
+                "Item a3 only, and only when saleMethod is 'auction'. The auction time exactly as the agreement writes it (e.g. '10:00am', '11am'). Omit if not stated.",
             },
             notAContract: {
               type: "boolean",
@@ -606,7 +632,12 @@ async function extractOneDocument(
               "agreement was signed, or by whom: the agent uploaded it and can see the signatures, so naming the " +
               "vendors back at them is the restatement the rule above forbids. Only write a note here if " +
               "something is genuinely wrong with the execution, for example it appears unsigned by a party, or " +
-              "carries no date at all), a4 (the ESP figures, only if explicitly stated in this " +
+              "carries no date at all. ALSO on the a3 patch: the METHOD OF SALE, which a NSW selling agency " +
+              "agreement normally states explicitly — set saleMethod, and where the method is auction and the " +
+              "agreement gives a specific date and time, set auctionDate and auctionTime too. A blank or 'TBC' " +
+              "auction date is normal at signing; omit the field rather than inventing one. Write no note about " +
+              "any of this — it fills in fields the agent would otherwise re-key, and saying so adds nothing), " +
+              "a4 (the ESP figures, only if explicitly stated in this " +
               "document — put them in espLow and espHigh and write NO note whatsoever. Do not describe the " +
               "figures, and above all do not characterise where they came from or what kind of estimate they " +
               "are: you cannot tell an agent's own appraisal from an automated valuation by looking at a number, " +
@@ -725,6 +756,42 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
       patches.push(...(await extractOneDocument(supabase, anthropic, item, prescribedDocs)));
     } catch (err) {
       failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${err instanceof Error ? err.message : "extraction failed"}`);
+    }
+  }
+
+  // Method of sale and the auction date, lifted off the agency agreement.
+  //
+  // This writes to the PROPERTY, not an item, so it gets its own narrow pass
+  // with a rule the item patches don't need: it only ever FILLS A BLANK. If
+  // the agent has already said this is an auction, or already put a date in,
+  // the model does not get to overwrite them — the agent knows whether the
+  // auction moved and the twelve-week-old agreement does not.
+  const salePatch = patches.find((p) => p.itemKey === "a3" && p.saleMethod);
+  if (salePatch) {
+    const { data: current } = await supabase
+      .from("properties")
+      .select("sale_method, auction_date, auction_time")
+      .eq("id", propertyId)
+      .maybeSingle();
+
+    const row = current as
+      | { sale_method?: string; auction_date?: string | null; auction_time?: string | null }
+      | null;
+    const update: Record<string, unknown> = {};
+
+    if (salePatch.saleMethod === "auction" && row?.sale_method !== "auction") {
+      update.sale_method = "auction";
+    }
+    // Date and time only where the file has none. Guarded on the agreement
+    // actually saying auction, so a private-treaty agreement can never leave
+    // an auction date behind on the record.
+    if (salePatch.saleMethod === "auction") {
+      if (salePatch.auctionDate && !row?.auction_date) update.auction_date = salePatch.auctionDate;
+      if (salePatch.auctionTime && !row?.auction_time) update.auction_time = salePatch.auctionTime;
+    }
+
+    if (Object.keys(update).length > 0) {
+      await supabase.from("properties").update(update).eq("id", propertyId);
     }
   }
 
