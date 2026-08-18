@@ -266,6 +266,14 @@ export type CpdRecord = {
   category: CpdCategory;
   hours: number;
   completed_date: string;
+  // The approved provider who delivered it — what makes the record count at
+  // all. An entry with no provider can't be shown to qualify as CPD.
+  // See 0022_cpd_provider_evidence.sql.
+  provider: string | null;
+  // The provider's record of completion, which Fair Trading requires the
+  // agent to hold and keep (3 years; 4 for a statement of attainment).
+  evidence_path: string | null;
+  evidence_file_name: string | null;
   notes: string | null;
   source_session_id: string | null;
   created_by: string | null;

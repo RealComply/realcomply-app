@@ -3,29 +3,62 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { AddSessionForm } from "@/components/training/AddSessionForm";
 import { SessionCard } from "@/components/training/SessionCard";
-import type { Profile, TrainingAttendance, TrainingSession } from "@/lib/types";
+import { TrainingTabs } from "@/components/training/TrainingTabs";
+import { TrainingPlanCard } from "@/components/training/TrainingPlanCard";
+import { currentCpdYear } from "@/lib/cpd-year";
+import { CPD_PROVIDER_NOTE, cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import type {
+  CpdRecord,
+  Profile,
+  TrainingAttendance,
+  TrainingPlan,
+  TrainingPlanItem,
+  TrainingSession,
+} from "@/lib/types";
 
-// The office training log — RealComply-website-IA.md's "Training" screen:
-// session history with attendance, sessions tagged CPD-eligible vs internal.
-// Office training frequency isn't prescribed (s32 is outcome-based; the
-// agency sets its own cadence, defaulting quarterly per the NSW obligation
-// register) — this just needs a plan and evidence it happened, which is what
-// logging sessions + attendance here produces. Marking attendance on a
-// CPD-eligible session auto-logs each attendee's CPD hours (see
-// recordAttendance in registers.ts) — that's the link back to the Registers
-// page's CPD tally.
-export default async function TrainingPage() {
+// Training — one section, two tabs (Adam, 18 Aug 2026).
+//
+// The plan is what Requirement 2.4 of the Supervision Guidelines asks for:
+// per staff member, per CPD year, developed in consultation, signed by both.
+// The log is the evidence of sessions that actually happened. They were two
+// separate nav entries, which made the app look like it had two unrelated
+// training features and hid the relationship between them.
+//
+// CPD is deliberately NOT here — it has its own section now. Office training
+// and CPD are different ledgers (see 0021_cpd_provider_gate.sql), and putting
+// them on one screen is what let internal sessions accrue CPD hours in the
+// first place.
+export default async function TrainingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const profile = await requireProfile();
   const supabase = await createClient();
+  const { tab } = await searchParams;
+  const year = currentCpdYear();
 
-  const [{ data: sessionRows }, { data: staffRows }, { data: attendanceRows }] = await Promise.all([
+  const [
+    { data: sessionRows },
+    { data: staffRows },
+    { data: attendanceRows },
+    { data: planRows },
+    { data: itemRows },
+    { data: cpdRows },
+  ] = await Promise.all([
     supabase.from("training_sessions").select("*").order("session_date", { ascending: false }),
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("training_attendance").select("*"),
+    supabase.from("training_plans").select("*").eq("cpd_year_start", year.start),
+    supabase.from("training_plan_items").select("*").order("sort_order", { ascending: true }),
+    supabase.from("cpd_records").select("*").gte("completed_date", year.start).lte("completed_date", year.end),
   ]);
 
   const sessions = (sessionRows ?? []) as TrainingSession[];
   const staff = (staffRows ?? []) as Profile[];
+  const plans = (planRows ?? []) as TrainingPlan[];
+  const items = (itemRows ?? []) as TrainingPlanItem[];
+  const cpd = (cpdRows ?? []) as CpdRecord[];
 
   const attendeesBySession = new Map<string, string[]>();
   for (const row of (attendanceRows ?? []) as TrainingAttendance[]) {
@@ -42,83 +75,145 @@ export default async function TrainingPage() {
     sessionsByAgent.get(row.profile_id)!.push(session);
   }
 
-  return (
-    <>
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Training log</h1>
-            <p className="mt-1 text-sm text-rc-muted">
-              Session history and attendance — the record of what actually happened. The forward plan each person
-              signs lives in Training plans.
-            </p>
-          </div>
-          <div className="flex gap-4 text-sm font-medium">
-            <Link href="/dashboard/registers" className="text-rc-muted transition hover:text-rc-green-deep">
-              ← Registers
-            </Link>
-            <Link href="/dashboard/training-plans" className="text-rc-muted transition hover:text-rc-green-deep">
-              Training plans →
-            </Link>
-          </div>
-        </div>
+  const planByProfile = new Map(plans.map((p) => [p.profile_id, p]));
+  const itemsByPlan = new Map<string, TrainingPlanItem[]>();
+  for (const item of items) {
+    if (!itemsByPlan.has(item.plan_id)) itemsByPlan.set(item.plan_id, []);
+    itemsByPlan.get(item.plan_id)!.push(item);
+  }
+  const cpdByProfile = new Map<string, CpdRecord[]>();
+  for (const row of cpd) {
+    if (!cpdByProfile.has(row.profile_id)) cpdByProfile.set(row.profile_id, []);
+    cpdByProfile.get(row.profile_id)!.push(row);
+  }
 
-        <div className="mt-6">
-          <AddSessionForm />
-        </div>
+  const needsPlan = staff.filter((s) => !planByProfile.has(s.id) || !planByProfile.get(s.id)!.principal_signed_at).length;
 
-        <div className="mt-6 space-y-4">
-          {sessions.length === 0 ? (
-            <p className="text-sm text-rc-muted">No training sessions logged yet.</p>
-          ) : (
-            sessions.map((session) => (
-              <SessionCard
-                key={session.id}
-                session={session}
-                staff={staff}
-                attendeeIds={attendeesBySession.get(session.id) ?? []}
-                canDelete={profile.is_licensee_in_charge}
+  const plansPanel = (
+    <div>
+      <div className="rounded-card border border-rc-border bg-rc-green-soft px-4 py-3 text-xs leading-relaxed text-rc-ink">
+        <p>
+          <span className="font-semibold">A log isn&rsquo;t a plan.</span> The licensee in charge prepares a plan for
+          each staff member, developed in consultation with them, identifying their gaps and the training that
+          addresses them. Both parties sign it, and it&rsquo;s reviewed each CPD year. That&rsquo;s Requirement 2.4 of
+          the Supervision Guidelines.
+        </p>
+        <p className="mt-2 text-rc-muted">
+          A plan is broader than CPD — internal coaching belongs on it. Mark only approved-provider training as
+          counting toward CPD.
+        </p>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        {staff.length === 0 ? (
+          <p className="text-sm text-rc-muted">No team members on file yet.</p>
+        ) : (
+          staff.map((s) => {
+            const plan = planByProfile.get(s.id) ?? null;
+            return (
+              <TrainingPlanCard
+                key={s.id}
+                subject={s}
+                viewerProfile={profile}
+                plan={plan}
+                items={plan ? (itemsByPlan.get(plan.id) ?? []) : []}
+                cpdRecords={cpdByProfile.get(s.id) ?? []}
+                requirement={cpdRequirementFor(s.licence_type, s.cpd_practice_category)}
+                cpdYearLabel={year.label}
               />
-            ))
-          )}
-        </div>
-
-        {sessions.length > 0 && (
-          <section className="mt-8">
-            <h2 className="text-sm font-semibold text-rc-ink">Per-agent training record</h2>
-            <p className="mt-1 text-xs text-rc-muted">
-              Who&rsquo;s completed or attended what — mark attendance on a session above (&ldquo;Edit
-              attendance&rdquo;) to populate this.
-            </p>
-            <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
-              {staff.map((s) => {
-                const attended = sessionsByAgent.get(s.id) ?? [];
-                return (
-                  <li key={s.id} className="px-4 py-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>
-                      <span className="text-xs text-rc-faint">
-                        {attended.length} session{attended.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                    {attended.length > 0 ? (
-                      <ul className="mt-1 flex flex-wrap gap-1.5">
-                        {attended.map((sess) => (
-                          <li key={sess.id} className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-600">
-                            {sess.title} ({sess.session_date})
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-xs text-rc-faint">No sessions recorded yet.</p>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
+            );
+          })
         )}
-      </main>
-    </>
+      </div>
+    </div>
+  );
+
+  const logPanel = (
+    <div>
+      <p className="text-xs leading-relaxed text-rc-muted">
+        Every session the office runs or attends. {CPD_PROVIDER_NOTE}
+      </p>
+
+      <div className="mt-4">
+        <AddSessionForm />
+      </div>
+
+      <div className="mt-6 space-y-4">
+        {sessions.length === 0 ? (
+          <p className="text-sm text-rc-muted">No training sessions logged yet.</p>
+        ) : (
+          sessions.map((session) => (
+            <SessionCard
+              key={session.id}
+              session={session}
+              staff={staff}
+              attendeeIds={attendeesBySession.get(session.id) ?? []}
+              canDelete={profile.is_licensee_in_charge}
+            />
+          ))
+        )}
+      </div>
+
+      {sessions.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold text-rc-ink">Per-agent training record</h2>
+          <p className="mt-1 text-xs text-rc-muted">
+            Who&rsquo;s attended what — mark attendance on a session above (&ldquo;Edit attendance&rdquo;) to populate
+            this.
+          </p>
+          <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
+            {staff.map((s) => {
+              const attended = sessionsByAgent.get(s.id) ?? [];
+              return (
+                <li key={s.id} className="px-4 py-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>
+                    <span className="text-xs text-rc-faint">
+                      {attended.length} session{attended.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  {attended.length > 0 ? (
+                    <ul className="mt-1 flex flex-wrap gap-1.5">
+                      {attended.map((sess) => (
+                        <li key={sess.id} className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-600">
+                          {sess.title} ({sess.session_date})
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-xs text-rc-faint">No sessions recorded yet.</p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+
+  return (
+    <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Training</h1>
+          <p className="mt-1 text-sm text-rc-muted">
+            The plan for the {year.label} CPD year, and the record of what actually happened.
+          </p>
+        </div>
+        <Link href="/dashboard/cpd" className="shrink-0 text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
+          CPD →
+        </Link>
+      </div>
+
+      <div className="mt-6">
+        <TrainingTabs
+          plans={plansPanel}
+          log={logPanel}
+          defaultTab={tab === "log" ? "log" : "plans"}
+          plansBadge={needsPlan}
+        />
+      </div>
+    </main>
   );
 }

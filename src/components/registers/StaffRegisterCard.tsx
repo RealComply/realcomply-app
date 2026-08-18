@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, type ChangeEvent } from "react";
-import { updateLicence, addCpdRecord, deleteCpdRecord, finalizeLicenceDocument, removeLicenceDocument, type ActionState } from "@/lib/actions/registers";
+import { updateLicence, finalizeLicenceDocument, removeLicenceDocument, type ActionState } from "@/lib/actions/registers";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
@@ -17,13 +17,6 @@ const LICENCE_TYPE_LABELS: Record<string, string> = {
   class_1: "Class 1 licence",
   class_2: "Class 2 licence",
   certificate_of_registration: "Certificate of registration",
-};
-
-const CPD_CATEGORY_LABELS: Record<string, string> = {
-  general: "General CPD",
-  fair_trading_forum: "Fair Trading forum",
-  austrac_aml: "AUSTRAC AML training",
-  assistant_unit: "Assistant unit",
 };
 
 export function StaffRegisterCard({
@@ -55,10 +48,6 @@ export function StaffRegisterCard({
   const licenceAction = updateLicence.bind(null, profile.id);
   const [licenceState, licenceFormAction, licencePending] = useActionState(licenceAction, initialState);
   const [editingLicence, setEditingLicence] = useState(false);
-
-  const cpdAction = addCpdRecord.bind(null, profile.id);
-  const [cpdState, cpdFormAction, cpdPending] = useActionState(cpdAction, initialState);
-  const [addingCpd, setAddingCpd] = useState(false);
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
@@ -164,113 +153,30 @@ export function StaffRegisterCard({
         <ReminderLine info={reminderInfo} hasExpiry={Boolean(profile.licence_expiry)} />
       </div>
 
-      <div className="mt-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-rc-muted">
-            {target === null ? (
-              <>CPD {cpdYearLabel} — {totalHours} {isAssistant ? "units" : "hrs"} logged</>
-            ) : (
-              <>
-                CPD {cpdYearLabel} — {totalHours}/{target} {isAssistant ? "units" : "hrs"}
-              </>
-            )}
-          </p>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => setAddingCpd((v) => !v)}
-              className="text-xs font-medium text-rc-green-deep hover:underline"
-            >
-              {addingCpd ? "Cancel" : "+ Log CPD"}
-            </button>
+      {/* CPD summary only — the working screen is /dashboard/cpd now (Adam,
+          18 Aug 2026: "we need a separate section for CPD"). Logging moved
+          with it, which also fixed a real problem: this form never asked who
+          delivered the training, and the provider is what decides whether an
+          entry counts at all. */}
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-neutral-50 px-3 py-2">
+        <p className="text-xs text-rc-muted">
+          {target === null ? (
+            <>
+              CPD {cpdYearLabel} — {totalHours} {isAssistant ? "units" : "hrs"} logged,{" "}
+              <span className="text-rc-amber-deep">requirement not established</span>
+            </>
+          ) : (
+            <>
+              CPD {cpdYearLabel} —{" "}
+              <span className={totalHours >= target ? "text-rc-green-deep" : "text-rc-amber-deep"}>
+                {totalHours}/{target} {isAssistant ? "units" : "hrs"}
+              </span>
+            </>
           )}
-        </div>
-        {/* No bar when there's no published requirement to measure against —
-            a progress bar implies a finish line, and inventing one is the
-            defect this change exists to remove. */}
-        {target === null ? (
-          <p className="mt-1 text-[11px] text-rc-amber-deep">
-            {requirement.unpublished[0] ?? "Requirement not established."}{" "}
-            <Link href="/dashboard/training-plans" className="underline">
-              Set the category of practice
-            </Link>
-          </p>
-        ) : (
-          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
-            <div
-              className={`h-full ${totalHours >= target ? "bg-rc-green-deep" : "bg-rc-amber-deep"}`}
-              style={{ width: `${Math.min(100, (totalHours / target) * 100)}%` }}
-            />
-          </div>
-        )}
-
-        {cpdRecords.length > 0 && (
-          <ul className="mt-2 space-y-1">
-            {cpdRecords.map((r) => (
-              <li key={r.id} className="flex items-center justify-between text-xs text-neutral-600">
-                <span>
-                  {r.activity_name} — {CPD_CATEGORY_LABELS[r.category] ?? r.category} · {r.hours}
-                  {isAssistant && r.category === "assistant_unit" ? "u" : "h"} · {r.completed_date}
-                </span>
-                {canEdit && (
-                  <form action={deleteCpdRecord.bind(null, r.id)}>
-                    <button type="submit" className="text-rc-faint hover:text-rc-amber-deep">
-                      Remove
-                    </button>
-                  </form>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {addingCpd && (
-          <form
-            action={async (formData) => {
-              await cpdFormAction(formData);
-              setAddingCpd(false);
-            }}
-            className="mt-2 space-y-2 rounded-md border border-rc-border p-2"
-          >
-            <input
-              type="text"
-              name="activityName"
-              placeholder="Activity name (e.g. 'Underquoting update webinar')"
-              className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
-            />
-            <div className="flex flex-wrap gap-2">
-              <select name="category" className="rounded-md border border-rc-border px-2 py-1 text-sm">
-                <option value="general">General CPD</option>
-                <option value="fair_trading_forum">Fair Trading forum</option>
-                <option value="austrac_aml">AUSTRAC AML training</option>
-                <option value="assistant_unit">Assistant unit</option>
-              </select>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                name="hours"
-                placeholder={isAssistant ? "Units" : "Hours"}
-                className="w-24 rounded-md border border-rc-border px-2 py-1 text-sm"
-              />
-              <input type="date" name="completedDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
-            </div>
-            <textarea
-              name="notes"
-              placeholder="Notes (optional)"
-              rows={1}
-              className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
-            />
-            <button
-              type="submit"
-              disabled={cpdPending}
-              className="rounded-md bg-rc-green-deep px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-            >
-              Save
-            </button>
-            {cpdState.error && <p className="text-xs text-rc-amber-deep">{cpdState.error}</p>}
-          </form>
-        )}
+        </p>
+        <Link href="/dashboard/cpd" className="shrink-0 text-xs font-medium text-rc-green-deep hover:underline">
+          Manage CPD →
+        </Link>
       </div>
     </div>
   );

@@ -100,11 +100,22 @@ export async function addCpdRecord(profileId: string, _prev: ActionState, formDa
   const hoursRaw = str(formData, "hours");
   const completedDate = str(formData, "completedDate");
   const notes = str(formData, "notes");
+  const provider = str(formData, "provider");
 
   if (!activityName) return { error: "Give the activity a name." };
   const hours = hoursRaw ? Number(hoursRaw) : NaN;
   if (!Number.isFinite(hours) || hours <= 0) return { error: "Enter the hours (or units) as a positive number." };
   if (!completedDate) return { error: "Enter the date it was completed." };
+  // The provider is what makes this CPD rather than office training. Asked
+  // for here rather than left optional, because an entry with nobody named
+  // can't be shown to qualify — and the person filling this in months later
+  // is the one who'd have to reconstruct it. See 0021/0022.
+  if (!provider) {
+    return {
+      error:
+        "Name the approved provider who delivered it. Only Fair Trading approved providers deliver CPD — for an assistant agent's unit, the RTO that issued the statement of attainment.",
+    };
+  }
 
   const { error } = await supabase.from("cpd_records").insert({
     agency_id: profile.agency_id,
@@ -113,6 +124,7 @@ export async function addCpdRecord(profileId: string, _prev: ActionState, formDa
     category,
     hours,
     completed_date: completedDate,
+    provider,
     notes,
     created_by: profile.id,
   });
@@ -120,6 +132,7 @@ export async function addCpdRecord(profileId: string, _prev: ActionState, formDa
   if (error) return { error: "Couldn't save that CPD record — try again." };
 
   revalidatePath("/dashboard/registers");
+  revalidatePath("/dashboard/cpd");
   return ok;
 }
 

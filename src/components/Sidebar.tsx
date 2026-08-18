@@ -74,10 +74,16 @@ const GROUPS: { heading: string; links: NavLink[] }[] = [
     heading: "Compliance records",
     links: [
       { href: "/dashboard/registers", label: "Registers", Icon: FileText },
-      { href: "/dashboard/training", label: "Training log", Icon: GraduationCap },
-      // Separate from the log on purpose — the log is evidence of what
-      // happened, this is the forward plan Requirement 2.4 actually asks for.
-      { href: "/dashboard/training-plans", label: "Training plans", Icon: ClipboardCheck },
+      // One Training entry holding the plan and the log as tabs (Adam, 18 Aug
+      // 2026: "training plans and training logs should be in the same
+      // section"). They're two views of one thing — what a person will do
+      // this year, and what they actually did.
+      { href: "/dashboard/training", label: "Training", Icon: GraduationCap },
+      // CPD is its own section, NOT a tab under Training. It's a separate
+      // ledger with a licence condition attached (s 20(2)) and its own
+      // eligibility rule — only approved providers count. Putting it beside
+      // office training is what let internal sessions accrue CPD hours.
+      { href: "/dashboard/cpd", label: "CPD", Icon: ClipboardCheck },
       { href: "/dashboard/document-signoffs", label: "Sign-offs", Icon: PenLine },
     ],
   },
