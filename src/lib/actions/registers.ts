@@ -136,6 +136,43 @@ export async function addCpdRecord(profileId: string, _prev: ActionState, formDa
   return ok;
 }
 
+// Records where the provider's certificate landed in Storage. Same
+// upload-then-record-path pattern as licence documents — a Server Action
+// can't carry the file itself, so the browser uploads and this saves the
+// pointer. Adam, 18 Aug 2026: "upload the CPD certificate and tick it off
+// against each staff member."
+export async function finalizeCpdEvidence(recordId: string, path: string, fileName: string): Promise<{ error: string | null }> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const { data: row } = await supabase.from("cpd_records").select("profile_id").eq("id", recordId).maybeSingle();
+  const ownerId = (row as { profile_id: string } | null)?.profile_id;
+  if (!ownerId) return { error: "Couldn't find that CPD record." };
+  if (ownerId !== profile.id && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can attach a certificate for someone else." };
+  }
+
+  const { error } = await supabase
+    .from("cpd_records")
+    .update({ evidence_path: path, evidence_file_name: fileName })
+    .eq("id", recordId);
+
+  if (error) return { error: "Couldn't save the certificate — try again." };
+
+  revalidatePath("/dashboard/cpd");
+  return { error: null };
+}
+
+export async function removeCpdEvidence(recordId: string): Promise<void> {
+  const { supabase, profile } = await requireAuthContext();
+  const { data: row } = await supabase.from("cpd_records").select("profile_id").eq("id", recordId).maybeSingle();
+  const ownerId = (row as { profile_id: string } | null)?.profile_id;
+  if (!ownerId) return;
+  if (ownerId !== profile.id && !profile.is_licensee_in_charge) return;
+
+  await supabase.from("cpd_records").update({ evidence_path: null, evidence_file_name: null }).eq("id", recordId);
+  revalidatePath("/dashboard/cpd");
+}
+
 export async function deleteCpdRecord(recordId: string): Promise<void> {
   const { supabase, profile } = await requireAuthContext();
 

@@ -5,8 +5,9 @@ import { AddSessionForm } from "@/components/training/AddSessionForm";
 import { SessionCard } from "@/components/training/SessionCard";
 import { TrainingTabs } from "@/components/training/TrainingTabs";
 import { TrainingPlanCard } from "@/components/training/TrainingPlanCard";
+import { WhyDisclosure } from "@/components/WhyDisclosure";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { CPD_PROVIDER_NOTE, cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import type {
   CpdRecord,
   Profile,
@@ -89,20 +90,19 @@ export default async function TrainingPage({
 
   const needsPlan = staff.filter((s) => !planByProfile.has(s.id) || !planByProfile.get(s.id)!.principal_signed_at).length;
 
+  // Adam, 18 Aug 2026: "having these sections so text heavy is just gonna put
+  // people off... most agents don't need to know this stuff. The licensee
+  // themselves will know what registers they need to keep and why."
+  //
+  // Right. The explanation moved into a disclosure the curious can open and
+  // everyone else never sees. The rules didn't change — the shouting did.
   const plansPanel = (
     <div>
-      <div className="rounded-card border border-rc-border bg-rc-green-soft px-4 py-3 text-xs leading-relaxed text-rc-ink">
-        <p>
-          <span className="font-semibold">A log isn&rsquo;t a plan.</span> The licensee in charge prepares a plan for
-          each staff member, developed in consultation with them, identifying their gaps and the training that
-          addresses them. Both parties sign it, and it&rsquo;s reviewed each CPD year. That&rsquo;s Requirement 2.4 of
-          the Supervision Guidelines.
-        </p>
-        <p className="mt-2 text-rc-muted">
-          A plan is broader than CPD — internal coaching belongs on it. Mark only approved-provider training as
-          counting toward CPD.
-        </p>
-      </div>
+      <WhyDisclosure summary="What goes on a training plan?">
+        One plan per person per CPD year, agreed with them and signed by both. It can include internal coaching —
+        only tick &ldquo;counts toward CPD&rdquo; where an approved provider delivered it. Requirement 2.4 of the
+        Supervision Guidelines.
+      </WhyDisclosure>
 
       <div className="mt-4 space-y-4">
         {staff.length === 0 ? (
@@ -130,9 +130,10 @@ export default async function TrainingPage({
 
   const logPanel = (
     <div>
-      <p className="text-xs leading-relaxed text-rc-muted">
-        Every session the office runs or attends. {CPD_PROVIDER_NOTE}
-      </p>
+      <WhyDisclosure summary="Does a session count toward CPD?">
+        Only if a Fair Trading approved provider delivered it. Your own internal sessions don&rsquo;t — though an
+        approved provider running a session at your office does, so the venue isn&rsquo;t the test.
+      </WhyDisclosure>
 
       <div className="mt-4">
         <AddSessionForm />

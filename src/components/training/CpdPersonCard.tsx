@@ -1,8 +1,16 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { CircleAlert, Trash2 } from "lucide-react";
-import { addCpdRecord, deleteCpdRecord, type ActionState } from "@/lib/actions/registers";
+import { useActionState, useEffect, useState, type ChangeEvent } from "react";
+import { CircleAlert, Paperclip, Trash2 } from "lucide-react";
+import {
+  addCpdRecord,
+  deleteCpdRecord,
+  finalizeCpdEvidence,
+  removeCpdEvidence,
+  type ActionState,
+} from "@/lib/actions/registers";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { EVIDENCE_BUCKET, buildCpdDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { updateCpdPracticeCategory } from "@/lib/actions/training-plans";
 import { CPD_PRACTICE_CATEGORY_LABELS, type CpdRequirement } from "@/lib/rules/nsw-cpd";
 import type { CpdRecord, Profile } from "@/lib/types";
@@ -150,15 +158,14 @@ export function CpdPersonCard({
                   {r.provider ? (
                     <p className="mt-0.5 text-rc-faint">{r.provider}</p>
                   ) : (
-                    <p className="mt-0.5 text-rc-amber-deep">
-                      No provider recorded — can&rsquo;t be shown to qualify as CPD.
-                    </p>
+                    <p className="mt-0.5 text-rc-amber-deep">No provider recorded — won&rsquo;t count.</p>
                   )}
                   {r.notes?.includes("NEEDS CHECK") && (
                     <p className="mt-0.5 text-rc-amber-deep">
-                      Auto-logged from an office session before providers were checked. Confirm or remove it.
+                      Logged from an office session before providers were checked. Confirm or remove it.
                     </p>
                   )}
+                  <CpdCertificate record={r} canEdit={canEdit} profileId={subject.id} agencyId={subject.agency_id} />
                 </div>
                 {canEdit && (
                   <button
@@ -224,6 +231,107 @@ export function CpdPersonCard({
           </form>
         )}
       </div>
+    </div>
+  );
+}
+
+// The provider's record of completion, attached to one CPD entry.
+//
+// Fair Trading requires the agent to hold this — it names the topic, the
+// assessment result, the hours and the trainer, and it has to be kept for
+// 3 years (4 for an assistant agent's statement of attainment). A CPD
+// register that records a claim with no document behind it is the same
+// problem as a 45-box checklist: a tick with nothing under it.
+//
+// Same upload-then-record-path pattern as licence documents: the browser
+// uploads to Storage, then a Server Action saves the pointer.
+function CpdCertificate({
+  record,
+  canEdit,
+  profileId,
+  agencyId,
+}: {
+  record: CpdRecord;
+  canEdit: boolean;
+  profileId: string;
+  agencyId: string;
+}) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!record.evidence_path) return;
+    let cancelled = false;
+    const supabase = createBrowserClient();
+    supabase.storage
+      .from(EVIDENCE_BUCKET)
+      .createSignedUrl(record.evidence_path, 3600)
+      .then(({ data }) => {
+        if (!cancelled) setSignedUrl(data?.signedUrl ?? null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [record.evidence_path]);
+
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setError(null);
+    setUploading(true);
+    const supabase = createBrowserClient();
+    const path = buildCpdDocPath(agencyId, profileId, file.name);
+    const { error: uploadError } = await uploadEvidenceObject(supabase, { path, file });
+    if (uploadError) {
+      setError(uploadError);
+      setUploading(false);
+      return;
+    }
+    const { error: saveError } = await finalizeCpdEvidence(record.id, path, file.name);
+    setUploading(false);
+    if (saveError) setError(saveError);
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      {record.evidence_path ? (
+        <>
+          {signedUrl ? (
+            <a
+              href={signedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-rc-green-deep hover:underline"
+            >
+              <Paperclip size={11} /> {record.evidence_file_name ?? "Certificate"}
+            </a>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-rc-faint">
+              <Paperclip size={11} /> loading…
+            </span>
+          )}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => removeCpdEvidence(record.id)}
+              className="text-rc-faint transition hover:text-rc-amber-deep"
+            >
+              Replace
+            </button>
+          )}
+        </>
+      ) : canEdit ? (
+        <label className="cursor-pointer text-rc-green-deep hover:underline">
+          {uploading ? "Uploading…" : "Attach certificate"}
+          <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
+        </label>
+      ) : (
+        <span className="text-rc-faint">No certificate attached.</span>
+      )}
+      {error && <span className="text-rc-amber-deep">{error}</span>}
     </div>
   );
 }

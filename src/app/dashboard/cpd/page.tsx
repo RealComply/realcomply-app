@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { CpdPersonCard } from "@/components/training/CpdPersonCard";
+import { WhyDisclosure } from "@/components/WhyDisclosure";
 import { currentCpdYear } from "@/lib/cpd-year";
 import {
   CPD_DELIVERY_NOTE,
@@ -93,13 +94,13 @@ export default async function CpdPage() {
         </div>
       )}
 
-      {/* The rules, stated once, where someone planning their year will read
-          them — rather than discovered in June when it's too late to fix. */}
-      <div className="mt-4 rounded-card border border-rc-border bg-rc-green-soft px-4 py-3 text-xs leading-relaxed text-rc-ink">
-        <p>{CPD_PROVIDER_NOTE}</p>
-        <p className="mt-1.5 text-rc-muted">{CPD_DELIVERY_NOTE}</p>
-        <p className="mt-1.5 text-rc-muted">{CPD_ELECTIVE_NOTE}</p>
-        <p className="mt-1.5 text-rc-muted">{CPD_RECORD_RETENTION_NOTE}</p>
+      {/* Folded away rather than shouted. The rules still need a home — an
+          agent who logs the wrong thing has to be able to find out why — but
+          they don't need to greet everyone on every visit (Adam, 18 Aug). */}
+      <div className="mt-4">
+        <WhyDisclosure summary="What counts as CPD?">
+          {CPD_PROVIDER_NOTE} {CPD_DELIVERY_NOTE} {CPD_ELECTIVE_NOTE} {CPD_RECORD_RETENTION_NOTE}
+        </WhyDisclosure>
       </div>
 
       <div className="mt-6 space-y-4">

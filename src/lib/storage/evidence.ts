@@ -24,6 +24,14 @@ export function buildLicenceDocPath(agencyId: string, profileId: string, fileNam
   return `${agencyId}/_licences/${profileId}/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// The provider's record of completion for one CPD activity. Kept per person
+// rather than per agency folder, because retention is the individual's
+// obligation (3 years; 4 for an assistant agent's statement of attainment)
+// and it should stay with them if they move.
+export function buildCpdDocPath(agencyId: string, profileId: string, fileName: string): string {
+  return `${agencyId}/_cpd/${profileId}/${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 export function buildSgManualPath(agencyId: string, fileName: string): string {
   return `${agencyId}/_sg-manual/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
