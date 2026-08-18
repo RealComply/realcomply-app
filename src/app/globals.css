@@ -93,6 +93,29 @@
   --shadow-glow-green: 0 8px 20px rgba(12, 166, 120, 0.28);
 }
 
+/* The overscroll colour, and only that.
+   -------------------------------------------------------------------------
+   Adam, 18 Aug 2026: dragging past the end of the landing page on a phone
+   revealed "a massive empty white section" under the footer. There was no gap
+   in the page — the document measures flush to the footer's last pixel. What
+   he was seeing is the browser's rubber-band area, which is painted with the
+   CANVAS background, and the canvas takes its colour from <html> if <html>
+   has one and from <body> otherwise. Body was the pale --rc-bg-alt, so
+   overscrolling past a dark footer exposed a near-white slab with a hard edge
+   across it.
+
+   Setting it on <html> fixes the bottom of every page, since the dark panel is
+   what sits at the foot of the landing page and reads as the sidebar's colour
+   inside the app. Overscrolling at the TOP now shows the same dark instead of
+   white — a deliberate trade, because the end of a long marketing page is
+   where people actually overscroll, and dark above the header reads as browser
+   chrome rather than as a fault.
+
+   Body keeps its own background, so nothing about the page itself changes. */
+html {
+  background: var(--rc-panel);
+}
+
 body {
   background: var(--rc-bg-alt);
   color: var(--foreground);

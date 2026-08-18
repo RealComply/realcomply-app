@@ -179,7 +179,13 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
   const src = Array.isArray(rawSrc) ? rawSrc[0] : rawSrc;
 
   return (
-    <main className="min-h-full bg-white text-rc-ink">
+    // flex-1 rather than min-h-full. This page is always far taller than the
+    // viewport, so a percentage min-height could only ever be a no-op or a
+    // source of trouble — and percentage heights resolved against a flex
+    // parent whose own height is auto are exactly the kind of thing that
+    // behaves differently on mobile Safari. flex-1 gives the same
+    // fill-the-column behaviour without the percentage.
+    <main className="flex-1 bg-white text-rc-ink">
       <header>
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5 sm:px-6">
           <Link href="/" aria-label="RealComply home">
