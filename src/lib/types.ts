@@ -6,6 +6,20 @@
 // — the certificate an assistant agent holds instead (PSA Act licensing).
 export type LicenceType = "class_1" | "class_2" | "certificate_of_registration";
 
+// The category of practice a person's CPD hours are measured against. Fair
+// Trading publishes hours per category, not per licence class — which is why
+// the class alone was never enough to state a requirement. Lives here rather
+// than in rules/nsw-cpd.ts because Profile references it and nsw-cpd.ts
+// already imports LicenceType from this file.
+export type CpdPracticeCategory =
+  | "residential_sales"
+  | "commercial"
+  | "business_broking"
+  | "stock_and_station"
+  | "strata"
+  | "onsite_short_term_rpm"
+  | "residential_property_management";
+
 export type Profile = {
   id: string;
   agency_id: string;
@@ -18,6 +32,11 @@ export type Profile = {
   licence_expiry: string | null;
   licence_document_path: string | null;
   licence_document_file_name: string | null;
+  // The category of practice CPD hours are measured against. Fair Trading
+  // sets hours per category, not per licence class — see rules/nsw-cpd.ts.
+  // Null means not recorded, and the app must say it can't state a
+  // requirement rather than fall back to a number.
+  cpd_practice_category: CpdPracticeCategory | null;
   created_at: string;
 };
 
@@ -122,6 +141,51 @@ export type BreachCategory =
 // 0019_licence_reminders.sql. Read-only from the app: the daily cron writes
 // them through the service client, and the register displays the most recent
 // one so the office can see the reminders are running.
+// Annual training plan — Requirement 2.4 of the NSW Supervision Guidelines.
+// One per person per CPD year. See 0020_training_plans.sql.
+export type TrainingPlan = {
+  id: string;
+  agency_id: string;
+  profile_id: string;
+  cpd_year_start: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  consultation_date: string | null;
+  identified_gaps: string | null;
+  required_hours: number | null;
+  required_units: number | null;
+  requirement_note: string | null;
+  staff_signed_name: string | null;
+  staff_signed_at: string | null;
+  principal_signed_name: string | null;
+  principal_signed_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TrainingPlanClassification = "compulsory" | "elective";
+export type TrainingDeliveryType = "face_to_face" | "interactive_webinar" | "online_unit" | "other";
+
+export type TrainingPlanItem = {
+  id: string;
+  agency_id: string;
+  plan_id: string;
+  program_name: string;
+  classification: TrainingPlanClassification;
+  delivery_type: TrainingDeliveryType | null;
+  training_hours: number | null;
+  provider: string | null;
+  gap_reason: string | null;
+  due_date: string | null;
+  completed_date: string | null;
+  evidence_path: string | null;
+  evidence_file_name: string | null;
+  cpd_record_id: string | null;
+  sort_order: number;
+  created_at: string;
+};
+
 export type LicenceReminder = {
   id: string;
   agency_id: string;

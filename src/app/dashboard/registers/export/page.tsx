@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { currentCpdYear, CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
+import { currentCpdYear } from "@/lib/cpd-year";
+import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
 
 const LICENCE_TYPE_LABELS: Record<string, string> = {
@@ -63,8 +64,8 @@ export default async function RegistersExportPage() {
         <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Licence register</h2>
         <ul className="mt-2 space-y-1">
           {staff.map((s) => {
-            const isAssistant = s.licence_type === "certificate_of_registration";
-            const target = isAssistant ? CPD_UNITS_REQUIRED_ASSISTANT : CPD_HOURS_REQUIRED_AGENT;
+            const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
+            const target = requirement.units ?? requirement.coreHours;
             const total = (cpdByProfile[s.id] ?? []).reduce((sum, r) => sum + Number(r.hours), 0);
             return (
               <li key={s.id} className="text-sm">
@@ -72,8 +73,11 @@ export default async function RegistersExportPage() {
                 <span className="text-rc-muted">
                   — {s.licence_type ? LICENCE_TYPE_LABELS[s.licence_type] : "no licence on file"}
                   {s.licence_number ? ` · ${s.licence_number}` : ""}
-                  {s.licence_expiry ? ` · expires ${s.licence_expiry}` : ""} · CPD {total}/{target}
-                  {isAssistant ? "u" : "h"}
+                  {s.licence_expiry ? ` · expires ${s.licence_expiry}` : ""} ·{" "}
+                  {target === null
+                    ? `CPD ${total} logged — requirement not established`
+                    : `CPD ${total}/${target}${requirement.units !== null ? "u" : "h"}`}
+                  {requirement.forumRequired ? " · Class 1 forum also required" : ""}
                 </span>
               </li>
             );

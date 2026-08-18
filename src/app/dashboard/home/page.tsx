@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
-import { currentCpdYear, CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
+import { currentCpdYear } from "@/lib/cpd-year";
+import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
 import { WeeklyReviewWidget } from "@/components/home/WeeklyReviewWidget";
@@ -108,9 +109,13 @@ export default async function HomeDashboardPage() {
     if (!cpdByProfile.has(row.profile_id)) cpdByProfile.set(row.profile_id, []);
     cpdByProfile.get(row.profile_id)!.push(row);
   }
+  // Only counts people whose requirement can actually be stated — Fair
+  // Trading sets CPD hours per category of practice, and hasn't published a
+  // figure for every category this year. See rules/nsw-cpd.ts.
   const cpdOutstanding = staff.filter((s) => {
-    const isAssistant = s.licence_type === "certificate_of_registration";
-    const target = isAssistant ? CPD_UNITS_REQUIRED_ASSISTANT : CPD_HOURS_REQUIRED_AGENT;
+    const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
+    const target = requirement.units ?? requirement.coreHours;
+    if (target === null) return false;
     const total = (cpdByProfile.get(s.id) ?? []).reduce((sum, r) => sum + Number(r.hours), 0);
     return total < target;
   }).length;

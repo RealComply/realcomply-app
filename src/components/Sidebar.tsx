@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   BookOpen,
   FileText,
+  ClipboardCheck,
   GraduationCap,
   Home,
   LayoutGrid,
@@ -65,7 +66,10 @@ const GROUPS: { heading: string; links: NavLink[] }[] = [
     heading: "Compliance records",
     links: [
       { href: "/dashboard/registers", label: "Registers", Icon: FileText },
-      { href: "/dashboard/training", label: "Training", Icon: GraduationCap },
+      { href: "/dashboard/training", label: "Training log", Icon: GraduationCap },
+      // Separate from the log on purpose — the log is evidence of what
+      // happened, this is the forward plan Requirement 2.4 actually asks for.
+      { href: "/dashboard/training-plans", label: "Training plans", Icon: ClipboardCheck },
       { href: "/dashboard/document-signoffs", label: "Sign-offs", Icon: PenLine },
     ],
   },

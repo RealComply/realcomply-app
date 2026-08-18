@@ -3,7 +3,16 @@ import { sendEmail } from "@/lib/email/send";
 import { computePropertyDigests, daysSinceActivity, type PropertyDigest } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
 import { credentialLabel } from "@/lib/licence-reminders";
-import { STAGE_LABELS, type Agency, type Profile, type Property, type PropertyItem, type TrainingSession } from "@/lib/types";
+import { currentCpdYear } from "@/lib/cpd-year";
+import {
+  STAGE_LABELS,
+  type Agency,
+  type Profile,
+  type Property,
+  type PropertyItem,
+  type TrainingPlan,
+  type TrainingSession,
+} from "@/lib/types";
 
 // Office training frequency isn't prescribed — s32 is outcome-based, the
 // agency sets its own cadence — but "defaults quarterly" (see
@@ -25,13 +34,14 @@ type AgencyBundle = {
   profiles: Profile[];
   digests: PropertyDigest[];
   lastTrainingSessionDate: string | null;
+  trainingPlans: TrainingPlan[];
 };
 
 async function loadAgencyBundle(
   supabase: ReturnType<typeof createServiceClient>,
   agency: Agency,
 ): Promise<AgencyBundle> {
-  const [{ data: properties }, { data: profiles }, { data: trainingSessions }] = await Promise.all([
+  const [{ data: properties }, { data: profiles }, { data: trainingSessions }, { data: planRows }] = await Promise.all([
     supabase.from("properties").select("*").eq("agency_id", agency.id),
     supabase.from("profiles").select("*").eq("agency_id", agency.id),
     supabase
@@ -40,6 +50,11 @@ async function loadAgencyBundle(
       .eq("agency_id", agency.id)
       .order("session_date", { ascending: false })
       .limit(1),
+    supabase
+      .from("training_plans")
+      .select("*")
+      .eq("agency_id", agency.id)
+      .eq("cpd_year_start", currentCpdYear().start),
   ]);
 
   const propertyList = (properties ?? []) as Property[];
@@ -60,7 +75,14 @@ async function loadAgencyBundle(
   const digests = computePropertyDigests(propertyList, itemsByProperty);
   const lastTrainingSessionDate = ((trainingSessions as Pick<TrainingSession, "session_date">[] | null) ?? [])[0]?.session_date ?? null;
 
-  return { agency, properties: propertyList, profiles: profileList, digests, lastTrainingSessionDate };
+  return {
+    agency,
+    properties: propertyList,
+    profiles: profileList,
+    digests,
+    lastTrainingSessionDate,
+    trainingPlans: (planRows ?? []) as TrainingPlan[],
+  };
 }
 
 function agentName(profiles: Profile[], id: string): string {
@@ -165,16 +187,43 @@ function renderOwnCredentialSection(profile: Profile): string {
 // above — returns "" (nothing added) when there's a session on record within
 // the reminder window, so this only ever shows up when it's genuinely worth
 // the licensee's attention.
-function renderTrainingSection(lastTrainingSessionDate: string | null): string {
+function renderTrainingSection(
+  lastTrainingSessionDate: string | null,
+  profiles: Profile[],
+  plans: TrainingPlan[],
+  cpdYearLabel: string,
+): string {
   const days = daysSinceActivity(lastTrainingSessionDate);
-  if (days !== null && days <= TRAINING_REMINDER_DAYS) return "";
+  const staleSessions = days === null || days > TRAINING_REMINDER_DAYS;
+
+  // Requirement 2.4 of the Supervision Guidelines: a plan per staff member
+  // per CPD year, developed in consultation and signed by both. The licensee
+  // is the one who carries this, so it belongs in the licensee's digest — and
+  // "who hasn't got one" is exactly the question they'd otherwise have to go
+  // looking for.
+  const planByProfile = new Map(plans.map((p) => [p.profile_id, p]));
+  const noPlan = profiles.filter((p) => (p.is_agent || p.is_licensee_in_charge) && !planByProfile.has(p.id));
+  const unapproved = profiles.filter((p) => {
+    const plan = planByProfile.get(p.id);
+    return plan && !plan.principal_signed_at;
+  });
+
+  if (!staleSessions && noPlan.length === 0 && unapproved.length === 0) return "";
 
   const lines = ["", "Training", "========"];
-  lines.push(
-    days === null
-      ? "  - No training session logged yet."
-      : `  - ${days} days since the last logged training session — worth booking one in.`,
-  );
+  if (staleSessions) {
+    lines.push(
+      days === null
+        ? "  - No training session logged yet."
+        : `  - ${days} days since the last logged training session — worth booking one in.`,
+    );
+  }
+  for (const p of noPlan) {
+    lines.push(`  - ${p.full_name ?? p.email}: no ${cpdYearLabel} training plan yet.`);
+  }
+  for (const p of unapproved) {
+    lines.push(`  - ${p.full_name ?? p.email}: training plan started but not signed off.`);
+  }
   return lines.join("\n");
 }
 
@@ -199,7 +248,12 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
   for (const agency of (agencies ?? []) as Agency[]) {
     const bundle = await loadAgencyBundle(supabase, agency);
     const licenceSection = renderLicenceAndPiSection(bundle.agency, bundle.profiles);
-    const trainingSection = renderTrainingSection(bundle.lastTrainingSessionDate);
+    const trainingSection = renderTrainingSection(
+      bundle.lastTrainingSessionDate,
+      bundle.profiles,
+      bundle.trainingPlans,
+      currentCpdYear().label,
+    );
 
     for (const profile of bundle.profiles) {
       if (!profile.is_agent && !profile.is_licensee_in_charge) {

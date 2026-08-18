@@ -49,12 +49,18 @@ export default async function TrainingPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Training log</h1>
             <p className="mt-1 text-sm text-rc-muted">
-              Session history and attendance — evidence for your s32 training plan.
+              Session history and attendance — the record of what actually happened. The forward plan each person
+              signs lives in Training plans.
             </p>
           </div>
-          <Link href="/dashboard/registers" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-            ← Registers
-          </Link>
+          <div className="flex gap-4 text-sm font-medium">
+            <Link href="/dashboard/registers" className="text-rc-muted transition hover:text-rc-green-deep">
+              ← Registers
+            </Link>
+            <Link href="/dashboard/training-plans" className="text-rc-muted transition hover:text-rc-green-deep">
+              Training plans →
+            </Link>
+          </div>
         </div>
 
         <div className="mt-6">

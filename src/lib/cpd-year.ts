@@ -13,9 +13,21 @@ export function currentCpdYear(reference: Date = new Date()): { start: string; e
   };
 }
 
-// Requirement per NSW obligation register §A: 7 hrs/yr for Class 1 & 2
-// agents (Class 1 also needs a Fair Trading forum + AUSTRAC AML training on
-// top of that base); assistant agents need 3 units/yr instead of hours.
-export const CPD_HOURS_REQUIRED_AGENT = 7;
-export const CPD_UNITS_REQUIRED_ASSISTANT = 3;
+// REMOVED 18 Aug 2026 — CPD_HOURS_REQUIRED_AGENT / CPD_UNITS_REQUIRED_ASSISTANT.
+//
+// The flat "7 hours for anyone with a licence" was wrong. Fair Trading sets
+// CPD hours per CATEGORY OF PRACTICE, not per licence class: 7 for
+// residential sales, commercial, business broking and stock & station; 6 for
+// strata; 4 for on-site short-term residential property management; and
+// residential property management not published for 2026–27 at all. Class 1
+// holders additionally owe an accredited Fair Trading forum per category, on
+// top of the core hours.
+//
+// The requirement now lives in src/lib/rules/nsw-cpd.ts, where it belongs —
+// it is jurisdiction-specific rules content, not a date helper, and it needs
+// a checked-on date because Fair Trading republishes it annually on an
+// unversioned page with no legislative amendment to notice.
+//
+// This file keeps only the CPD-year arithmetic, which genuinely is a date
+// helper and genuinely doesn't change.
 

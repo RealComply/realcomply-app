@@ -3,7 +3,7 @@
 import { StaffRegisterCard } from "@/components/registers/StaffRegisterCard";
 import { CorporationLicenceCard } from "@/components/registers/CorporationLicenceCard";
 import { expiryStatus } from "@/lib/expiry-status";
-import { CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
+import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import type { ReminderInfo } from "@/components/registers/ReminderLine";
 import type { Agency, CpdRecord, Profile } from "@/lib/types";
 
@@ -32,9 +32,14 @@ export function LicencePanel({
   const current = statuses.filter((s) => s === "ok" || s === "soon").length;
   const expiringSoon = statuses.filter((s) => s === "urgent").length;
   const expired = statuses.filter((s) => s === "expired").length;
+  // Only counts people whose requirement we can actually state. Someone with
+  // no category of practice recorded, or in a category Fair Trading hasn't
+  // published for this year, isn't "outstanding" — we simply don't know, and
+  // the card itself says so rather than this tile guessing.
   const cpdOutstanding = staff.filter((s) => {
-    const isAssistant = s.licence_type === "certificate_of_registration";
-    const target = isAssistant ? CPD_UNITS_REQUIRED_ASSISTANT : CPD_HOURS_REQUIRED_AGENT;
+    const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
+    const target = requirement.units ?? requirement.coreHours;
+    if (target === null) return false;
     const total = (cpdByProfile[s.id] ?? []).reduce((sum, r) => sum + Number(r.hours), 0);
     return total < target;
   }).length;

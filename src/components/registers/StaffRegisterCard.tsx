@@ -5,8 +5,9 @@ import { updateLicence, addCpdRecord, deleteCpdRecord, finalizeLicenceDocument, 
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
-import { CPD_HOURS_REQUIRED_AGENT, CPD_UNITS_REQUIRED_ASSISTANT } from "@/lib/cpd-year";
+import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import { ReminderLine, type ReminderInfo } from "@/components/registers/ReminderLine";
+import Link from "next/link";
 import { Paperclip } from "lucide-react";
 import type { CpdRecord, Profile } from "@/lib/types";
 
@@ -40,7 +41,14 @@ export function StaffRegisterCard({
 }) {
   const canEdit = viewerProfile.id === profile.id || viewerProfile.is_licensee_in_charge;
   const isAssistant = profile.licence_type === "certificate_of_registration";
-  const target = isAssistant ? CPD_UNITS_REQUIRED_ASSISTANT : CPD_HOURS_REQUIRED_AGENT;
+  // Was a flat 7 hours for anyone holding a licence. Fair Trading sets hours
+  // per CATEGORY of practice (7 residential sales / commercial / business
+  // broking / stock & station, 6 strata, 4 on-site short-term RPM, and
+  // residential property management not published for 2026–27), and Class 1
+  // holders owe an accredited forum on top. A target of null means we can't
+  // state a requirement — see rules/nsw-cpd.ts.
+  const requirement = cpdRequirementFor(profile.licence_type, profile.cpd_practice_category);
+  const target = requirement.units ?? requirement.coreHours;
   const totalHours = cpdRecords.reduce((sum, r) => sum + Number(r.hours), 0);
   const status = expiryStatus(profile.licence_expiry);
 
@@ -159,7 +167,13 @@ export function StaffRegisterCard({
       <div className="mt-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-rc-muted">
-            CPD {cpdYearLabel} — {totalHours}/{target} {isAssistant ? "units" : "hrs"}
+            {target === null ? (
+              <>CPD {cpdYearLabel} — {totalHours} {isAssistant ? "units" : "hrs"} logged</>
+            ) : (
+              <>
+                CPD {cpdYearLabel} — {totalHours}/{target} {isAssistant ? "units" : "hrs"}
+              </>
+            )}
           </p>
           {canEdit && (
             <button
@@ -171,12 +185,24 @@ export function StaffRegisterCard({
             </button>
           )}
         </div>
-        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
-          <div
-            className={`h-full ${totalHours >= target ? "bg-rc-green-deep" : "bg-rc-amber-deep"}`}
-            style={{ width: `${Math.min(100, (totalHours / target) * 100)}%` }}
-          />
-        </div>
+        {/* No bar when there's no published requirement to measure against —
+            a progress bar implies a finish line, and inventing one is the
+            defect this change exists to remove. */}
+        {target === null ? (
+          <p className="mt-1 text-[11px] text-rc-amber-deep">
+            {requirement.unpublished[0] ?? "Requirement not established."}{" "}
+            <Link href="/dashboard/training-plans" className="underline">
+              Set the category of practice
+            </Link>
+          </p>
+        ) : (
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+            <div
+              className={`h-full ${totalHours >= target ? "bg-rc-green-deep" : "bg-rc-amber-deep"}`}
+              style={{ width: `${Math.min(100, (totalHours / target) * 100)}%` }}
+            />
+          </div>
+        )}
 
         {cpdRecords.length > 0 && (
           <ul className="mt-2 space-y-1">
