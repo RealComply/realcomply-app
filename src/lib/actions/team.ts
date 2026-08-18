@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { requireAuthContext } from "@/lib/actions/compliance";
+import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 
 export type ActionState = { error: string | null };
 
@@ -118,12 +119,14 @@ export async function saveLicenseeEmail(
   // two agency-level settings. Validated only for shape: anything stricter here
   // rejects valid addresses more often than it catches bad ones, and a wrong
   // website surfaces immediately the first time the app tries to find a listing.
-  const website = String(formData.get("websiteUrl") ?? "").trim();
-  if (website && !/^https?:\/\//i.test(website)) {
-    return { error: "The website address needs to start with https://", saved: false };
+  // Typed the way a person says it — cassproperty.com.au — and normalised
+  // here rather than demanded of them. See lib/normalise-url.ts.
+  const website = normaliseWebsiteUrl(String(formData.get("websiteUrl") ?? ""));
+  if (!website.ok) {
+    return { error: website.error, saved: false };
   }
 
-  const { error: siteError } = await supabase.rpc("set_agency_website", { p_url: website });
+  const { error: siteError } = await supabase.rpc("set_agency_website", { p_url: website.url });
   if (siteError) {
     return { error: "Saved the email, but couldn't save the website. Try again.", saved: false };
   }

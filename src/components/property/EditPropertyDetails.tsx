@@ -110,10 +110,16 @@ export function EditPropertyDetails({ property }: { property: Property }) {
       <input
         id="listingUrl"
         name="listingUrl"
-        type="url"
+        // Plain text rather than type="url" — the browser rejects a pasted
+        // address without a scheme and its message can't be reworded. The
+        // value is normalised server-side (lib/normalise-url.ts).
+        type="text"
         inputMode="url"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
         defaultValue={property.listing_url ?? ""}
-        placeholder="https://www.youragency.com.au/listing/..."
+        placeholder="youragency.com.au/listing/..."
         className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
       />
       <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">

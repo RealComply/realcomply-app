@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Home as HomeIcon } from "lucide-react";
+import { Home as HomeIcon, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { STAGE_LABELS, type Property } from "@/lib/types";
@@ -18,26 +18,35 @@ export default async function DashboardPage() {
   return (
     <>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Your properties</h1>
+        {/* "Listings", not "properties" (Adam, 18 Aug 2026) — it's what
+            agents call them, and "property" is already doing a different job
+            in this app, where it means the physical thing a listing is about
+            (property type, strata, pool). */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Listings</h1>
+            <p className="mt-1 text-sm text-rc-muted">
+              {list.length === 0
+                ? "Every listing you're running, and where each one is up to."
+                : `${list.length} listing${list.length === 1 ? "" : "s"} — open one to work through its checklist.`}
+            </p>
+          </div>
           <Link
             href="/dashboard/new"
-            className="rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-semibold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
           >
-            + Add property
+            <Plus size={16} strokeWidth={2.5} /> Add listing
           </Link>
         </div>
 
         {list.length === 0 ? (
           <div className="mt-10 rounded-card border border-dashed border-rc-border bg-white px-6 py-16 text-center">
-            <p className="text-rc-muted">
-              No properties yet. Add your first listing to start the compliance checklist.
-            </p>
+            <p className="text-rc-muted">No listings yet. Add your first one to start its compliance checklist.</p>
             <Link
               href="/dashboard/new"
-              className="mt-4 inline-block rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-semibold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
             >
-              + Add property
+              <Plus size={16} strokeWidth={2.5} /> Add listing
             </Link>
           </div>
         ) : (

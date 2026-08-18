@@ -174,7 +174,7 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
 
     const missing = DOC_FIELDS.filter(({ field }) => !files[field]);
     if (missing.length > 0) {
-      setUploadError("Attach all three documents to create a property file.");
+      setUploadError("Attach all three documents to create the listing.");
       return;
     }
 
@@ -207,7 +207,7 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
       <Link href="/dashboard" className="text-sm text-rc-muted transition hover:text-rc-ink hover:underline">
         ← Back to properties
       </Link>
-      <h1 className="mt-3 text-xl font-semibold text-rc-ink">Add a property</h1>
+      <h1 className="mt-3 text-xl font-semibold text-rc-ink">Add a listing</h1>
       <p className="mt-1 text-sm text-rc-muted">
         These answers unlock the right checklist items for this listing — e.g. the
         tenancy notice items, or the strata pool-certificate exemption.
@@ -272,7 +272,7 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
           disabled={pending || uploading}
           className="w-full rounded-full bg-rc-green-deep px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
-          {uploading ? "Uploading documents…" : pending ? "Creating…" : "Create property"}
+          {uploading ? "Uploading documents…" : pending ? "Creating…" : "Create listing"}
         </button>
       </form>
     </main>

@@ -94,12 +94,12 @@ export default async function PortfolioPage() {
               <p className="mt-1 text-sm text-rc-muted">The whole agency at a glance — diligence support only, the licensee decides.</p>
             </div>
             <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-              All properties →
+              All listings →
             </Link>
           </div>
 
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <StatTile n={propertyList.length} l="Properties" icon={Building2} />
+            <StatTile n={propertyList.length} l="Listings" icon={Building2} />
             <StatTile
               n={digests.filter((d) => d.pendingSignoff.length > 0).length}
               l="Need sign-off"

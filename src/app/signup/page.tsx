@@ -123,9 +123,16 @@ function InviteAwareForm() {
           <input
             id="websiteUrl"
             name="websiteUrl"
-            type="url"
+            // Plain text, not type="url" — see the note in
+            // components/team/LicenseeEmailForm.tsx. The browser's own URL
+            // validation rejects a bare domain and its message can't be
+            // reworded; normalising server-side accepts what people type.
+            type="text"
             inputMode="url"
-            placeholder="https://www.youragency.com.au"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="youragency.com.au"
             className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
           <p className="mt-1 text-xs leading-relaxed text-rc-muted">

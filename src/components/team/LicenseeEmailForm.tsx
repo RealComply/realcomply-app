@@ -59,10 +59,18 @@ export function LicenseeEmailForm({
         <input
           id="websiteUrl"
           name="websiteUrl"
-          type="url"
+          // NOT type="url" — that makes the browser reject
+          // "www.youragency.com.au" before the form is even submitted, with a
+          // message we can't reword. The value is normalised server-side
+          // instead (lib/normalise-url.ts), which accepts what people
+          // actually type.
+          type="text"
           inputMode="url"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           defaultValue={website ?? ""}
-          placeholder="https://www.youragency.com.au"
+          placeholder="cassproperty.com.au"
           className="min-w-0 flex-1 rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
         />
         <button

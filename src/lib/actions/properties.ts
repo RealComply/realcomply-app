@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { buildEvidencePath, finalizeEvidenceRecord, moveStagedEvidence, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import type { ActionState } from "@/lib/actions/auth";
 
 // Documents collected at setup time (mandatory — see createProperty below),
@@ -213,13 +214,19 @@ export async function updatePropertyDetails(
     return { error: "Address is required." };
   }
 
+  const listingUrl = normaliseWebsiteUrl(String(formData.get("listingUrl") ?? ""));
+  if (!listingUrl.ok) {
+    return { error: listingUrl.error };
+  }
+
   const { error } = await supabase
     .from("properties")
     .update({
       address,
       // Empty string clears it rather than storing "", so "no listing page yet"
-      // is one value (null) instead of two.
-      listing_url: String(formData.get("listingUrl") ?? "").trim() || null,
+      // is one value (null) instead of two. Normalised so a pasted or typed
+      // address without a scheme is accepted — see lib/normalise-url.ts.
+      listing_url: listingUrl.url || null,
       property_type: String(formData.get("propertyType") ?? "House"),
       is_strata: formData.get("isStrata") === "yes",
       is_tenanted: formData.get("isTenanted") === "yes",

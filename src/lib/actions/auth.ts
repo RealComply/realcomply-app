@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
+import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 
 // Resolves the origin the request actually came in on (e.g. the exact
 // Vercel domain the user is visiting), so the email confirmation link
@@ -52,7 +53,14 @@ export async function signup(
   // Where licensee sign-off links get sent. Optional, and never taken from an
   // invite signup — see the field's comment in src/app/signup/page.tsx.
   const licenseeEmail = String(formData.get("licenseeEmail") ?? "").trim();
-  const websiteUrl = String(formData.get("websiteUrl") ?? "").trim();
+  // Accepted as typed — "cassproperty.com.au" is what people write, and
+  // making them find the scheme is the app doing nothing useful with their
+  // time. See lib/normalise-url.ts.
+  const website = normaliseWebsiteUrl(String(formData.get("websiteUrl") ?? ""));
+  if (!website.ok) {
+    return { error: website.error };
+  }
+  const websiteUrl = website.url;
 
   if (!inviteToken && !agencyName.trim()) {
     return { error: "Agency name is required." };

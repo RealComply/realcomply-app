@@ -167,7 +167,7 @@ export default async function HomeDashboardPage() {
               gap as the gap between tiles, rather than the first/last tile
               sitting flush against the section edge (Adam, 9 Aug 2026). */}
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <StatTile n={propertyList.length} l="Properties" icon={Building2} href="/dashboard/portfolio" />
+            <StatTile n={propertyList.length} l="Listings" icon={Building2} href="/dashboard" />
             <StatTile
               n={needsAttentionItems.length}
               l="Files need you"

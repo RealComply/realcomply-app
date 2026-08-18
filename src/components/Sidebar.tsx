@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  Building2,
   FileText,
   ClipboardCheck,
   GraduationCap,
@@ -52,13 +53,20 @@ import { LogoMark } from "@/components/Logo";
 const STORAGE_KEY = "rc-sidebar-collapsed";
 const RAIL_CLASS = "rc-nav-rail";
 
-type NavLink = { href: string; label: string; Icon: typeof Home };
+// `exact` matters for "/dashboard": every other route starts with it, so the
+// default prefix match would light Listings up on every page in the app.
+type NavLink = { href: string; label: string; Icon: typeof Home; exact?: boolean };
 
 const GROUPS: { heading: string; links: NavLink[] }[] = [
   {
     heading: "Your work",
     links: [
       { href: "/dashboard/home", label: "Home", Icon: Home },
+      // Adam, 18 Aug 2026: "there is no obvious place for me to add a new
+      // listing". The page existed at /dashboard the whole time — it just had
+      // no way in from the nav, so the only route to it was the logo or the
+      // back button. A list you can't navigate to may as well not exist.
+      { href: "/dashboard", label: "Listings", Icon: Building2, exact: true },
       { href: "/dashboard/portfolio", label: "Office overview", Icon: LayoutGrid },
     ],
   },
@@ -82,8 +90,9 @@ const GROUPS: { heading: string; links: NavLink[] }[] = [
   },
 ];
 
-function isActive(pathname: string | null, href: string): boolean {
+function isActive(pathname: string | null, href: string, exact?: boolean): boolean {
   if (!pathname) return false;
+  if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -147,8 +156,8 @@ export function Sidebar() {
           >
             {group.heading}
           </div>
-          {group.links.map(({ href, label, Icon }) => {
-            const active = isActive(pathname, href);
+          {group.links.map(({ href, label, Icon, exact }) => {
+            const active = isActive(pathname, href, exact);
             return (
               <Link
                 key={href}
