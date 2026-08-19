@@ -333,6 +333,12 @@ function ChecklistItem({
     };
   };
   const draft = data.aiDraft;
+  // Did the read actually produce something this card can show? An aiDraft is
+  // written even when the model found nothing for this item, so its presence
+  // alone means "we looked", not "we found something".
+  const draftHasValue = Boolean(
+    draft && (draft.note || draft.espLow != null || draft.espHigh != null || draft.eventDate),
+  );
 
   // Live ESP spread. s72A(2) allows a range only where the high exceeds the low
   // by no more than 10% OF THE LOW — not 10% of the high, and not a flat
@@ -388,7 +394,14 @@ function ChecklistItem({
             </span>
           </p>
         ) : (
-          draft &&
+          // Only claim a pre-fill when something was actually pre-filled.
+          //
+          // This used to fire on the mere existence of an aiDraft object, which
+          // the extraction writes for an item even when it found nothing usable
+          // in it. The agent then read "pre-filled from an uploaded document"
+          // above a set of empty boxes — worse than saying nothing, because it
+          // implies the document has been read and has nothing in it.
+          draftHasValue &&
           !item.showFindings && (
             <p className="flex items-center gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-1.5 text-xs text-rc-green-deep">
               <Sparkles size={13} className="shrink-0" />
@@ -2061,6 +2074,29 @@ export function ItemCard({
     default:
       return (
         <ChecklistItem
+          // REMOUNT WHEN THE AI FINISHES READING THE DOCUMENTS. This key is
+          // load-bearing; do not remove it.
+          //
+          // The bug it fixes (19 Aug 2026): Adam created a listing, ran the
+          // extraction, and the ESP never appeared — even though the AI had
+          // read it correctly and it was sitting in the database as
+          // {espLow: 675000, espHigh: 725000}.
+          //
+          // The cause is ordinary React. The ESP boxes are
+          // useState(...draft?.espLow ?? ""), and the date and note fields use
+          // defaultValue — all three read their value ONCE, when the card first
+          // mounts. Extraction finishes a minute later and revalidatePath sends
+          // fresh props down, but the card is already mounted, so those fields
+          // keep the empty values they were born with. The "Pre-filled from an
+          // uploaded document" banner DOES update, because it reads the prop
+          // directly on every render — which is what made this so confusing:
+          // the card said it had pre-filled something while showing nothing.
+          //
+          // Changing the key remounts the subtree, so every initialiser and
+          // defaultValue re-reads the new props. generatedAt is stamped by the
+          // extraction each run, so this changes exactly once per read and not
+          // otherwise.
+          key={`${item.key}:${(current?.data as { aiDraft?: { generatedAt?: string } } | undefined)?.aiDraft?.generatedAt ?? "none"}`}
           item={item}
           propertyId={propertyId}
           current={current}
