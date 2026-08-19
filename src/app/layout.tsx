@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-// Meta Pixel — RealComply Pixel, ID 1040730458604238, created in Business
-// Manager 13 Aug 2026. See RealComply-meta-pixel-setup.md.
+// Meta Pixel lives in components/MetaPixel.tsx and is rendered by the public
+// marketing pages ONLY — deliberately not here.
 //
-// In the root layout rather than the landing page because Meta needs PageView
-// on every page a paid visitor might reach, not only the one the ad points at.
-// The Lead event is fired separately, from EarlyAccessForm, and only after a
-// signup actually succeeds — campaigns optimise against it, so firing on click
-// would push the spend towards people who never finished.
-const META_PIXEL_ID = "1040730458604238";
+// It was in this root layout until 19 Aug 2026, on the reasoning that Meta
+// needs PageView on every page a paid visitor might reach. True of the
+// marketing site; the mistake was that the signed-in product sits under this
+// layout too, so the advertising pixel was also running inside the compliance
+// app and reporting dashboard URLs to Facebook. Found while writing up the
+// data-residency answer for a prospective customer, which is exactly the
+// question that should catch it. See MetaPixel.tsx.
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-plus-jakarta",
@@ -57,33 +57,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col bg-white text-rc-ink">
         {children}
 
-        <Script id="meta-pixel" strategy="afterInteractive">
-          {`
-            !function(f,b,e,v,n,t,s)
-            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-            n.queue=[];t=b.createElement(e);t.async=!0;
-            t.src=v;s=b.getElementsByTagName(e)[0];
-            s.parentNode.insertBefore(t,s)}(window, document,'script',
-            'https://connect.facebook.net/en_US/fbevents.js');
-            fbq('init', '${META_PIXEL_ID}');
-            fbq('track', 'PageView');
-          `}
-        </Script>
-        <noscript>
-          {/* Meta requires a plain 1x1 tracking pixel here. next/image would
-              rewrite the URL through the optimiser and the beacon would never
-              reach Facebook, so the lint rule genuinely does not apply. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            height="1"
-            width="1"
-            alt=""
-            style={{ display: "none" }}
-            src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
-          />
-        </noscript>
       </body>
     </html>
   );

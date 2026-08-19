@@ -5,6 +5,7 @@ import Script from "next/script";
 import { createClient } from "@/lib/supabase/server";
 import { Logo } from "@/components/Logo";
 import { EarlyAccessForm } from "@/components/EarlyAccessForm";
+import { MetaPixel } from "@/components/MetaPixel";
 
 // The public landing page, restored 13 Aug 2026 as the destination for Meta
 // ads. It had been deleted on 12 Aug in favour of a bare redirect to /login,
@@ -432,6 +433,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
       {/* Analytics: Plausible, on this public page only, not on authenticated
           app routes. The Meta Pixel is separate and lives in the root layout,
           because Meta needs PageView on every page it might send traffic to. */}
+      <MetaPixel />
       <Script defer data-domain="realcomply.com.au" src="https://plausible.io/js/script.js" strategy="afterInteractive" />
       <Script id="plausible-init" strategy="afterInteractive">
         {`window.plausible = window.plausible || function(){(window.plausible.q = window.plausible.q || []).push(arguments)};`}
