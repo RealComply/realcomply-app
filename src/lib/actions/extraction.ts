@@ -57,6 +57,16 @@ type DraftPatch = {
   eventDate?: string;
   consumerGuideProvided?: boolean;
   identityVerified?: boolean;
+  /**
+   * a7 only — whether the agreement records that the vendor disclosed a
+   * material fact. Three states, and the third one matters: true (a fact was
+   * disclosed), false (the vendor was asked and answered none), and ABSENT
+   * (the document doesn't settle it). Absent must stay absent — Adam, 19 Aug
+   * 2026: "if it's not in there, then leave it as a manual action."
+   *
+   * Never auto-completes the item. See the a7 note in runExtraction.
+   */
+  materialFactDisclosed?: boolean;
   prescribedDocs?: PrescribedDocVerdict[];
   /**
    * Set on a b1 patch when the uploaded file is not a contract for sale at
@@ -137,6 +147,11 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
                 },
                 required: ["key", "found"],
               },
+            },
+            materialFactDisclosed: {
+              type: "boolean",
+              description:
+                "Item a7 only. Whether the vendor disclosed a material fact. A NSW selling agency agreement normally carries a vendor disclosure section covering the prescribed material facts — flood or bushfire history, loose-fill asbestos, prior known defects and so on. Set TRUE only where the document records that the vendor actually disclosed something. Set FALSE only where the section IS present and completed and records that there is nothing to disclose (a completed 'none' / 'nil' / all boxes answered no). If the section is absent, blank, partly completed, or you cannot tell whether the vendor was asked at all, OMIT this field entirely — do not guess, and above all do not read silence as 'none disclosed'. An unanswered question and a vendor saying no are completely different things, and only the second one is a record. Where you set this true, use note to say in one short sentence what was disclosed.",
             },
             saleMethod: {
               type: "string",
@@ -654,7 +669,10 @@ async function extractOneDocument(
               "note-flagging rule: if the document contains that reasoning text, paraphrase it as a short " +
               "editable starting draft for the agent to refine, not just a gap-flag), a5 " +
               "(commission/rebate/VPA terms), a6 " +
-              "(cooling-off), a7 (material facts disclosed).\n\n" +
+              "(cooling-off), a7 (material facts — set materialFactDisclosed from the vendor disclosure section, " +
+              "true if the vendor disclosed something and false ONLY if that section is present, completed, and " +
+              "records nothing to disclose. If the section is missing, blank or partly filled, omit the field so " +
+              "the agent answers it themselves — silence is not a 'no').\n\n" +
               prescribedDocsPrompt(prescribedDocs) +
               "\n\nFor every item: only report what is directly readable in the content above; " +
               "if you're not looking at something substantial enough to ground a finding, leave that item out " +
@@ -846,6 +864,16 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
             eventDate: patch.eventDate,
             consumerGuideProvided: patch.consumerGuideProvided,
             identityVerified: patch.identityVerified,
+            // a7. Offered as the default answer on the card, never saved on
+            // the agent's behalf and never auto-completing the item — unlike
+            // a1/a2 above. The asymmetry is deliberate: a1 and a2 are facts
+            // ABOUT the agreement (was the guide given, was ID sighted) that
+            // the agreement itself evidences. a7 is the agent's own diligence
+            // — did you ask the vendor — and answering "none disclosed" on
+            // their behalf writes a compliance record they never made. It
+            // also drives e2, the disclosure to purchasers, so a wrong "no"
+            // silently removes an obligation later in the file.
+            materialFactDisclosed: patch.materialFactDisclosed,
             // b1 only. Filtered against the current rules list so a stale key
             // from an older ruleset version can never render as a mystery row.
             prescribedDocs: patch.prescribedDocs?.filter((d) =>

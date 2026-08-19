@@ -326,6 +326,7 @@ function ChecklistItem({
       eventDate?: string;
       consumerGuideProvided?: boolean;
       identityVerified?: boolean;
+      materialFactDisclosed?: boolean;
       autoCompleted?: boolean;
       guideNotFound?: boolean;
       prescribedDocs?: { key: string; found: boolean }[];
@@ -337,8 +338,17 @@ function ChecklistItem({
   // written even when the model found nothing for this item, so its presence
   // alone means "we looked", not "we found something".
   const draftHasValue = Boolean(
-    draft && (draft.note || draft.espLow != null || draft.espHigh != null || draft.eventDate),
+    draft &&
+      (draft.note ||
+        draft.espLow != null ||
+        draft.espHigh != null ||
+        draft.eventDate ||
+        draft.materialFactDisclosed !== undefined),
   );
+
+  // a7. The agent's saved answer if there is one, otherwise what the agreement
+  // said, otherwise nothing — see the select below.
+  const answeredMaterialFact = data.materialFactDisclosed ?? draft?.materialFactDisclosed;
 
   // Live ESP spread. s72A(2) allows a range only where the high exceeds the low
   // by no more than 10% OF THE LOW — not 10% of the high, and not a flat
@@ -479,7 +489,15 @@ function ChecklistItem({
             <label className="block text-xs text-rc-muted">Material fact disclosed by the vendor?</label>
             <select
               name="materialFactDisclosed"
-              defaultValue={data.materialFactDisclosed === true ? "yes" : data.materialFactDisclosed === false ? "no" : ""}
+              // The agent's own saved answer wins. Failing that, take the
+              // agreement's — Adam, 19 Aug 2026: the disclosure is in the
+              // sale agreement, so the agent shouldn't answer it twice.
+              // Falling through to "" is the deliberate third case: where the
+              // agreement doesn't settle it, this stays on "Choose one" and
+              // is a manual action, exactly as it was before.
+              defaultValue={
+                answeredMaterialFact === true ? "yes" : answeredMaterialFact === false ? "no" : ""
+              }
               className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
             >
               <option value="" disabled>
@@ -488,6 +506,19 @@ function ChecklistItem({
               <option value="no">None disclosed</option>
               <option value="yes">Yes — disclosed</option>
             </select>
+            {/* Only where the answer came from the document rather than the
+                agent, and only while it's still a suggestion. It has to be
+                obvious which of the two answered this — the agent is the one
+                who carries it. */}
+            {data.materialFactDisclosed === undefined && draft?.materialFactDisclosed !== undefined && (
+              <p className="mt-1.5 flex items-start gap-1.5 text-xs text-rc-green-deep">
+                <Sparkles size={12} className="mt-0.5 shrink-0" />
+                <span>
+                  Read from the agency agreement. Check it against the document and save — it isn&rsquo;t
+                  recorded until you do.
+                </span>
+              </p>
+            )}
             <p className="mt-1 text-xs text-rc-faint">
               Answering &ldquo;yes&rdquo; adds an item at Sold to confirm it&rsquo;s been passed on to the purchaser.
             </p>

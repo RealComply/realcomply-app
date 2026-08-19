@@ -188,7 +188,24 @@ export async function setItemStatus(
   // purchaser" even applies to this file, so it needs a real boolean, not
   // something inferred from free text.
   if (itemKey === "a7") {
-    data.materialFactDisclosed = String(formData.get("materialFactDisclosed") ?? "") === "yes";
+    const answer = String(formData.get("materialFactDisclosed") ?? "");
+
+    // An unanswered dropdown used to fall through to `=== "yes"` and save
+    // FALSE — so an agent who never touched the control, and hit Save, silently
+    // recorded "none disclosed" on the vendor's behalf. That is a compliance
+    // record nobody made, and it does not just sit there: e2 (disclose the
+    // material fact to the purchaser) only appears when this is true, so a
+    // phantom "no" removes a later obligation from the file without anyone
+    // seeing it happen.
+    //
+    // Same shape as the requiresDate guard above — only "done" is blocked, so
+    // reopening or flagging still works when you have no answer yet.
+    if (status === "done" && answer !== "yes" && answer !== "no") {
+      return { error: "Choose whether the vendor disclosed a material fact before marking this done." };
+    }
+    if (answer === "yes" || answer === "no") {
+      data.materialFactDisclosed = answer === "yes";
+    }
   }
 
   // Set by the a4 branch below, acted on after the save succeeds.
