@@ -75,11 +75,18 @@ const KIND_LABELS: Record<DocumentKind, string> = {
 // independent of whatever the model returns. Deliberately excludes every
 // licenseeOnly item (amc, f1, sign_licensee) and every log-style item
 // (d1/d2/d3, offers, reviews) — those have their own entry semantics and
-// AI must never touch a licensee sign-off, full stop. Also excludes a1
-// (vendor identity/ownership): that's verified externally as part of AML/CTF
-// CDD and registered with AUSTRAC there, not something to extract from an
-// uploaded document — see the hideNote/hideEvidence attestation item in
-// nsw-sales.ts. a2 (consumer guide given before signing) IS included — see
+// AI must never touch a licensee sign-off, full stop.
+//
+// a1 (vendor identity) IS included. This comment used to say the opposite,
+// on the grounds that identity "is verified externally as part of AML/CTF CDD
+// and registered with AUSTRAC there" — both halves of which are wrong, and
+// Adam caught the same claim in nsw-sales.ts on 17 Aug 2026: AUSTRAC receives
+// suspicious matter and threshold transaction reports, never routine CDD
+// outcomes, and CDD establishes who your CUSTOMER is, not who owns the land.
+// The comment survived the correction because nothing tests a comment. a1 has
+// been in the list below since 17 Aug.
+//
+// a2 (consumer guide given before signing) IS included — see
 // the consumerGuideProvided field below and the autoComplete logic in
 // extractFromDocuments for why it's handled differently from every other
 // item here.
@@ -210,7 +217,7 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
             identityVerified: {
               type: "boolean",
               description:
-                "Item a1 only — true only if the document explicitly confirms the vendor's identity was verified. In a NSW residential agency agreement this usually appears as a short statement among the vendor declarations or near the signing block: an agent's confirmation that identity documents were sighted, a completed proof-of-identity or verification-of-identity section, a reference to VOI having been completed, or a ticked box to that effect. It may also appear as a digital verification record attached to or referenced by the agreement. Set this true ONLY on an explicit confirmation actually present in this document. Never infer it from the agreement merely existing, from the vendor having signed, from the vendor's name appearing, or from identity verification being good practice. If the document does not address identity verification at all, omit this field and leave a1 out of the patches entirely — its absence is normal and expected, because verification is commonly recorded in a separate audit trail rather than in the agreement, so silence here is NOT a finding and must not be reported as one. When you do set this true, also set that a1 patch's eventDate to the date verification was carried out, only if that specific date is stated.",
+                "Item a1 only — true only if the document explicitly confirms the vendor's identity was verified. Two forms count equally. (1) A statement in the agreement itself, among the vendor declarations or near the signing block: a confirmation that identity documents were sighted, a completed proof-of-identity or verification-of-identity section, a reference to VOI having been completed, or a ticked box. (2) A separate identity record BUNDLED INTO THE SAME PDF — an e-signing completion certificate or audit trail (FLK, DocuSign, Adobe Sign), an Identity Verification Report or VOI certificate (IDVerse, Digital iD, ZipID, InfoTrack), or a page listing each signer with the identity check performed and its timestamp. Form (2) is the common one for electronically signed agreements and counts fully — do not discount it for sitting outside the agreement's own pages. Set this true ONLY on an explicit confirmation actually present in what you were shown. Never infer it from the agreement merely existing, from the vendor having signed, from the vendor's name appearing, or from identity verification being good practice. If neither form is present, omit this field and leave a1 out of the patches entirely — that absence is normal and is NOT a finding. When you set this true, also set that a1 patch's eventDate (YYYY-MM-DD) to the date verification was carried out, taken from the VOI report's date or the audit trail's identity-check timestamp; where signers were verified on different dates use the last. Do not substitute the agreement's signing date for a verification date you cannot see.",
             },
             prescribedDocs: {
               type: "array",
@@ -309,14 +316,27 @@ function prescribedDocsPrompt(docs: PrescribedDoc[]): string {
 // inviting the wrong answer in the first place, and costs fewer tokens.
 
 const AGENCY_AGREEMENT_PROMPT =
-  "a1 (whether the vendor's identity was verified. Look among the vendor declarations and the " +
-  "signing pages for an explicit confirmation — a proof-of-identity or verification-of-identity " +
-  "section, a statement that identity documents were sighted, a reference to VOI being completed, " +
-  "or a ticked box to that effect. Set identityVerified true ONLY on an explicit confirmation, and " +
-  "set eventDate to the verification date if one is stated. IMPORTANT: if the agreement says " +
-  "nothing about identity verification, that is entirely normal — verification is usually recorded " +
-  "in a separate audit trail, not in the agreement — so leave a1 out of the patches entirely and " +
-  "write no note about it. Do not report its absence as a gap, a risk, or anything at all), " +
+  "a1 (whether the vendor's identity was verified. LOOK IN TWO PLACES, and the second is the one " +
+  "that is usually there. FIRST, the vendor declarations and signing pages: a proof-of-identity or " +
+  "verification-of-identity section, a statement that identity documents were sighted, a reference " +
+  "to VOI being completed, or a ticked box to that effect. SECOND — and check this even when the " +
+  "first turns up nothing — a separate identity document BUNDLED INTO THIS SAME PDF, after or " +
+  "before the agreement's own pages. Agreements signed electronically routinely carry one: an " +
+  "e-signing completion certificate or AUDIT TRAIL (FLK, DocuSign, Adobe Sign and the like), an " +
+  "Identity Verification Report or VOI certificate (IDVerse, Digital iD, ZipID, InfoTrack and the " +
+  "like), or a page recording each signer with the identity check performed on them and when. A " +
+  "file named with something like 'with-audit-trail' is a strong hint one is present, but read for " +
+  "it either way. Those pages ARE the verification record — treat them exactly as you would a " +
+  "declaration in the body of the agreement. Set identityVerified true on an explicit confirmation " +
+  "from EITHER place, and set eventDate to the date verification was carried out: the date on the " +
+  "VOI report, or the identity-check timestamp in the audit trail. Where the audit trail gives a " +
+  "date per signer and they differ, use the LAST one, since that is when the last vendor was " +
+  "verified. Give the date only as YYYY-MM-DD, and only from a date actually printed there — never " +
+  "assume it matches the agreement's signing date. IMPORTANT: if neither place shows anything, " +
+  "that is entirely normal — verification is often recorded in a system outside this document — so " +
+  "leave a1 out of the patches entirely and write no note about it. Do not report its absence as a " +
+  "gap, a risk, or anything at all. That instruction is about SILENCE when there is nothing to " +
+  "find; it is not a reason to skip looking, and it does not apply once you have found something), " +
   "a2 (whether the " +
   "approved consumer guide was given to the vendor before the agency agreement was signed. LOOK FOR " +
   "THIS DELIBERATELY — in a NSW residential agency agreement it is normally a short acknowledgement " +
