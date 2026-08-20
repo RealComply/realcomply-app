@@ -99,7 +99,32 @@ export type ComplianceItem = {
   // The warning above is words; this is the control. See screenForIdDocument
   // in lib/actions/extraction.ts for what it does and does not catch.
   rejectIdDocuments?: boolean;
+  // Hides the upload control once the uploaded documents have already proved
+  // this item, so the card stops asking for something it has.
+  //
+  // Adam, 20 Aug 2026, on a2: "it should only activate that attach evidence
+  // feature if it is not already being confirmed within the agency agreement.
+  // Most agency agreements, all that I've seen, have a box that is ticked that
+  // the vendor signs off on confirming that they received a copy."
+  //
+  // This is the "forms are an index to evidence" principle applied to the
+  // upload control itself: where the agreement IS the evidence, asking for a
+  // second copy of it is the re-tick the product exists to remove. Never hides
+  // a file already attached — see ItemShell.
+  hideEvidenceWhen?: (current?: PropertyItem) => boolean;
 };
+
+// The shape extraction leaves on an item, for the hideEvidenceWhen predicates
+// below. Kept narrow on purpose: a rule should be able to ask "did the
+// documents settle this?" without knowing how extraction stores anything else.
+type ExtractionDraft = {
+  consumerGuideProvided?: boolean;
+  identityVerified?: boolean;
+};
+
+function aiDraft(current?: PropertyItem): ExtractionDraft {
+  return ((current?.data as { aiDraft?: ExtractionDraft } | undefined)?.aiDraft ?? {}) as ExtractionDraft;
+}
 
 const items: ComplianceItem[] = [
   // ── Stage 0 — Listing set-up ──────────────────────────────────────────
@@ -173,6 +198,11 @@ const items: ComplianceItem[] = [
     // no MFA, free-tier backups). The warning is the control. If ID copies
     // start showing up anyway, the answer is a server-side block, not
     // stronger wording — flagged for Adam.
+    // Where the agreement carried the verification (the FLK audit trail, a VOI
+    // certificate bundled into the same PDF), there is nothing to attach — the
+    // agreement on a3 already holds it. The control appears only when the read
+    // came up empty.
+    hideEvidenceWhen: (current) => aiDraft(current).identityVerified === true,
     evidenceLabel: "Verification record",
     evidenceWarning:
       "Attach the VOI certificate or e-signing audit trail — the proof that a check was done. Not the documents it was done against: licences, passports, rates notices and title searches aren't kept in RealComply, and will be refused.",
@@ -196,6 +226,15 @@ const items: ComplianceItem[] = [
     // given before the agreement is signed and no more than a month before.
     // A free-text box invites commentary that adds nothing to that.
     hideNote: true,
+    // Adam, 20 Aug 2026: "most agency agreements, all that I've seen, have a
+    // box that is ticked that the vendor signs off on confirming that they
+    // received a copy" — so where the agreement carries that acknowledgement,
+    // the agreement IS the evidence and asking for a second copy of it is
+    // exactly the re-tick this product exists to remove. The upload control
+    // appears only where the read came up empty, which Adam expects to be
+    // rare: "I don't think that will ever happen, though."
+    hideEvidenceWhen: (current) => aiDraft(current).consumerGuideProvided === true,
+    evidenceLabel: "Proof the guide was given",
   },
   {
     key: "a4",

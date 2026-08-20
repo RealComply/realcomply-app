@@ -108,7 +108,12 @@ function ItemShell({
         <StatusPill status={status} />
       </div>
       <div className="mt-3">{children}</div>
-      {!item.hideEvidence && (
+      {/* An attached file always keeps its control, whatever the rule says.
+          Hiding one would strand a document nobody can see or remove — and
+          hideEvidenceWhen turns TRUE precisely when a later re-read confirms
+          the item, which is exactly when an already-attached file would
+          vanish. */}
+      {!item.hideEvidence && (!item.hideEvidenceWhen?.(current) || current?.evidence_path) && (
         <EvidenceUploader
           key={current?.evidence_path ?? "none"}
           propertyId={propertyId}
@@ -453,7 +458,9 @@ function ChecklistItem({
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             <span>
               Read the agency agreement and couldn&apos;t find the vendor&apos;s acknowledgement that the guide was
-              given. It may still have been given separately — confirm it yourself and enter the date.
+              given. Most agreements carry one as a signed tick-box, so it&apos;s worth a look yourself. If it
+              really isn&apos;t there, enter the date and attach whatever proves the guide was given — a covering
+              email, a signed receipt.
             </span>
           </p>
         ) : (
