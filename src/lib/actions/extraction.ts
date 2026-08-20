@@ -1014,12 +1014,19 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
           // this text, so a fresh reading replaces it. On items with a real
           // note box the agent owns it, and extraction stays in aiDraft where
           // it is offered rather than imposed.
-          ...(getItem(patch.itemKey)?.showFindings && patch.note ? { note: patch.note } : {}),
-          // Clear a findings note left by an earlier read. Without this, a card
-          // that previously reported on the wrong document keeps that text
-          // sitting underneath the new "this is the wrong file" warning, which
-          // reads as though the finding still stands.
-          ...(patch.wrongDocument && getItem(patch.itemKey)?.showFindings ? { note: "" } : {}),
+          // On a findings item the AI owns this text — there is no note box
+          // for the agent to type in — so a fresh reading REPLACES it, and
+          // replacing it with nothing is a real answer.
+          //
+          // This used to be conditional on patch.note existing, which left a
+          // hole the staleFindings sweep below does not cover: an item that
+          // gets a patch carrying only structured data (b1's prescribedDocs,
+          // say) is "spoken for", so the sweep skips it, but the upsert wrote
+          // no note either — and last run's text survived underneath fresh
+          // findings. That is how b1 came to show "this document is a
+          // PropTrack property report" above a list of nine contract
+          // documents it had just found.
+          ...(getItem(patch.itemKey)?.showFindings ? { note: patch.note ?? "" } : {}),
           aiDraft: {
             note: patch.note,
             espLow: patch.espLow,
