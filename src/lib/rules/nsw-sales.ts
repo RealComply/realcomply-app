@@ -557,7 +557,7 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "AML red flags escalated to the licensee",
     description:
-      "Confirm the vendor check threw up nothing that needs escalating — or that anything it did throw up has been raised with the licensee in charge.",
+      "Confirm nothing from the vendor check needs escalating, or that it already has been.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
