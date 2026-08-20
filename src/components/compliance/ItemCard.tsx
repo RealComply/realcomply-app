@@ -115,6 +115,8 @@ function ItemShell({
           itemKey={item.key}
           evidencePath={current?.evidence_path ?? null}
           evidenceFileName={(current?.data as { evidenceFileName?: string } | undefined)?.evidenceFileName}
+          label={item.evidenceLabel}
+          warning={item.evidenceWarning}
         />
       )}
     </div>
@@ -152,11 +154,15 @@ function EvidenceUploader({
   itemKey,
   evidencePath,
   evidenceFileName,
+  label,
+  warning,
 }: {
   propertyId: string;
   itemKey: string;
   evidencePath: string | null;
   evidenceFileName?: string;
+  label?: string;
+  warning?: string;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const uploadAction = uploadEvidence.bind(null, propertyId, itemKey);
@@ -223,7 +229,16 @@ function EvidenceUploader({
 
   return (
     <div className="mt-3 border-t border-rc-border pt-3">
-      <p className="text-xs font-medium text-rc-muted">Evidence</p>
+      <p className="text-xs font-medium text-rc-muted">{label ?? "Evidence"}</p>
+      {/* Rendered above the control, and above the attached-file row too, so
+          it is still visible to whoever looks at the file later — not just to
+          the person uploading. */}
+      {warning && (
+        <p className="mt-1 flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-rc-amber-deep">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <span>{warning}</span>
+        </p>
+      )}
       {evidencePath ? (
         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
           {signedUrl ? (
@@ -338,6 +353,7 @@ function ChecklistItem({
       materialFactDisclosed?: boolean;
       autoCompleted?: boolean;
       guideNotFound?: boolean;
+      voiNotFound?: boolean;
       prescribedDocs?: { key: string; found: boolean }[];
       notAContract?: boolean;
       wrongDocument?: { expected: string; actual: string };
@@ -413,6 +429,19 @@ function ChecklistItem({
               Auto-marked done — the agency agreement confirmed{" "}
               {item.key === "a1" ? "identity was verified" : "the guide was given"}, dated {draft.eventDate}. Check
               it against the source; use Reopen below if that&apos;s not right.
+            </span>
+          </p>
+        ) : draft?.voiNotFound ? (
+          // The agreement WAS read and carries no verification record. Says so
+          // out loud, because silence here looks the same as nobody having
+          // checked — and tells the agent what to do about it, since unlike
+          // the guide, a VOI genuinely does live elsewhere most of the time.
+          <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>
+              Read the agency agreement and couldn&apos;t find a verification record in it — no VOI certificate and
+              no signing audit trail. If you verified identity elsewhere, enter the date and attach the record
+              below.
             </span>
           </p>
         ) : draft?.guideNotFound ? (

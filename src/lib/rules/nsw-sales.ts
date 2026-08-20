@@ -88,6 +88,13 @@ export type ComplianceItem = {
   // items that are themselves an attestation/action (a typed signature, a
   // hand-off to the licensee), not a claim that needs a supporting document.
   hideEvidence?: boolean;
+  // Renames the "Evidence" heading on the upload control, where the generic
+  // word is too vague to tell the agent WHICH document belongs there.
+  evidenceLabel?: string;
+  // A short caution rendered above the upload control. Used where the wrong
+  // file being attached carries a consequence beyond untidiness — a1, where
+  // it would mean identity documents landing in storage.
+  evidenceWarning?: string;
 };
 
 const items: ComplianceItem[] = [
@@ -136,7 +143,7 @@ const items: ComplianceItem[] = [
     // agent. Citing a provision that does not exist inflates the obligation,
     // which the product philosophy treats as worse than omitting a feature.
     description:
-      "Identity confirmed for every vendor before you acted on the sale. Separate from your AML/CTF check — that identifies your customer, it doesn't confirm who owns the land. No ID copies are kept here.",
+      "Identity confirmed for every vendor before you acted on the sale. Separate from your AML/CTF check — that identifies your customer, it doesn't confirm who owns the land.",
     legalBasis: "Sch 1 rr 4 & 8, Property and Stock Agents Regulation 2022 (NSW)",
     // Now dated. The date is the point of the record: it evidences that
     // verification happened before the agent acted, not merely that someone
@@ -145,7 +152,26 @@ const items: ComplianceItem[] = [
     requiresDate: true,
     requiredForStageCompletion: true,
     hideNote: true,
-    hideEvidence: true,
+    // Upload TURNED ON 20 Aug 2026 (Adam): "in the event that VOI is not
+    // included in a sales agreement, we should ask for it to be uploaded in
+    // the Vendor identity verified window."
+    //
+    // This reverses a deliberate position — the description used to end "No
+    // ID copies are kept here" and hideEvidence was set for exactly that
+    // reason. The reversal is narrower than it looks: what belongs here is
+    // the PROOF THAT VERIFICATION HAPPENED (a VOI certificate, an e-signing
+    // audit trail), not the identity documents themselves. Those are two
+    // different things and the wording below has to keep them apart, because
+    // the natural thing to reach for is the licence scan.
+    //
+    // Storing licence and passport images would put RealComply under APP 11
+    // obligations it is not currently built for (see the data-residency note:
+    // no MFA, free-tier backups). The warning is the control. If ID copies
+    // start showing up anyway, the answer is a server-side block, not
+    // stronger wording — flagged for Adam.
+    evidenceLabel: "Verification record",
+    evidenceWarning:
+      "Attach the VOI certificate or e-signing audit trail — the proof that a check was done. Do not upload licences, passports or other ID documents; RealComply is not the place to keep those.",
   },
   {
     key: "a2",

@@ -1144,6 +1144,49 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
   // agreement, and telling the agent we looked for the acknowledgement and
   // couldn't find it would be a finding about a document nobody opened.
   const agreementSlotHeldWrongDocument = patches.some((p) => p.itemKey === "a3" && p.wrongDocument);
+
+  // Same idea for a1 (vendor identity), added 20 Aug 2026 (Adam): "in the
+  // event that VOI is not included in a sales agreement, we should ask for it
+  // to be uploaded in the Vendor identity verified window."
+  //
+  // Until now a1 simply stayed blank when nothing was found, which looks
+  // identical to nobody having run the extraction. The agent had no way to
+  // tell "the agreement carries no verification record, go and attach one"
+  // from "this hasn't been looked at yet". a1 now carries the same
+  // we-looked-and-it-isn't-there state that a2 has had since 14 Aug.
+  if (readAgencyAgreement && !agreementSlotHeldWrongDocument && !patches.some((p) => p.itemKey === "a1")) {
+    const { data: a1Row } = await supabase
+      .from("property_items")
+      .select("*")
+      .eq("property_id", propertyId)
+      .eq("item_key", "a1")
+      .maybeSingle();
+    const a1 = a1Row as PropertyItem | null;
+
+    if ((a1?.status ?? "open") !== "done") {
+      await supabase.from("property_items").upsert(
+        {
+          agency_id: profile.agency_id,
+          property_id: propertyId,
+          item_key: "a1",
+          status: a1?.status ?? "open",
+          data: {
+            ...(a1?.data ?? {}),
+            aiDraft: {
+              ...((a1?.data as { aiDraft?: Record<string, unknown> } | undefined)?.aiDraft ?? {}),
+              voiNotFound: true,
+              generatedAt: new Date().toISOString(),
+            },
+          },
+          event_date: a1?.event_date ?? null,
+          completed_by: a1?.completed_by ?? null,
+          evidence_path: a1?.evidence_path ?? null,
+        },
+        { onConflict: "property_id,item_key" },
+      );
+    }
+  }
+
   if (readAgencyAgreement && !agreementSlotHeldWrongDocument && !patches.some((p) => p.itemKey === "a2")) {
     const { data: a2Row } = await supabase
       .from("property_items")
