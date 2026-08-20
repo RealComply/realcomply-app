@@ -65,8 +65,22 @@ export function normaliseWebsiteUrl(raw: string | null | undefined): NormalisedU
     return { ok: false, error: "That doesn't look like a website address. Something like cassproperty.com.au is fine." };
   }
 
-  // Trailing slash on the root only — "example.com/" and "example.com" are the
-  // same place, and storing one form keeps comparisons simple later.
-  const url = parsed.toString().replace(/\/$/, "");
+  // Trailing slash: strip it on the ROOT, keep it everywhere else.
+  //
+  // The comment here used to say "on the root only" while the code stripped it
+  // from any path, and that cost Adam a broken listing link on 20 Aug 2026.
+  // He had saved
+  //   https://cassproperty.com.au/property/24-1-citrus-avenue-hornsby/
+  // and we stored it without the slash. On his WordPress site the two are NOT
+  // the same place: with the slash the page loads, without it the site returns
+  // "There has been a critical error on this website." No redirect, no 404 —
+  // a fatal error.
+  //
+  // "example.com" and "example.com/" really are the same place, so that case
+  // still normalises. A path is different: whether a trailing slash matters is
+  // the server's business, not ours, and plenty of them care. Storing what the
+  // person actually pasted is the only safe answer.
+  const isRoot = parsed.pathname === "/" && !parsed.search && !parsed.hash;
+  const url = isRoot ? parsed.toString().replace(/\/$/, "") : parsed.toString();
   return { ok: true, url };
 }
