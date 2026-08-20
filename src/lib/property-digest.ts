@@ -22,6 +22,15 @@ export type PropertyDigest = {
   lastActivityAt: string | null;
 };
 
+// Files an assistant has handed to an agent and that the agent has not yet
+// signed. Not a compliance state — nothing is wrong with these files — but it
+// is the supervision question the Guidelines actually ask: work has been
+// prepared by someone unlicensed and is sitting with the licensed person who
+// has to review it. A licensee should be able to see how long it has sat.
+export function awaitingAgentReview(properties: Property[]): Property[] {
+  return properties.filter((p) => Boolean(p.review_requested_at));
+}
+
 export function computePropertyDigests(
   properties: Property[],
   itemsByProperty: Map<string, Map<string, PropertyItem>>,

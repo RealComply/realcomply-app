@@ -43,10 +43,27 @@ export async function inviteAgent(
 
   const email = str(formData, "email");
   const fullName = str(formData, "fullName");
-  const asLicensee = formData.get("isLicenseeInCharge") === "on";
+
+  // Role is chosen at invite time now (Adam, 20 Aug 2026). The old form had a
+  // single "licensee in charge" tick; there are three answers.
+  const role = String(formData.get("role") ?? "agent");
+  const asLicensee = role === "licensee";
+  const asAssistant = role === "assistant";
+
+  // Which agents an assistant supports. This IS their access — an assistant
+  // with none sees nothing but what they create themselves, which is a
+  // reasonable state (they can be attached later) but worth refusing here,
+  // because an invite that grants nothing is almost always a slip.
+  const supportsAgentIds = formData
+    .getAll("supportsAgentIds")
+    .map((v) => String(v))
+    .filter(Boolean);
 
   if (!email) {
     return { error: "An email address is required." };
+  }
+  if (asAssistant && supportsAgentIds.length === 0) {
+    return { error: "Choose at least one agent for this assistant to support." };
   }
 
   const { data, error } = await supabase
@@ -56,6 +73,8 @@ export async function inviteAgent(
       email: email.toLowerCase(),
       full_name: fullName,
       is_licensee_in_charge: asLicensee,
+      is_assistant: asAssistant,
+      supports_agent_ids: asAssistant ? supportsAgentIds : [],
       invited_by: profile.id,
     })
     .select("token")
@@ -68,6 +87,59 @@ export async function inviteAgent(
   const origin = await getOrigin();
   revalidatePath("/dashboard/team");
   return { error: null, inviteLink: `${origin}/signup?invite=${data.token}` };
+}
+
+// Change which agents an assistant supports, after the fact. Licensee only —
+// enforced here and again in RLS (0025), because an assistant granting
+// themselves another agent's files would defeat the whole restriction.
+//
+// Replaces the whole set rather than adding one at a time: the form posts the
+// ticked boxes, so what arrives IS the intended state, and reconciling to it
+// means a box the licensee un-ticked actually goes away.
+export async function setAssistantAgents(
+  assistantId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (!profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can change who an assistant supports." };
+  }
+
+  const wanted = new Set(formData.getAll("agentIds").map((v) => String(v)).filter(Boolean));
+
+  const { data: existingRows } = await supabase
+    .from("assistant_agents")
+    .select("id, agent_id")
+    .eq("assistant_id", assistantId);
+
+  const existing = (existingRows ?? []) as { id: string; agent_id: string }[];
+  const have = new Set(existing.map((r) => r.agent_id));
+
+  const toAdd = [...wanted].filter((id) => !have.has(id));
+  const toRemove = existing.filter((r) => !wanted.has(r.agent_id)).map((r) => r.id);
+
+  if (toAdd.length > 0) {
+    const { error } = await supabase.from("assistant_agents").insert(
+      toAdd.map((agentId) => ({
+        agency_id: profile.agency_id,
+        assistant_id: assistantId,
+        agent_id: agentId,
+        created_by: profile.id,
+      })),
+    );
+    if (error) return { error: "Couldn't save that. Try again." };
+  }
+
+  if (toRemove.length > 0) {
+    const { error } = await supabase.from("assistant_agents").delete().in("id", toRemove);
+    if (error) return { error: "Couldn't save that. Try again." };
+  }
+
+  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard");
+  return { error: null };
 }
 
 export async function revokeInvite(inviteId: string): Promise<void> {

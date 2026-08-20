@@ -17,6 +17,23 @@ import type {
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
 
+// The one line an assistant cannot cross (Adam, 20 Aug 2026): they prepare
+// the whole file, they do not sign it. Both signature items and every
+// licensee-only item are theirs to see and to chase, never to complete.
+//
+// Enforced here on the server, not just by disabling a button — the buttons
+// are a courtesy, this is the rule. RLS cannot do it because it governs rows,
+// and which compliance item a row represents is a value in a column.
+const ASSISTANT_BLOCKED_ITEMS = new Set(["sign_agent", "sign_licensee"]);
+
+function assistantBlocked(itemKey: string, profile: { is_assistant?: boolean }): boolean {
+  if (!profile.is_assistant) return false;
+  return ASSISTANT_BLOCKED_ITEMS.has(itemKey) || Boolean(getItem(itemKey)?.licenseeOnly);
+}
+
+const ASSISTANT_BLOCKED_MESSAGE =
+  "Assistants can prepare a file but not sign it. Hand it to the agent to review and sign.";
+
 export async function requireAuthContext() {
   const supabase = await createClient();
   const {
@@ -91,6 +108,10 @@ export async function setItemStatus(
 ): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
   const rule = getItem(itemKey);
+
+  if (assistantBlocked(itemKey, profile)) {
+    return { error: ASSISTANT_BLOCKED_MESSAGE };
+  }
 
   if (rule?.licenseeOnly && !profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can complete this item." };
@@ -998,6 +1019,44 @@ async function reopenEspRevisionForAuction(
   });
 }
 
+// The assistant's hand-over. Deliberately NOT a sign-off.
+//
+// It records that the assistant finished their part and asked the agent to
+// look. It attests nothing about the file being compliant — the only thing
+// that says that is the agent's signature, and an assistant cannot make one
+// (see assistantBlocked above). Keeping those two things apart is the whole
+// legal point of the role, so this writes to the property rather than
+// creating a completed compliance item that could be mistaken for one.
+//
+// It does not lock the file either. Work carries on while the agent reviews —
+// an offer does not wait — and the agent can hand it back.
+export async function requestAgentReview(propertyId: string): Promise<void> {
+  const { supabase, user } = await requireAuthContext();
+
+  await supabase
+    .from("properties")
+    .update({ review_requested_at: new Date().toISOString(), review_requested_by: user.id })
+    .eq("id", propertyId);
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/home");
+}
+
+// The agent sending it back, or clearing it once they have signed.
+export async function clearAgentReview(propertyId: string): Promise<void> {
+  const { supabase } = await requireAuthContext();
+
+  await supabase
+    .from("properties")
+    .update({ review_requested_at: null, review_requested_by: null })
+    .eq("id", propertyId);
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/home");
+}
+
 // sign_agent / sign_licensee — typed-name attestation, immutable once set.
 export async function signItem(
   propertyId: string,
@@ -1007,6 +1066,10 @@ export async function signItem(
 ): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
   const rule = getItem(itemKey);
+
+  if (assistantBlocked(itemKey, profile)) {
+    return { error: ASSISTANT_BLOCKED_MESSAGE };
+  }
 
   if (rule?.licenseeOnly && !profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can sign here." };
@@ -1025,6 +1088,17 @@ export async function signItem(
     data: { typedName, signedAt: new Date().toISOString() },
     completedBy: user.id,
   });
+
+  // The agent signing is the answer to the assistant's hand-over, so the
+  // request clears itself. Otherwise the file would sit in the agent's
+  // "waiting for you" queue after they had already dealt with it.
+  if (!error && itemKey === "sign_agent") {
+    await supabase
+      .from("properties")
+      .update({ review_requested_at: null, review_requested_by: null })
+      .eq("id", propertyId);
+    revalidatePath("/dashboard/home");
+  }
 
   revalidatePath(`/dashboard/${propertyId}`);
   return error ? { error: error.message } : ok;

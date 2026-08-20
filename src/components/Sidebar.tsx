@@ -55,18 +55,26 @@ const RAIL_CLASS = "rc-nav-rail";
 
 // `exact` matters for "/dashboard": every other route starts with it, so the
 // default prefix match would light Listings up on every page in the app.
-type NavLink = { href: string; label: string; Icon: typeof Home; exact?: boolean };
+// assistantSees marks the handful of entries an assistant keeps. Everything
+// without it is office-wide — the whole portfolio, the agency's registers,
+// the sign-off queue, the SG manual, the staff roster — and an assistant is
+// attached to particular agents, not to the office (Adam, 20 Aug 2026).
+//
+// Training and CPD stay, because those are the assistant's OWN record. If
+// they hold a certificate of registration the CPD obligation is theirs
+// personally, and hiding it from them would be hiding their own compliance.
+type NavLink = { href: string; label: string; Icon: typeof Home; exact?: boolean; assistantSees?: boolean };
 
 const GROUPS: { heading: string; links: NavLink[] }[] = [
   {
     heading: "Your work",
     links: [
-      { href: "/dashboard/home", label: "Home", Icon: Home },
+      { href: "/dashboard/home", label: "Home", Icon: Home, assistantSees: true },
       // Adam, 18 Aug 2026: "there is no obvious place for me to add a new
       // listing". The page existed at /dashboard the whole time — it just had
       // no way in from the nav, so the only route to it was the logo or the
       // back button. A list you can't navigate to may as well not exist.
-      { href: "/dashboard", label: "Listings", Icon: Building2, exact: true },
+      { href: "/dashboard", label: "Listings", Icon: Building2, exact: true, assistantSees: true },
       { href: "/dashboard/portfolio", label: "Office overview", Icon: LayoutGrid },
     ],
   },
@@ -78,12 +86,12 @@ const GROUPS: { heading: string; links: NavLink[] }[] = [
       // 2026: "training plans and training logs should be in the same
       // section"). They're two views of one thing — what a person will do
       // this year, and what they actually did.
-      { href: "/dashboard/training", label: "Training", Icon: GraduationCap },
+      { href: "/dashboard/training", label: "Training", Icon: GraduationCap, assistantSees: true },
       // CPD is its own section, NOT a tab under Training. It's a separate
       // ledger with a licence condition attached (s 20(2)) and its own
       // eligibility rule — only approved providers count. Putting it beside
       // office training is what let internal sessions accrue CPD hours.
-      { href: "/dashboard/cpd", label: "CPD", Icon: ClipboardCheck },
+      { href: "/dashboard/cpd", label: "CPD", Icon: ClipboardCheck, assistantSees: true },
       { href: "/dashboard/document-signoffs", label: "Sign-offs", Icon: PenLine },
     ],
   },
@@ -113,7 +121,7 @@ function toggleRail(button: HTMLButtonElement) {
   }
 }
 
-export function Sidebar() {
+export function Sidebar({ isAssistant = false }: { isAssistant?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -151,7 +159,14 @@ export function Sidebar() {
         </span>
       </Link>
 
-      {GROUPS.map((group, gi) => (
+      {/* An assistant's nav is a subset, and a group that loses all its links
+          loses its heading too — otherwise "Agency" sits there empty. */}
+      {GROUPS.map((g) => ({
+        ...g,
+        links: isAssistant ? g.links.filter((l) => l.assistantSees) : g.links,
+      }))
+        .filter((group) => group.links.length > 0)
+        .map((group, gi) => (
         <div key={group.heading}>
           {gi > 0 && <div data-rail-divider className="mx-2 my-2.5 border-t border-rc-ink-line" />}
           <div
@@ -160,7 +175,7 @@ export function Sidebar() {
               gi === 0 ? "mt-0.5" : "mt-4"
             }`}
           >
-            {group.heading}
+            {isAssistant && group.heading === "Compliance records" ? "Your record" : group.heading}
           </div>
           {group.links.map(({ href, label, Icon, exact }) => {
             const active = isActive(pathname, href, exact);

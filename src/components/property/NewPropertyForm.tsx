@@ -8,6 +8,7 @@ import type { ActionState } from "@/lib/actions/auth";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildStagingPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { SaleMethodFields } from "@/components/property/SaleMethodFields";
+import type { Profile } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
 
@@ -160,7 +161,7 @@ function AddressAutocomplete({ defaultValue }: { defaultValue?: string }) {
 // agreement. createProperty only ever receives the resulting storage paths
 // as plain strings; see src/lib/storage/evidence.ts and
 // src/lib/actions/properties.ts for the rest of this flow.
-export function NewPropertyForm({ agencyId }: { agencyId: string }) {
+export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; agents?: Profile[] }) {
   const [state, formAction, pending] = useActionState(createProperty, initialState);
   const [files, setFiles] = useState<Record<string, File | null>>({});
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -219,6 +220,38 @@ export function NewPropertyForm({ agencyId }: { agencyId: string }) {
           <p className="rounded-2xl border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2 text-sm text-rc-amber-deep">
             {uploadError ?? state.error}
           </p>
+        )}
+
+        {/* Only rendered for an assistant (the page passes an empty list for
+            everyone else). Whose file this is has to be decided up front —
+            it decides who sees it, who it appears for as "waiting for your
+            review", and whose name is on it in the digest. */}
+        {agents.length > 0 && (
+          <div>
+            <label htmlFor="onBehalfOf" className="block text-sm font-medium text-rc-ink">
+              Which agent is this listing for?
+            </label>
+            <p className="mt-0.5 text-xs text-rc-muted">
+              You&rsquo;re setting this up on their behalf. The file belongs to them; every item still records that
+              you did it.
+            </p>
+            <select
+              id="onBehalfOf"
+              name="onBehalfOf"
+              required
+              defaultValue={agents.length === 1 ? agents[0].id : ""}
+              className="mt-1.5 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+            >
+              <option value="" disabled>
+                Choose an agent…
+              </option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.full_name ?? a.email}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
 
         <AddressAutocomplete />

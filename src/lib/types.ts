@@ -27,6 +27,15 @@ export type Profile = {
   email: string;
   is_agent: boolean;
   is_licensee_in_charge: boolean;
+  // An assistant prepares files for one or more agents and cannot sign them
+  // (Adam, 20 Aug 2026). Deliberately a separate flag rather than a value of
+  // some role enum: someone can be a licensee AND an agent already, and the
+  // three answer different questions — whose listings are these, who may sign
+  // off the agency's records, and who is working on someone else's behalf.
+  //
+  // is_agent is false for an assistant: it drives "whose listing is this"
+  // throughout the app, and an assistant has none of their own.
+  is_assistant: boolean;
   licence_type: LicenceType | null;
   licence_number: string | null;
   licence_expiry: string | null;
@@ -362,6 +371,17 @@ export type PropertyType = "House" | "Unit" | "Townhouse" | "Duplex" | "Land";
 
 export type SaleMethod = "private_treaty" | "auction";
 
+// Which agents an assistant supports. The row IS the grant — no row, no
+// access. Only the licensee in charge can create or remove one.
+export type AssistantAgent = {
+  id: string;
+  agency_id: string;
+  assistant_id: string;
+  agent_id: string;
+  created_by: string | null;
+  created_at: string;
+};
+
 // What the agent records at the fall of the hammer. The one structured
 // answer on the auction-day sheet, and the input to everything downstream:
 // sold moves the file on, passed_in keeps it on market and carries the
@@ -399,6 +419,11 @@ export type Property = {
   auction_date: string | null;
   auction_time: string | null;
   auction_venue: string | null;
+  // Set when an assistant hands the file to the agent to review and sign.
+  // NOT a sign-off — it records that the assistant finished their part and
+  // asked the agent to look. Only the agent's signature attests to the file.
+  review_requested_at: string | null;
+  review_requested_by: string | null;
   stage: PropertyStage;
   test_mode: boolean;
   created_at: string;

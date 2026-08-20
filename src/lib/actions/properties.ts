@@ -90,7 +90,7 @@ export async function createProperty(
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("agency_id")
+    .select("agency_id, is_assistant")
     .eq("id", user.id)
     .single();
 
@@ -98,11 +98,40 @@ export async function createProperty(
     return { error: "No agency found for this account — contact support." };
   }
 
+  // Whose file is this?
+  //
+  // Normally the person creating it. An assistant creates files ON BEHALF OF
+  // an agent, so the listing has to be attributed to that agent — otherwise
+  // it never shows up as the agent's own work anywhere: not in their listings,
+  // not in "waiting for your review", not in the Monday digest.
+  //
+  // Re-checked here rather than trusted from the form. The browser only says
+  // "the assistant picked this agent"; whether they are allowed to is a fact
+  // the server owns, and a hand-rolled POST must not be able to plant a file
+  // on an agent the assistant has nothing to do with.
+  let ownerId = user.id;
+  if (profile.is_assistant) {
+    const onBehalfOf = String(formData.get("onBehalfOf") ?? "").trim();
+    if (!onBehalfOf) {
+      return { error: "Choose which agent this listing is for." };
+    }
+    const { data: link } = await supabase
+      .from("assistant_agents")
+      .select("id")
+      .eq("assistant_id", user.id)
+      .eq("agent_id", onBehalfOf)
+      .maybeSingle();
+    if (!link) {
+      return { error: "You don't support that agent. Ask the licensee in charge to attach you to them." };
+    }
+    ownerId = onBehalfOf;
+  }
+
   const { data: property, error } = await supabase
     .from("properties")
     .insert({
       agency_id: profile.agency_id,
-      created_by: user.id,
+      created_by: ownerId,
       address,
       property_type: propertyType,
       is_strata: isStrata,

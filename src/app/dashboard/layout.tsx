@@ -22,7 +22,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // when you collapse or expand it. Declared with a fallback so the first
     // server-rendered paint is correct even before any client code runs.
     <div className="rc-app-shell min-h-screen bg-rc-bg-alt transition-[grid-template-columns] duration-200 md:grid md:grid-cols-[var(--rc-sidebar-w,236px)_1fr]">
-      <Sidebar />
+      <Sidebar isAssistant={Boolean(profile.is_assistant)} />
       <div className="flex min-h-screen flex-col">
         <UserBar profile={profile} />
         {children}

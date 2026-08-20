@@ -1,6 +1,11 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { sendEmail } from "@/lib/email/send";
-import { computePropertyDigests, daysSinceActivity, type PropertyDigest } from "@/lib/property-digest";
+import {
+  computePropertyDigests,
+  daysSinceActivity,
+  awaitingAgentReview,
+  type PropertyDigest,
+} from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
 import { credentialLabel } from "@/lib/licence-reminders";
 import { currentCpdYear } from "@/lib/cpd-year";
@@ -133,6 +138,25 @@ function renderDigestSection(title: string, digests: PropertyDigest[], profiles:
 // The corporation licence is included here too. It sits on the agency row
 // rather than on anyone's profile, so it was silently absent from the one
 // email whose whole job is telling the licensee what is about to lapse.
+// Files an assistant has prepared and handed to an agent. Licensee section
+// only: it is a supervision picture, not a to-do — the agent already gets
+// these at the top of their own Home page.
+function renderAwaitingAgentSection(properties: Property[], profiles: Profile[]): string {
+  const waiting = awaitingAgentReview(properties);
+  if (waiting.length === 0) return "";
+
+  const lines = ["", `Waiting on an agent (${waiting.length})`, "=".repeat(22)];
+  for (const p of waiting) {
+    const since = p.review_requested_at
+      ? new Date(p.review_requested_at).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })
+      : "recently";
+    const preparer = p.review_requested_by ? agentName(profiles, p.review_requested_by) : "an assistant";
+    lines.push(`  - ${p.address} — prepared by ${preparer}, with ${agentName(profiles, p.created_by)} since ${since}`);
+  }
+  lines.push("  Prepared, not signed. The agent's signature is what attests to the file.");
+  return lines.join("\n");
+}
+
 function renderLicenceAndPiSection(agency: Agency, profiles: Profile[]): string {
   const concerning = (s: ReturnType<typeof expiryStatus>) => s === "expired" || s === "urgent" || s === "soon";
   const phrase = (s: ReturnType<typeof expiryStatus>) =>
@@ -275,6 +299,8 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
       if (profile.is_licensee_in_charge) {
         sections.push("");
         sections.push(renderDigestSection("Whole agency", bundle.digests, bundle.profiles));
+        const awaitingSection = renderAwaitingAgentSection(bundle.properties, bundle.profiles);
+        if (awaitingSection) sections.push(awaitingSection);
         if (licenceSection) sections.push(licenceSection);
         if (trainingSection) sections.push(trainingSection);
       }

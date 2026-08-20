@@ -149,7 +149,7 @@ export type InvitePreview = { agencyName: string; email: string; isLicenseeInCha
 
 // Called from the (unauthenticated) signup page when it's reached via an
 // invite link, so it can show "you're joining <agency>" and lock the email
-// field before an account even exists. Backed by get_invite_preview() in
+// field before an account even exists. Backed by invite_preview() in
 // 0006_agency_invites.sql, which only returns a row for a still-pending
 // invite — an unknown, already-accepted, or revoked token just comes back
 // null and the signup page falls back to its normal "create a new agency"
@@ -159,7 +159,7 @@ export async function getInvitePreview(token: string): Promise<InvitePreview> {
   if (!trimmed) return null;
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_invite_preview", { p_token: trimmed }).maybeSingle();
+  const { data, error } = await supabase.rpc("invite_preview", { p_token: trimmed }).maybeSingle();
   const row = data as { agency_name: string; email: string; is_licensee_in_charge: boolean } | null;
 
   if (error || !row) return null;

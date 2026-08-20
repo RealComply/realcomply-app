@@ -6,6 +6,7 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
 import { DeletePropertySection } from "@/components/compliance/DeletePropertySection";
+import { HandToAgent } from "@/components/compliance/HandToAgent";
 import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
@@ -55,7 +56,7 @@ export default async function PropertyPage({
 
   const p = property as Property;
 
-  const [{ data: propertyItemRows }, { data: agencyRow }] = await Promise.all([
+  const [{ data: propertyItemRows }, { data: agencyRow }, { data: peopleRows }] = await Promise.all([
     supabase.from("property_items").select("*").eq("property_id", id),
     // One lookup for the page, passed down to every card, rather than each
     // card asking. Only amv ever uses it.
@@ -64,6 +65,8 @@ export default async function PropertyPage({
       .select("aml_precommencement_enabled")
       .eq("id", profile.agency_id)
       .maybeSingle(),
+    // For the hand-over card: whose listing this is, and who handed it over.
+    supabase.from("profiles").select("id, full_name, email"),
   ]);
 
   const allItems = Object.fromEntries(
@@ -81,6 +84,12 @@ export default async function PropertyPage({
   const stageItems = itemsForStage(viewedStage, p, allItems);
   const isCurrentStage = viewedStage === p.stage;
   const countdown = auctionCountdown(p.auction_date);
+
+  const people = (peopleRows ?? []) as { id: string; full_name: string | null; email: string }[];
+  const personName = (id: string | null) => {
+    const found = people.find((x) => x.id === id);
+    return found?.full_name ?? found?.email ?? "the agent";
+  };
 
   // The auction-day items are pulled out of the Campaign list and shown
   // together under one heading, in the order they happen. They are ordinary
@@ -241,6 +250,17 @@ export default async function PropertyPage({
         </div>
 
         {isCurrentStage && p.stage < 5 && <CompleteStageButton propertyId={p.id} stage={p.stage} />}
+
+        {/* The assistant hand-over. Shown to the assistant as an action, and
+            to everyone as a state once it has been used — the licensee should
+            be able to see a file is parked with an agent without asking. */}
+        <HandToAgent
+          propertyId={p.id}
+          agentName={personName(p.created_by)}
+          requestedAt={p.review_requested_at}
+          requestedByName={p.review_requested_by ? personName(p.review_requested_by) : null}
+          viewerIsAssistant={Boolean(profile.is_assistant)}
+        />
 
         {/* Setup answers, editable after the fact. Below the items and
             collapsed by default: revisited rarely, and given space up top it

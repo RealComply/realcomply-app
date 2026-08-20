@@ -18,9 +18,11 @@ export default async function TeamPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: staffRows }, { data: inviteRows }] = await Promise.all([
+  const [{ data: staffRows }, { data: inviteRows }, { data: linkRows }] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: true }),
     supabase.from("agency_invites").select("*").eq("status", "pending").order("created_at", { ascending: false }),
+    // Who supports whom. Read once for the whole page rather than per row.
+    supabase.from("assistant_agents").select("assistant_id, agent_id"),
   ]);
 
   // Read here rather than in the component so the form is a client component
@@ -36,6 +38,22 @@ export default async function TeamPage() {
 
   const staff = (staffRows ?? []) as Profile[];
   const invites = (inviteRows ?? []) as AgencyInvite[];
+  const links = (linkRows ?? []) as { assistant_id: string; agent_id: string }[];
+
+  // Only real agents can be supported — an assistant supporting another
+  // assistant is meaningless, and the licensee already sees everything.
+  const agents = staff.filter((s) => s.is_agent);
+  const nameOf = (id: string) => staff.find((s) => s.id === id)?.full_name ?? "someone";
+
+  // "Assistant to Adam Castelnuovo and Sue Nguyen" — the arrangement stated in
+  // words, so the licensee can check it at a glance rather than opening a
+  // settings panel to find out who can see what.
+  function supportLine(assistantId: string): string | null {
+    const names = links.filter((l) => l.assistant_id === assistantId).map((l) => nameOf(l.agent_id));
+    if (names.length === 0) return "Not attached to any agent yet — they can't see any listings.";
+    if (names.length === 1) return `Assistant to ${names[0]}`;
+    return `Assistant to ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  }
 
   return (
     <>
@@ -77,7 +95,9 @@ export default async function TeamPage() {
                     {s.full_name ?? s.email}
                     {s.id === profile.id && <span className="ml-1.5 text-xs font-normal text-rc-faint">(you)</span>}
                   </p>
-                  <p className="text-xs text-rc-muted">{s.email}</p>
+                  <p className="text-xs text-rc-muted">
+                    {s.is_assistant ? supportLine(s.id) : s.email}
+                  </p>
                 </div>
                 <div className="flex shrink-0 gap-1.5">
                   {s.is_licensee_in_charge && (
@@ -90,6 +110,11 @@ export default async function TeamPage() {
                       Agent
                     </span>
                   )}
+                  {s.is_assistant && (
+                    <span className="rounded-full bg-rc-green-soft px-2 py-0.5 text-[11px] font-medium text-rc-green-deep-600">
+                      Assistant
+                    </span>
+                  )}
                 </div>
               </li>
             ))}
@@ -100,11 +125,11 @@ export default async function TeamPage() {
 
         {profile.is_licensee_in_charge ? (
           <div className="mt-6">
-            <InviteAgentForm />
+            <InviteAgentForm agents={agents} />
           </div>
         ) : (
           <p className="mt-6 flex items-center gap-1.5 text-xs text-rc-faint">
-            <Users size={13} /> Only the licensee in charge can invite new agents.
+            <Users size={13} /> Only the licensee in charge can invite people or change who an assistant supports.
           </p>
         )}
       </main>

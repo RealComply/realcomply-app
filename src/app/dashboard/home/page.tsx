@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Building2, FileWarning, ShieldCheck, MessageSquareWarning, Gift as GiftIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
@@ -41,6 +42,14 @@ export default async function HomeDashboardPage() {
 
   const { data: properties } = await supabase.from("properties").select("*").order("created_at", { ascending: false });
   const propertyList = (properties ?? []) as Property[];
+
+  // Files an assistant has handed to THIS person. Scoped to the reader: a
+  // licensee sees the ones on their own listings here, and the office-wide
+  // picture on the Monday digest and the portfolio page rather than in a
+  // personal to-do list.
+  const awaitingMyReview = propertyList.filter(
+    (prop) => prop.review_requested_at && prop.created_by === profile.id,
+  );
   const propertyIds = propertyList.map((p) => p.id);
 
   const [
@@ -68,6 +77,15 @@ export default async function HomeDashboardPage() {
   ]);
 
   const staff = (staffRows ?? []) as Profile[];
+
+  const preparedBy = (id: string | null) => {
+    const found = staff.find((x) => x.id === id);
+    return found?.full_name ?? found?.email ?? "your assistant";
+  };
+  const handedOver = (at: string | null) =>
+    at
+      ? `handed over ${new Date(at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`
+      : "handed over";
   const agency = agencyRow as Agency | null;
   const pendingInviteCount = (pendingInviteRows ?? []).length;
   const gifts = (giftRows ?? []) as Gift[];
@@ -162,6 +180,39 @@ export default async function HomeDashboardPage() {
               </p>
             </div>
           </div>
+
+          {/* Files an assistant has handed over and prepared for this agent.
+              Top of Home, above the tiles, because it is the one thing on the
+              page that is specifically WAITING ON THE PERSON READING IT —
+              everything below is a picture of the office. Only rendered when
+              there is something in it, so an office with no assistants never
+              sees it. */}
+          {awaitingMyReview.length > 0 && (
+            <section className="mt-6 rounded-card border border-rc-amber-deep/25 bg-rc-amber/10 px-4 py-3.5">
+              <h2 className="text-sm font-semibold text-rc-amber-deep">
+                Waiting for your review ({awaitingMyReview.length})
+              </h2>
+              <ul className="mt-2.5 space-y-1.5">
+                {awaitingMyReview.map((prop) => (
+                  <li key={prop.id}>
+                    <Link
+                      href={`/dashboard/${prop.id}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2.5 text-sm shadow-card transition hover:bg-white/70"
+                    >
+                      <span className="font-medium text-rc-ink">{prop.address}</span>
+                      <span className="text-xs text-rc-muted">
+                        Prepared by {preparedBy(prop.review_requested_by)} ·{" "}
+                        {handedOver(prop.review_requested_at)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-rc-amber-deep/80">
+                Review the file and sign it. Your signature is the attestation — the hand-over isn&rsquo;t one.
+              </p>
+            </section>
+          )}
 
           {/* px-3 above matches gap-3 below, so the outer edges get the same
               gap as the gap between tiles, rather than the first/last tile
