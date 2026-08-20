@@ -18,11 +18,57 @@ const ok: ActionState = { error: null };
 // The three setup-time documents (property creation form) and which item
 // each is attached to as evidence — see src/lib/actions/properties.ts.
 const SOURCE_ITEM_KEYS = ["a3", "b1", "a4b"] as const;
+type SourceKey = (typeof SOURCE_ITEM_KEYS)[number];
 
 const SOURCE_LABELS: Record<string, string> = {
   a3: "agency agreement",
   b1: "contract for sale",
   a4b: "comparable-sales report",
+};
+
+// ── Which document may speak to which item ─────────────────────────────────
+//
+// ADDED 20 Aug 2026, after a real file (24/1 Citrus Ave) came back with the
+// contract's cooling-off statement recorded against a6 and all nine s52A
+// prescribed documents ticked off an agency agreement. Adam: "it's confusing
+// contract for sale with sale agreement."
+//
+// The cause was not the model misreading either document. It was that all
+// three uploads received the SAME prompt — every compliance item plus the
+// contract check — and every patch that came back was pooled into one array
+// with no record of which file produced it. Nothing stopped the contract from
+// answering agency-agreement questions, because nothing ever asked whether it
+// should be allowed to.
+//
+// So the binding is enforced HERE, in code, after the model returns. A prompt
+// is an instruction; this is a rule. a5 (commission) and a6 (agency-agreement
+// cooling-off) exist only in the agency agreement — a contract for sale
+// carries a cooling-off statement too, but it is the purchaser's five-day
+// right under s66X of the Conveyancing Act, a different period under a
+// different Act, and recording it here would put the wrong law on the card.
+const SOURCE_TARGETS: Record<SourceKey, ReadonlySet<string>> = {
+  a3: new Set(["a1", "a2", "a3", "a4", "a4c", "a5", "a6", "a7"]),
+  b1: new Set(["b1"]),
+  // The ESP itself belongs in the agency agreement (s72A); a comparables
+  // report may suggest a range but that is not the figure the agent agreed.
+  a4b: new Set(["a4b", "a4c"]),
+};
+
+// What the document turned out to be, as opposed to which box it was uploaded
+// into. The model answers this first, on every read.
+type DocumentKind = "agency_agreement" | "contract_for_sale" | "comparable_sales" | "other";
+
+const EXPECTED_KIND: Record<SourceKey, DocumentKind> = {
+  a3: "agency_agreement",
+  b1: "contract_for_sale",
+  a4b: "comparable_sales",
+};
+
+const KIND_LABELS: Record<DocumentKind, string> = {
+  agency_agreement: "an agency agreement",
+  contract_for_sale: "a contract for sale of land",
+  comparable_sales: "a comparable-sales report",
+  other: "a different kind of document",
 };
 
 // Only these items can ever be patched by extraction — a hard allow-list,
@@ -72,8 +118,23 @@ type DraftPatch = {
    * Set on a b1 patch when the uploaded file is not a contract for sale at
    * all, so the card can say so plainly instead of showing a document
    * checklist run against the wrong document.
+   *
+   * Superseded by wrongDocument below, which covers all three slots rather
+   * than just this one. Kept so cards drafted before 20 Aug 2026 still read
+   * correctly.
    */
   notAContract?: boolean;
+  /**
+   * The uploaded file is not the kind of document this slot expects. Set by
+   * runExtraction, never by the model — the model reports what the document
+   * IS and this code decides whether that matches.
+   *
+   * When set, it is the ONLY thing recorded from that document. Reading an
+   * agency agreement for contract facts produces answers that look perfectly
+   * plausible and are wrong, which is worse on a compliance file than no
+   * answer at all.
+   */
+  wrongDocument?: { expected: string; actual: string };
   /**
    * a3 only — the method of sale, and the auction date and time where the
    * agreement states them. Adam, 18 Aug 2026: "method of sale, auction date
@@ -93,6 +154,26 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
   input_schema: {
     type: "object",
     properties: {
+      documentIs: {
+        type: "string",
+        enum: ["agency_agreement", "contract_for_sale", "comparable_sales", "other"],
+        description:
+          "ALWAYS set this, and decide it before anything else. What kind of document have you actually been " +
+          "shown? Judge it from what the document IS — its heading, its parties, its structure — not from what " +
+          "it lacks and not from the filename. " +
+          "'agency_agreement' — a Sales Inspection Report and Selling Agency Agreement, or any agreement " +
+          "appointing the agency to sell: it names the licensee and the vendor, sets commission, and carries " +
+          "the vendor's declarations. " +
+          "'contract_for_sale' — a contract for the sale of land: headed as such, names the vendor and the " +
+          "vendor's solicitor or conveyancer, carries the s66X cooling-off statement, and usually has a List " +
+          "of Documents page followed by annexures. CRITICAL: a contract prepared for a new listing has NO " +
+          "purchaser named, NO agreed price and NO settlement date, because it must exist before the property " +
+          "is offered for sale. Those absences are normal and must NEVER lead you to call it something else. " +
+          "'comparable_sales' — a comparable-sales or market-appraisal report (Cotality, PropTrack or similar). " +
+          "'other' — anything else. " +
+          "These two are genuinely easy to confuse and the consequences of getting it wrong are real, so look " +
+          "at the heading and the parties before you answer.",
+      },
       patches: {
         type: "array",
         description: "Zero or more findings. Return an empty array if there's nothing to flag and no structured figures/dates to record.",
@@ -179,7 +260,7 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
         },
       },
     },
-    required: ["patches"],
+    required: ["documentIs", "patches"],
   },
 };
 
@@ -200,19 +281,11 @@ function prescribedDocsPrompt(docs: PrescribedDoc[]): string {
     .join("\n");
 
   return (
-    "b1 (the contract for sale and its s52A prescribed documents). Work in two steps.\n" +
-    "  STEP 1 — is this actually a contract for sale of land? Decide this from what the document IS, not " +
-    "from what it lacks. A contract for sale is headed as a contract for the sale of land, names a vendor and " +
-    "the vendor's solicitor or conveyancer, carries the cooling-off statement, and usually has a 'List of " +
-    "Documents' page followed by annexures. CRITICAL: a contract prepared for a new listing has NO purchaser " +
-    "named, NO agreed price, and NO settlement date, because it must exist before the property is offered for " +
-    "sale. Those absences are completely normal and must NEVER be cited as evidence that a document is not a " +
-    "contract. The document most often mistaken for one is the Sales Inspection Report and Selling Agency " +
-    "Agreement, which is the agency's appointment document. If what you were shown is not a contract for sale, " +
-    "set notAContract true, write ONE short sentence naming what it actually is, and stop. Do not list the " +
-    "checks you did not run, and do not explain that the s52A check does not apply — the agent knows what they " +
-    "uploaded and only needs to be told it was the wrong file.\n" +
-    "  STEP 2 — if it IS a contract, check for each of these prescribed documents and return a prescribedDocs " +
+    "b1 (the contract for sale and its s52A prescribed documents).\n" +
+    "  You have already answered documentIs. If it was anything other than 'contract_for_sale', return an " +
+    "EMPTY patches array and stop — do not run the check below, do not list what you could not check, and do " +
+    "not explain that s52A does not apply. The agent will be told which document they actually uploaded.\n" +
+    "  If it IS a contract, check for each of these prescribed documents and return a prescribedDocs " +
     "entry for EVERY one, found true or false:\n" +
     list +
     "\n  Look through the whole document, including the annexures after the contract's own pages. Judge found " +
@@ -221,6 +294,95 @@ function prescribedDocsPrompt(docs: PrescribedDoc[]): string {
     "the agent is shown it as a list. Leave note empty unless there is something genuinely odd that the " +
     "found/not-found answers cannot express, such as a certificate that is visibly for a different property."
   );
+}
+
+// ── One prompt per document ────────────────────────────────────────────────
+//
+// Until 20 Aug 2026 all three uploads got the same prompt: every item plus the
+// contract check. That is what let the contract answer for the agency
+// agreement and back again. Worse, sending the "is this a contract? here is
+// what people mistake for one" block alongside a read of the agency agreement
+// primes exactly the confusion it is warning about.
+//
+// Each document is now asked only what it can answer. The allow-list in
+// SOURCE_TARGETS is still the thing that enforces it — this just stops us
+// inviting the wrong answer in the first place, and costs fewer tokens.
+
+const AGENCY_AGREEMENT_PROMPT =
+  "a1 (whether the vendor's identity was verified. Look among the vendor declarations and the " +
+  "signing pages for an explicit confirmation — a proof-of-identity or verification-of-identity " +
+  "section, a statement that identity documents were sighted, a reference to VOI being completed, " +
+  "or a ticked box to that effect. Set identityVerified true ONLY on an explicit confirmation, and " +
+  "set eventDate to the verification date if one is stated. IMPORTANT: if the agreement says " +
+  "nothing about identity verification, that is entirely normal — verification is usually recorded " +
+  "in a separate audit trail, not in the agreement — so leave a1 out of the patches entirely and " +
+  "write no note about it. Do not report its absence as a gap, a risk, or anything at all), " +
+  "a2 (whether the " +
+  "approved consumer guide was given to the vendor before the agency agreement was signed. LOOK FOR " +
+  "THIS DELIBERATELY — in a NSW residential agency agreement it is normally a short acknowledgement " +
+  "by the vendor, near the signing block or among the vendor declarations, worded along the lines of " +
+  "acknowledging receipt of the approved guide, the consumer guide, or the approved consumer guide " +
+  "for agency agreements, sometimes as a tick-box and sometimes with its own date beside it. It is " +
+  "easy to skim past because it sits among boilerplate, so read the declarations and signing pages " +
+  "specifically rather than only the front schedule. Set consumerGuideProvided true ONLY on an " +
+  "explicit acknowledgement actually present in this document — never infer it from the agreement " +
+  "merely existing, or from the guide being a legal requirement. If the acknowledgement IS there and " +
+  "states the date the guide was given, set eventDate to that date. If the acknowledgement is there " +
+  "but no date is stated anywhere, still set consumerGuideProvided true, leave eventDate out, and say " +
+  "in the note that the agreement confirms the guide was given but does not state the date, so the " +
+  "agent needs to enter it — that is genuinely useful to them, and is an exception to the " +
+  "no-restatement rule. If the document does not address the guide at all, leave a2 out rather than " +
+  "guessing), " +
+  "a3 (the date the " +
+  "agency agreement was signed — put it in eventDate and write NO note. Do not report that the " +
+  "agreement was signed, or by whom: the agent uploaded it and can see the signatures, so naming the " +
+  "vendors back at them is the restatement the rule above forbids. Only write a note here if " +
+  "something is genuinely wrong with the execution, for example it appears unsigned by a party, or " +
+  "carries no date at all. ALSO on the a3 patch: the METHOD OF SALE, which a NSW selling agency " +
+  "agreement normally states explicitly — set saleMethod, and where the method is auction and the " +
+  "agreement gives a specific date and time, set auctionDate and auctionTime too. A blank or 'TBC' " +
+  "auction date is normal at signing; omit the field rather than inventing one. Write no note about " +
+  "any of this — it fills in fields the agent would otherwise re-key, and saying so adds nothing), " +
+  "a4 (the ESP figures, only if explicitly stated in this " +
+  "document — put them in espLow and espHigh and write NO note whatsoever. Do not describe the " +
+  "figures, and above all do not characterise where they came from or what kind of estimate they " +
+  "are: you cannot tell an agent's own appraisal from an automated valuation by looking at a number, " +
+  "and guessing wrong puts a false claim about provenance beside a figure the agent has to defend " +
+  "under s72A. Whether the range breaches the 10% spread is arithmetic, calculated from the figures " +
+  "elsewhere, and is not your job), " +
+  "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
+  "note-flagging rule: if the document contains that reasoning text, paraphrase it as a short " +
+  "editable starting draft for the agent to refine, not just a gap-flag), " +
+  "a5 (commission, rebates, discounts and vendor-paid advertising, as disclosed to the vendor in " +
+  "this agreement — s57), " +
+  "a6 (the AGENCY AGREEMENT's own cooling-off period: one business day, under the Property and Stock " +
+  "Agents Act. This is NOT the purchaser's cooling-off period on a contract for sale, which is five " +
+  "business days under s66X of the Conveyancing Act — a different right, for a different party, " +
+  "under a different Act. If what you are looking at is the s66X purchaser statement, that is not " +
+  "this item: leave a6 out entirely), " +
+  "a7 (material facts — set materialFactDisclosed from the vendor disclosure section, " +
+  "true if the vendor disclosed something and false ONLY if that section is present, completed, and " +
+  "records nothing to disclose. If the section is missing, blank or partly filled, omit the field so " +
+  "the agent answers it themselves — silence is not a 'no'. The statutory warnings printed on every " +
+  "form — loose-fill asbestos, smoke alarms — are NOT a vendor disclosure and must never be read as " +
+  "one).";
+
+const COMPARABLES_PROMPT =
+  "a4b (whether comparable-sales evidence is present " +
+  "at all — say so in ONE short sentence and stop. Do not list the comparable addresses, prices or " +
+  "counts: the agent uploaded this document and has it open, so enumerating its contents back at " +
+  "them is the restatement the rule above forbids. Do not comment on whether the agent has explained " +
+  "how the comparables relate to the ESP, or on the absence of that reasoning — that belongs to a4c, " +
+  "which has its own card directly below this one for exactly that purpose, and flagging it here " +
+  "reads as a gap in the wrong place), " +
+  "a4c (the agent's own reasoning behind the ESP, ONLY if this report actually contains reasoning " +
+  "written by the agent rather than the provider's own automated commentary — paraphrase it as a " +
+  "short editable starting draft. If all you can see is the provider's generated text, leave a4c out).";
+
+function promptForSource(source: SourceKey, prescribedDocs: PrescribedDoc[]): string {
+  if (source === "b1") return prescribedDocsPrompt(prescribedDocs);
+  if (source === "a4b") return COMPARABLES_PROMPT;
+  return AGENCY_AGREEMENT_PROMPT;
 }
 
 // f3 — pre-purchase inspection report register (cl 37, Property and Stock
@@ -545,6 +707,7 @@ async function extractOneDocument(
   item: PropertyItem,
   prescribedDocs: PrescribedDoc[],
 ): Promise<DraftPatch[]> {
+  const source = item.item_key as SourceKey;
   const path = item.evidence_path;
   if (!path) return [];
 
@@ -616,64 +779,12 @@ async function extractOneDocument(
           {
             type: "text",
             text:
-              `This document was uploaded as the ${sourceLabel}. Call record_findings with any facts it ` +
+              `This document was uploaded as the ${sourceLabel}, but do not take that on trust — the wrong ` +
+              "file is uploaded often enough to matter, and reading the wrong document produces answers that " +
+              "look right and are not. FIRST set documentIs from what the document actually is. THEN, only if " +
+              `it really is the ${sourceLabel}, call record_findings with any facts it ` +
               "explicitly and literally states that are relevant to these compliance items: " +
-              "a1 (whether the vendor's identity was verified. Look among the vendor declarations and the " +
-              "signing pages for an explicit confirmation — a proof-of-identity or verification-of-identity " +
-              "section, a statement that identity documents were sighted, a reference to VOI being completed, " +
-              "or a ticked box to that effect. Set identityVerified true ONLY on an explicit confirmation, and " +
-              "set eventDate to the verification date if one is stated. IMPORTANT: if the agreement says " +
-              "nothing about identity verification, that is entirely normal — verification is usually recorded " +
-              "in a separate audit trail, not in the agreement — so leave a1 out of the patches entirely and " +
-              "write no note about it. Do not report its absence as a gap, a risk, or anything at all), " +
-              "a2 (whether the " +
-              "approved consumer guide was given to the vendor before the agency agreement was signed. LOOK FOR " +
-              "THIS DELIBERATELY — in a NSW residential agency agreement it is normally a short acknowledgement " +
-              "by the vendor, near the signing block or among the vendor declarations, worded along the lines of " +
-              "acknowledging receipt of the approved guide, the consumer guide, or the approved consumer guide " +
-              "for agency agreements, sometimes as a tick-box and sometimes with its own date beside it. It is " +
-              "easy to skim past because it sits among boilerplate, so read the declarations and signing pages " +
-              "specifically rather than only the front schedule. Set consumerGuideProvided true ONLY on an " +
-              "explicit acknowledgement actually present in this document — never infer it from the agreement " +
-              "merely existing, or from the guide being a legal requirement. If the acknowledgement IS there and " +
-              "states the date the guide was given, set eventDate to that date. If the acknowledgement is there " +
-              "but no date is stated anywhere, still set consumerGuideProvided true, leave eventDate out, and say " +
-              "in the note that the agreement confirms the guide was given but does not state the date, so the " +
-              "agent needs to enter it — that is genuinely useful to them, and is an exception to the " +
-              "no-restatement rule. If the document does not address the guide at all, leave a2 out rather than " +
-              "guessing), " +
-              "a3 (the date the " +
-              "agency agreement was signed — put it in eventDate and write NO note. Do not report that the " +
-              "agreement was signed, or by whom: the agent uploaded it and can see the signatures, so naming the " +
-              "vendors back at them is the restatement the rule above forbids. Only write a note here if " +
-              "something is genuinely wrong with the execution, for example it appears unsigned by a party, or " +
-              "carries no date at all. ALSO on the a3 patch: the METHOD OF SALE, which a NSW selling agency " +
-              "agreement normally states explicitly — set saleMethod, and where the method is auction and the " +
-              "agreement gives a specific date and time, set auctionDate and auctionTime too. A blank or 'TBC' " +
-              "auction date is normal at signing; omit the field rather than inventing one. Write no note about " +
-              "any of this — it fills in fields the agent would otherwise re-key, and saying so adds nothing), " +
-              "a4 (the ESP figures, only if explicitly stated in this " +
-              "document — put them in espLow and espHigh and write NO note whatsoever. Do not describe the " +
-              "figures, and above all do not characterise where they came from or what kind of estimate they " +
-              "are: you cannot tell an agent's own appraisal from an automated valuation by looking at a number, " +
-              "and guessing wrong puts a false claim about provenance beside a figure the agent has to defend " +
-              "under s72A. Whether the range breaches the 10% spread is arithmetic, calculated from the figures " +
-              "elsewhere, and is not your job), a4b (whether comparable-sales evidence is present " +
-              "at all — say so in ONE short sentence and stop. Do not list the comparable addresses, prices or " +
-              "counts: the agent uploaded this document and has it open, so enumerating its contents back at " +
-              "them is the restatement the rule above forbids. Do not comment on whether the agent has explained " +
-              "how the comparables relate to the ESP, or on the absence of that reasoning — that belongs to a4c, " +
-              "which has its own card directly below this one for exactly that purpose, and flagging it here " +
-              "reads as a gap in the wrong place), " +
-              "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
-              "note-flagging rule: if the document contains that reasoning text, paraphrase it as a short " +
-              "editable starting draft for the agent to refine, not just a gap-flag), a5 " +
-              "(commission/rebate/VPA terms), a6 " +
-              "(cooling-off), a7 (material facts — set materialFactDisclosed from the vendor disclosure section, " +
-              "true if the vendor disclosed something and false ONLY if that section is present, completed, and " +
-              "records nothing to disclose. If the section is missing, blank or partly filled, omit the field so " +
-              "the agent answers it themselves — silence is not a 'no').\n\n" +
-              prescribedDocsPrompt(prescribedDocs) +
+              promptForSource(source, prescribedDocs) +
               "\n\nFor every item: only report what is directly readable in the content above; " +
               "if you're not looking at something substantial enough to ground a finding, leave that item out " +
               "rather than filling it in.",
@@ -690,9 +801,43 @@ async function extractOneDocument(
   );
   if (!toolUse) return [];
 
-  const input = toolUse.input as { patches?: DraftPatch[] };
-  return (input.patches ?? []).filter((p) => TARGET_ITEM_KEYS.has(p.itemKey));
+  const input = toolUse.input as { patches?: DraftPatch[]; documentIs?: DocumentKind };
+
+  // The wrong file in this slot. Record that, and NOTHING else from it.
+  //
+  // This is the whole point of the 20 Aug rewrite. Previously the model could
+  // say "this is the agency agreement, not a contract" in a note and still
+  // return a full prescribedDocs array alongside it, which rendered as nine
+  // green ticks against s52A on the strength of a document that is not a
+  // contract. Both halves came back in the same tool call and nothing
+  // reconciled them.
+  const actual = input.documentIs;
+  const expected = EXPECTED_KIND[source];
+  if (actual && actual !== expected) {
+    return [
+      {
+        itemKey: source,
+        wrongDocument: { expected: KIND_LABELS[expected], actual: KIND_LABELS[actual] },
+        // Kept in step with the older flag so a b1 card written either side of
+        // this change behaves the same way.
+        ...(source === "b1" ? { notAContract: true } : {}),
+      },
+    ];
+  }
+
+  return (input.patches ?? [])
+    .filter((p) => TARGET_ITEM_KEYS.has(p.itemKey))
+    // The rule this file exists to enforce. A document only speaks to the
+    // items it can actually evidence, whatever the model chose to return.
+    .filter((p) => SOURCE_TARGETS[source].has(p.itemKey))
+    // prescribedDocs is a b1 answer and only a b1 answer.
+    .map((p) => (source === "b1" ? p : { ...p, prescribedDocs: undefined, notAContract: undefined }))
+    // materialFactDisclosed is the vendor's declaration in the agency
+    // agreement. Nothing else may set it — a wrong "none disclosed" writes a
+    // record the vendor never made and silently removes e2 later in the file.
+    .map((p) => (source === "a3" ? p : { ...p, materialFactDisclosed: undefined }));
 }
+
 
 // Reads whichever setup documents were attached (agency agreement, contract
 // for sale, comparable-sales report) and writes what it finds into each
@@ -750,9 +895,15 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
     .eq("property_id", propertyId)
     .in("item_key", SOURCE_ITEM_KEYS);
 
+  // Read in a fixed order rather than whatever the database returned. a4c
+  // (ESP reasoning) is the one item two documents may both speak to, and the
+  // later write wins — so the agency agreement goes last and its version of
+  // the agent's reasoning is the one that survives.
+  const READ_ORDER: SourceKey[] = ["b1", "a4b", "a3"];
   const withEvidence = ((rows ?? []) as PropertyItem[])
     .filter((i) => i.evidence_path)
-    .filter((i) => !onlyItemKey || i.item_key === onlyItemKey);
+    .filter((i) => !onlyItemKey || i.item_key === onlyItemKey)
+    .sort((x, y) => READ_ORDER.indexOf(x.item_key as SourceKey) - READ_ORDER.indexOf(y.item_key as SourceKey));
 
   // Whether the agency agreement itself was among the documents read. Only if
   // it was can we conclude anything about the consumer-guide acknowledgement:
@@ -838,7 +989,14 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
     // absence is meaningful. Identity verification normally lives in a
     // separate audit trail (FLK), so an agreement silent on it is the normal
     // case and flagging that would cry wolf on nearly every listing.
+    //
+    // Never fires on a wrong-document patch. Belt and braces — a mismatch
+    // patch carries no eventDate so it could not reach here anyway — but
+    // auto-marking a compliance item "done" is the one thing in this file
+    // that writes a decision rather than offering one, so it gets an explicit
+    // guard rather than relying on a property of some other object.
     const autoComplete =
+      !patch.wrongDocument &&
       !!patch.eventDate &&
       (existing?.status ?? "open") === "open" &&
       ((patch.itemKey === "a2" && patch.consumerGuideProvided === true) ||
@@ -857,6 +1015,11 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
           // note box the agent owns it, and extraction stays in aiDraft where
           // it is offered rather than imposed.
           ...(getItem(patch.itemKey)?.showFindings && patch.note ? { note: patch.note } : {}),
+          // Clear a findings note left by an earlier read. Without this, a card
+          // that previously reported on the wrong document keeps that text
+          // sitting underneath the new "this is the wrong file" warning, which
+          // reads as though the finding still stands.
+          ...(patch.wrongDocument && getItem(patch.itemKey)?.showFindings ? { note: "" } : {}),
           aiDraft: {
             note: patch.note,
             espLow: patch.espLow,
@@ -880,6 +1043,7 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
               PRESCRIBED_DOC_KEYS.includes(d.key),
             ),
             notAContract: patch.notAContract,
+            wrongDocument: patch.wrongDocument,
             // Flags the ItemCard banner to explain *why* this is already
             // done rather than just pre-filled, and that it was AI-set, not
             // agent-confirmed — reversible any time via the existing Reopen
@@ -902,7 +1066,13 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
   // rather than left as silence — otherwise the card looks identical whether
   // the document was checked or not (Adam, 14 Aug 2026). Never touches an item
   // already marked done: a human decision outranks this.
-  if (readAgencyAgreement && !patches.some((p) => p.itemKey === "a2")) {
+  //
+  // The wrongDocument check is load-bearing: if the file in the agency-
+  // agreement slot turned out to be a contract, we did NOT read an agency
+  // agreement, and telling the agent we looked for the acknowledgement and
+  // couldn't find it would be a finding about a document nobody opened.
+  const agreementSlotHeldWrongDocument = patches.some((p) => p.itemKey === "a3" && p.wrongDocument);
+  if (readAgencyAgreement && !agreementSlotHeldWrongDocument && !patches.some((p) => p.itemKey === "a2")) {
     const { data: a2Row } = await supabase
       .from("property_items")
       .select("*")
@@ -936,6 +1106,22 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
   }
 
   revalidatePath(`/dashboard/${propertyId}`);
+
+  // Say it at the top of the page, not only on the card. A file in the wrong
+  // slot means nothing was read from it at all, and an agent who came here
+  // expecting their items to fill in needs to know why they didn't.
+  const mismatches = patches.filter((p) => p.wrongDocument);
+  if (mismatches.length > 0) {
+    const detail = mismatches
+      .map(
+        (p) =>
+          `the file uploaded as the ${SOURCE_LABELS[p.itemKey] ?? p.itemKey} looks like ${p.wrongDocument!.actual}`,
+      )
+      .join("; ");
+    return {
+      error: `Nothing was recorded from ${mismatches.length === 1 ? "one document" : "some documents"} — ${detail}. Replace the file on that item and it'll read again.`,
+    };
+  }
 
   if (patches.length === 0) {
     return {

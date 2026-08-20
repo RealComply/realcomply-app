@@ -331,9 +331,16 @@ function ChecklistItem({
       guideNotFound?: boolean;
       prescribedDocs?: { key: string; found: boolean }[];
       notAContract?: boolean;
+      wrongDocument?: { expected: string; actual: string };
     };
   };
   const draft = data.aiDraft;
+  // The file in this slot is a different kind of document than the slot
+  // expects, so nothing was read from it. Everything the AI would otherwise
+  // have offered on this card is suppressed — see the extraction module's
+  // SOURCE_TARGETS note. Showing findings beside this warning would be worse
+  // than showing none, because they'd be findings about the wrong document.
+  const wrongDocument = draft?.wrongDocument;
   // Did the read actually produce something this card can show? An aiDraft is
   // written even when the model found nothing for this item, so its presence
   // alone means "we looked", not "we found something".
@@ -382,7 +389,15 @@ function ChecklistItem({
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       <form action={formAction} className="space-y-3">
-        {draft?.autoCompleted ? (
+        {wrongDocument ? (
+          <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>
+              This looks like <strong>{wrongDocument.actual}</strong>, not {wrongDocument.expected}. Nothing has
+              been recorded from it — attach the right file and it&apos;ll read again.
+            </span>
+          </p>
+        ) : draft?.autoCompleted ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-1.5 text-xs text-rc-green-deep">
             <Sparkles size={13} className="mt-0.5 shrink-0" />
             <span>
@@ -622,7 +637,7 @@ function ChecklistItem({
             not-found is entirely possible; letting it flag the item outright
             would put a red mark on a compliant file. It goes to the agent, who
             decides, which is the same rule every other AI output here follows. */}
-        {draft?.prescribedDocs && draft.prescribedDocs.length > 0 && (
+        {!wrongDocument && !draft?.notAContract && draft?.prescribedDocs && draft.prescribedDocs.length > 0 && (
           <div>
             <label className="block text-xs text-rc-muted">
               s52A prescribed documents{" "}
