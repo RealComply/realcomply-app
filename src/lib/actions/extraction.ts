@@ -618,6 +618,25 @@ export async function extractCpdCertificate(
 // licence scan. Storing those would put RealComply under Privacy Act APP 11
 // obligations it is not built for today.
 //
+// BROADENED 20 Aug 2026, same conversation: "not just a driver's licence. It
+// could be a passport. It could be a council rate. It could be a title
+// certificate. None of these things we really want in there."
+//
+// That widens the idea past identity documents as such. The useful line is
+// SOURCE DOCUMENT vs VERIFICATION RECORD. The things people gather to prove
+// who someone is and where they live — licence, passport, rates notice,
+// utility bill, bank statement, title search — are all source documents, and
+// none of them belong on this card. What belongs is the record that a check
+// was performed against them.
+//
+// SCOPED TO a1 DELIBERATELY, and this matters if anyone widens the flag later:
+// a certificate of title and a council rates notice are perfectly legitimate
+// on OTHER items — a title search is a s52A prescribed document inside the
+// contract (b1), and rates notices turn up in settlement paperwork. It is only
+// on the identity card that their presence means someone has filed the raw
+// evidence instead of the verification. Turning rejectIdDocuments on globally
+// would start refusing contracts.
+//
 // THE DISTINCTION THIS HAS TO GET RIGHT. a1 asks for the VOI certificate or
 // signing audit trail — the record that a check happened. Some of those (ZipID,
 // IDVerse) reproduce the licence details, and a few embed a thumbnail of the
@@ -628,33 +647,37 @@ export async function extractCpdCertificate(
 const ID_SCREEN_TOOL: Anthropic.Tool = {
   name: "screen_for_identity_documents",
   description:
-    "Decide whether an uploaded file is a copy of a personal identity document, which must not be stored.",
+    "Decide whether an uploaded file is a source document evidencing a person's identity, address or " +
+    "ownership — which must not be stored — as opposed to a record that a verification check was carried out.",
   input_schema: {
     type: "object",
     properties: {
       isIdentityDocument: {
         type: "boolean",
         description:
-          "TRUE if this file is, in substance, a copy of one or more personal identity documents — a scan, " +
-          "photo or screenshot of a driver's licence, passport, birth certificate, Medicare card, citizenship " +
-          "certificate, proof-of-age card, visa grant, or similar. Also true for a file that is mostly such " +
-          "copies with a cover page attached. " +
-          "FALSE for a report ABOUT an identity check: a verification-of-identity certificate, an identity " +
-          "verification report, an e-signing completion certificate or audit trail, a CDD or KYC outcome " +
-          "summary. Those are records that a check was performed and are exactly what this product asks for — " +
-          "answer FALSE even when they quote licence numbers, document numbers or expiry dates, and even when " +
-          "they include a small thumbnail of the document that was checked. The question is what the file IS, " +
-          "not what it mentions. " +
-          "FALSE for ordinary conveyancing paperwork: agency agreements, contracts, certificates of title, " +
-          "planning certificates, inspection reports, comparable-sales reports. " +
-          "If you genuinely cannot tell, answer FALSE — a wrong rejection blocks an agent from filing a " +
-          "legitimate record, and the agent has been warned in writing not to upload ID.",
+          "The question is whether this file is a SOURCE DOCUMENT used to establish who someone is or where " +
+          "they live, rather than a RECORD that such a check was carried out. Only the record belongs here.\n" +
+          "TRUE — a copy, scan, photo or screenshot of any of these, whether on its own or as the substance " +
+          "of the file behind a cover page: a driver's licence; a passport; a birth, marriage, citizenship or " +
+          "change-of-name certificate; a Medicare or proof-of-age card; a visa grant; a council rates notice; " +
+          "a utility or telephone bill; a bank or credit-card statement; a certificate of title or title " +
+          "search; any other document whose role is to evidence a person's identity, address or ownership.\n" +
+          "FALSE — a report ABOUT a check: a verification-of-identity certificate, an identity verification " +
+          "report, an e-signing completion certificate or audit trail, a CDD or KYC outcome summary. These " +
+          "are exactly what this card asks for. Answer FALSE even when they quote licence or document " +
+          "numbers, expiry dates or addresses, and even when they reproduce a small thumbnail of the document " +
+          "that was checked. What the file IS decides this, not what it mentions.\n" +
+          "FALSE — ordinary conveyancing paperwork that happens to have been attached: an agency agreement, " +
+          "a contract for sale, a planning certificate, an inspection report, a comparable-sales report.\n" +
+          "If you genuinely cannot tell, answer FALSE. A wrong rejection blocks an agent from filing a " +
+          "legitimate compliance record, and they have already been warned in writing.",
       },
       documentKind: {
         type: "string",
         description:
-          "Two or three words naming what the file appears to be, e.g. 'a driver's licence', 'a passport " +
-          "photo page', 'a VOI certificate'. Used to tell the agent what was refused.",
+          "Two or three words naming what the file appears to be, as you would say it to the agent — e.g. " +
+          "\"a driver's licence\", 'a passport photo page', 'a council rates notice', 'a certificate of " +
+          "title'. Used to tell them exactly what was refused.",
       },
     },
     required: ["isIdentityDocument"],
@@ -695,8 +718,10 @@ export async function screenForIdDocument(
       model: "claude-sonnet-5",
       max_tokens: 256,
       system:
-        "You are screening a file an Australian real-estate agent is attaching to a compliance record, to " +
-        "keep copies of personal identity documents out of the system. Judge only what you were shown. " +
+        "You are screening a file an Australian real-estate agent is attaching to the 'vendor identity " +
+        "verified' item on a compliance record. The purpose is to keep personal source documents — the things " +
+        "gathered to prove who someone is, where they live, or what they own — out of the system, while " +
+        "letting through the record that a verification was carried out. Judge only what you were shown. " +
         "Answer FALSE when uncertain: refusing a legitimate compliance record is a real cost, and this screen " +
         "backs up a written warning rather than replacing it.",
       messages: [
@@ -722,7 +747,7 @@ export async function screenForIdDocument(
 
     const result = toolUse.input as { isIdentityDocument?: boolean; documentKind?: string };
     if (!result.isIdentityDocument) return null;
-    return result.documentKind?.trim() || "an identity document";
+    return result.documentKind?.trim() || "a personal identity or ownership document";
   } catch (err) {
     console.error("ID screen failed, allowing upload:", fileName, err);
     return null;

@@ -175,7 +175,7 @@ const items: ComplianceItem[] = [
     // stronger wording — flagged for Adam.
     evidenceLabel: "Verification record",
     evidenceWarning:
-      "Attach the VOI certificate or e-signing audit trail — the proof that a check was done. Do not upload licences, passports or other ID documents; RealComply is not the place to keep those.",
+      "Attach the VOI certificate or e-signing audit trail — the proof that a check was done. Not the documents it was done against: licences, passports, rates notices and title searches aren't kept in RealComply, and will be refused.",
     // Adam, 20 Aug 2026: "if the AI can detect any ID documents, then it
     // rejects them." The warning above was only ever words.
     rejectIdDocuments: true,

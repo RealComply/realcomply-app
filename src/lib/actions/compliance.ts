@@ -1185,9 +1185,10 @@ export async function uploadEvidence(
       return {
         error:
           `That looks like ${looksLike}, so it hasn't been attached and has been deleted. ` +
-          "Copies of identity documents aren't kept in RealComply. Attach the verification record instead — " +
-          "the VOI certificate or the signing audit trail, which shows a check was done without reproducing " +
-          "the ID itself.",
+          "RealComply doesn't keep the documents used to prove someone's identity, address or ownership — " +
+          "licences, passports, rates notices, title searches and the like. Attach the verification record " +
+          "instead: the VOI certificate or the signing audit trail, which shows the check was done without " +
+          "reproducing what was checked.",
       };
     }
   }
