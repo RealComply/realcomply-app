@@ -112,8 +112,12 @@ function ItemShell({
           Hiding one would strand a document nobody can see or remove — and
           hideEvidenceWhen turns TRUE precisely when a later re-read confirms
           the item, which is exactly when an already-attached file would
-          vanish. */}
-      {!item.hideEvidence && (!item.hideEvidenceWhen?.(current) || current?.evidence_path) && (
+          vanish. That "never strand an attached file" check now happens
+          server-side, in resolveItem (lib/rules/nsw-sales.ts) — hideEvidence
+          arrives here as a plain boolean already accounting for it, because
+          hideEvidenceWhen itself is a function and can't cross the
+          server/client boundary into this component. */}
+      {!item.hideEvidence && (
         <EvidenceUploader
           key={current?.evidence_path ?? "none"}
           propertyId={propertyId}

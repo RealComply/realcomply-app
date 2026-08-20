@@ -1006,12 +1006,27 @@ const items: ComplianceItem[] = [
 ];
 
 // Server components pass ComplianceItem objects straight into client
-// components (ItemCard). `showIf` is a function and functions can't cross
-// the server/client boundary — strip it once filtering is done so callers
-// always get a plain, serializable object.
-function stripShowIf(item: ComplianceItem): ComplianceItem {
-  const { showIf: _showIf, ...rest } = item;
-  return rest;
+// components (ItemCard). `showIf` and `hideEvidenceWhen` are functions, and
+// functions can't cross the server/client boundary — resolve both here, once
+// filtering is decided, so callers always get a plain, serializable object.
+//
+// A stray function reaching a client component doesn't warn, it throws — an
+// "error occurred in the Server Components render" (Minified React error
+// #441) that takes the whole page down. That's exactly what every Stage 0
+// listing did on open: a1 and a2 both carry a hideEvidenceWhen predicate,
+// and stripShowIf (as it was) only ever stripped showIf, leaving
+// hideEvidenceWhen on the object handed to <ItemCard>. Every other stage was
+// fine because no item outside Stage 0 defines one.
+//
+// hideEvidenceWhen(current) folds into the static hideEvidence flag rather
+// than surviving as a function — but only when there's nothing already
+// attached, per the "never strand a file" rule in ItemShell (see
+// components/compliance/ItemCard.tsx): an attached evidence_path always
+// keeps the upload control visible, however the predicate reads.
+function resolveItem(item: ComplianceItem, current?: PropertyItem): ComplianceItem {
+  const { showIf: _showIf, hideEvidenceWhen, ...rest } = item;
+  const dynamicHide = Boolean(hideEvidenceWhen?.(current)) && !current?.evidence_path;
+  return { ...rest, hideEvidence: Boolean(rest.hideEvidence) || dynamicHide };
 }
 
 export function itemsForStage(
@@ -1022,11 +1037,13 @@ export function itemsForStage(
   return items
     .filter((item) => item.stage === stage)
     .filter((item) => (item.showIf ? item.showIf(property, allItems) : true))
-    .map(stripShowIf);
+    .map((item) => resolveItem(item, allItems[item.key]));
 }
 
 export function allItemsFor(property: Property, allItems: Record<string, PropertyItem> = {}): ComplianceItem[] {
-  return items.filter((item) => (item.showIf ? item.showIf(property, allItems) : true)).map(stripShowIf);
+  return items
+    .filter((item) => (item.showIf ? item.showIf(property, allItems) : true))
+    .map((item) => resolveItem(item, allItems[item.key]));
 }
 
 /**
@@ -1041,7 +1058,11 @@ export function allItemsFor(property: Property, allItems: Record<string, Propert
  * step with what the app really does.
  */
 export function allItemsInRuleset(): ComplianceItem[] {
-  return items.map(stripShowIf);
+  // No property/allItems context here — there's no `current` to evaluate
+  // hideEvidenceWhen against, and this list never reaches a client
+  // component (see the doc comment above), so resolveItem's stripping is
+  // enough without trying to resolve the dynamic half.
+  return items.map((item) => resolveItem(item, undefined));
 }
 
 export function getItem(key: string): ComplianceItem | undefined {
