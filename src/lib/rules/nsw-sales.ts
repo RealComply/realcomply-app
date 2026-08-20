@@ -77,6 +77,18 @@ export type ComplianceItem = {
   // self-explanatory yes/done confirmations, where a note is unnecessary
   // extra work rather than useful evidence.
   hideNote?: boolean;
+  // The opposite: the note IS the record, so the item cannot be marked done
+  // without it. For an attestation that something was approved, the note
+  // carries WHAT was approved — without it the tick asserts a check happened
+  // and preserves nothing about what was checked.
+  //
+  // Enforced server-side in setItemStatus, not just in the form.
+  requiresNote?: boolean;
+  // Replaces the generic "Note" heading, and gives the box a prompt. Worth
+  // having wherever requiresNote is set: "Note" tells someone to write
+  // something, not what to write.
+  noteLabel?: string;
+  notePlaceholder?: string;
   // Replaces the note box with a read-only "Findings" line instead of
   // hiding it outright — for items where the box was never meant for the
   // agent to type into, only to surface what AI extraction found (e.g. a
@@ -565,6 +577,19 @@ const items: ComplianceItem[] = [
     licenseeOnly: true,
     requiresDate: false,
     requiredForStageCompletion: true,
+    // Adam, 20 Aug 2026: "in the notes, it should be a requirement to type in
+    // what the price statement is."
+    //
+    // He is right, and it is the difference between an attestation and a
+    // record. A tick on its own asserts that the licensee approved "the price
+    // statement" while preserving nothing about what that statement said — so
+    // if the advertised guide is later challenged under s73/s73A, the file
+    // shows an approval of an unknown figure. Writing it down makes this item
+    // evidence of WHAT was approved, and pins it at the moment of approval
+    // rather than leaving it to be reconstructed from whatever the ad says now.
+    requiresNote: true,
+    noteLabel: "The price statement being approved",
+    notePlaceholder: "e.g. Guide $750,000 – $790,000",
   },
 
   // ── Stage 2 — On market ───────────────────────────────────────────────

@@ -755,11 +755,19 @@ function ChecklistItem({
         ) : (
           !item.hideNote && (
             <div>
-              <label className="block text-xs text-rc-muted">Note</label>
+              <label className="block text-xs text-rc-muted">
+                {item.noteLabel ?? "Note"}
+                {/* Marked required rather than silently rejected on save. The
+                    server still enforces it (setItemStatus), but finding out
+                    at submit time that a box you read as optional was not is
+                    a bad way to learn the rule. */}
+                {item.requiresNote && <span className="text-rc-amber-deep"> — required</span>}
+              </label>
               <DictatableTextarea
                 name="note"
                 defaultValue={data.note ?? draft?.note ?? ""}
                 rows={2}
+                placeholder={item.notePlaceholder}
                 className="mt-1 w-full rounded-md border border-rc-border px-2 py-1 text-sm"
               />
             </div>

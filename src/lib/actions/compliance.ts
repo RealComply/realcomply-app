@@ -137,6 +137,20 @@ export async function setItemStatus(
     return { error: "Enter the date this happened before marking it done." };
   }
 
+  // Same reasoning as the date above, for items where the NOTE is the record.
+  // b4 (licensee approved the price statement) is the case: a tick on its own
+  // asserts that something was approved while preserving nothing about what it
+  // said, so a later challenge to the advertised guide finds an approval of an
+  // unknown figure. Only blocks "done", for the same reason — flagging or
+  // reopening must stay possible.
+  if (status === "done" && rule?.requiresNote && !note) {
+    return {
+      error: rule.noteLabel
+        ? `Type in ${rule.noteLabel.toLowerCase()} before marking it done.`
+        : "Add a note before marking this done.",
+    };
+  }
+
   const data: Record<string, unknown> = { note };
 
   // amv — closing the vendor AML item by pre-commencement rather than by CDD.
