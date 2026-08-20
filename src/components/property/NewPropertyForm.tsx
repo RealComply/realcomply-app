@@ -7,6 +7,7 @@ import { searchAddress, type AddressSuggestion } from "@/lib/actions/places";
 import type { ActionState } from "@/lib/actions/auth";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildStagingPath, uploadEvidenceObject } from "@/lib/storage/evidence";
+import { FileDropZone } from "@/components/FileDropZone";
 import { SaleMethodFields } from "@/components/property/SaleMethodFields";
 import type { Profile } from "@/lib/types";
 
@@ -48,25 +49,18 @@ function YesNo({ name, label, help }: { name: string; label: string; help?: stri
 function DocUpload({
   name,
   label,
+  file,
   onChange,
 }: {
   name: string;
   label: string;
+  file: File | null;
   onChange: (file: File | null) => void;
 }) {
   return (
     <div>
-      <label htmlFor={name} className="block text-sm font-medium text-rc-ink">
-        {label}
-      </label>
-      <input
-        id={name}
-        name={name}
-        type="file"
-        required
-        onChange={(e) => onChange(e.target.files?.[0] ?? null)}
-        className="mt-1.5 w-full text-xs text-rc-muted file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1.5 file:text-xs file:font-medium"
-      />
+      <p className="mb-1.5 text-sm font-medium text-rc-ink">{label}</p>
+      <FileDropZone name={name} required file={file} onFile={onChange} label={`Drag the ${label.toLowerCase()} here, or click to browse`} />
     </div>
   );
 }
@@ -297,6 +291,7 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
                 key={field}
                 name={field}
                 label={label}
+                file={files[field] ?? null}
                 onChange={(file) => setFiles((prev) => ({ ...prev, [field]: file }))}
               />
             ))}

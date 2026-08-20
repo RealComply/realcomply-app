@@ -9,6 +9,7 @@ import {
   PRE_COMMENCEMENT_CONDITIONS,
   agreementPredatesAml,
 } from "@/lib/rules/aml-precommencement";
+import { FileDropZone } from "@/components/FileDropZone";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
@@ -182,7 +183,13 @@ function EvidenceUploader({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedFile) return;
+    // Says so rather than doing nothing. The file input is visually hidden
+    // inside the drop zone, so the browser's own "please choose a file"
+    // bubble is not available to us — see the note in FileDropZone.
+    if (!selectedFile) {
+      setClientError("Choose a file, or drag one onto the box above, before attaching.");
+      return;
+    }
 
     setClientError(null);
     setUploading(true);
@@ -257,19 +264,21 @@ function EvidenceUploader({
             selectedFile ? "border-rc-amber bg-rc-amber/10" : "border-transparent"
           }`}
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="file"
+          <div className="space-y-2">
+            <FileDropZone
+              compact
               required
-              onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-              className="text-xs text-rc-muted file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
+              file={selectedFile}
+              onFile={setSelectedFile}
+              disabled={uploading || uploadPending}
+              label="Drag a file here, or click to browse"
             />
             <button
               type="submit"
               disabled={uploading || uploadPending}
               className={
                 selectedFile
-                  ? "rounded-md bg-rc-green-deep px-3 py-1 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+                  ? "w-full rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
                   : "rounded-md border border-rc-border px-2 py-1 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt disabled:opacity-60"
               }
             >
@@ -1248,15 +1257,20 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
       <form action={formAction} className="space-y-3 rounded-lg bg-rc-bg-alt p-3">
         <div>
           <label className="block text-xs font-medium text-rc-muted">Attach the report</label>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <input
-              type="file"
-              onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
+          <div className="mt-1 space-y-1.5">
+            {/* Unlike the evidence row above, this one DOES act on the file
+                straight away — it uploads and reads the report to pre-fill the
+                register form below. There is no two-step gap to protect here
+                because the agent sees the extracted fields appear, which is
+                unambiguous proof the file arrived. */}
+            <FileDropZone
+              compact
+              file={null}
+              onFile={(file) => {
                 if (file) handleFileSelected(file);
               }}
               disabled={uploading || extracting}
-              className="text-xs text-rc-muted file:mr-2 file:rounded-md file:border file:border-rc-border file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
+              label="Drag the report here, or click to browse"
             />
             {(uploading || extracting) && (
               <span className="text-xs text-rc-faint">{uploading ? "Uploading…" : "Reading report…"}</span>
