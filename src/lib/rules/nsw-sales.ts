@@ -95,6 +95,10 @@ export type ComplianceItem = {
   // file being attached carries a consequence beyond untidiness — a1, where
   // it would mean identity documents landing in storage.
   evidenceWarning?: string;
+  // Screens the attachment and refuses it if it is a copy of someone's ID.
+  // The warning above is words; this is the control. See screenForIdDocument
+  // in lib/actions/extraction.ts for what it does and does not catch.
+  rejectIdDocuments?: boolean;
 };
 
 const items: ComplianceItem[] = [
@@ -172,6 +176,9 @@ const items: ComplianceItem[] = [
     evidenceLabel: "Verification record",
     evidenceWarning:
       "Attach the VOI certificate or e-signing audit trail — the proof that a check was done. Do not upload licences, passports or other ID documents; RealComply is not the place to keep those.",
+    // Adam, 20 Aug 2026: "if the AI can detect any ID documents, then it
+    // rejects them." The warning above was only ever words.
+    rejectIdDocuments: true,
   },
   {
     key: "a2",

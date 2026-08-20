@@ -607,6 +607,128 @@ export async function extractCpdCertificate(
   return { error: null, fields: toolUse.input as CpdCertificateFields };
 }
 
+// ── Identity-document screen ───────────────────────────────────────────────
+//
+// Adam, 20 Aug 2026: "if the AI can detect any ID documents, then it rejects
+// them, and tells the agent that copies of identifiable documentation are not
+// to be uploaded into RealComply."
+//
+// This exists because the warning on a1 is only words, and the natural thing
+// for an agent to reach for when asked to prove identity was verified is the
+// licence scan. Storing those would put RealComply under Privacy Act APP 11
+// obligations it is not built for today.
+//
+// THE DISTINCTION THIS HAS TO GET RIGHT. a1 asks for the VOI certificate or
+// signing audit trail — the record that a check happened. Some of those (ZipID,
+// IDVerse) reproduce the licence details, and a few embed a thumbnail of the
+// document checked. Rejecting on "an ID appears anywhere" would therefore
+// reject the very document the card asks for. So the test is what the file IS,
+// not what it mentions: a copy of someone's ID is refused, a report about
+// checking someone's ID is accepted.
+const ID_SCREEN_TOOL: Anthropic.Tool = {
+  name: "screen_for_identity_documents",
+  description:
+    "Decide whether an uploaded file is a copy of a personal identity document, which must not be stored.",
+  input_schema: {
+    type: "object",
+    properties: {
+      isIdentityDocument: {
+        type: "boolean",
+        description:
+          "TRUE if this file is, in substance, a copy of one or more personal identity documents — a scan, " +
+          "photo or screenshot of a driver's licence, passport, birth certificate, Medicare card, citizenship " +
+          "certificate, proof-of-age card, visa grant, or similar. Also true for a file that is mostly such " +
+          "copies with a cover page attached. " +
+          "FALSE for a report ABOUT an identity check: a verification-of-identity certificate, an identity " +
+          "verification report, an e-signing completion certificate or audit trail, a CDD or KYC outcome " +
+          "summary. Those are records that a check was performed and are exactly what this product asks for — " +
+          "answer FALSE even when they quote licence numbers, document numbers or expiry dates, and even when " +
+          "they include a small thumbnail of the document that was checked. The question is what the file IS, " +
+          "not what it mentions. " +
+          "FALSE for ordinary conveyancing paperwork: agency agreements, contracts, certificates of title, " +
+          "planning certificates, inspection reports, comparable-sales reports. " +
+          "If you genuinely cannot tell, answer FALSE — a wrong rejection blocks an agent from filing a " +
+          "legitimate record, and the agent has been warned in writing not to upload ID.",
+      },
+      documentKind: {
+        type: "string",
+        description:
+          "Two or three words naming what the file appears to be, e.g. 'a driver's licence', 'a passport " +
+          "photo page', 'a VOI certificate'. Used to tell the agent what was refused.",
+      },
+    },
+    required: ["isIdentityDocument"],
+  },
+};
+
+/**
+ * Screens one already-uploaded file. Returns null when the file is fine, or a
+ * short description of what it looks like when it must be refused.
+ *
+ * FAILS OPEN. If the API key is missing, the download fails, or the model
+ * errors, this returns null and the upload proceeds. That is a deliberate
+ * trade: a screen that blocks every attachment whenever an external service
+ * hiccups would stop agents filing compliance records, and the written warning
+ * on the card is still in place. It does mean the screen is a safety net, not
+ * a guarantee — flagged to Adam.
+ */
+export async function screenForIdDocument(
+  supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>,
+  path: string,
+  fileName: string,
+): Promise<string | null> {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+
+  try {
+    const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
+    if (error || !blob) return null;
+
+    const arrayBuffer = await blob.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const documentBlock = buildDocumentBlock(blob.type || "application/octet-stream", base64, fileName);
+    // A file type we cannot read cannot be screened. Let it through rather
+    // than refusing on the basis of not having looked.
+    if (!documentBlock) return null;
+
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 256,
+      system:
+        "You are screening a file an Australian real-estate agent is attaching to a compliance record, to " +
+        "keep copies of personal identity documents out of the system. Judge only what you were shown. " +
+        "Answer FALSE when uncertain: refusing a legitimate compliance record is a real cost, and this screen " +
+        "backs up a written warning rather than replacing it.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            documentBlock,
+            {
+              type: "text",
+              text: `This was uploaded as "${fileName}". Call screen_for_identity_documents.`,
+            },
+          ],
+        },
+      ],
+      tools: [ID_SCREEN_TOOL],
+      tool_choice: { type: "tool", name: "screen_for_identity_documents" },
+    });
+
+    const toolUse = response.content.find(
+      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+    );
+    if (!toolUse) return null;
+
+    const result = toolUse.input as { isIdentityDocument?: boolean; documentKind?: string };
+    if (!result.isIdentityDocument) return null;
+    return result.documentKind?.trim() || "an identity document";
+  } catch (err) {
+    console.error("ID screen failed, allowing upload:", fileName, err);
+    return null;
+  }
+}
+
 export type ReportExtractionFields = {
   pestInspection?: boolean;
   buildingInspection?: boolean;

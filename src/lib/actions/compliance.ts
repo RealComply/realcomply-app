@@ -1164,6 +1164,34 @@ export async function uploadEvidence(
     return { error: "Choose a file to attach." };
   }
 
+  // Refuse copies of personal ID before anything is recorded.
+  //
+  // Adam, 20 Aug 2026: "if the AI can detect any ID documents, then it rejects
+  // them, and tells the agent that copies of identifiable documentation are
+  // not to be uploaded into RealComply."
+  //
+  // The file is ALREADY in the bucket by the time we get here — the browser
+  // uploads straight to Storage because Vercel caps request bodies at 4.5MB
+  // (see NewPropertyForm.tsx). So this cannot prevent the object existing; it
+  // deletes it, and never records it against the item. A licence therefore
+  // touches storage for a few seconds rather than being kept. Removing that
+  // window entirely would mean routing uploads through the server, which the
+  // 4.5MB cap rules out — noted rather than hidden.
+  if (getItem(itemKey)?.rejectIdDocuments) {
+    const { screenForIdDocument } = await import("@/lib/actions/extraction");
+    const looksLike = await screenForIdDocument(supabase, path, fileName);
+    if (looksLike) {
+      await supabase.storage.from(EVIDENCE_BUCKET).remove([path]);
+      return {
+        error:
+          `That looks like ${looksLike}, so it hasn't been attached and has been deleted. ` +
+          "Copies of identity documents aren't kept in RealComply. Attach the verification record instead — " +
+          "the VOI certificate or the signing audit trail, which shows a check was done without reproducing " +
+          "the ID itself.",
+      };
+    }
+  }
+
   const { error } = await finalizeEvidenceRecord(supabase, {
     agencyId: profile.agency_id,
     propertyId,
