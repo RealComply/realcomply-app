@@ -1060,6 +1060,51 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
     );
   }
 
+  // ── Clear findings this run did not reproduce ──────────────────────────
+  //
+  // ADDED 20 Aug 2026, immediately after the SOURCE_TARGETS change, because
+  // Adam re-read 24/1 Citrus Ave and the a3 card still showed the previous
+  // run's finding — "This document is a Contract for the Sale and Land" —
+  // even though the fresh read had produced no note for a3 at all.
+  //
+  // On a showFindings item the AI owns the text: there is no note box for the
+  // agent to type in, so whatever is there came from an extraction. When a
+  // later read of the SAME document says nothing about that item, the honest
+  // state is silence, not the previous answer. Leaving it means a finding
+  // outlives the reading that produced it — and worse, survives the fix that
+  // was supposed to remove it, which is exactly how it looked to Adam.
+  //
+  // Only items whose source document was actually read this run are cleared.
+  // A run scoped to one attachment (onlyItemKey) says nothing about the items
+  // belonging to the other two documents, so it must not wipe them.
+  const readSources = withEvidence.map((i) => i.item_key as SourceKey);
+  const covered = new Set(readSources.flatMap((s) => Array.from(SOURCE_TARGETS[s])));
+  const spokenFor = new Set(patches.map((p) => p.itemKey));
+  const staleFindings = Array.from(covered).filter(
+    (key) => !spokenFor.has(key) && getItem(key)?.showFindings,
+  );
+
+  for (const itemKey of staleFindings) {
+    const { data: staleRow } = await supabase
+      .from("property_items")
+      .select("*")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+    const stale = staleRow as PropertyItem | null;
+    const staleData = (stale?.data ?? {}) as Record<string, unknown>;
+    // Nothing there to clear.
+    if (!staleData.note && !staleData.aiDraft) continue;
+
+    await supabase
+      .from("property_items")
+      .update({
+        data: { ...staleData, note: "", aiDraft: { generatedAt: new Date().toISOString() } },
+      })
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey);
+  }
+
   // The agreement was read and produced nothing for a2, meaning the vendor's
   // acknowledgement of the approved guide is not in it. That is a real, useful
   // conclusion and distinct from nobody having looked yet, so it is recorded

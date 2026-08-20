@@ -147,12 +147,21 @@ export default async function PropertyPage({
               </p>
             )}
           </div>
-          <Link
-            href={`/dashboard/${p.id}/summary`}
-            className="shrink-0 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted shadow-card transition hover:border-rc-green-deep/40 hover:text-rc-green-deep"
-          >
-            Download audit pack
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Moved up here 20 Aug 2026. It used to sit collapsed at the very
+                bottom of the page, below every item card — Adam went looking
+                for it and couldn't find it: "it was way down the bottom, I
+                think it should be up the top somewhere, not in a crowded
+                position." Beside the audit-pack button is the only other
+                uncrowded spot on the page. */}
+            <EditPropertyDetails property={p} />
+            <Link
+              href={`/dashboard/${p.id}/summary`}
+              className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted shadow-card transition hover:border-rc-green-deep/40 hover:text-rc-green-deep"
+            >
+              Download audit pack
+            </Link>
+          </div>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2">
@@ -261,11 +270,6 @@ export default async function PropertyPage({
           requestedByName={p.review_requested_by ? personName(p.review_requested_by) : null}
           viewerIsAssistant={Boolean(profile.is_assistant)}
         />
-
-        {/* Setup answers, editable after the fact. Below the items and
-            collapsed by default: revisited rarely, and given space up top it
-            would compete with the compliance work the page exists for. */}
-        <EditPropertyDetails property={p} />
 
         {profile.is_licensee_in_charge && <DeletePropertySection propertyId={p.id} address={p.address} />}
       </main>
