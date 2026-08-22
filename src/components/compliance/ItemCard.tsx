@@ -22,6 +22,7 @@ import {
   addReportEntry,
   markEspRevised,
   markNoPriceRevision,
+  confirmEspRevision,
   addVerbalQuoteEntry,
   markNoVerbalQuotes,
   markNoReports,
@@ -848,11 +849,25 @@ function GuideItem({
     note?: string;
     flagReasons?: string[];
     websiteScan?: ScanFinding;
+    rejectionPrompt?: string;
   };
   const esp = (espItem?.data ?? {}) as { espLow?: number; espHigh?: number };
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      {/* An offer at or above the advertised figure was rejected, so the
+          guide itself is now the thing to fix. Sits above the form rather
+          than below it, because it is a reason to change what is in the form
+          rather than a comment on what is already there. */}
+      {data.rejectionPrompt && (
+        <div className="mb-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
+          <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>The quoted price needs amending</span>
+          </p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.rejectionPrompt}</p>
+        </div>
+      )}
       {esp.espLow == null ? (
         <p className="text-sm text-rc-muted">Record the ESP (item a4) first — the live check needs it.</p>
       ) : (
@@ -918,7 +933,7 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
       updatedAt?: string;
     }>;
     flagReason?: string;
-    espRevisionPrompt?: string;
+    guideAmendmentPrompt?: string;
   };
   const entries = data.entries ?? [];
 
@@ -944,13 +959,13 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
           the agent now has to make with the vendor. Different things, and
           collapsing them would make the second read as a telling-off for
           honestly logging an offer. */}
-      {data.espRevisionPrompt && (
+      {data.guideAmendmentPrompt && (
         <div className="mt-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
           <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             <span>Worth reviewing the estimated selling price</span>
           </p>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.espRevisionPrompt}</p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.guideAmendmentPrompt}</p>
           <p className="mt-1.5 text-[11px] leading-relaxed text-rc-faint">
             A prompt, not a determination — you and the vendor decide whether the estimate still holds.
           </p>
@@ -1468,12 +1483,46 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
 // "Change answer" is local-only UI state so either outcome can be
 // reconsidered without a confirm dialog; picking a new answer overwrites
 // the stored one.
+// d3 — the ESP revision, built around the notice rather than around a form.
+//
+// Adam, 22 Aug 2026: "they have to upload whichever document they used to
+// provide the vendor the revision of the ESP. The AI then reads it, records
+// it, and that's how it knows what price it needs to be looking for when
+// reviewing the agent's website."
+//
+// So the card asks one question, takes one document, and reads the rest. No
+// typed figures anywhere: the notice is what s72A(4) requires, it amends the
+// agency agreement by its own words, and it goes into the audit pack at
+// settlement. A number retyped beside it would be a second source of truth
+// with nothing to reconcile it against.
+//
+// Three states, in order: unanswered, answered Yes and waiting for the notice,
+// notice read and waiting for the two confirmations only a person can give.
 function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const yesAction = markEspRevised.bind(null, propertyId);
   const noAction = markNoPriceRevision.bind(null, propertyId);
-  const data = (current?.data ?? {}) as { espRevised?: boolean; reopenedReason?: string };
+  const confirmAction = confirmEspRevision.bind(null, propertyId);
+  const [confirmState, confirmFormAction, confirmPending] = useActionState(confirmAction, initialState);
+  const data = (current?.data ?? {}) as {
+    espRevised?: boolean;
+    reopenedReason?: string;
+    noticeNotRecognised?: boolean;
+    revisedEspLow?: number;
+    revisedEspHigh?: number;
+    noticeServedOn?: string;
+    methodOfService?: string;
+    reason?: string;
+    evidenceProvidedBeforeNotice?: boolean;
+    advertisingUpdated?: boolean;
+    outstanding?: string[];
+  };
   const [reconsidering, setReconsidering] = useState(false);
   const answered = data.espRevised !== undefined && !reconsidering;
+  const money = (n?: number) => (n == null ? "" : `$${n.toLocaleString("en-AU")}`);
+  const spread =
+    data.revisedEspLow && data.revisedEspHigh && data.revisedEspLow > 0
+      ? ((data.revisedEspHigh - data.revisedEspLow) / data.revisedEspLow) * 100
+      : null;
 
   if (!answered) {
     return (
@@ -1487,12 +1536,12 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
             <div className="rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
               <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-                <span>Asking again — an offer came in that changes this</span>
+                <span>Asking again</span>
               </p>
               <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.reopenedReason}</p>
             </div>
           )}
-          <p className="text-sm text-rc-muted">Did the ESP need to be revised during this campaign?</p>
+          <p className="text-sm text-rc-muted">Was the estimated selling price revised during this campaign?</p>
           <div className="flex gap-2">
             <form action={noAction} onSubmit={() => setReconsidering(false)}>
               <button
@@ -1516,16 +1565,136 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
     );
   }
 
+  if (!data.espRevised) {
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        <p className="text-sm text-rc-muted">
+          Marked &mdash; the estimated selling price wasn&rsquo;t revised on this listing.{" "}
+          <button type="button" onClick={() => setReconsidering(true)} className="text-rc-green-deep hover:underline">
+            Change answer
+          </button>
+        </p>
+      </ItemShell>
+    );
+  }
+
+  const figuresRead = data.revisedEspLow != null && data.revisedEspHigh != null;
+
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <p className="text-sm text-rc-muted">
-        {data.espRevised
-          ? "ESP was revised — attach the notice sent to the vendor below."
-          : "Marked — the ESP wasn't revised on this listing."}{" "}
-        <button type="button" onClick={() => setReconsidering(true)} className="text-rc-green-deep hover:underline">
-          Change answer
-        </button>
-      </p>
+      {!figuresRead ? (
+        <div className="space-y-2">
+          {data.noticeNotRecognised ? (
+            <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-2 text-xs text-rc-amber-deep">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+              <span>
+                That doesn&rsquo;t look like a notice revising the estimated selling price. Attach the notice you
+                served on the vendor.
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm text-rc-muted">
+              Attach the notice you served on the vendor and the figures will be read off it. Serving that notice
+              is what amends the agency agreement, so there is nothing to re-sign.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => setReconsidering(true)}
+            className="text-xs text-rc-green-deep hover:underline"
+          >
+            Change answer
+          </button>
+        </div>
+      ) : (
+        <form action={confirmFormAction} className="space-y-3">
+          <p className="flex items-start gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-2 text-xs text-rc-green-deep">
+            <Sparkles size={13} className="mt-0.5 shrink-0" />
+            <span>
+              Read from the notice: revised to <strong>{money(data.revisedEspLow)}</strong> to{" "}
+              <strong>{money(data.revisedEspHigh)}</strong>
+              {data.noticeServedOn ? (
+                <>
+                  , served on the vendor{data.methodOfService ? ` by ${data.methodOfService.toLowerCase()}` : ""} on{" "}
+                  <strong>{data.noticeServedOn}</strong>
+                </>
+              ) : null}
+              {spread !== null ? `. Spread ${spread.toFixed(1)}%` : ""}. Check it against the document before saving.
+            </span>
+          </p>
+
+          {/* The two things the notice cannot prove about itself. One happened
+              before it (s72A(5)) and one happens after it (s73(3)), so neither
+              can be read off the page. */}
+          <div className="divide-y divide-rc-border rounded-md border border-rc-border">
+            <label className="flex items-start gap-2.5 px-3 py-2.5">
+              <input
+                type="checkbox"
+                name="evidenceProvidedBeforeNotice"
+                value="yes"
+                defaultChecked={data.evidenceProvidedBeforeNotice ?? false}
+                className="mt-0.5 shrink-0 accent-rc-green-deep"
+              />
+              <span>
+                <span className="block text-sm text-rc-ink">
+                  Vendor was given evidence of the new price before the notice
+                </span>
+                <span className="block text-[11px] text-rc-faint">
+                  s72A(5).{" "}
+                  {data.evidenceProvidedBeforeNotice
+                    ? "The notice says so, so this is pre-ticked. Untick it if that is wrong."
+                    : "Comparable sales, market conditions, buyer feedback."}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2.5 px-3 py-2.5">
+              <input
+                type="checkbox"
+                name="advertisingUpdated"
+                value="yes"
+                defaultChecked={data.advertisingUpdated ?? false}
+                className="mt-0.5 shrink-0 accent-rc-green-deep"
+              />
+              <span>
+                <span className="block text-sm text-rc-ink">Advertising updated to match the revised price</span>
+                <span className="block text-[11px] text-rc-faint">
+                  s73(3). Anything showing a lower figure has to be amended or pulled as soon as practicable.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          {data.outstanding && data.outstanding.length > 0 && (
+            <div className="rounded-lg bg-rc-amber/10 px-2.5 py-2">
+              {data.outstanding.map((o) => (
+                <p key={o} className="flex items-start gap-1.5 text-xs text-rc-amber-deep">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span>{o}</span>
+                </p>
+              ))}
+            </div>
+          )}
+
+          <FieldError error={confirmState.error} />
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={confirmPending}
+              className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            >
+              {confirmPending ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setReconsidering(true)}
+              className="text-xs text-rc-green-deep hover:underline"
+            >
+              Change answer
+            </button>
+          </div>
+        </form>
+      )}
     </ItemShell>
   );
 }

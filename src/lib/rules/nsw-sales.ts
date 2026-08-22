@@ -535,6 +535,37 @@ const items: ComplianceItem[] = [
     hideNote: true,
   },
   {
+    // Found 22 Aug 2026 while checking every REINSW tick box against the
+    // legislation. Schedule 2 rule 2 of the Regulation is blunt: an agent
+    // "must not act on behalf of a vendor of a property... unless the agent
+    // has conducted a preliminary physical inspection". Rule 3 then requires
+    // the sales inspection report to come out of that inspection, and
+    // Schedule 6 clause 8 makes the report part of the agency agreement.
+    //
+    // Adam, 22 Aug 2026: "it's in the name... sales inspection report and
+    // exclusive selling agency agreement. So look, to cover ourselves, maybe
+    // we add in the pre-marketing stage a space where the agent can enter the
+    // date that the property was physically inspected."
+    //
+    // Stage 1 on Adam's call, though the duty bites earlier: the inspection
+    // must precede acting for the vendor, which means it precedes the
+    // agreement at Stage 0. Recording it later is fine, because the agent
+    // enters the date it actually happened rather than the date they ticked
+    // the box. What makes the placement safe is the check in setItemStatus:
+    // an inspection date AFTER the agency agreement was signed means the
+    // agent acted before inspecting, and the item flags rather than closes.
+    key: "b6",
+    stage: 1,
+    kind: "checklist",
+    label: "Property physically inspected before acting",
+    description:
+      "The date you walked through the property. The law requires a physical inspection before you act for the vendor.",
+    legalBasis: "Sch 2 rr 2 & 3, Property and Stock Agents Regulation 2022 (NSW)",
+    requiresDate: true,
+    requiredForStageCompletion: true,
+    hideNote: true,
+  },
+  {
     key: "b3",
     stage: 1,
     kind: "checklist",
@@ -801,17 +832,6 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: false,
   },
-  {
-    key: "d3",
-    stage: 3,
-    kind: "reduction",
-    label: "Price reduction / ESP revision",
-    description:
-      "If the price guide or ESP changes during the campaign, log it here. Revising an ESP is where the Act's record obligations actually bite: written notice of the revised ESP to the vendor, an amended agency agreement, and evidence of the new price's reasonableness given to the seller.",
-    legalBasis: "s72A(4)(a)-(b), s72A(5), Property and Stock Agents Act 2002 (NSW)",
-    requiresDate: false,
-    requiredForStageCompletion: false,
-  },
 
   // ── Stage 4 — Sold (exchanged) ────────────────────────────────────────
   {
@@ -891,22 +911,40 @@ const items: ComplianceItem[] = [
   },
 
   {
-    // Gap-analysis finding, 7 Aug 2026: the Price Reps checklist requires
-    // every price statement made "in the course of marketing" to be
-    // recorded in writing — including a verbal figure given at an open
-    // home. Logging an entry here IS that written record. Originally gated
-    // at Pre-market; moved to Settlement per Adam's follow-up call, so the
-    // log is finalised alongside the rest of the closing paperwork rather
-    // than being locked in before the campaign even starts.
+    // s73B: every price statement made to a buyer, prospective buyer or seller
+    // "orally or in writing" must be recorded in writing, with the address,
+    // the price or range, and the date and time, kept at the principal place
+    // of business for 3 years. Real duty, $2,200 penalty notice.
+    //
+    // REBUILT 22 Aug 2026 from a log into a pointer. Adam: "I don't think we
+    // should keep log quotes here. It's gonna be too tedious. It's something
+    // that is kept in most agents' CRM anyway whenever they get an inquiry or
+    // they do an open home check-in... we could perhaps have an option for an
+    // agent to upload their own copy, but we're not gonna make it mandatory."
+    //
+    // He is right, and it is the product's own principle rather than a
+    // concession: forms are an index to evidence, not a re-tick. A CRM logs
+    // the figure at the moment of the enquiry, with the buyer attached. Asking
+    // an agent to retype the same quotes here at settlement produces a worse
+    // record than the one they already have, from memory, weeks late.
+    //
+    // NO LONGER GATES THE STAGE, and that is a deliberate trade Adam made with
+    // his eyes open. The duty does not go away, so an agency that attaches
+    // nothing has no evidence of s73B on the file. What it has instead is a
+    // record that says where the evidence lives, which is the honest position
+    // and the one a regulator can follow.
     key: "b5",
     stage: 5,
-    kind: "quotes",
-    label: "Verbal price-quote log",
+    kind: "checklist",
+    label: "Record of price quotes given",
     description:
-      "Every verbal price statement made to a prospective purchaser, written down here — the written record the Act requires. Log one now if you've already given a figure verbally, or confirm there's nothing to log yet.",
-    legalBasis: "Price Representations & Material Fact Checklist — price statements recorded in writing",
+      "Every price you quote a buyer, verbally or in writing, has to be recorded with the date and time and kept for 3 years. Most CRMs already do this on enquiries and open-home check-ins. Say where yours is kept, and attach a copy if you want it in this file.",
+    legalBasis: "s73B, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
-    requiredForStageCompletion: true,
+    requiredForStageCompletion: false,
+    noteLabel: "Where the record is kept",
+    notePlaceholder: "e.g. LockedOn enquiry log",
+    evidenceLabel: "Your own record (optional)",
   },
   {
     key: "f0",
@@ -949,6 +987,77 @@ const items: ComplianceItem[] = [
     // same as "no reports", and cl 37 is a register the agent has to be able
     // to produce on request.
     requiredForStageCompletion: true,
+  },
+  {
+    key: "d3",
+    stage: 3,
+    kind: "reduction",
+    // CORRECTED 22 Aug 2026, and the correction matters because the previous
+    // reading would have sent agents chasing a step that does not exist.
+    //
+    // s72A(4) says the agent must revise the ESP "by (a) notifying the other
+    // party to the agency agreement, in writing, of the revised estimated
+    // selling price, and (b) amending the agency agreement". Read cold, that
+    // looks like two documents: a notice, then a varied agreement to re-sign.
+    //
+    // It is one. Adam, 22 Aug 2026: "I was under the impression that if you
+    // use the correct type of form to amend the ESP and provide it to the
+    // vendor, there's no need to then amend and re-sign a sale agreement." He
+    // is right, and the forms say so on their face. The REINSW Notice of
+    // Revised Estimated Selling Price reads: "In accordance with section
+    // 72A(4)(b) of the Act, this notice amends the estimated selling price in
+    // the agency agreement between the Principal and the Agent dated ___",
+    // and notes that "the Principal's consent is not required to amend the
+    // agency agreement for the purpose of revising the estimated selling
+    // price." Cass's own version carries the same operative words.
+    //
+    // So the notice IS the amendment. It has to be, or the section would be
+    // unworkable: the ESP is the agent's opinion, not a negotiated term, and
+    // requiring the vendor to counter-sign every revision would let a vendor
+    // block the agent from complying with s72A(3).
+    //
+    // What IS a genuinely separate obligation after a revision is s73(3):
+    // take all reasonable steps, as soon as practicable, to amend or retract
+    // any advertisement showing a price below the revised ESP. Both forms
+    // carry that as a note, and it is the second thing this item asks about.
+    label: "Was the Estimated Selling Price revised?",
+    description:
+      "If the estimated selling price changes during the campaign, record it here. Serving the notice on the vendor is what amends the agency agreement, so there is nothing to re-sign. Keep a copy of the notice with the agreement, and get the advertising updated.",
+    legalBasis: "s72A(4), s72A(5), s73(3), Property and Stock Agents Act 2002 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+  },
+  {
+    // The other half of cl 37, found 22 Aug 2026. The register itself is at
+    // f3; cl 37(2) adds a duty most agents never notice: the licensee "must
+    // disclose the records made under this section to a person requesting a
+    // copy of the contract for the sale of the residential property."
+    //
+    // So the register is not a filing exercise. Every person who asked for a
+    // contract was entitled to see it, and the way to show that happened is a
+    // record of who they were.
+    //
+    // Adam, 22 Aug 2026: "that can be added on settlement where the agent can
+    // either upload a copy of the record that they have of everyone they've
+    // sent a contract to. Most CRMs do this, or they can just enter the names
+    // of the buyers manually."
+    //
+    // Hence requiresNote AND an upload, either of which satisfies it. See the
+    // note-or-evidence carve-out in setItemStatus: typing the names is enough,
+    // and so is attaching the CRM export, but a bare tick is not.
+    key: "f4",
+    stage: 5,
+    kind: "checklist",
+    label: "Buyers who received a copy of the Contract for Sale",
+    description:
+      "Buyers who request a copy of the contract are entitled to see the building, pest and strata report register. Record each buyer's name here, or attach your own record.",
+    legalBasis: "cl 37(2), Property and Stock Agents Regulation 2022 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+    requiresNote: true,
+    noteLabel: "Who was given a copy of the contract",
+    notePlaceholder: "Names, or note that the CRM list is attached below",
+    evidenceLabel: "CRM record (instead of typing names)",
   },
   {
     key: "f1",
