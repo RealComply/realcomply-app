@@ -1002,7 +1002,7 @@ const items: ComplianceItem[] = [
     // take all reasonable steps, as soon as practicable, to amend or retract
     // any advertisement showing a price below the revised ESP. Both forms
     // carry that as a note, and it is the second thing this item asks about.
-    label: "Price reduction / ESP revision",
+    label: "Was the Estimated Selling Price revised?",
     description:
       "If the estimated selling price changes during the campaign, record it here. Serving the notice on the vendor is what amends the agency agreement, so there is nothing to re-sign. Keep a copy of the notice with the agreement, and get the advertising updated.",
     legalBasis: "s72A(4), s72A(5), s73(3), Property and Stock Agents Act 2002 (NSW)",
@@ -1030,9 +1030,9 @@ const items: ComplianceItem[] = [
     key: "f4",
     stage: 5,
     kind: "checklist",
-    label: "Everyone given a contract was shown the reports register",
+    label: "Buyers who received a copy of the Contract for Sale",
     description:
-      "Anyone who asked you for a copy of the contract was entitled to see the building, pest and strata report register. Record who they were, or attach the list your CRM already keeps.",
+      "Buyers who request a copy of the contract are entitled to see the building, pest and strata report register. Record each buyer's name here, or attach your own record.",
     legalBasis: "cl 37(2), Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,

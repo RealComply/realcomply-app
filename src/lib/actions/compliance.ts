@@ -579,9 +579,9 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
     highestRejectedAtOrAbove > 0 && threshold != null
       ? `An offer of $${highestRejectedAtOrAbove.toLocaleString()} was at or above your ${thresholdSource} of ` +
         `$${threshold.toLocaleString()} and was rejected. The estimated selling price may no longer be a ` +
-        `reasonable estimate (s72A(3)). If you revise it, the vendor must be notified in writing and the ` +
-        `agency agreement amended (s72A(4)), and any advertising below the revised figure amended or ` +
-        `retracted as soon as practicable (s73(3)).`
+        `reasonable estimate (s72A(3)). If you revise it, serving the written notice on the vendor is what ` +
+        `amends the agency agreement (s72A(4)), so there is nothing to re-sign. Any advertising below the ` +
+        `revised figure has to be amended or retracted as soon as practicable (s73(3)).`
       : undefined;
 
   return { rejectedFloor, status, flagReason, espRevisionPrompt };
