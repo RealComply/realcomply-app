@@ -19,7 +19,7 @@ const initialState: ActionState = { error: null };
 const DOC_FIELDS: Array<{ field: string; itemKey: string; label: string }> = [
   { field: "agencyAgreementFile", itemKey: "a3", label: "Agency agreement" },
   { field: "contractFile", itemKey: "b1", label: "Contract for sale" },
-  { field: "comparableSalesFile", itemKey: "a4b", label: "Comparable sales report" },
+  { field: "comparableSalesFile", itemKey: "a4", label: "Comparable sales report" },
 ];
 
 function YesNo({ name, label, help }: { name: string; label: string; help?: string }) {

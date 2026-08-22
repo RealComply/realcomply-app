@@ -20,7 +20,7 @@ import type { ActionState } from "@/lib/actions/auth";
 const SETUP_EVIDENCE_FIELDS: Array<{ field: string; itemKey: string }> = [
   { field: "agencyAgreementFile", itemKey: "a3" }, // Agency agreement signed; copy served within 48 hours
   { field: "contractFile", itemKey: "b1" }, // Contract of sale prepared with prescribed documents
-  { field: "comparableSalesFile", itemKey: "a4b" }, // Comparable-sales evidence held
+  { field: "comparableSalesFile", itemKey: "a4" }, // Attached to the ESP card (a4b merged in, 22 Aug 2026)
 ];
 
 // Creates a new property from the setup-question form (address, type,

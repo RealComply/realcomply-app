@@ -17,13 +17,16 @@ const ok: ActionState = { error: null };
 
 // The three setup-time documents (property creation form) and which item
 // each is attached to as evidence — see src/lib/actions/properties.ts.
-const SOURCE_ITEM_KEYS = ["a3", "b1", "a4b"] as const;
+// a4 (not a4b) holds the comparable-sales report as of 22 Aug 2026 — the two
+// ESP cards were merged into one, so the report now sits on the same card as
+// the figure it supports. See the merge note on a4 in rules/nsw-sales.ts.
+const SOURCE_ITEM_KEYS = ["a3", "b1", "a4"] as const;
 type SourceKey = (typeof SOURCE_ITEM_KEYS)[number];
 
 const SOURCE_LABELS: Record<string, string> = {
   a3: "agency agreement",
   b1: "contract for sale",
-  a4b: "comparable-sales report",
+  a4: "comparable-sales report",
 };
 
 // ── Which document may speak to which item ─────────────────────────────────
@@ -49,9 +52,15 @@ const SOURCE_LABELS: Record<string, string> = {
 const SOURCE_TARGETS: Record<SourceKey, ReadonlySet<string>> = {
   a3: new Set(["a1", "a2", "a3", "a4", "a4c", "a5", "a6", "a7"]),
   b1: new Set(["b1"]),
+  // The comparables report is ATTACHED to a4 but may not write to it.
+  //
   // The ESP itself belongs in the agency agreement (s72A); a comparables
-  // report may suggest a range but that is not the figure the agent agreed.
-  a4b: new Set(["a4b", "a4c"]),
+  // report may suggest a range but that is not the figure the agent agreed,
+  // and a provider's automated estimate landing in the ESP boxes is the exact
+  // failure Adam caught on 15 Aug. Since the merge put both documents on the
+  // same item, that separation has to be stated here rather than assumed:
+  // a3 writes the figures, this writes nothing but the reasoning draft.
+  a4: new Set(["a4c"]),
 };
 
 // What the document turned out to be, as opposed to which box it was uploaded
@@ -61,7 +70,7 @@ type DocumentKind = "agency_agreement" | "contract_for_sale" | "comparable_sales
 const EXPECTED_KIND: Record<SourceKey, DocumentKind> = {
   a3: "agency_agreement",
   b1: "contract_for_sale",
-  a4b: "comparable_sales",
+  a4: "comparable_sales",
 };
 
 const KIND_LABELS: Record<DocumentKind, string> = {
@@ -90,7 +99,7 @@ const KIND_LABELS: Record<DocumentKind, string> = {
 // the consumerGuideProvided field below and the autoComplete logic in
 // extractFromDocuments for why it's handled differently from every other
 // item here.
-const TARGET_ITEM_KEYS = new Set(["a1", "a2", "a3", "a4", "a4b", "a4c", "a5", "a6", "a7", "b1"]);
+const TARGET_ITEM_KEYS = new Set(["a1", "a2", "a3", "a4", "a4c", "a5", "a6", "a7", "b1"]);
 
 // One verdict per prescribed document, for item b1. "found" and "not_found"
 // are both real answers; there is no "unclear" because a document the model
@@ -387,21 +396,29 @@ const AGENCY_AGREEMENT_PROMPT =
   "form — loose-fill asbestos, smoke alarms — are NOT a vendor disclosure and must never be read as " +
   "one).";
 
+// One target, deliberately.
+//
+// This used to open with an a4b clause asking for one sentence on whether
+// comparable-sales evidence was present at all. a4b was merged into a4 on
+// 22 Aug 2026 and that question went with it: the report is now attached to
+// the ESP card itself, so "evidence is present" is answered by the file
+// sitting there, and saying it in words as well is the restatement the rule
+// above forbids.
+//
+// Nothing here may touch the ESP figures. They come off the agency agreement
+// under s72A, and a provider's automated estimate is not the figure the agent
+// agreed. SOURCE_TARGETS enforces that in code; this is only the reminder.
 const COMPARABLES_PROMPT =
-  "a4b (whether comparable-sales evidence is present " +
-  "at all — say so in ONE short sentence and stop. Do not list the comparable addresses, prices or " +
-  "counts: the agent uploaded this document and has it open, so enumerating its contents back at " +
-  "them is the restatement the rule above forbids. Do not comment on whether the agent has explained " +
-  "how the comparables relate to the ESP, or on the absence of that reasoning — that belongs to a4c, " +
-  "which has its own card directly below this one for exactly that purpose, and flagging it here " +
-  "reads as a gap in the wrong place), " +
   "a4c (the agent's own reasoning behind the ESP, ONLY if this report actually contains reasoning " +
   "written by the agent rather than the provider's own automated commentary — paraphrase it as a " +
-  "short editable starting draft. If all you can see is the provider's generated text, leave a4c out).";
+  "short editable starting draft. If all you can see is the provider's generated text, leave a4c out). " +
+  "Return no other item. In particular, do not return an estimated selling price: any range printed " +
+  "in this report is the provider's automated estimate, not the figure the agent recorded in the " +
+  "agency agreement, and it will be discarded.";
 
 function promptForSource(source: SourceKey, prescribedDocs: PrescribedDoc[]): string {
   if (source === "b1") return prescribedDocsPrompt(prescribedDocs);
-  if (source === "a4b") return COMPARABLES_PROMPT;
+  if (source === "a4") return COMPARABLES_PROMPT;
   return AGENCY_AGREEMENT_PROMPT;
 }
 
@@ -1285,7 +1302,7 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
   // (ESP reasoning) is the one item two documents may both speak to, and the
   // later write wins — so the agency agreement goes last and its version of
   // the agent's reasoning is the one that survives.
-  const READ_ORDER: SourceKey[] = ["b1", "a4b", "a3"];
+  const READ_ORDER: SourceKey[] = ["b1", "a4", "a3"];
   const withEvidence = ((rows ?? []) as PropertyItem[])
     .filter((i) => i.evidence_path)
     .filter((i) => !onlyItemKey || i.item_key === onlyItemKey)

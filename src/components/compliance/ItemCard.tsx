@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Paperclip, Sparkles, AlertTriangle, Check, X } from "lucide-react";
+import { Paperclip, Sparkles, AlertTriangle, Check, Info, X } from "lucide-react";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
 import {
@@ -123,6 +123,7 @@ function ItemShell({
           evidenceFileName={(current?.data as { evidenceFileName?: string } | undefined)?.evidenceFileName}
           label={item.evidenceLabel}
           warning={item.evidenceWarning}
+          replaceOnly={item.evidenceReplaceOnly}
         />
       )}
     </div>
@@ -162,6 +163,7 @@ function EvidenceUploader({
   evidenceFileName,
   label,
   warning,
+  replaceOnly = false,
 }: {
   propertyId: string;
   itemKey: string;
@@ -169,6 +171,14 @@ function EvidenceUploader({
   evidenceFileName?: string;
   label?: string;
   warning?: string;
+  /**
+   * Swap Remove for Replace. For the documents collected at listing setup,
+   * which are mandatory there: a file the listing could not have been created
+   * without should not be removable to nothing afterwards. Replacing one is a
+   * correction; removing one leaves a hole in the compliance file that the
+   * setup form would never have allowed.
+   */
+  replaceOnly?: boolean;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const uploadAction = uploadEvidence.bind(null, propertyId, itemKey);
@@ -177,6 +187,9 @@ function EvidenceUploader({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  // replaceOnly items show the attached file, not a drop zone, until the
+  // agent explicitly asks to swap it.
+  const [replacing, setReplacing] = useState(false);
 
   useEffect(() => {
     if (!evidencePath) return;
@@ -238,14 +251,23 @@ function EvidenceUploader({
       <p className="text-xs font-medium text-rc-muted">{label ?? "Evidence"}</p>
       {/* Rendered above the control, and above the attached-file row too, so
           it is still visible to whoever looks at the file later — not just to
-          the person uploading. */}
+          the person uploading.
+
+          GREEN, NOT AMBER (Adam, 22 Aug 2026): "it makes it look like
+          something's wrong." Amber and a warning triangle are how this app
+          says there is a problem on this card, and this text is not that. It
+          is standing guidance about which document belongs in the slot, shown
+          identically whether the card is done or open, before anyone has done
+          anything that could be wrong. Dressing it as an alert spends the
+          agent's attention on a card that is fine, and makes the real amber
+          flags elsewhere count for less. */}
       {warning && (
-        <p className="mt-1 flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-rc-amber-deep">
-          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+        <p className="mt-1 flex items-start gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-1.5 text-[11px] leading-relaxed text-rc-green-deep">
+          <Info size={12} className="mt-0.5 shrink-0" />
           <span>{warning}</span>
         </p>
       )}
-      {evidencePath ? (
+      {evidencePath && !replacing ? (
         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
           {signedUrl ? (
             <a
@@ -261,14 +283,24 @@ function EvidenceUploader({
               <Paperclip size={13} /> {evidenceFileName ?? "file"} (loading link…)
             </span>
           )}
-          <form action={removeAction}>
+          {replaceOnly ? (
             <button
-              type="submit"
-              className="text-xs text-rc-faint transition hover:text-rc-amber-deep hover:underline"
+              type="button"
+              onClick={() => setReplacing(true)}
+              className="text-xs text-rc-faint transition hover:text-rc-green-deep hover:underline"
             >
-              Remove
+              Replace
             </button>
-          </form>
+          ) : (
+            <form action={removeAction}>
+              <button
+                type="submit"
+                className="text-xs text-rc-faint transition hover:text-rc-amber-deep hover:underline"
+              >
+                Remove
+              </button>
+            </form>
+          )}
         </div>
       ) : (
         // Choosing a file and attaching it are two steps, and missing the
@@ -311,6 +343,22 @@ function EvidenceUploader({
               <AlertTriangle size={12} className="shrink-0" />
               Not attached yet — press Attach file to save it.
             </p>
+          )}
+          {/* Only reachable on a replaceOnly item, where the old file is still
+              in place until a new one is attached. Backing out has to leave it
+              exactly as it was. */}
+          {replacing && (
+            <button
+              type="button"
+              onClick={() => {
+                setReplacing(false);
+                setSelectedFile(null);
+                setClientError(null);
+              }}
+              className="mt-1.5 text-xs text-rc-faint transition hover:text-rc-ink hover:underline"
+            >
+              Keep the file that&rsquo;s already there
+            </button>
           )}
         </form>
       )}

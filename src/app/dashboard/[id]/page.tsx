@@ -101,7 +101,7 @@ export default async function PropertyPage({
   const auctionDayItems = stageItems.filter((item) => auctionDaySet.has(item.key));
   const ordinaryItems = stageItems.filter((item) => !auctionDaySet.has(item.key));
   const fileFinalised = p.stage === 5 && allItems["f1"]?.status === "done";
-  const hasSourceDocs = ["a3", "b1", "a4b"].some((key) => allItems[key]?.evidence_path);
+  const hasSourceDocs = ["a3", "b1", "a4"].some((key) => allItems[key]?.evidence_path);
 
   return (
     <>
