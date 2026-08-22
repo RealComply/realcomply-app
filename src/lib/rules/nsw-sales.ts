@@ -107,6 +107,15 @@ export type ComplianceItem = {
   // file being attached carries a consequence beyond untidiness — a1, where
   // it would mean identity documents landing in storage.
   evidenceWarning?: string;
+  // Offer Replace instead of Remove on an already-attached file. Set on the
+  // three documents collected at listing setup (a3, b1, a4), which are
+  // mandatory there: a listing cannot be created without them, so allowing
+  // them to be removed to nothing afterwards puts the file in a state the
+  // setup form would have refused. Swapping one is a correction; deleting one
+  // is a hole. Adam, 22 Aug 2026, on the merged ESP card: "there's no card
+  // needed with no report attached because the report needs to be attached in
+  // order to set up the listing."
+  evidenceReplaceOnly?: boolean;
   // Screens the attachment and refuses it if it is a copy of someone's ID.
   // The warning above is words; this is the control. See screenForIdDocument
   // in lib/actions/extraction.ts for what it does and does not catch.
@@ -154,6 +163,7 @@ const items: ComplianceItem[] = [
     requiresDate: true,
     requiredForStageCompletion: true,
     showFindings: true,
+    evidenceReplaceOnly: true,
   },
   {
     key: "a1",
@@ -217,7 +227,7 @@ const items: ComplianceItem[] = [
     hideEvidenceWhen: (current) => aiDraft(current).identityVerified === true,
     evidenceLabel: "Verification record",
     evidenceWarning:
-      "Attach the VOI certificate or e-signing audit trail — the proof that a check was done. Not the documents it was done against: licences, passports, rates notices and title searches aren't kept in RealComply, and will be refused.",
+      "Attach the VOI certificate or e-signing audit trail. That is the proof a check was done, not the documents it was done against: licences, passports, rates notices and title searches aren't kept in RealComply, and will be refused.",
     // Adam, 20 Aug 2026: "if the AI can detect any ID documents, then it
     // rejects them." The warning above was only ever words.
     rejectIdDocuments: true,
@@ -271,18 +281,24 @@ const items: ComplianceItem[] = [
     // (live in ItemCard, authoritatively on save in setItemStatus) rather than
     // described by a model, so it cannot be wrong and cannot drift.
     hideNote: true,
-  },
-  {
-    key: "a4b",
-    stage: 0,
-    kind: "checklist",
-    label: "Comparable-sales evidence held",
-    description:
-      "Confirm comparable-sales evidence sits behind the ESP — either bundled with the agency agreement, or attached/filed separately. Note where it's held.",
-    legalBasis: "s72A + NSW Fair Trading underquoting guidance",
-    requiresDate: false,
-    requiredForStageCompletion: true,
-    showFindings: true,
+    // MERGED FROM a4b, 22 Aug 2026 (Adam). This card used to render a generic
+    // evidence slot that nothing was ever meant to go in, sitting directly
+    // above a separate "Comparable-sales evidence held" card holding the
+    // report. Adam: "we only need one of them." s72A is one obligation, not
+    // two: record the estimate, and hold reasonable grounds for it. So the
+    // report now lives on the same card as the figure it supports.
+    //
+    // NO findings box came across with it. a4b's findings said, in one
+    // sentence, whether comparable-sales evidence was present — a fair
+    // question when it was its own card, and pure restatement now that the
+    // file is visibly attached to this one. Keeping it would also have meant
+    // two documents writing to one item: the agency agreement patches the ESP
+    // figures here, and its patch rewrites the findings text wholesale, so
+    // every re-read of the agreement would have silently blanked whatever the
+    // comparables report had said. Adam removed findings from this card on
+    // 15 Aug for a related reason and it should not creep back.
+    evidenceLabel: "Comparable sales report",
+    evidenceReplaceOnly: true,
   },
   {
     key: "a4c",
@@ -293,10 +309,11 @@ const items: ComplianceItem[] = [
       "In your own words, note how this property sits against the comparables and how you arrived at the ESP. This is your record of how the estimate was formed, not a black-letter requirement to justify every difference.",
     legalBasis: "s72A (evidence of how the estimate was formed)",
     // No attachment here. The evidence for the ESP reasoning is the
-    // comparable-sales report, which is already attached to a4b directly
+    // comparable-sales report, which is already attached to a4 directly
     // above — asking for a second upload on the reasoning itself invites the
     // same file twice and makes the card look incomplete when it is not
-    // (Adam, 15 Aug 2026).
+    // (Adam, 15 Aug 2026). The same reasoning is why a4 above no longer has a
+    // slot of its own beyond the report: see the merge note there.
     hideEvidence: true,
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -392,6 +409,7 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: true,
     hideNote: true,
     showFindings: true,
+    evidenceReplaceOnly: true,
   },
   // ── Auction, before the day ───────────────────────────────────────────
   // Two items, both plain. Adam's steer, 18 Aug 2026: keep it to tick boxes.
