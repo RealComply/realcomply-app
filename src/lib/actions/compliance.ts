@@ -547,13 +547,33 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
     ? "An offer here has not yet been put to the vendor in writing (Sch 2 r5)."
     : undefined;
 
-  // Rejected at or above the advertised price → the estimate is stale.
+  // Rejected at or above the ADVERTISED asking price. Not the ESP.
   //
   // Adam, 17 Aug 2026. If a buyer offers inside the advertised range, at the
   // advertised single figure, or above it, and the vendor rejects it, the
   // property demonstrably will not sell at the bottom of what is being
   // advertised. Continuing to advertise from that figure is quoting a price
   // the vendor has already refused.
+  //
+  // NARROWED 22 Aug 2026, ESP fallback removed. Adam: "the issue is if an
+  // offer comes in at or above the asking price, not the ESP... the agent is
+  // required to amend the advertised price guide."
+  //
+  // The fallback was worse than imprecise. An ESP is an estimate of the likely
+  // selling price, not a reserve. An ESP of $1m with an asking price of $1.05m
+  // is an ordinary listing, and a $1.02m offer being knocked back is an
+  // ordinary Tuesday. Measuring rejections against the ESP would have flagged
+  // half the offers in the product and taught agents to ignore the flag.
+  //
+  // The meaningful case is narrower: the vendor refused a figure the agency is
+  // publicly asking for. With nothing advertised there is no quoting going on,
+  // so there is nothing to measure and this stays silent.
+  //
+  // AND THE REMEDY IS THE ADVERTISED GUIDE, NOT THE ESP. Raising the ad does
+  // not disturb s73(1), which only forbids advertising BELOW the estimate, so
+  // a rejection above the asking price generally calls for the guide to be
+  // amended and leaves the ESP untouched. Telling the agent to revise the ESP
+  // here would send them to serve a notice they may not need.
   //
   // THE CITATION IS NOT s73A. s73A(1) prohibits a statement suggesting a
   // property may sell for less than THE ESTIMATED SELLING PRICE — it says
@@ -575,34 +595,39 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
           .reduce((max, e) => Math.max(max, e.amount), 0)
       : 0;
 
-  const espRevisionPrompt =
+  const guideAmendmentPrompt =
     highestRejectedAtOrAbove > 0 && threshold != null
       ? `An offer of $${highestRejectedAtOrAbove.toLocaleString()} was at or above your ${thresholdSource} of ` +
-        `$${threshold.toLocaleString()} and was rejected. The estimated selling price may no longer be a ` +
-        `reasonable estimate (s72A(3)). If you revise it, serving the written notice on the vendor is what ` +
-        `amends the agency agreement (s72A(4)), so there is nothing to re-sign. Any advertising below the ` +
-        `revised figure has to be amended or retracted as soon as practicable (s73(3)).`
+        `$${threshold.toLocaleString()} and was rejected, so the property will not sell at the figure you are ` +
+        `advertising. Amend the advertised price guide to no less than the rejected offer. Continuing to ` +
+        `advertise from a figure the vendor has already refused is quoting a price that will not buy the ` +
+        `property.`
       : undefined;
 
-  return { rejectedFloor, status, flagReason, espRevisionPrompt };
+  return { rejectedFloor, status, flagReason, guideAmendmentPrompt };
 }
 
 /** The figure a rejected offer is measured against: what is advertised if
  *  anything is, otherwise the recorded ESP. */
+/**
+ * The figure a rejected offer is measured against: the ADVERTISED price, and
+ * nothing else.
+ *
+ * The ESP fallback that used to sit here was removed 22 Aug 2026. See the
+ * comment above guideAmendmentPrompt for why it was not merely imprecise.
+ */
 async function offerThreshold(
   supabase: Awaited<ReturnType<typeof createClient>>,
   propertyId: string,
 ): Promise<{ threshold: number | null; source: string }> {
-  const [{ data: guideRow }, { data: espRow }] = await Promise.all([
-    supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "c1").maybeSingle(),
-    supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "a4").maybeSingle(),
-  ]);
+  const { data: guideRow } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "c1")
+    .maybeSingle();
   const guideLow = (guideRow?.data as { guideLow?: number } | null)?.guideLow ?? null;
-  const espLow = (espRow?.data as { espLow?: number } | null)?.espLow ?? null;
-  return {
-    threshold: guideLow ?? espLow,
-    source: guideLow != null ? "advertised price" : "recorded ESP",
-  };
+  return { threshold: guideLow, source: "advertised price" };
 }
 
 async function readOffers(
@@ -634,13 +659,21 @@ async function saveOffers(
       entries: params.entries,
       rejectedFloor: assessment.rejectedFloor,
       flagReason: assessment.flagReason,
-      espRevisionPrompt: assessment.espRevisionPrompt,
+      guideAmendmentPrompt: assessment.guideAmendmentPrompt,
     },
     completedBy: params.userId,
   });
 
-  if (!error && assessment.espRevisionPrompt) {
-    await reopenStaleNoRevision(supabase, params.propertyId, assessment.espRevisionPrompt);
+  // Reopen the ADVERTISED GUIDE, not the ESP revision question.
+  //
+  // This used to reopen d3 ("was the ESP revised?"), which followed from the
+  // same wrong reading corrected on 22 Aug: a rejection above the asking price
+  // calls for the guide to be amended, and generally leaves the ESP alone,
+  // because s73(1) only forbids advertising BELOW the estimate. Sending the
+  // agent to serve a revision notice they may not need is worse than saying
+  // nothing.
+  if (!error && assessment.guideAmendmentPrompt) {
+    await reopenGuideAfterRejection(supabase, params.propertyId, assessment.guideAmendmentPrompt);
   }
 
   revalidatePath(`/dashboard/${params.propertyId}`);
@@ -1538,6 +1571,36 @@ async function revokePreCommencementIfAgreementIsNew(
  * Only touches an item still answered "no". An answered "yes, revised" is left
  * alone, since the revision it records may well be the response to this.
  */
+/**
+ * Puts the advertised guide back in front of the agent after a rejection at or
+ * above it.
+ *
+ * Flags rather than reopens: c1 carries the recorded guide and the weekly
+ * website scan's findings, and blanking its status would throw away a record
+ * to ask a question. A flag with the reason attached says the same thing
+ * without losing anything.
+ */
+async function reopenGuideAfterRejection(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+  reason: string,
+): Promise<void> {
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("id, data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "c1")
+    .maybeSingle();
+
+  const c1 = (row as { id?: string; data?: Record<string, unknown> } | null) ?? null;
+  if (!c1?.id) return;
+
+  await supabase
+    .from("property_items")
+    .update({ status: "flagged", data: { ...(c1.data ?? {}), rejectionPrompt: reason } })
+    .eq("id", c1.id);
+}
+
 /**
  * Public wrapper so the weekly website check can re-ask the revision question.
  *

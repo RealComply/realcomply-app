@@ -845,11 +845,25 @@ function GuideItem({
     note?: string;
     flagReasons?: string[];
     websiteScan?: ScanFinding;
+    rejectionPrompt?: string;
   };
   const esp = (espItem?.data ?? {}) as { espLow?: number; espHigh?: number };
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      {/* An offer at or above the advertised figure was rejected, so the
+          guide itself is now the thing to fix. Sits above the form rather
+          than below it, because it is a reason to change what is in the form
+          rather than a comment on what is already there. */}
+      {data.rejectionPrompt && (
+        <div className="mb-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
+          <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>The advertised guide needs amending</span>
+          </p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.rejectionPrompt}</p>
+        </div>
+      )}
       {esp.espLow == null ? (
         <p className="text-sm text-rc-muted">Record the ESP (item a4) first — the live check needs it.</p>
       ) : (
@@ -915,7 +929,7 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
       updatedAt?: string;
     }>;
     flagReason?: string;
-    espRevisionPrompt?: string;
+    guideAmendmentPrompt?: string;
   };
   const entries = data.entries ?? [];
 
@@ -941,13 +955,13 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
           the agent now has to make with the vendor. Different things, and
           collapsing them would make the second read as a telling-off for
           honestly logging an offer. */}
-      {data.espRevisionPrompt && (
+      {data.guideAmendmentPrompt && (
         <div className="mt-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
           <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             <span>Worth reviewing the estimated selling price</span>
           </p>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.espRevisionPrompt}</p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.guideAmendmentPrompt}</p>
           <p className="mt-1.5 text-[11px] leading-relaxed text-rc-faint">
             A prompt, not a determination — you and the vendor decide whether the estimate still holds.
           </p>
