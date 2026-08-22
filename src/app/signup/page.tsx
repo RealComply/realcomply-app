@@ -184,6 +184,33 @@ function InviteAwareForm() {
           className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
         />
       </div>
+      {/* Acceptance of the published documents.
+          A real checkbox rather than "by continuing you agree", because what
+          gets recorded has to be an act the person took, not an inference from
+          them having pressed a button they were going to press anyway. The
+          version they accepted is stamped on the record server-side, and the
+          links open in a new tab so reading them does not throw away a
+          half-filled form. */}
+      <label className="flex items-start gap-2.5 text-xs leading-relaxed text-rc-muted">
+        <input
+          type="checkbox"
+          name="acceptLegal"
+          value="yes"
+          required
+          className="mt-0.5 shrink-0 accent-rc-green-deep"
+        />
+        <span>
+          I&rsquo;ve read and accept the{" "}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-rc-green-deep hover:underline">
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-rc-green-deep hover:underline">
+            Privacy Policy
+          </a>
+          .
+        </span>
+      </label>
       <button
         type="submit"
         disabled={pending}
