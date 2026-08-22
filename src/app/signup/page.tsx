@@ -98,18 +98,33 @@ function InviteAwareForm() {
           links away from the person who is supposed to receive them. */}
       {!invite && (
         <div>
-          <label htmlFor="licenseeEmail" className="block text-sm font-medium text-rc-ink">
-            Licensee in charge email <span className="font-normal text-rc-muted">(optional)</span>
+          <label htmlFor="licenseeName" className="block text-sm font-medium text-rc-ink">
+            Licensee in charge <span className="font-normal text-rc-muted">(optional)</span>
           </label>
+          {/* Name added 22 Aug 2026 (Adam), and it is not decoration. On the
+              agent tier this person is not a user of the product: they exist
+              only as the person a sign-off request is sent to, and whose
+              approval the compliance file then rests on. "Signed by someone at
+              this address" is a weaker record than a named licensee, and the
+              sign-off statement is snapshotted when the link is issued, so the
+              name has to exist before that rather than be added afterwards. */}
+          <input
+            id="licenseeName"
+            name="licenseeName"
+            type="text"
+            autoComplete="off"
+            placeholder="Jane Smith"
+            className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+          />
           <input
             id="licenseeEmail"
             name="licenseeEmail"
             type="email"
             placeholder="licensee@youragency.com.au"
-            className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+            className="mt-2 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
           <p className="mt-1 text-xs leading-relaxed text-rc-muted">
-            Where sign-off requests go. Leave blank if that is you.
+            Who signs off your files, and where the requests go. Leave blank if that is you.
           </p>
 
           {/* The agency's public website. Asked here for both tiers: an

@@ -18,22 +18,37 @@ const initial = { error: null as string | null, saved: false };
 
 export function LicenseeEmailForm({
   current,
+  currentName,
   website,
 }: {
   current: string | null;
+  currentName: string | null;
   website: string | null;
 }) {
   const [state, action, pending] = useActionState(saveLicenseeEmail, initial);
 
   return (
     <form action={action} className="mt-2 rounded-card border border-rc-border bg-white p-4 shadow-card">
-      <label htmlFor="licenseeEmail" className="block text-sm font-medium text-rc-ink">
-        Licensee in charge email
+      <label htmlFor="licenseeName" className="block text-sm font-medium text-rc-ink">
+        Licensee in charge
       </label>
       <p className="mt-1 text-xs leading-relaxed text-rc-muted">
-        Where sign-off requests are addressed. Used when you create a sign-off link for a listing.
+        Who signs off your files, and where the requests are addressed. Used when you create a sign-off link
+        for a listing.
       </p>
-      <div className="mt-2">
+      <div className="mt-2 space-y-2">
+        {/* Name and address together, because the sign-off statement names the
+            person who signed and that wording is snapshotted when the link is
+            issued. An address alone produces a weaker record. */}
+        <input
+          id="licenseeName"
+          name="licenseeName"
+          type="text"
+          autoComplete="off"
+          defaultValue={currentName ?? ""}
+          placeholder="Jane Smith"
+          className="w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+        />
         <input
           id="licenseeEmail"
           name="licenseeEmail"

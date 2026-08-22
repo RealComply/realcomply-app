@@ -47,6 +47,7 @@ export async function GET(request: Request) {
           agency_name?: string;
           invite_token?: string;
           licensee_email?: string | null;
+          licensee_name?: string | null;
           website_url?: string | null;
         };
         if (meta.invite_token) {
@@ -61,8 +62,10 @@ export async function GET(request: Request) {
           // Sign-off address, carried in user metadata from the signup form
           // because there was no session at that point to write it with. Only
           // once the agency row exists, and never for an invite signup.
-          if (!bootstrapError && typeof meta.licensee_email === "string" && meta.licensee_email) {
-            await supabase.rpc("set_agency_licensee_email", { p_email: meta.licensee_email });
+          const licenseeEmail = typeof meta.licensee_email === "string" ? meta.licensee_email : "";
+          const licenseeName = typeof meta.licensee_name === "string" ? meta.licensee_name : "";
+          if (!bootstrapError && (licenseeEmail || licenseeName)) {
+            await supabase.rpc("set_agency_licensee", { p_name: licenseeName, p_email: licenseeEmail });
           }
           if (!bootstrapError && typeof meta.website_url === "string" && meta.website_url) {
             await supabase.rpc("set_agency_website", { p_url: meta.website_url });
