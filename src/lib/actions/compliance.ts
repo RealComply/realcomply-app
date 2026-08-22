@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
+import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { finalizeEvidenceRecord, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type {
@@ -144,11 +145,47 @@ export async function setItemStatus(
   // unknown figure. Only blocks "done", for the same reason — flagging or
   // reopening must stay possible.
   if (status === "done" && rule?.requiresNote && !note) {
-    return {
-      error: rule.noteLabel
-        ? `Type in ${rule.noteLabel.toLowerCase()} before marking it done.`
-        : "Add a note before marking this done.",
-    };
+    // Carve-out: an attached document can stand in for the typed note where
+    // the item offers both routes. f4 is the case — cl 37(2) wants a record of
+    // who was given a contract, and a CRM export is a better record than a
+    // retyped list. Only an ALREADY-attached file counts, since the upload
+    // happens in its own request before this one.
+    const { data: attached } = await supabase
+      .from("property_items")
+      .select("evidence_path")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+
+    if (!(attached as { evidence_path?: string | null } | null)?.evidence_path) {
+      return {
+        error: rule.noteLabel
+          ? `Type in ${rule.noteLabel.toLowerCase()}, or attach the record, before marking it done.`
+          : "Add a note before marking this done.",
+      };
+    }
+  }
+
+  // b6 — the physical inspection has to come BEFORE the agent acts for the
+  // vendor (Regulation Sch 2 r2), and acting starts at the agency agreement.
+  // An inspection dated after the agreement was signed is not a filing error,
+  // it means the agent took the listing before walking through the property.
+  //
+  // Flagged rather than blocked. The agent may have mistyped a date, and the
+  // product's job is to put the discrepancy in front of a human, not to refuse
+  // to record what actually happened.
+  let inspectionAfterAgreement = false;
+  if (itemKey === "b6" && status === "done" && eventDate) {
+    const { data: agreementRow } = await supabase
+      .from("property_items")
+      .select("event_date")
+      .eq("property_id", propertyId)
+      .eq("item_key", "a3")
+      .maybeSingle();
+    const signed = (agreementRow as { event_date?: string | null } | null)?.event_date ?? null;
+    if (signed && eventDate > signed) {
+      inspectionAfterAgreement = true;
+    }
   }
 
   const data: Record<string, unknown> = { note };
@@ -301,26 +338,23 @@ export async function setItemStatus(
     data.guideLow = guideLow;
     data.guideHigh = guideHigh;
 
-    const { data: espItem } = await supabase
-      .from("property_items")
-      .select("data")
-      .eq("property_id", propertyId)
-      .eq("item_key", "a4")
-      .maybeSingle();
-    const esp = (espItem?.data ?? {}) as { espLow?: number };
+    // The price currently on foot, not the one from listing set-up. A
+    // campaign where the ESP was revised in week six spent the rest of its
+    // life being measured against a superseded figure.
+    const esp = await effectiveEsp(supabase, propertyId);
 
     const lowerNote = (data.note as string).toLowerCase();
     const usesProhibitedTerm = ["offers over", "offers above", "o.n.o", "offers from"].some((t) =>
       lowerNote.includes(t),
     );
-    const belowEsp = esp.espLow != null && guideLow != null && guideLow < esp.espLow;
+    const belowEsp = esp.low != null && guideLow != null && guideLow < esp.low;
     const spreadPct = guideLow && guideHigh ? ((guideHigh - guideLow) / guideLow) * 100 : 0;
 
     const flagReasons = [
-      belowEsp ? "Advertised guide is below the recorded ESP (s73)." : null,
+      belowEsp ? `Advertised guide is below the recorded ${espLabel(esp)} (s73).` : null,
       usesProhibitedTerm ? "Note mentions a prohibited price term." : null,
       spreadPct > 10 ? "Guide range spread exceeds 10%." : null,
-      esp.espLow == null ? "No ESP recorded yet to check against — record a4 first." : null,
+      esp.low == null ? "No ESP recorded yet to check against — record the ESP first." : null,
     ].filter(Boolean) as string[];
 
     const { error } = await upsertItem(supabase, {
@@ -336,14 +370,22 @@ export async function setItemStatus(
     return error ? { error: error.message } : ok;
   }
 
+  if (inspectionAfterAgreement) {
+    data.flagReason =
+      "This inspection is dated after the agency agreement was signed. The inspection has to come first, because it is what you are allowed to act on. If the date is a typo, correct it. If it is not, tell the licensee.";
+  }
+
   const { error } = await upsertItem(supabase, {
     agencyId: profile.agency_id,
     propertyId,
     itemKey,
-    status,
+    status: inspectionAfterAgreement ? "flagged" : status,
     data,
     eventDate,
-    completedBy: status === "done" ? user.id : null,
+    // A flagged item is not a completed one, so it does not carry a
+    // completed_by. Otherwise the file would show a person as having
+    // finished something the app is still objecting to.
+    completedBy: status === "done" && !inspectionAfterAgreement ? user.id : null,
   });
 
   if (!error && itemKey === "a4") {
@@ -676,18 +718,99 @@ export async function updateOfferEntry(
 // record now; it's attached via the item's own generic evidence uploader
 // (ItemShell, since d3 doesn't hideEvidence), not retyped into this form.
 export async function markEspRevised(propertyId: string): Promise<void> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3")
+    .maybeSingle();
+
+  // Answering Yes no longer completes the item, it opens it. The revision is
+  // only recorded once the notice has been attached and read, because the
+  // notice is the thing the Act requires and the figures on it are what every
+  // price check downstream measures against.
+  await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "d3",
+    status: "open",
+    data: { ...((existing?.data as Record<string, unknown>) ?? {}), espRevised: true },
+    completedBy: null,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+}
+
+/**
+ * Confirms the two things the notice cannot prove on its own.
+ *
+ * s72A(5) — evidence given to the vendor before the notice. The standard forms
+ * carry a line saying so, and where the read picked that up the box arrives
+ * already ticked, so this is usually a confirmation rather than a question.
+ *
+ * s73(3) — the advertising amended or retracted as soon as practicable after
+ * the revision. Nothing in the notice can evidence this, because it happens
+ * afterwards, and it is the obligation agents most often miss. The weekly
+ * website check watches it independently.
+ */
+export async function confirmEspRevision(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
+
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3")
+    .maybeSingle();
+
+  const item = row as PropertyItem | null;
+  const data = ((item?.data as Record<string, unknown>) ?? {}) as Record<string, unknown>;
+
+  if (!item?.evidence_path) {
+    return { error: "Attach the notice you served on the vendor first." };
+  }
+  if (data.revisedEspLow == null || data.revisedEspHigh == null) {
+    return { error: "The revised price hasn't been read off the notice yet. Re-attach a clearer copy." };
+  }
+
+  const evidenceBeforeNotice = formData.get("evidenceProvidedBeforeNotice") === "yes";
+  const advertisingUpdated = formData.get("advertisingUpdated") === "yes";
+
+  // Both are legal obligations, so neither closes the item on its own. Held
+  // open rather than refused: the record of the revision itself is already
+  // saved and correct, and what remains outstanding is visible on the card.
+  const outstanding = [
+    evidenceBeforeNotice ? null : "Evidence of the new price has not been confirmed as given to the vendor (s72A(5)).",
+    advertisingUpdated ? null : "The advertising has not been confirmed as updated to the revised price (s73(3)).",
+  ].filter(Boolean) as string[];
 
   await upsertItem(supabase, {
     agencyId: profile.agency_id,
     propertyId,
     itemKey: "d3",
-    status: "done",
-    data: { espRevised: true },
-    completedBy: user.id,
+    status: outstanding.length > 0 ? "open" : "done",
+    data: {
+      ...data,
+      evidenceProvidedBeforeNotice: evidenceBeforeNotice,
+      advertisingUpdated,
+      outstanding,
+    },
+    completedBy: outstanding.length === 0 ? user.id : null,
   });
 
+  // Re-run the advertised-price check straight away rather than waiting for
+  // Monday. The agent has just told us the price moved, which is exactly when
+  // the live ad is most likely to be wrong.
+  await recheckAdvertisedPrice(propertyId, true);
+
   revalidatePath(`/dashboard/${propertyId}`);
+  return ok;
 }
 
 // d3 — "no revision" outcome. Most listings never need an ESP change, so
@@ -1415,6 +1538,18 @@ async function revokePreCommencementIfAgreementIsNew(
  * Only touches an item still answered "no". An answered "yes, revised" is left
  * alone, since the revision it records may well be the response to this.
  */
+/**
+ * Public wrapper so the weekly website check can re-ask the revision question.
+ *
+ * Same guard as every other caller: only an item answered "no revision" is
+ * reopened. A file where the notice is already attached is left alone, and so
+ * is one nobody has answered yet.
+ */
+export async function reopenNoRevisionIfPriceMoved(propertyId: string, reason: string): Promise<void> {
+  const supabase = await createClient();
+  await reopenStaleNoRevision(supabase, propertyId, reason);
+}
+
 async function reopenStaleNoRevision(
   supabase: Awaited<ReturnType<typeof createClient>>,
   propertyId: string,

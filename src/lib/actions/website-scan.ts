@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAuthContext } from "@/lib/actions/compliance";
+import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import type { PropertyItem } from "@/lib/types";
 
 // The advertised-price check.
@@ -239,14 +240,12 @@ export async function scanOneProperty(
         addressMatches?: boolean;
       };
 
-      // The ESP to compare against, read from the file rather than the page.
-      const { data: espRow } = await supabase
-        .from("property_items")
-        .select("data")
-        .eq("property_id", property.id)
-        .eq("item_key", "a4")
-        .maybeSingle();
-      const esp = ((espRow as PropertyItem | null)?.data ?? {}) as { espLow?: number };
+      // The ESP to compare against, read from the file rather than the page,
+      // and read as the price CURRENTLY on foot rather than the one recorded
+      // at listing set-up. Where a revision notice has been served and read,
+      // that is the figure the advertising has to respect — see
+      // lib/data/effective-esp.ts.
+      const esp = await effectiveEsp(supabase, property.id);
 
       const issues: string[] = [];
 
@@ -272,9 +271,12 @@ export async function scanOneProperty(
       }
 
       // Arithmetic, not judgement.
-      if (read.priceLow != null && esp.espLow != null && read.priceLow < esp.espLow) {
+      if (read.priceLow != null && esp.low != null && read.priceLow < esp.low) {
         issues.push(
-          `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the ESP of $${esp.espLow.toLocaleString("en-AU")} on this file (s73(1)). If the ESP was revised, s73(3) requires the advertising to be amended as soon as practicable.`,
+          `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the ${espLabel(esp)} of $${esp.low.toLocaleString("en-AU")} on this file (s73(1)).` +
+            (esp.revised
+              ? ` The price was revised${esp.revisedOn ? ` on ${esp.revisedOn}` : ""}, and s73(3) requires the advertising to be amended or retracted as soon as practicable after that.`
+              : " If the ESP has been revised, record the notice on the file so this checks against the right figure."),
         );
       }
       if (read.priceLow != null && read.priceHigh != null && read.priceLow > 0) {
@@ -286,7 +288,7 @@ export async function scanOneProperty(
       for (const term of read.prohibitedTerms ?? []) {
         issues.push(`Advertising uses “${term}”, which s73(2) prohibits.`);
       }
-      if (read.priceShown && esp.espLow == null) {
+      if (read.priceShown && esp.low == null) {
         issues.push("No ESP recorded on this file to check the advertised price against.");
       }
 
@@ -351,6 +353,32 @@ async function writeFinding(
   const row = existing as PropertyItem | null;
 
   const shouldFlag = finding.addressConfirmed && finding.issues.length > 0;
+
+  // The advertised price moved but the file says the ESP was never revised.
+  //
+  // Adam, 22 Aug 2026, agreeing this should re-ask: a price changing on the
+  // website without a revision on file is one of two things, and both need a
+  // person. Either a revision happened and the notice was never recorded,
+  // which leaves s72A(4) unevidenced, or the advertising moved without one,
+  // which is the underquoting case s73 is about.
+  //
+  // Re-asking rather than flagging c1, because the question belongs on the
+  // revision card and the agent needs to be asked again, not told off. The
+  // reopen only fires on an answered "no" — see reopenNoRevisionIfPriceMoved.
+  const previous = ((row?.data ?? {}) as { websiteScan?: ScanFinding }).websiteScan;
+  const priceMoved =
+    finding.addressConfirmed &&
+    previous?.priceLow != null &&
+    finding.priceLow != null &&
+    previous.priceLow !== finding.priceLow;
+
+  if (priceMoved) {
+    const { reopenNoRevisionIfPriceMoved } = await import("@/lib/actions/compliance");
+    await reopenNoRevisionIfPriceMoved(
+      property.id,
+      `The advertised price changed from $${previous!.priceLow!.toLocaleString("en-AU")} to $${finding.priceLow!.toLocaleString("en-AU")} on your listing page, but this file records no revision. If the estimated selling price was revised, attach the notice. If it was not, the advertising has moved without one.`,
+    );
+  }
 
   await supabase.from("property_items").upsert(
     {

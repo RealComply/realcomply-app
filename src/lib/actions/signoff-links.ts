@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { buildSignoffStatement } from "@/lib/signoff/statement";
+import { effectiveEsp } from "@/lib/data/effective-esp";
 import type { PropertyItem } from "@/lib/types";
 
 // Issuing and revoking licensee sign-off links. See
@@ -69,14 +70,17 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
   const items = (rows ?? []) as PropertyItem[];
   const a3 = items.find((i) => i.item_key === "a3");
   const a4 = items.find((i) => i.item_key === "a4");
-  const a4data = (a4?.data ?? {}) as { espLow?: number; espHigh?: number };
+  // The ESP a licensee is asked to sign against has to be the one currently
+  // on foot. Showing the figure from listing set-up on a file where the price
+  // was formally revised puts a superseded number above a signature.
+  const esp = await effectiveEsp(supabase, propertyId);
 
   const statement = buildSignoffStatement({
     agencyName: (agency as { name?: string } | null)?.name ?? "the agency",
     propertyAddress: (property as { address: string }).address,
     agreementDate: a3?.event_date ?? null,
-    espLow: a4data.espLow ?? null,
-    espHigh: a4data.espHigh ?? null,
+    espLow: esp.low,
+    espHigh: esp.high,
     rulesetVersion: RULESET_VERSION,
     issuedOn: new Date().toISOString(),
   });
