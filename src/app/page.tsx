@@ -45,6 +45,14 @@ import { MetaPixel } from "@/components/MetaPixel";
 // BEFORE pricing gains either. And the Monday-morning digest line comes off if
 // the SES production-access request fails and outbound email stays blocked.
 // Both are removed before someone signs up on the strength of them, not after.
+// The set-up-fee line now appears in THREE places (hero, pricing, final) —
+// update all three together, same rule as the sub-headline below.
+//
+// PRICING — added 22 Aug 2026, Adam's call: "I think we should have the
+// starting prices on the landing page." Starting prices only (Agent $99/mo,
+// Office from $249/mo), not the full office tier ladder — see
+// RealComply-pricing-and-billing-model.md. Keep these two figures in sync
+// with that doc if pricing changes.
 //
 // The sub-headline is duplicated in three places: here, the openGraph block
 // below, and the site-wide fallback in layout.tsx. Change all three together
@@ -390,6 +398,40 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           <p className="mt-4 text-lg font-semibold leading-relaxed text-rc-ink">
             More work, more responsibility, and bigger numbers when it goes wrong. A spreadsheet and a good memory
             don&rsquo;t scale with that.
+          </p>
+        </div>
+      </section>
+
+      {/* PRICING — starting prices only, not the full office tier ladder
+          (that stays behind login, not on a page a competitor can
+          screenshot). Sits right before the final ask, so the price is
+          answered before someone is asked for their email. */}
+      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20" data-section="pricing">
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
+          <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Straightforward pricing</h2>
+          <p className="mx-auto mt-4 max-w-lg text-lg leading-relaxed text-rc-muted">
+            One plan for a single agent, one for the whole office.
+          </p>
+          <div className="mt-9 grid gap-5 sm:grid-cols-2">
+            <div className="rounded-card border border-rc-border bg-white p-7 text-left shadow-card">
+              <p className="text-xs font-extrabold uppercase tracking-[0.09em] text-rc-green-deep">Agent</p>
+              <p className="mt-3 text-4xl font-extrabold tracking-tight text-rc-ink">
+                From $99<span className="text-lg font-semibold text-rc-muted">/month</span>
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-rc-muted">One agent, your own listings.</p>
+            </div>
+            <div className="rounded-card border border-rc-border bg-white p-7 text-left shadow-card">
+              <p className="text-xs font-extrabold uppercase tracking-[0.09em] text-rc-green-deep">Office</p>
+              <p className="mt-3 text-4xl font-extrabold tracking-tight text-rc-ink">
+                From $249<span className="text-lg font-semibold text-rc-muted">/month</span>
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-rc-muted">
+                The whole office, scaling with how many listings you run.
+              </p>
+            </div>
+          </div>
+          <p className="mt-6 text-sm font-semibold text-rc-muted">
+            No set-up fee. No lock-in contracts. GST inclusive.
           </p>
         </div>
       </section>
