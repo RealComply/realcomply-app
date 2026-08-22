@@ -70,7 +70,7 @@ export async function uploadEvidenceObject(
   const { path, file } = params;
 
   if (file.size > MAX_EVIDENCE_BYTES) {
-    return { error: `${file.name} is too large — 20MB max.` };
+    return { error: `${file.name} is larger than the 20 MB limit.` };
   }
 
   const { error } = await supabase.storage

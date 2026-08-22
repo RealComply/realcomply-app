@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type DragEvent } from "react";
-import { Paperclip, Upload } from "lucide-react";
+import { AlertTriangle, Paperclip, Upload, X } from "lucide-react";
+import { MAX_EVIDENCE_BYTES } from "@/lib/storage/evidence";
 
 // A file picker you can also drop a file onto.
 //
@@ -23,6 +24,18 @@ import { Paperclip, Upload } from "lucide-react";
 //    three files and having two vanish without a word is the same class of
 //    bug — the agent believes they attached something they didn't. It takes
 //    the first file and says so.
+//
+// SIZE IS CHECKED HERE, AT THE MOMENT THE FILE IS CHOSEN.
+//
+// It used to be checked inside uploadEvidenceObject, which only runs once the
+// form has been submitted. On the Add a listing page that meant an oversized
+// file sat there looking accepted, and pressing Create listing appeared to do
+// nothing: the message rendered in a banner at the top of a long form, off
+// screen, with no scroll to it. Reported on 12/1 Werombi Road, 22 Aug 2026.
+// A limit you can only discover by failing is a limit in the wrong place, so
+// the file is now refused on the spot, against the field it belongs to. The
+// check inside uploadEvidenceObject stays where it is: this one is the
+// courtesy, that one is the guard.
 export function FileDropZone({
   name,
   file,
@@ -31,6 +44,7 @@ export function FileDropZone({
   label = "Drag a file here, or click to browse",
   compact = false,
   required = false,
+  maxBytes = MAX_EVIDENCE_BYTES,
 }: {
   /** Form field name. Omit for zones driven purely by the onFile callback. */
   name?: string;
@@ -49,11 +63,14 @@ export function FileDropZone({
    * Every caller validates in JS and renders a real message instead.
    */
   required?: boolean;
+  /** Largest file this zone will accept. Defaults to the storage limit. */
+  maxBytes?: number;
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [tookFirst, setTookFirst] = useState(false);
+  const [tooBig, setTooBig] = useState<string | null>(null);
   // dragenter/dragleave fire for every child element the cursor crosses, so a
   // naive boolean flickers as the pointer moves over the label text inside the
   // zone. Counting enters against leaves is the standard fix.
@@ -78,18 +95,42 @@ export function FileDropZone({
   function take(list: FileList | null) {
     const dropped = Array.from(list ?? []);
     if (dropped.length === 0) return;
+    const chosen = dropped[0];
+
+    if (chosen.size > maxBytes) {
+      // Refused, and nothing kept. Holding on to it and greying the button
+      // would put us back where we started: a file on screen that is not
+      // going anywhere, and a form that will not move.
+      setTookFirst(false);
+      setTooBig(`${chosen.name} is ${formatBytes(chosen.size)}. The limit is ${formatBytes(maxBytes)}.`);
+      onFile(null);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
+    setTooBig(null);
     setTookFirst(dropped.length > 1);
-    onFile(dropped[0]);
+    onFile(chosen);
     // Keep the real input in step, so a plain (non-JS) form submit still
     // carries the file and the browser's own validation sees it.
     if (inputRef.current && list) {
       const dt = new DataTransfer();
-      dt.items.add(dropped[0]);
+      dt.items.add(chosen);
       inputRef.current.files = dt.files;
     }
   }
 
-  function handleDrop(e: DragEvent<HTMLLabelElement>) {
+  // Clearing the input's value as well as the state matters: without it,
+  // choosing the same file again after removing it fires no change event at
+  // all, and the zone stays stubbornly empty for no visible reason.
+  function clear() {
+    setTooBig(null);
+    setTookFirst(false);
+    onFile(null);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
     depth.current = 0;
     setOver(false);
@@ -99,14 +140,18 @@ export function FileDropZone({
 
   const border = over
     ? "border-rc-green-deep bg-rc-green-soft"
-    : file
-      ? "border-rc-border bg-white"
-      : "border-rc-border bg-rc-bg-alt hover:border-rc-green-deep hover:bg-white";
+    : tooBig
+      ? "border-rc-amber-deep/40 bg-rc-amber/10"
+      : file
+        ? "border-rc-border bg-white"
+        : "border-rc-border bg-rc-bg-alt hover:border-rc-green-deep hover:bg-white";
 
   return (
     <div>
-      <label
-        htmlFor={inputId}
+      {/* The drag target is this div, not the label, so the Remove button can
+          sit inside the dashed box without being swallowed by the label's own
+          click-to-open-the-picker behaviour. */}
+      <div
         onDragEnter={(e) => {
           e.preventDefault();
           depth.current += 1;
@@ -119,23 +164,44 @@ export function FileDropZone({
           if (depth.current <= 0) setOver(false);
         }}
         onDrop={handleDrop}
-        className={`flex cursor-pointer items-center gap-2.5 rounded-lg border border-dashed transition ${border} ${
+        className={`flex items-center gap-2.5 rounded-lg border border-dashed transition ${border} ${
           compact ? "px-3 py-2.5" : "px-3 py-4"
-        } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+        } ${disabled ? "opacity-60" : ""}`}
       >
-        {file ? (
-          <Paperclip size={compact ? 14 : 16} className="shrink-0 text-rc-green-deep" />
-        ) : (
-          <Upload size={compact ? 14 : 16} className="shrink-0 text-rc-muted" />
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm text-rc-ink">{file ? file.name : label}</span>
-          {file && (
-            <span className="block text-[11px] text-rc-faint">
-              {formatBytes(file.size)} — click to choose a different file
-            </span>
+        <label
+          htmlFor={inputId}
+          className={`flex min-w-0 flex-1 items-center gap-2.5 ${
+            disabled ? "cursor-not-allowed" : "cursor-pointer"
+          }`}
+        >
+          {file ? (
+            <Paperclip size={compact ? 14 : 16} className="shrink-0 text-rc-green-deep" />
+          ) : (
+            <Upload size={compact ? 14 : 16} className="shrink-0 text-rc-muted" />
           )}
-        </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm text-rc-ink">{file ? file.name : label}</span>
+            {file && (
+              <span className="block text-[11px] text-rc-faint">
+                {formatBytes(file.size)} · click to replace
+              </span>
+            )}
+          </span>
+        </label>
+        {/* Dropping a new file over the old one already replaced it, but only
+            someone who had already worked that out would ever try. Reported
+            22 Aug 2026: once a file was on, there was no visible way off it. */}
+        {file && !disabled && (
+          <button
+            type="button"
+            onClick={clear}
+            aria-label={`Remove ${file.name}`}
+            title="Remove"
+            className="shrink-0 rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+          >
+            <X size={compact ? 13 : 15} />
+          </button>
+        )}
         <input
           id={inputId}
           ref={inputRef}
@@ -146,10 +212,20 @@ export function FileDropZone({
           onChange={(e) => take(e.target.files)}
           className="sr-only"
         />
-      </label>
+      </div>
+      {tooBig && (
+        <p
+          role="alert"
+          className="mt-1 flex items-start gap-1.5 text-[11px] font-medium leading-relaxed text-rc-amber-deep"
+        >
+          <AlertTriangle size={12} className="mt-px shrink-0" />
+          <span>{tooBig} Nothing was attached. Try a smaller copy, or split it.</span>
+        </p>
+      )}
       {tookFirst && file && (
         <p className="mt-1 text-[11px] text-rc-muted">
-          More than one file was dropped — using <strong>{file.name}</strong>. Attach the others one at a time.
+          More than one file was dropped, so this one was used: <strong>{file.name}</strong>. Attach the others one
+          at a time.
         </p>
       )}
     </div>
@@ -159,5 +235,7 @@ export function FileDropZone({
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const mb = bytes / (1024 * 1024);
+  // 20 MB, not 20.0 MB. The limit is a round number and should read like one.
+  return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
 }

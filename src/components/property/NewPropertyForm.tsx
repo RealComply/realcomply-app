@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
+import { AlertTriangle } from "lucide-react";
 import { createProperty } from "@/lib/actions/properties";
 import { searchAddress, type AddressSuggestion } from "@/lib/actions/places";
 import type { ActionState } from "@/lib/actions/auth";
@@ -46,23 +47,53 @@ function YesNo({ name, label, help }: { name: string; label: string; help?: stri
   );
 }
 
+// The wrapper carries an id and tabIndex so a failed submit can put the page
+// and the keyboard focus on the document that actually caused it, rather than
+// on a banner at the top of the form describing it in the abstract.
 function DocUpload({
+  field,
   name,
   label,
   file,
   onChange,
+  error,
 }: {
+  field: string;
   name: string;
   label: string;
   file: File | null;
   onChange: (file: File | null) => void;
+  error?: string | null;
 }) {
   return (
-    <div>
+    <div id={docAnchorId(field)} tabIndex={-1} className="scroll-mt-24 focus:outline-none">
       <p className="mb-1.5 text-sm font-medium text-rc-ink">{label}</p>
-      <FileDropZone name={name} required file={file} onFile={onChange} label={`Drag the ${label.toLowerCase()} here, or click to browse`} />
+      <FileDropZone
+        name={name}
+        required
+        file={file}
+        onFile={onChange}
+        label={`Drag the ${label.toLowerCase()} here, or click to browse`}
+      />
+      {error && (
+        <p role="alert" className="mt-1 flex items-start gap-1.5 text-[11px] font-medium leading-relaxed text-rc-amber-deep">
+          <AlertTriangle size={12} className="mt-px shrink-0" />
+          <span>{error}</span>
+        </p>
+      )}
     </div>
   );
+}
+
+function docAnchorId(field: string) {
+  return `doc-${field}`;
+}
+
+// "the agency agreement and the contract for sale", not "agency agreement,
+// contract for sale".
+function listOut(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 // Plain text field, but as the agent types it debounces a call out to
@@ -159,9 +190,32 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
   const [state, formAction, pending] = useActionState(createProperty, initialState);
   const [files, setFiles] = useState<Record<string, File | null>>({});
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Which specific document failed, and why. A message against the field beats
+  // the same message in a banner: it does not have to name the document,
+  // because its position already has.
+  const [docErrors, setDocErrors] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
   const [stagingId] = useState(() => crypto.randomUUID());
+
+  // Nothing on screen changed when a submit failed, because the message
+  // rendered at the top of a form long enough to have scrolled past it. The
+  // button looked broken. Reported on 12/1 Werombi Road, 22 Aug 2026.
+  //
+  // Focus, not just scroll: it moves the keyboard and the screen reader to the
+  // problem as well as the page, and a field is a better destination than a
+  // banner because it is where the work is.
+  function goTo(anchorId: string | null) {
+    requestAnimationFrame(() => {
+      const target = anchorId
+        ? document.getElementById(anchorId)
+        : errorRef.current;
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.focus({ preventScroll: true });
+    });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -170,23 +224,38 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
 
     const missing = DOC_FIELDS.filter(({ field }) => !files[field]);
     if (missing.length > 0) {
-      setUploadError("Attach all three documents to create the listing.");
+      // Named, not counted. "Attach all three documents" makes the person
+      // audit their own form to work out which one they are being told about.
+      setDocErrors(
+        Object.fromEntries(missing.map(({ field }) => [field, "This document is needed to create the listing."])),
+      );
+      setUploadError(
+        missing.length === DOC_FIELDS.length
+          ? "All three documents are needed to create the listing."
+          : `Still to attach: ${listOut(missing.map((m) => m.label.toLowerCase()))}.`,
+      );
+      goTo(docAnchorId(missing[0].field));
       return;
     }
 
     setUploadError(null);
+    setDocErrors({});
     setUploading(true);
     const supabase = createBrowserClient();
 
     const fd = new FormData(form);
     for (const { field, itemKey } of DOC_FIELDS) {
       const file = files[field];
-      if (!file) continue; // unreachable — guarded above
+      if (!file) continue; // unreachable, guarded above
       const path = buildStagingPath(agencyId, stagingId, itemKey, file.name);
       const { error } = await uploadEvidenceObject(supabase, { path, file });
       if (error) {
-        setUploadError(`${file.name}: ${error}`);
+        // Against the field that failed. The filename is already on screen
+        // there, so repeating it in the message adds nothing.
+        setDocErrors({ [field]: error });
+        setUploadError("One of the documents didn't upload.");
         setUploading(false);
+        goTo(docAnchorId(field));
         return;
       }
       fd.delete(field);
@@ -197,6 +266,12 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
     setUploading(false);
     formAction(fd);
   }
+
+  // A failure from the Server Action itself is about the form as a whole, not
+  // about one document, so the banner is the right destination for it.
+  useEffect(() => {
+    if (state.error) goTo(null);
+  }, [state.error]);
 
   return (
     <main className="mx-auto w-full max-w-lg flex-1 px-4 py-10">
@@ -211,7 +286,12 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
 
       <form ref={formRef} onSubmit={handleSubmit} className="mt-8 space-y-6">
         {(uploadError ?? state.error) && (
-          <p className="rounded-2xl border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2 text-sm text-rc-amber-deep">
+          <p
+            ref={errorRef}
+            role="alert"
+            tabIndex={-1}
+            className="scroll-mt-24 rounded-2xl border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2 text-sm text-rc-amber-deep focus:outline-none"
+          >
             {uploadError ?? state.error}
           </p>
         )}
@@ -289,10 +369,23 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
             {DOC_FIELDS.map(({ field, label }) => (
               <DocUpload
                 key={field}
+                field={field}
                 name={field}
                 label={label}
                 file={files[field] ?? null}
-                onChange={(file) => setFiles((prev) => ({ ...prev, [field]: file }))}
+                error={docErrors[field]}
+                onChange={(file) => {
+                  setFiles((prev) => ({ ...prev, [field]: file }));
+                  // Attaching the document clears the complaint about it. A
+                  // stale "this document is needed" sitting under a document
+                  // that is now there reads as a second, different problem.
+                  setDocErrors((prev) => {
+                    if (!prev[field]) return prev;
+                    const next = { ...prev };
+                    delete next[field];
+                    return next;
+                  });
+                }}
               />
             ))}
           </div>
