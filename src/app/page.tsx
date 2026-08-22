@@ -71,15 +71,15 @@ export const metadata: Metadata = {
 const STEPS = [
   {
     title: "Add the listing.",
-    body: "Give it the address and the basics. It builds the checklist for that property, because a strata unit and a house with a pool don't need the same things.",
+    body: "Enter the address and the basics. RealComply builds the checklist for that specific property, because a strata unit and a house with a pool don't need the same things.",
   },
   {
     title: "Work the file as you go.",
-    body: "Each stage of the sale shows only what's required at that point. Attach the agency agreement and the contract, and it reads what it can rather than asking you to type it again.",
+    body: "Each stage of the sale shows only what's required at that point. Attach the agency agreement and the contract, and our AI reads what it can and fills in the details, rather than asking you to type it again.",
   },
   {
     title: "The record is already there.",
-    body: "When your licensee, your adviser or Fair Trading asks what happened on a file, the answer is in the file. Nothing to reconstruct at the end.",
+    body: "When your licensee or Fair Trading asks what happened on a listing, the answer is in the file. Nothing to reconstruct at the end.",
   },
 ];
 
@@ -90,15 +90,15 @@ const STEPS = [
 const AI_FEATURES = [
   {
     title: "It reads your paperwork, so you stop retyping it.",
-    body: "Attach the agency agreement and the contract. The dates, figures and confirmations already sitting in them come across on their own. You check them instead of transcribing them.",
+    body: "Attach the agency agreement, contract for sale and comparable sales report. The dates, figures and confirmations come across automatically. You simply check and confirm the details instead of retyping them.",
   },
   {
-    title: "It tells you what the contract is missing.",
-    body: "Every document that has to be attached is accounted for one by one, and anything it can't find is raised before the property goes to market, not after a buyer's solicitor finds it.",
+    title: "It tells you what the document might be missing.",
+    body: "Every required document is checked off one by one, and anything missing is flagged before the property goes to market, not after a buyer's solicitor finds it.",
   },
   {
     title: "It watches your live advertising.",
-    body: "Your own listing pages are checked against the estimate on the file every week, and again the moment you revise a price. If what's advertised slips below where it should be, you hear about it that week.",
+    body: "Your own listing pages are checked against the estimated selling price every week, and again the moment you revise a price. If what's advertised slips below where it should be, we'll let you know.",
   },
   {
     title: "It answers questions about the Act.",
@@ -113,7 +113,7 @@ const AI_FEATURES = [
 const FOR_LICENSEE = [
   {
     title: "You can see the whole office.",
-    body: "Every listing, every agent, what's done and what's outstanding, without asking anyone.",
+    body: "Every listing, every agent, what's done and what's outstanding, without having to chase anyone.",
   },
   {
     title: "Sign-offs come to you.",
@@ -128,7 +128,7 @@ const FOR_LICENSEE = [
 const FOR_AGENTS = [
   {
     title: "Nothing to chase.",
-    body: "Each listing shows what's left, in the order it's needed.",
+    body: "Each listing shows what's outstanding, in the order it's needed.",
   },
   {
     title: "Less retyping.",
@@ -136,7 +136,7 @@ const FOR_AGENTS = [
   },
   {
     title: "Every Monday morning.",
-    body: "A short list of what's outstanding on your listings lands in your inbox, so you know what needs to be actioned.",
+    body: "A short list of what's outstanding on each listing lands in your inbox, so you know what needs to be actioned.",
   },
 ];
 
@@ -253,7 +253,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Why we built it</h2>
           <p className="mt-4 text-lg leading-relaxed text-rc-muted">
             Small agencies carry the same obligations as the big ones, without the back office to carry them. The
-            licensee is personally on the hook for every file in the office, and for most, the honest system is a
+            licensee is personally on the hook for every file in the office, and for most, the current system is a
             spreadsheet, a folder, and a good memory.
           </p>
           <p className="mt-4 text-lg font-semibold leading-relaxed text-rc-ink">
@@ -299,8 +299,8 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
             The part that does the work for you
           </h2>
           <p className="mt-4 max-w-xl text-lg leading-relaxed text-rc-muted">
-            Most compliance software gives you a better checklist. RealComply reads the documents you already have and
-            does something with them.
+            RealComply doesn&rsquo;t just give you a checklist. It reads the documents behind it, flags what&rsquo;s
+            missing, and keeps checking after you&rsquo;ve moved on.
           </p>
           <div className="mt-8 grid gap-5 md:grid-cols-2">
             {AI_FEATURES.map((f) => (
@@ -317,8 +317,8 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               as "the software decides". It is the liability posture and, for a
               licensee, the reassurance that makes the rest safe to want. */}
           <p className="mt-7 max-w-xl text-sm leading-relaxed text-rc-faint">
-            You stay the decision-maker throughout. Everything it finds is put to you, and nothing is signed off in your
-            name.
+            You stay the decision-maker throughout. Everything RealComply finds is put to you, and nothing is signed
+            off in your name.
           </p>
         </div>
       </section>

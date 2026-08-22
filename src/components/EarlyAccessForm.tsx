@@ -94,8 +94,7 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
       )}
 
       <p className={`mt-3 text-xs ${dark ? "text-rc-ink-muted" : "text-rc-faint"}`}>
-        We will only use this to contact you about RealComply. No list sharing, and you can ask us to remove you at
-        any time.
+        We will only use this to contact you about RealComply. You can ask us to remove you at any time.
       </p>
     </form>
   );
