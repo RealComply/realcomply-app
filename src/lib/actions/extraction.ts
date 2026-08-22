@@ -607,6 +607,133 @@ export async function extractCpdCertificate(
   return { error: null, fields: toolUse.input as CpdCertificateFields };
 }
 
+// ── The revised-ESP notice ─────────────────────────────────────────────────
+//
+// Adam, 22 Aug 2026: "in the campaign stage, [the last question] should ask if
+// the ESP was revised. If it is, they have to upload whichever document they
+// used to provide the vendor the revision of the ESP. The AI then reads it,
+// records it, and that's how it knows what price it needs to be looking for
+// when reviewing the agent's website."
+//
+// That is the right shape, and it is worth being clear why. The notice is the
+// only artefact s72A(4) actually requires, and by its own words it AMENDS the
+// agency agreement — the REINSW form says "this notice amends the estimated
+// selling price in the agency agreement", and that the vendor's consent is not
+// required. So the notice is not evidence sitting beside the record; it IS the
+// record. Reading the figures off it, rather than asking someone to retype
+// them next to it, means the number every price check uses is the number in
+// the document a regulator would be shown.
+//
+// No manual fallback, on Adam's instruction. A written notice exists by
+// definition or the revision did not comply, and the file becomes part of the
+// audit pack at settlement so nobody has to go looking for it later.
+const REVISED_ESP_TOOL: Anthropic.Tool = {
+  name: "record_revised_esp_notice",
+  description:
+    "Record the revised estimated selling price and service details from a notice served on a vendor under s72A(4) of the Property and Stock Agents Act 2002 (NSW).",
+  input_schema: {
+    type: "object",
+    properties: {
+      looksLikeRevisedEspNotice: {
+        type: "boolean",
+        description:
+          "False if this is not a notice revising an estimated selling price. It will usually be headed 'Notice of Revised Estimated Selling Price' and refer to s72A, but any written notice to the vendor that states a new estimated selling price counts, including a letter or a printed email. An agency agreement, a contract, or a market appraisal is NOT this document.",
+      },
+      revisedEspLow: {
+        type: "number",
+        description:
+          "The lower figure of the revised estimated selling price, as a plain number with no symbols or separators. For a single figure rather than a range, put the same value in both low and high. Only from a figure actually printed on the notice.",
+      },
+      revisedEspHigh: {
+        type: "number",
+        description: "The upper figure of the revised estimated selling price. Same rules as revisedEspLow.",
+      },
+      noticeServedOn: {
+        type: "string",
+        description:
+          "The date the notice was served on the vendor, format YYYY-MM-DD. Look for a 'Date of Service' or similar field first, and fall back to the date beside the agent's signature only if there is no separate service date. Omit if neither is stated.",
+      },
+      methodOfService: {
+        type: "string",
+        description:
+          "How it was served, as written, e.g. 'Email', 'Post', 'In person'. Omit if the notice does not say.",
+      },
+      reason: {
+        type: "string",
+        description:
+          "The stated reason the estimated selling price changed, copied or closely paraphrased from the notice. Omit if the notice gives none.",
+      },
+      evidenceProvidedBeforeNotice: {
+        type: "boolean",
+        description:
+          "True only if the notice itself states that the agent gave the vendor evidence supporting the revised price before or with the notice. The standard forms carry a line or a tick box to this effect (s72A(5) requires it). Omit rather than guessing if the notice is silent.",
+      },
+    },
+    required: ["looksLikeRevisedEspNotice"],
+  },
+};
+
+export type RevisedEspFields = {
+  looksLikeRevisedEspNotice?: boolean;
+  revisedEspLow?: number;
+  revisedEspHigh?: number;
+  noticeServedOn?: string;
+  methodOfService?: string;
+  reason?: string;
+  evidenceProvidedBeforeNotice?: boolean;
+};
+
+/** Reads an uploaded revised-ESP notice. Returns null when it cannot be read. */
+export async function extractRevisedEspNotice(
+  supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>,
+  path: string,
+  fileName: string,
+): Promise<RevisedEspFields | null> {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+
+  try {
+    const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
+    if (error || !blob) return null;
+
+    const arrayBuffer = await blob.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const documentBlock = buildDocumentBlock(blob.type || "application/octet-stream", base64, fileName);
+    if (!documentBlock) return null;
+
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 512,
+      system:
+        "You are reading a notice served on a vendor that revises the estimated selling price of a NSW " +
+        "residential property. Record only figures and dates printed on the document. Never calculate, infer or " +
+        "adjust a price. The figures you return become the price every underquoting check in this product " +
+        "measures the agency's advertising against, so a wrong number here produces a wrong compliance finding " +
+        "on a real file. If you cannot read a figure cleanly, omit it and let a person enter it.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            documentBlock,
+            { type: "text", text: `This was uploaded as "${fileName}". Call record_revised_esp_notice.` },
+          ],
+        },
+      ],
+      tools: [REVISED_ESP_TOOL],
+      tool_choice: { type: "tool", name: "record_revised_esp_notice" },
+    });
+
+    const toolUse = response.content.find(
+      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+    );
+    if (!toolUse) return null;
+    return toolUse.input as RevisedEspFields;
+  } catch (err) {
+    console.error("revised ESP notice read failed:", fileName, err);
+    return null;
+  }
+}
+
 // ── Identity-document screen ───────────────────────────────────────────────
 //
 // Adam, 20 Aug 2026: "if the AI can detect any ID documents, then it rejects
@@ -1028,8 +1155,100 @@ export async function extractFromDocuments(propertyId: string): Promise<ActionSt
 // on one of the three items the AI actually reads, so attaching a pool
 // certificate or a photo does not spend an AI call.
 export async function extractForAttachment(propertyId: string, itemKey: string): Promise<ActionState> {
+  // d3 is not one of the three setup documents and does not go through the
+  // per-item allow-list machinery. It has exactly one document and one job:
+  // read the revised price off the notice so every underquoting check has the
+  // figure currently on foot.
+  if (itemKey === "d3") return readRevisedEspNoticeOnto(propertyId);
   if (!(SOURCE_ITEM_KEYS as readonly string[]).includes(itemKey)) return ok;
   return runExtraction(propertyId, itemKey);
+}
+
+/**
+ * Reads the notice attached to d3 and records the revised price on it.
+ *
+ * The figures are written to the item's own data rather than overwriting a4.
+ * a4 is what the agency agreement said at listing set-up, and it stays that:
+ * a compliance file should show the original estimate AND the revision, not a
+ * single figure that quietly changed. effectiveEsp() is what resolves the two
+ * into "the price right now" for everything that needs to compare against it.
+ */
+async function readRevisedEspNoticeOnto(propertyId: string): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3")
+    .maybeSingle();
+
+  const item = row as PropertyItem | null;
+  if (!item?.evidence_path) return ok;
+
+  const fileName =
+    (item.data as { evidenceFileName?: string } | null)?.evidenceFileName ??
+    item.evidence_path.split("/").pop() ??
+    "notice";
+
+  const fields = await extractRevisedEspNotice(supabase, item.evidence_path, fileName);
+  if (!fields) {
+    return { error: "Couldn't read that notice. Check it opens, then try attaching it again." };
+  }
+
+  if (fields.looksLikeRevisedEspNotice === false) {
+    await supabase
+      .from("property_items")
+      .update({
+        data: {
+          ...((item.data as Record<string, unknown>) ?? {}),
+          noticeNotRecognised: true,
+          revisedEspLow: undefined,
+          revisedEspHigh: undefined,
+        },
+      })
+      .eq("property_id", propertyId)
+      .eq("item_key", "d3");
+    revalidatePath(`/dashboard/${propertyId}`);
+    return {
+      error:
+        "That doesn't look like a notice revising the estimated selling price. Attach the notice you served on the vendor.",
+    };
+  }
+
+  // Both figures or neither. Half a range would feed a comparison that looks
+  // authoritative and is not — see the same rule in effectiveEsp().
+  const bothFigures = fields.revisedEspLow != null && fields.revisedEspHigh != null;
+
+  await supabase
+    .from("property_items")
+    .update({
+      agency_id: profile.agency_id,
+      data: {
+        ...((item.data as Record<string, unknown>) ?? {}),
+        espRevised: true,
+        noticeNotRecognised: undefined,
+        revisedEspLow: bothFigures ? fields.revisedEspLow : undefined,
+        revisedEspHigh: bothFigures ? fields.revisedEspHigh : undefined,
+        noticeServedOn: fields.noticeServedOn,
+        methodOfService: fields.methodOfService,
+        reason: fields.reason,
+        evidenceProvidedBeforeNotice: fields.evidenceProvidedBeforeNotice,
+        noticeReadAt: new Date().toISOString(),
+      },
+    })
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3");
+
+  revalidatePath(`/dashboard/${propertyId}`);
+
+  if (!bothFigures) {
+    return {
+      error:
+        "Read the notice but couldn't make out the revised price. Open it and check, then re-attach a clearer copy.",
+    };
+  }
+  return ok;
 }
 
 async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<ActionState> {
