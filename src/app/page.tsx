@@ -425,9 +425,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               <p className="mt-3 text-4xl font-extrabold tracking-tight text-rc-ink">
                 From $249<span className="text-lg font-semibold text-rc-muted">/month</span>
               </p>
-              <p className="mt-2 text-sm leading-relaxed text-rc-muted">
-                The whole office, scaling with how many listings you run.
-              </p>
+              <p className="mt-2 text-sm leading-relaxed text-rc-muted">The whole office, every listing.</p>
             </div>
           </div>
           <p className="mt-6 text-sm font-semibold text-rc-muted">
