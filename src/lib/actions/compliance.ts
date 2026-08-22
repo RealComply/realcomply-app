@@ -633,6 +633,17 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
  * has suggested would buy the property, and therefore the one a buyer relied
  * on.
  *
+ * IN PRACTICE, TODAY, THIS USUALLY SEES ONLY THE ADVERTISED FIGURE. b5 stopped
+ * being a typed log on 22 Aug and became a pointer at the agency's CRM, on the
+ * correct grounds that retyping quotes here produces a worse record than the
+ * one the CRM already holds. The consequence is that the verbal half of
+ * "quoted" is not structured data any more, so this reads an empty list and
+ * falls back to the advertisement.
+ *
+ * The read is kept rather than deleted for two reasons: it costs nothing when
+ * the list is empty, and the day a CRM integration or an extraction pass over
+ * an uploaded quote log lands, the check widens again with no further work.
+ *
  * Still no ESP fallback. See the comment above guideAmendmentPrompt.
  */
 async function offerThreshold(

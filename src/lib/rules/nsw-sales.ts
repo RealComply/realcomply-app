@@ -911,22 +911,40 @@ const items: ComplianceItem[] = [
   },
 
   {
-    // Gap-analysis finding, 7 Aug 2026: the Price Reps checklist requires
-    // every price statement made "in the course of marketing" to be
-    // recorded in writing — including a verbal figure given at an open
-    // home. Logging an entry here IS that written record. Originally gated
-    // at Pre-market; moved to Settlement per Adam's follow-up call, so the
-    // log is finalised alongside the rest of the closing paperwork rather
-    // than being locked in before the campaign even starts.
+    // s73B: every price statement made to a buyer, prospective buyer or seller
+    // "orally or in writing" must be recorded in writing, with the address,
+    // the price or range, and the date and time, kept at the principal place
+    // of business for 3 years. Real duty, $2,200 penalty notice.
+    //
+    // REBUILT 22 Aug 2026 from a log into a pointer. Adam: "I don't think we
+    // should keep log quotes here. It's gonna be too tedious. It's something
+    // that is kept in most agents' CRM anyway whenever they get an inquiry or
+    // they do an open home check-in... we could perhaps have an option for an
+    // agent to upload their own copy, but we're not gonna make it mandatory."
+    //
+    // He is right, and it is the product's own principle rather than a
+    // concession: forms are an index to evidence, not a re-tick. A CRM logs
+    // the figure at the moment of the enquiry, with the buyer attached. Asking
+    // an agent to retype the same quotes here at settlement produces a worse
+    // record than the one they already have, from memory, weeks late.
+    //
+    // NO LONGER GATES THE STAGE, and that is a deliberate trade Adam made with
+    // his eyes open. The duty does not go away, so an agency that attaches
+    // nothing has no evidence of s73B on the file. What it has instead is a
+    // record that says where the evidence lives, which is the honest position
+    // and the one a regulator can follow.
     key: "b5",
     stage: 5,
-    kind: "quotes",
-    label: "Verbal price-quote log",
+    kind: "checklist",
+    label: "Record of price quotes given",
     description:
-      "Every verbal price statement made to a prospective purchaser, written down here — the written record the Act requires. Log one now if you've already given a figure verbally, or confirm there's nothing to log yet.",
-    legalBasis: "Price Representations & Material Fact Checklist — price statements recorded in writing",
+      "Every price you quote a buyer, verbally or in writing, has to be recorded with the date and time and kept for 3 years. Most CRMs already do this on enquiries and open-home check-ins. Say where yours is kept, and attach a copy if you want it in this file.",
+    legalBasis: "s73B, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
-    requiredForStageCompletion: true,
+    requiredForStageCompletion: false,
+    noteLabel: "Where the record is kept",
+    notePlaceholder: "e.g. LockedOn enquiry log",
+    evidenceLabel: "Your own record (optional)",
   },
   {
     key: "f0",
