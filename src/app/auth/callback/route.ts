@@ -15,6 +15,26 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error && data.user) {
+      // Acceptance first, and outside the no-profile branch.
+      //
+      // With email confirmation ON there is no session during signup, so this
+      // is the first moment the acceptance can be written at all. It sits
+      // before the profile check because it is a fact about the person, not
+      // about whether their agency got set up: a second confirmation click, or
+      // a bootstrap that already ran, must not cause the record to be skipped.
+      // record_legal_acceptance is idempotent per version pair, so calling it
+      // on every callback is harmless.
+      const legalMeta = data.user.user_metadata as {
+        terms_version?: string;
+        privacy_version?: string;
+      };
+      if (legalMeta.terms_version && legalMeta.privacy_version) {
+        await supabase.rpc("record_legal_acceptance", {
+          p_terms_version: legalMeta.terms_version,
+          p_privacy_version: legalMeta.privacy_version,
+        });
+      }
+
       const { data: existingProfile } = await supabase
         .from("profiles")
         .select("id")

@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
+import { currentLegalVersions } from "@/lib/legal/documents";
 
 // Resolves the origin the request actually came in on (e.g. the exact
 // Vercel domain the user is visiting), so the email confirmation link
@@ -66,6 +67,17 @@ export async function signup(
     return { error: "Agency name is required." };
   }
 
+  // Acceptance of the published documents, re-checked here rather than trusted
+  // from the form. `required` on the checkbox stops an ordinary person
+  // submitting without it; a Server Action is a real POST endpoint and a
+  // hand-rolled request would sail straight past that. The whole value of this
+  // record is that it cannot have been skipped, so the check has to live where
+  // the account is actually created.
+  if (formData.get("acceptLegal") !== "yes") {
+    return { error: "Please accept the Terms of Service and Privacy Policy to continue." };
+  }
+  const legalVersions = currentLegalVersions();
+
   const supabase = await createClient();
   const origin = await getOrigin();
 
@@ -86,6 +98,13 @@ export async function signup(
         invite_token: inviteToken,
         licensee_email: licenseeEmail || null,
         website_url: websiteUrl || null,
+        // Carried for the same reason as agency_name: with email confirmation
+        // ON there is no session in this request, so the acceptance cannot be
+        // written yet. It has to survive until /auth/callback runs, or the
+        // record would only ever exist for people who signed up during the
+        // window when confirmation happened to be off.
+        terms_version: legalVersions.terms,
+        privacy_version: legalVersions.privacy,
       },
       // Without this, Supabase falls back to its configured Site URL —
       // which sends the confirmation link to the bare site root instead
@@ -109,6 +128,16 @@ export async function signup(
       )}`,
     );
   }
+
+  // Before the join, not after. If bootstrap_agency or accept_invite fails,
+  // the account still exists and the person still accepted the documents, so
+  // the acceptance is still a true record of something that happened. Writing
+  // it only on the success path would lose it exactly when the signup is going
+  // to be retried.
+  await supabase.rpc("record_legal_acceptance", {
+    p_terms_version: legalVersions.terms,
+    p_privacy_version: legalVersions.privacy,
+  });
 
   const { error: joinError } = inviteToken
     ? await supabase.rpc("accept_invite", { p_token: inviteToken, p_full_name: fullName })

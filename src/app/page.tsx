@@ -427,6 +427,18 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
             guarantee compliance. The licensee remains responsible for decisions and sign-off. © 2026 RealComply Pty
             Ltd.
           </p>
+          {/* A privacy policy nobody can find is not published. This is the
+              only route to it for someone deciding whether to sign up, and for
+              a regulator who never will. */}
+          <p className="mt-4 text-xs text-rc-ink-muted/80">
+            <Link href="/privacy" className="hover:text-white hover:underline">
+              Privacy Policy
+            </Link>
+            <span className="px-2 text-rc-ink-muted/50">·</span>
+            <Link href="/terms" className="hover:text-white hover:underline">
+              Terms of Service
+            </Link>
+          </p>
         </div>
       </footer>
 
