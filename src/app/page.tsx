@@ -425,11 +425,20 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               <p className="mt-3 text-4xl font-extrabold tracking-tight text-rc-ink">
                 From $249<span className="text-lg font-semibold text-rc-muted">/month</span>
               </p>
-              <p className="mt-2 text-sm leading-relaxed text-rc-muted">The whole office, every listing.</p>
+              <p className="mt-2 text-sm leading-relaxed text-rc-muted">The whole office, every listing.*</p>
             </div>
           </div>
           <p className="mt-6 text-sm font-semibold text-rc-muted">
             No set-up fee. No lock-in contracts. GST inclusive.
+          </p>
+          {/* Legal caveat, Adam 22 Aug 2026: $249 is the entry tier (up to 50
+              listings a year), not a flat office-wide price — a 300-listing
+              office pays more. Coverage is unbounded, the headline price
+              isn't, and this is the line that keeps "every listing" honest.
+              Keep the $249 / 50 figures in sync with
+              RealComply-pricing-and-billing-model.md if the tiers change. */}
+          <p className="mt-2 text-xs text-rc-faint">
+            * $249 covers offices with up to 50 listings a year. Larger offices scale up from there.
           </p>
         </div>
       </section>
