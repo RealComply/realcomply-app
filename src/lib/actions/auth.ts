@@ -54,6 +54,7 @@ export async function signup(
   // Where licensee sign-off links get sent. Optional, and never taken from an
   // invite signup — see the field's comment in src/app/signup/page.tsx.
   const licenseeEmail = String(formData.get("licenseeEmail") ?? "").trim();
+  const licenseeName = String(formData.get("licenseeName") ?? "").trim();
   // Accepted as typed — "cassproperty.com.au" is what people write, and
   // making them find the scheme is the app doing nothing useful with their
   // time. See lib/normalise-url.ts.
@@ -97,6 +98,7 @@ export async function signup(
         agency_name: agencyName,
         invite_token: inviteToken,
         licensee_email: licenseeEmail || null,
+        licensee_name: licenseeName || null,
         website_url: websiteUrl || null,
         // Carried for the same reason as agency_name: with email confirmation
         // ON there is no session in this request, so the acceptance cannot be
@@ -152,8 +154,8 @@ export async function signup(
   // Deliberately not awaited into an error path: a missing sign-off address is
   // a prompt at Stage 5, not a reason to fail a signup that has otherwise
   // succeeded and already created the account.
-  if (!inviteToken && licenseeEmail) {
-    await supabase.rpc("set_agency_licensee_email", { p_email: licenseeEmail });
+  if (!inviteToken && (licenseeEmail || licenseeName)) {
+    await supabase.rpc("set_agency_licensee", { p_name: licenseeName, p_email: licenseeEmail });
   }
   if (!inviteToken && websiteUrl) {
     await supabase.rpc("set_agency_website", { p_url: websiteUrl });

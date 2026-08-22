@@ -41,6 +41,7 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     agency_name?: string;
     invite_token?: string;
     licensee_email?: string | null;
+    licensee_name?: string | null;
     website_url?: string | null;
   };
 
@@ -52,8 +53,10 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     // Same sign-off address write as the other two bootstrap call sites. This
     // is the last of the three, for a confirmation redirect that missed
     // /auth/callback entirely.
-    if (!joinError && !meta.invite_token && typeof meta.licensee_email === "string" && meta.licensee_email) {
-      await supabase.rpc("set_agency_licensee_email", { p_email: meta.licensee_email });
+    const licenseeEmail = typeof meta.licensee_email === "string" ? meta.licensee_email : "";
+    const licenseeName = typeof meta.licensee_name === "string" ? meta.licensee_name : "";
+    if (!joinError && !meta.invite_token && (licenseeEmail || licenseeName)) {
+      await supabase.rpc("set_agency_licensee", { p_name: licenseeName, p_email: licenseeEmail });
     }
     if (!joinError && !meta.invite_token && typeof meta.website_url === "string" && meta.website_url) {
       await supabase.rpc("set_agency_website", { p_url: meta.website_url });

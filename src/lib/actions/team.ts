@@ -182,7 +182,8 @@ export async function saveLicenseeEmail(
     return { error: "That doesn't look like an email address.", saved: false };
   }
 
-  const { error } = await supabase.rpc("set_agency_licensee_email", { p_email: email });
+  const licenseeName = String(formData.get("licenseeName") ?? "").trim();
+  const { error } = await supabase.rpc("set_agency_licensee", { p_name: licenseeName, p_email: email });
   if (error) {
     return { error: "Couldn't save that. Try again.", saved: false };
   }
