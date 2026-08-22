@@ -547,7 +547,7 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
     ? "An offer here has not yet been put to the vendor in writing (Sch 2 r5)."
     : undefined;
 
-  // Rejected at or above the ADVERTISED asking price. Not the ESP.
+  // Rejected at or above the QUOTED price. Not the ESP.
   //
   // Adam, 17 Aug 2026. If a buyer offers inside the advertised range, at the
   // advertised single figure, or above it, and the vendor rejects it, the
@@ -557,7 +557,9 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
   //
   // NARROWED 22 Aug 2026, ESP fallback removed. Adam: "the issue is if an
   // offer comes in at or above the asking price, not the ESP... the agent is
-  // required to amend the advertised price guide."
+  // required to amend the advertised price guide." Then widened the same day
+  // from "advertised" to "quoted", which covers the verbal figure that never
+  // appears on the website — see offerThreshold.
   //
   // The fallback was worse than imprecise. An ESP is an estimate of the likely
   // selling price, not a reserve. An ESP of $1m with an asking price of $1.05m
@@ -598,10 +600,10 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
   const guideAmendmentPrompt =
     highestRejectedAtOrAbove > 0 && threshold != null
       ? `An offer of $${highestRejectedAtOrAbove.toLocaleString()} was at or above your ${thresholdSource} of ` +
-        `$${threshold.toLocaleString()} and was rejected, so the property will not sell at the figure you are ` +
-        `advertising. Amend the advertised price guide to no less than the rejected offer. Continuing to ` +
-        `advertise from a figure the vendor has already refused is quoting a price that will not buy the ` +
-        `property.`
+        `$${threshold.toLocaleString()} and was rejected, so the property will not sell at the figure being ` +
+        `quoted. Amend the price guide to no less than the rejected offer, and make sure nobody is still ` +
+        `quoting the old figure verbally. Continuing to quote a price the vendor has already refused is ` +
+        `quoting a price that will not buy the property.`
       : undefined;
 
   return { rejectedFloor, status, flagReason, guideAmendmentPrompt };
@@ -610,24 +612,57 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
 /** The figure a rejected offer is measured against: what is advertised if
  *  anything is, otherwise the recorded ESP. */
 /**
- * The figure a rejected offer is measured against: the ADVERTISED price, and
- * nothing else.
+ * The figure a rejected offer is measured against: the lowest price the agency
+ * has QUOTED. Never the ESP.
  *
- * The ESP fallback that used to sit here was removed 22 Aug 2026. See the
- * comment above guideAmendmentPrompt for why it was not merely imprecise.
+ * WHY "QUOTED" AND NOT "ADVERTISED", 22 Aug 2026. Adam: "to cover all bases,
+ * we should actually change the terminology. It shouldn't be advertised price.
+ * It should be if any offers were made at or above the quoted price."
+ *
+ * That is not a rewording, it widens what gets checked, and the Act uses the
+ * same word: s73B is headed "Real estate agents to keep records of quotes" and
+ * catches any statement that the property is likely to sell for a specified
+ * price, "orally or in writing". An advertisement is one way of quoting. A
+ * figure given to a buyer at an open home is another, and it is the one that
+ * never appears on the website.
+ *
+ * So a listing advertised as "contact agent" where buyers are verbally told
+ * $1.05m has quoted $1.05m. If someone offers $1.05m and it is refused, the
+ * quote is unreal, and nothing in the advertising would have shown it. Taking
+ * the LOWEST quoted figure is deliberate: it is the cheapest price the agency
+ * has suggested would buy the property, and therefore the one a buyer relied
+ * on.
+ *
+ * Still no ESP fallback. See the comment above guideAmendmentPrompt.
  */
 async function offerThreshold(
   supabase: Awaited<ReturnType<typeof createClient>>,
   propertyId: string,
 ): Promise<{ threshold: number | null; source: string }> {
-  const { data: guideRow } = await supabase
-    .from("property_items")
-    .select("data")
-    .eq("property_id", propertyId)
-    .eq("item_key", "c1")
-    .maybeSingle();
+  const [{ data: guideRow }, { data: quoteRow }] = await Promise.all([
+    supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "c1").maybeSingle(),
+    supabase.from("property_items").select("data").eq("property_id", propertyId).eq("item_key", "b5").maybeSingle(),
+  ]);
+
   const guideLow = (guideRow?.data as { guideLow?: number } | null)?.guideLow ?? null;
-  return { threshold: guideLow, source: "advertised price" };
+
+  const verbalLow = (((quoteRow?.data as { entries?: Array<{ amount?: number }> } | null)?.entries ?? [])
+    .map((e) => e.amount)
+    .filter((n): n is number => typeof n === "number" && n > 0)
+    .reduce<number | null>((min, n) => (min == null || n < min ? n : min), null));
+
+  const candidates = [guideLow, verbalLow].filter((n): n is number => n != null && n > 0);
+  if (candidates.length === 0) return { threshold: null, source: "quoted price" };
+
+  const threshold = Math.min(...candidates);
+  // Name the source honestly, because the two carry different follow-ups: a
+  // low advertisement is amended on the website, a low verbal quote is a
+  // conversation the agents need to stop having.
+  const source =
+    verbalLow != null && (guideLow == null || verbalLow < guideLow)
+      ? "quoted price (given verbally)"
+      : "advertised price";
+  return { threshold, source };
 }
 
 async function readOffers(

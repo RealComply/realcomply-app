@@ -859,7 +859,7 @@ function GuideItem({
         <div className="mb-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
           <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-            <span>The advertised guide needs amending</span>
+            <span>The quoted price needs amending</span>
           </p>
           <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.rejectionPrompt}</p>
         </div>
