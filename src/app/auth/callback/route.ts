@@ -49,15 +49,23 @@ export async function GET(request: Request) {
           licensee_email?: string | null;
           licensee_name?: string | null;
           website_url?: string | null;
+          is_licensee?: boolean;
         };
         if (meta.invite_token) {
           await supabase.rpc("accept_invite", { p_token: meta.invite_token, p_full_name: meta.full_name ?? "" });
         } else {
           const agencyName = meta.agency_name ?? "My agency";
           const fullName = meta.full_name ?? "";
-          const { error: bootstrapError } = await supabase.rpc("bootstrap_agency", {
+          // bootstrap_agency_v2, so the licensee answer given at signup survives
+          // the confirmation round trip. Defaults to false rather than true if
+          // the metadata is somehow absent: recording someone as the licensee
+          // in charge when nobody said so is the bug migration 0029 fixes, and
+          // an agency with no licensee is visible and fixable in Team settings
+          // where a wrongly-appointed one is not.
+          const { error: bootstrapError } = await supabase.rpc("bootstrap_agency_v2", {
             p_agency_name: agencyName,
             p_full_name: fullName,
+            p_is_licensee: meta.is_licensee === true,
           });
           // Sign-off address, carried in user metadata from the signup form
           // because there was no session at that point to write it with. Only

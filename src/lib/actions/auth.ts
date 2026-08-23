@@ -55,6 +55,11 @@ export async function signup(
   // invite signup — see the field's comment in src/app/signup/page.tsx.
   const licenseeEmail = String(formData.get("licenseeEmail") ?? "").trim();
   const licenseeName = String(formData.get("licenseeName") ?? "").trim();
+  // Whether the person signing up IS the licensee in charge, asked outright on
+  // the form. Until 23 Aug 2026 this was assumed true for everyone who created
+  // an agency, which made the answer worthless — see migration 0029.
+  const isLicenseeRaw = String(formData.get("isLicensee") ?? "").trim();
+  const isLicensee = isLicenseeRaw === "yes";
   // Accepted as typed — "cassproperty.com.au" is what people write, and
   // making them find the scheme is the app doing nothing useful with their
   // time. See lib/normalise-url.ts.
@@ -66,6 +71,24 @@ export async function signup(
 
   if (!inviteToken && !agencyName.trim()) {
     return { error: "Agency name is required." };
+  }
+
+  // Re-checked here, not trusted from the form, for the same reason as the
+  // acceptance checkbox below: a Server Action is a real POST endpoint and a
+  // hand-rolled request sails straight past anything the form enforces.
+  //
+  // An unanswered question is refused rather than defaulted. Defaulting is what
+  // produced the bug this replaces.
+  if (!inviteToken) {
+    if (isLicenseeRaw !== "yes" && isLicenseeRaw !== "no") {
+      return { error: "Let us know whether you're the licensee in charge." };
+    }
+    // Required on "no", because at that point we know a second person exists,
+    // that sign-off requests have to reach them, and that no file can close
+    // without their signature. Collecting it later would just defer that.
+    if (isLicenseeRaw === "no" && (!licenseeName || !licenseeEmail)) {
+      return { error: "Add your licensee in charge's name and email so we know who to send sign-off requests to." };
+    }
   }
 
   // Acceptance of the published documents, re-checked here rather than trusted
@@ -99,6 +122,7 @@ export async function signup(
         invite_token: inviteToken,
         licensee_email: licenseeEmail || null,
         licensee_name: licenseeName || null,
+        is_licensee: isLicensee,
         website_url: websiteUrl || null,
         // Carried for the same reason as agency_name: with email confirmation
         // ON there is no session in this request, so the acceptance cannot be
@@ -143,7 +167,11 @@ export async function signup(
 
   const { error: joinError } = inviteToken
     ? await supabase.rpc("accept_invite", { p_token: inviteToken, p_full_name: fullName })
-    : await supabase.rpc("bootstrap_agency", { p_agency_name: agencyName, p_full_name: fullName });
+    : await supabase.rpc("bootstrap_agency_v2", {
+        p_agency_name: agencyName,
+        p_full_name: fullName,
+        p_is_licensee: isLicensee,
+      });
 
   if (joinError) {
     return { error: joinError.message };

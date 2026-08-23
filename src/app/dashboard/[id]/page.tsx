@@ -8,6 +8,7 @@ import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/c
 import { DeletePropertySection } from "@/components/compliance/DeletePropertySection";
 import { HandToAgent } from "@/components/compliance/HandToAgent";
 import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
+import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
 function auctionDateLabel(date: string): string {
@@ -81,7 +82,8 @@ export default async function PropertyPage({
       : p.stage
   ) as PropertyStage;
 
-  const stageItems = itemsForStage(viewedStage, p, allItems);
+  const ruleCtx = await ruleContextFor(supabase, p);
+  const stageItems = itemsForStage(viewedStage, p, allItems, ruleCtx);
   const isCurrentStage = viewedStage === p.stage;
   const countdown = auctionCountdown(p.auction_date);
 

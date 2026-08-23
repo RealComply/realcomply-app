@@ -16,6 +16,11 @@ function InviteAwareForm() {
   const inviteToken = searchParams.get("invite");
   const [invite, setInvite] = useState<InvitePreview>(null);
   const [checkedInvite, setCheckedInvite] = useState(!inviteToken);
+  // Whether the person signing up is the licensee in charge. Null until they
+  // answer, so the form can require an answer rather than defaulting to one —
+  // the default was the bug (see migration 0029): everyone who created an
+  // agency was recorded as the licensee whether they were or not.
+  const [isLicensee, setIsLicensee] = useState<boolean | null>(null);
   const [state, formAction, pending] = useActionState(signup, initialState);
 
   useEffect(() => {
@@ -82,50 +87,84 @@ function InviteAwareForm() {
           />
         </div>
       )}
-      {/* Licensee in charge email, captured once at agency setup (Adam,
-          15 Aug 2026). It is what sign-off links are sent to, and asking here
-          rather than per listing was his call — one licensee supervises
-          everything in the agencies this is aimed at.
+      {/* WHO THE LICENSEE IN CHARGE IS, asked outright.
+          Adam, 23 Aug 2026. This used to be an optional "Licensee in charge"
+          name and email with the hint "leave blank if that is you" — while
+          bootstrap_agency recorded the person signing up as the licensee
+          regardless. So an agent who correctly named their principal was also
+          recorded as the principal, and nothing could answer the question.
 
-          Optional on purpose. A principal who is their own licensee has no
-          second address to give, and blocking signup over a field that only
-          matters at Stage 5 would cost real signups to save a later prompt.
-          Left blank, the sign-off step asks for it when it is first needed.
+          It matters beyond tidiness: the Settled stage turns on it. Someone who
+          is their own licensee should not be asked to send the file to
+          themselves, and someone who is not should not be shown a signature
+          that is not theirs to give.
 
-          Not shown on an invite signup: the person joining an existing agency
-          is not setting that agency up, and letting them overwrite the
-          licensee's address would be an obvious way to redirect sign-off
-          links away from the person who is supposed to receive them. */}
+          Required on "no", deliberately. The old field was optional so a
+          principal with nothing to enter was not blocked — reasoning that only
+          held while the app could not tell the two apart. Once they have said
+          another person exists, we know we will have to email them and that the
+          file cannot close without their signature, so collecting it later is
+          just deferring a certainty. */}
       {!invite && (
         <div>
-          <label htmlFor="licenseeName" className="block text-sm font-medium text-rc-ink">
-            Licensee in charge <span className="font-normal text-rc-muted">(optional)</span>
-          </label>
-          {/* Name added 22 Aug 2026 (Adam), and it is not decoration. On the
-              agent tier this person is not a user of the product: they exist
-              only as the person a sign-off request is sent to, and whose
-              approval the compliance file then rests on. "Signed by someone at
-              this address" is a weaker record than a named licensee, and the
-              sign-off statement is snapshotted when the link is issued, so the
-              name has to exist before that rather than be added afterwards. */}
-          <input
-            id="licenseeName"
-            name="licenseeName"
-            type="text"
-            autoComplete="off"
-            placeholder="Jane Smith"
-            className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
-          />
-          <input
-            id="licenseeEmail"
-            name="licenseeEmail"
-            type="email"
-            placeholder="licensee@youragency.com.au"
-            className="mt-2 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
-          />
-          <p className="mt-1 text-xs leading-relaxed text-rc-muted">
-            Who signs off your files, and where the requests go. Leave blank if that is you.
-          </p>
+          <fieldset>
+            <legend className="block text-sm font-medium text-rc-ink">Are you the licensee in charge?</legend>
+            <input type="hidden" name="isLicensee" value={isLicensee === null ? "" : isLicensee ? "yes" : "no"} />
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setIsLicensee(true)}
+                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
+                  isLicensee === true
+                    ? "border-rc-green-deep bg-rc-green-soft text-rc-green-deep"
+                    : "border-rc-border bg-white text-rc-ink hover:border-rc-green-deep"
+                }`}
+              >
+                <span className="block font-semibold">Yes, that&rsquo;s me</span>
+                <span className="mt-0.5 block text-xs text-rc-muted">You sign off the files.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsLicensee(false)}
+                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
+                  isLicensee === false
+                    ? "border-rc-green-deep bg-rc-green-soft text-rc-green-deep"
+                    : "border-rc-border bg-white text-rc-ink hover:border-rc-green-deep"
+                }`}
+              >
+                <span className="block font-semibold">No, someone else</span>
+                <span className="mt-0.5 block text-xs text-rc-muted">You send files to them.</span>
+              </button>
+            </div>
+          </fieldset>
+
+          {isLicensee === false && (
+            <div className="mt-3 rounded-lg border border-rc-border bg-rc-bg-alt p-3">
+              <label htmlFor="licenseeName" className="block text-sm font-medium text-rc-ink">
+                Your licensee in charge
+              </label>
+              <input
+                id="licenseeName"
+                name="licenseeName"
+                type="text"
+                required
+                autoComplete="off"
+                placeholder="Jane Smith"
+                className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+              />
+              <input
+                id="licenseeEmail"
+                name="licenseeEmail"
+                type="email"
+                required
+                placeholder="licensee@youragency.com.au"
+                className="mt-2 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+              />
+              <p className="mt-1.5 text-xs leading-relaxed text-rc-muted">
+                Sign-off requests go to this address, and their name goes on the file.
+              </p>
+            </div>
+          )}
 
           {/* The agency's public website. Asked here for both tiers: an
               individual agent enters their employing agency's site (Adam,
@@ -228,7 +267,7 @@ function InviteAwareForm() {
       </label>
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || (!invite && isLicensee === null)}
         className="w-full rounded-full bg-rc-green-deep px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
       >
         {pending ? "Setting up…" : invite ? "Join the office" : "Create agency"}

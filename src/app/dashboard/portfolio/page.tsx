@@ -47,7 +47,15 @@ export default async function PortfolioPage() {
   const agentNames = new Map<string, string>();
   for (const p of staffList) agentNames.set(p.id, p.full_name ?? p.email);
 
-  const digests = computePropertyDigests(propertyList, itemsByProperty);
+  // Who counts as a licensee in charge, for the Settled-stage split between
+  // "Send to licensee" and "Licensee signature". One query, not one per file.
+  const { data: licenseeRows } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("is_licensee_in_charge", true);
+  const licenseeIds = new Set(((licenseeRows ?? []) as { id: string }[]).map((r) => r.id));
+
+  const digests = computePropertyDigests(propertyList, itemsByProperty, licenseeIds);
   const needsYou = digests.filter(
     (d) => d.pendingSignoff.length > 0 || d.flagged.length > 0 || d.awaiting.length > 0,
   );

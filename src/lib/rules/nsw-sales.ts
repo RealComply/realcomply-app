@@ -57,6 +57,25 @@ export type ItemKind =
   | "reserve" // the reserve, the time it was given, and the written evidence
   | "auction"; // the outcome at the fall of the hammer
 
+// Facts a rule may need that are not on the property row and not in its items.
+//
+// Threaded through rather than looked up inside the rules file, which has no
+// database access by design — that separation is what lets the rules layer be
+// swapped per state later (see RealComply-rules-schema.md).
+export type RuleContext = {
+  /**
+   * Whether the agent this listing belongs to IS the agency's licensee in
+   * charge.
+   *
+   * A FACT ABOUT THE FILE, deliberately, not about who is looking at it.
+   * Hiding a card from a particular viewer would leave the file still waiting
+   * on an item that viewer cannot see, which is the worst kind of blocker.
+   * Everyone who opens this listing sees the same cards, and the
+   * stage-completion check agrees with what is on screen.
+   */
+  agentIsLicensee?: boolean;
+};
+
 export type ComplianceItem = {
   key: string;
   stage: PropertyStage;
@@ -72,7 +91,11 @@ export type ComplianceItem = {
   // below only appears once a7 records that a material fact was actually
   // disclosed, not just that the vendor was asked. Keyed by item_key, same
   // shape as the allItems maps already built in every page that calls this.
-  showIf?: (property: Property, allItems: Record<string, PropertyItem>) => boolean;
+  showIf?: (
+    property: Property,
+    allItems: Record<string, PropertyItem>,
+    ctx?: RuleContext,
+  ) => boolean;
   // Suppresses the free-text note box on the item card — for items that are
   // self-explanatory yes/done confirmations, where a note is unnecessary
   // extra work rather than useful evidence.
@@ -1158,6 +1181,11 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
     hideEvidence: true,
+    // Not shown where the agent IS the licensee. Adam, 23 Aug 2026: "if the
+    // agent running a listing is also the licensee, then we don't need to have
+    // the send to licensee card." Sending a file to yourself is a step that
+    // records nothing.
+    showIf: (_p, _items, ctx) => ctx?.agentIsLicensee !== true,
   },
   {
     key: "sign_licensee",
@@ -1169,6 +1197,14 @@ const items: ComplianceItem[] = [
     hideEvidence: true,
     requiresDate: false,
     requiredForStageCompletion: true,
+    // Only where the agent IS the licensee, so they sign it here directly.
+    // Where the licensee is someone else the signature arrives through the
+    // sign-off link instead, and showing the card to an agent who cannot
+    // action it is showing them somebody else's job (Adam, 23 Aug 2026).
+    //
+    // NOTE: the signature is still what gates closing out either way — see
+    // generateExport. This governs where it is given, not whether it is needed.
+    showIf: (_p, _items, ctx) => ctx?.agentIsLicensee === true,
   },
   {
     key: "f2",
@@ -1210,16 +1246,21 @@ export function itemsForStage(
   stage: PropertyStage,
   property: Property,
   allItems: Record<string, PropertyItem> = {},
+  ctx: RuleContext = {},
 ): ComplianceItem[] {
   return items
     .filter((item) => item.stage === stage)
-    .filter((item) => (item.showIf ? item.showIf(property, allItems) : true))
+    .filter((item) => (item.showIf ? item.showIf(property, allItems, ctx) : true))
     .map((item) => resolveItem(item, allItems[item.key]));
 }
 
-export function allItemsFor(property: Property, allItems: Record<string, PropertyItem> = {}): ComplianceItem[] {
+export function allItemsFor(
+  property: Property,
+  allItems: Record<string, PropertyItem> = {},
+  ctx: RuleContext = {},
+): ComplianceItem[] {
   return items
-    .filter((item) => (item.showIf ? item.showIf(property, allItems) : true))
+    .filter((item) => (item.showIf ? item.showIf(property, allItems, ctx) : true))
     .map((item) => resolveItem(item, allItems[item.key]));
 }
 

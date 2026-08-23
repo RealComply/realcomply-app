@@ -34,13 +34,24 @@ export function awaitingAgentReview(properties: Property[]): Property[] {
 export function computePropertyDigests(
   properties: Property[],
   itemsByProperty: Map<string, Map<string, PropertyItem>>,
+  // Ids of the people who are licensees in charge. Passed in rather than
+  // looked up, so this stays a pure function and does not fire one query per
+  // property. Decides whether a file wants "Send to licensee" or "Licensee
+  // signature" — see RuleContext in rules/nsw-sales.ts.
+  //
+  // Empty set means "treat nobody as the licensee", which errs towards showing
+  // the send step. That is the safe direction: it counts a hand-off as still
+  // pending rather than quietly assuming the file needs no further sign-off.
+  licenseeIds: Set<string> = new Set(),
 ): PropertyDigest[] {
   return properties.map((property) => {
     const rows = itemsByProperty.get(property.id) ?? new Map<string, PropertyItem>();
     // Only items in stages the file has actually reached — anything further
     // out hasn't been started yet, so it's not meaningfully "pending" or
     // "flagged," it just hasn't come up.
-    const reached = allItemsFor(property, Object.fromEntries(rows)).filter((i) => i.stage <= property.stage);
+    const reached = allItemsFor(property, Object.fromEntries(rows), {
+      agentIsLicensee: licenseeIds.has(property.created_by),
+    }).filter((i) => i.stage <= property.stage);
 
     const pendingSignoff = reached.filter((i) => i.licenseeOnly && rows.get(i.key)?.status !== "done");
     const flagged = reached.filter((i) => rows.get(i.key)?.status === "flagged");

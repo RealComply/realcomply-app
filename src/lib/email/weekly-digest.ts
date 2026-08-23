@@ -77,7 +77,15 @@ async function loadAgencyBundle(
     itemsByProperty.get(row.property_id)!.set(row.item_key, row);
   }
 
-  const digests = computePropertyDigests(propertyList, itemsByProperty);
+  // Who counts as a licensee in charge, for the Settled-stage split between
+  // "Send to licensee" and "Licensee signature". One query, not one per file.
+  const { data: licenseeRows } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("is_licensee_in_charge", true);
+  const licenseeIds = new Set(((licenseeRows ?? []) as { id: string }[]).map((r) => r.id));
+
+  const digests = computePropertyDigests(propertyList, itemsByProperty, licenseeIds);
   const lastTrainingSessionDate = ((trainingSessions as Pick<TrainingSession, "session_date">[] | null) ?? [])[0]?.session_date ?? null;
 
   return {

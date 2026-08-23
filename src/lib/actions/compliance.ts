@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
+import { ruleContextFor } from "@/lib/data/rule-context";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { finalizeEvidenceRecord, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
@@ -1653,7 +1654,17 @@ export async function completeStage(
     // appears once a7 records a disclosed material fact) see the same
     // recorded data the page itself would show.
     const allItems = Object.fromEntries(byKey);
-    const required = itemsForStage(property.stage, property, allItems).filter((i) => i.requiredForStageCompletion);
+    // THE SAME CONTEXT THE PAGE USED. This is the half that makes the
+    // "Send to licensee" / "Licensee signature" split safe: if this check ran
+    // without it, a licensee-agent would be blocked from completing the stage
+    // by an item the page never showed them, with nothing on screen to explain
+    // it. Whatever is on the card list is what is required, always.
+    const required = itemsForStage(
+      property.stage,
+      property,
+      allItems,
+      await ruleContextFor(supabase, property),
+    ).filter((i) => i.requiredForStageCompletion);
     const incomplete = required.filter((r) => byKey.get(r.key)?.status !== "done");
 
     if (incomplete.length > 0) {

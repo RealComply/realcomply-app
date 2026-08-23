@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
+import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
 
 // Bump this when the item set/wording in nsw-sales.ts changes meaningfully —
@@ -32,7 +33,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
 
   const { data: rows } = await supabase.from("property_items").select("*").eq("property_id", id);
   const allItems = Object.fromEntries(((rows ?? []) as PropertyItem[]).map((i) => [i.item_key, i]));
-  const items = allItemsFor(p, allItems);
+  const items = allItemsFor(p, allItems, await ruleContextFor(supabase, p));
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 print:px-0">

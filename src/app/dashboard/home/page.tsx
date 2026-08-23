@@ -103,7 +103,15 @@ export default async function HomeDashboardPage() {
     if (!itemsByProperty.has(row.property_id)) itemsByProperty.set(row.property_id, new Map());
     itemsByProperty.get(row.property_id)!.set(row.item_key, row);
   }
-  const digests = computePropertyDigests(propertyList, itemsByProperty);
+  // Who counts as a licensee in charge, for the Settled-stage split between
+  // "Send to licensee" and "Licensee signature". One query, not one per file.
+  const { data: licenseeRows } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("is_licensee_in_charge", true);
+  const licenseeIds = new Set(((licenseeRows ?? []) as { id: string }[]).map((r) => r.id));
+
+  const digests = computePropertyDigests(propertyList, itemsByProperty, licenseeIds);
   const needsYouDigests = digests.filter((d) => d.pendingSignoff.length > 0 || d.flagged.length > 0);
   const needsAttentionItems: NeedsAttentionItem[] = needsYouDigests.map((d) => ({
     propertyId: d.property.id,
