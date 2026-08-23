@@ -985,7 +985,12 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: false,
     noteLabel: "Where the record is kept",
-    notePlaceholder: "e.g. LockedOn enquiry log",
+    // Three CRMs, not one (Adam, 23 Aug 2026). The placeholder used to name
+    // only LockedOn, which is what Cass runs — fine for the reference
+    // implementation, wrong for the product. An agent on Box+Dice reads a
+    // single competitor's name in the example box as "this was not built for
+    // me", and a placeholder is the cheapest possible place to say otherwise.
+    notePlaceholder: "e.g. Box+Dice, AgentBox, LockedOn",
     evidenceLabel: "Your own record (optional)",
   },
   {
