@@ -280,6 +280,16 @@ export async function setItemStatus(
     }
   }
 
+  // t1. Whether this agency also manages the property, in which case Sch 2 r7
+  // has nobody to notify: the duty is written notice to "any agent responsible
+  // for managing the property", and that agent is us. Recorded as a fact on the
+  // item rather than allowed to hide it, so the file shows the question was
+  // answered instead of skipped. Does not touch t2 — the tenant's notice under
+  // s53 of the Residential Tenancies Act is a separate duty and still applies.
+  if (itemKey === "t1") {
+    data.selfManaged = formData.get("selfManaged") === "yes";
+  }
+
   // Set by the a4 branch below, acted on after the save succeeds.
   let espChanged = false;
 
