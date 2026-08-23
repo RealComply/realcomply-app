@@ -1988,8 +1988,20 @@ function SendItem({ item, propertyId, current }: { item: ComplianceItem; propert
   );
 }
 
-function ExportItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+function ExportItem({
+  item,
+  propertyId,
+  current,
+  licenseeSigned = false,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  /** Whether the licensee has signed. Closing out is not available until they have. */
+  licenseeSigned?: boolean;
+}) {
   const action = generateExport.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(action, initialState);
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       {current?.status === "done" ? (
@@ -2000,13 +2012,27 @@ function ExportItem({ item, propertyId, current }: { item: ComplianceItem; prope
           </a>
         </p>
       ) : (
-        <form action={action}>
+        <form action={formAction}>
+          {/* Says why before it is pressed, rather than refusing afterwards.
+              The server refuses either way (see generateExport) — this is so
+              the agent knows what they are waiting on instead of finding out
+              by failing. */}
+          {!licenseeSigned && (
+            <p className="mb-2 flex items-start gap-1.5 text-xs leading-relaxed text-rc-muted">
+              <Info size={12} className="mt-0.5 shrink-0" />
+              <span>
+                Waiting on the licensee&rsquo;s signature. Once it&rsquo;s on the file, you can close it out.
+              </span>
+            </p>
+          )}
           <button
             type="submit"
-            className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
+            disabled={!licenseeSigned || pending}
+            className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Generate finalised file
+            {pending ? "Generating…" : "Generate finalised file"}
           </button>
+          <FieldError error={state.error} />
         </form>
       )}
     </ItemShell>
@@ -2421,7 +2447,14 @@ export function ItemCard({
     case "send":
       return <SendItem item={item} propertyId={propertyId} current={current} />;
     case "export":
-      return <ExportItem item={item} propertyId={propertyId} current={current} />;
+      return (
+        <ExportItem
+          item={item}
+          propertyId={propertyId}
+          current={current}
+          licenseeSigned={allItems["sign_licensee"]?.status === "done"}
+        />
+      );
     case "auctioneer":
       return <AuctioneerItem item={item} propertyId={propertyId} current={current} />;
     case "reserve":

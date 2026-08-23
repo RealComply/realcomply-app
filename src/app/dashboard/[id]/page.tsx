@@ -100,7 +100,12 @@ export default async function PropertyPage({
   const auctionDaySet = new Set<string>(AUCTION_DAY_KEYS);
   const auctionDayItems = stageItems.filter((item) => auctionDaySet.has(item.key));
   const ordinaryItems = stageItems.filter((item) => !auctionDaySet.has(item.key));
-  const fileFinalised = p.stage === 5 && allItems["f1"]?.status === "done";
+  // Finalised means the finalised file has actually been generated (f2), not
+  // that someone ticked a box saying the licensee had reviewed it. That box
+  // (f1) was removed on 23 Aug 2026 — see the note in rules/nsw-sales.ts —
+  // and generating f2 is now gated on the licensee's signature, so this reads
+  // as "signed off AND closed out" rather than merely asserted.
+  const fileFinalised = p.stage === 5 && allItems["f2"]?.status === "done";
   const hasSourceDocs = ["a3", "b1", "a4"].some((key) => allItems[key]?.evidence_path);
 
   return (

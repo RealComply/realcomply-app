@@ -1107,17 +1107,24 @@ const items: ComplianceItem[] = [
     evidenceLabel: "CRM record (instead of typing names)",
   },
   {
-    key: "f1",
-    stage: 5,
-    kind: "checklist",
-    label: "Compliance file signed off by the licensee",
-    description:
-      "Confirms the licensee has reviewed the file and everything required is complete.",
-    licenseeOnly: true,
-    requiresDate: false,
-    requiredForStageCompletion: true,
-  },
-  {
+    // REMOVED 23 Aug 2026 (Adam): "Compliance file signed off by the
+    // licensee", a licensee-only tick box that sat here asking the licensee to
+    // confirm they had reviewed the file.
+    //
+    // It asked for the same thing twice. "Licensee signature" below is the
+    // licensee typing their name to adopt it as their signature on this file,
+    // which is a stronger record of the same act — a tick beside it added
+    // nothing except another thing to chase.
+    //
+    // Adam: "agent shouldn't be able to close out the listing until it's been
+    // done." So the signature now GATES the close-out rather than a checkbox
+    // asserting it happened. See generateExport in lib/actions/compliance.ts,
+    // which refuses to produce the finalised file until sign_licensee is done,
+    // and the ExportItem card, which says what it is waiting for.
+    //
+    // That is the better shape: the box could be ticked without the signature
+    // existing, which is precisely the wrong way round for the document that
+    // gets handed to Fair Trading.
     key: "sign_agent",
     stage: 5,
     kind: "sign",

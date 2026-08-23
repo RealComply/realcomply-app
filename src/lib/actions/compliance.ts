@@ -1350,8 +1350,39 @@ export async function sendToLicensee(propertyId: string): Promise<void> {
 // f2 — generates the finalised (read-only, printable) compliance summary.
 // This does not purge or delete anything — no document storage is wired
 // up yet, so there's nothing to purge; see the item's own description.
-export async function generateExport(propertyId: string): Promise<void> {
+//
+// GATED ON THE LICENSEE'S SIGNATURE (Adam, 23 Aug 2026): "agent shouldn't be
+// able to close out the listing until it's been done."
+//
+// Until now there was no guard here at all — an agent could generate the
+// finalised file at any point, signed or not, and that file is the thing handed
+// to Fair Trading. The licensee signature is the moment the file becomes the
+// licensee's responsibility rather than the agent's, so closing out before it
+// exists produces a finalised record nobody has accepted.
+//
+// Checked here rather than only in the UI. A Server Action is a real POST
+// endpoint, and the button being hidden stops an ordinary person, not a
+// crafted request. Same reasoning as the signup acceptance check.
+export async function generateExport(
+  propertyId: string,
+  _prevState: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
+
+  const { data: signature } = await supabase
+    .from("property_items")
+    .select("status")
+    .eq("property_id", propertyId)
+    .eq("item_key", "sign_licensee")
+    .maybeSingle();
+
+  if ((signature as { status?: string } | null)?.status !== "done") {
+    return {
+      error:
+        "The licensee has to sign this file before it can be closed out. Once their signature is on it, this will generate.",
+    };
+  }
 
   await upsertItem(supabase, {
     agencyId: profile.agency_id,
@@ -1363,6 +1394,7 @@ export async function generateExport(propertyId: string): Promise<void> {
   });
 
   revalidatePath(`/dashboard/${propertyId}`);
+  return ok;
 }
 
 // Attaches (or replaces) the evidence file for a single item. One file per
