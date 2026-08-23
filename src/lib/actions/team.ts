@@ -164,14 +164,24 @@ export async function revokeInvite(inviteId: string): Promise<void> {
 // an address they control. The RPC scopes the write to the caller's own
 // agency; this check is about which role may make it.
 export async function saveLicenseeEmail(
-  _prev: { error: string | null; saved: boolean },
+  _prev: { error: string | null; saved: boolean; licenseeChanged?: boolean },
   formData: FormData,
-): Promise<{ error: string | null; saved: boolean }> {
+): Promise<{ error: string | null; saved: boolean; licenseeChanged?: boolean }> {
   const { supabase, profile } = await requireAuthContext();
 
   if (!profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can change this.", saved: false };
   }
+
+  // Who was recorded before this save, so we can tell an actual change of
+  // licensee from a corrected typo. Read first, because the RPC below
+  // overwrites it.
+  const { data: beforeRow } = await supabase
+    .from("agencies")
+    .select("licensee_name")
+    .eq("id", profile.agency_id)
+    .maybeSingle();
+  const previousName = ((beforeRow as { licensee_name?: string | null } | null)?.licensee_name ?? "").trim();
 
   const email = String(formData.get("licenseeEmail") ?? "").trim();
   // Deliberately permissive: the input is type="email" so the browser has
@@ -205,5 +215,21 @@ export async function saveLicenseeEmail(
   }
 
   revalidatePath("/dashboard/team");
-  return { error: null, saved: true };
+
+  // A CHANGE, not a first entry and not an edited address.
+  //
+  // Appointing a licensee in charge is notifiable to the Secretary within 5
+  // business days (s31(3) of the Act), and the app's job here is to say so
+  // once, not to track it. Adam, 23 Aug 2026: "rather than us policing it,
+  // all we'll do is have a pop up screen with that clause... Agent makes the
+  // records, we just keep them on track with a helping hand."
+  //
+  // Only fires where a name was already recorded and is now a different one.
+  // Filling the field in for the first time is someone finishing their setup,
+  // not replacing anybody, and firing there would be noise on day one — which
+  // is how a notice earns itself a reputation for being dismissed unread.
+  const licenseeChanged =
+    previousName.length > 0 && previousName.toLowerCase() !== licenseeName.toLowerCase();
+
+  return { error: null, saved: true, licenseeChanged };
 }

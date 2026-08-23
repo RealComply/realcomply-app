@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { saveLicenseeEmail } from "@/lib/actions/team";
+import { LicenseeChangeNotice } from "@/components/team/LicenseeChangeNotice";
 
 // Agency-level licensee email, editable after setup.
 //
@@ -14,7 +15,7 @@ import { saveLicenseeEmail } from "@/lib/actions/team";
 // able to edit it would be a straightforward way to route their own file's
 // sign-off to an address they control.
 
-const initial = { error: null as string | null, saved: false };
+const initial = { error: null as string | null, saved: false, licenseeChanged: false };
 
 export function LicenseeEmailForm({
   current,
@@ -27,8 +28,23 @@ export function LicenseeEmailForm({
 }) {
   const [state, action, pending] = useActionState(saveLicenseeEmail, initial);
 
+  // Shown once per change, and dismissing it is the end of it — nothing is
+  // recorded, by design. See LicenseeChangeNotice.
+  //
+  // Derived rather than set from an effect, and the dismissal is cleared when
+  // the form is submitted again. That way a SECOND change of licensee shows the
+  // notice again, which matters: each appointment starts its own 5-day clock.
+  const [dismissed, setDismissed] = useState(false);
+  const showNotice = state.licenseeChanged === true && !dismissed;
+
   return (
-    <form action={action} className="mt-2 rounded-card border border-rc-border bg-white p-4 shadow-card">
+    <>
+    {showNotice && <LicenseeChangeNotice onClose={() => setDismissed(true)} />}
+    <form
+      action={action}
+      onSubmit={() => setDismissed(false)}
+      className="mt-2 rounded-card border border-rc-border bg-white p-4 shadow-card"
+    >
       <label htmlFor="licenseeName" className="block text-sm font-medium text-rc-ink">
         Licensee in charge
       </label>
@@ -107,5 +123,6 @@ export function LicenseeEmailForm({
         </p>
       )}
     </form>
+    </>
   );
 }
