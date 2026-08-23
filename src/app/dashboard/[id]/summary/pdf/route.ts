@@ -5,6 +5,7 @@ import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { buildComplianceRecordPdf, complianceRecordFilename } from "@/lib/pdf/compliance-record";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
+import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem } from "@/lib/types";
 
 // One click, one file in the Downloads folder.
@@ -25,6 +26,45 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!property) notFound();
   const p = property as Property;
 
+  // The agency leads the document (Adam, 23 Aug 2026): their logo where they
+  // have one, the office name, then the agent whose file this is.
+  //
+  // Keyed off whether a logo EXISTS rather than off a subscription tier. The
+  // tiers do not exist yet and this does not need them: an office that uploads
+  // one gets it, an individual agent who has none gets the text masthead, which
+  // is the correct output for them rather than a degraded one.
+  const [{ data: agencyRow }, { data: agentRow }] = await Promise.all([
+    supabase.from("agencies").select("name, logo_path").eq("id", profile.agency_id).maybeSingle(),
+    p.created_by
+      ? supabase.from("profiles").select("full_name, email").eq("id", p.created_by).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const agency = agencyRow as { name?: string; logo_path?: string | null } | null;
+  const agent = agentRow as { full_name?: string | null; email?: string } | null;
+  const agencyName = agency?.name ?? "Your agency";
+  const agentName = agent?.full_name ?? agent?.email ?? null;
+
+  // Fetched here rather than inside the PDF builder, which has no database of
+  // its own on purpose — it takes data and returns bytes, so it stays testable
+  // and cannot surprise anyone with a network call.
+  //
+  // A logo that fails to download must never cost the agent their document: the
+  // record is what they were asked for, the branding is not. So this falls back
+  // to no logo rather than throwing.
+  let logo: { bytes: Uint8Array; type: "png" | "jpg" } | null = null;
+  if (agency?.logo_path) {
+    try {
+      const { data: blob } = await supabase.storage.from(EVIDENCE_BUCKET).download(agency.logo_path);
+      if (blob) {
+        const type = /\.jpe?g$/i.test(agency.logo_path) ? "jpg" : "png";
+        logo = { bytes: new Uint8Array(await blob.arrayBuffer()), type };
+      }
+    } catch {
+      logo = null;
+    }
+  }
+
   const { data: rows } = await supabase.from("property_items").select("*").eq("property_id", id);
   const byKey = Object.fromEntries(((rows ?? []) as PropertyItem[]).map((i) => [i.item_key, i]));
   const items = allItemsFor(p, byKey, await ruleContextFor(supabase, p));
@@ -32,6 +72,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const generatedAt = new Date();
   const pdf = await buildComplianceRecordPdf({
     property: p,
+    agencyName,
+    agentName,
+    logo,
     items,
     byKey,
     rulesetVersion: RULESET_VERSION,
@@ -39,7 +82,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     generatedAt,
   });
 
-  const filename = complianceRecordFilename(p, generatedAt);
+  const filename = complianceRecordFilename(p, agencyName, generatedAt);
 
   return new Response(pdf as BodyInit, {
     headers: {

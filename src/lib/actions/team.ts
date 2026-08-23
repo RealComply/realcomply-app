@@ -233,3 +233,49 @@ export async function saveLicenseeEmail(
 
   return { error: null, saved: true, licenseeChanged };
 }
+
+// The agency's own logo, drawn on the finalised compliance record.
+//
+// Adam, 23 Aug 2026: "when an office subscription is set up, they're going to
+// have to add their logo. If it's an individual agent, then perhaps what we do
+// is have the office name then the agent's name without a logo."
+//
+// The browser uploads the file straight to Storage (same reason as every other
+// upload here — Vercel caps request bodies at 4.5MB) and this records the path.
+// Licensee-only, enforced again inside set_agency_logo: the logo is what the
+// agency's compliance record is signed with in the eyes of whoever reads it.
+export async function saveAgencyLogo(
+  _prev: { error: string | null; saved: boolean },
+  formData: FormData,
+): Promise<{ error: string | null; saved: boolean }> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (!profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can change the agency logo.", saved: false };
+  }
+
+  const path = String(formData.get("logoPath") ?? "").trim();
+
+  // Blank clears it, which is the only way back to the text masthead once a
+  // logo has been set.
+  if (path) {
+    // Belt and braces with the upload control's own accept list. pdf-lib embeds
+    // PNG and JPEG and nothing else, so anything else here would produce a
+    // broken export rather than a rejected upload — and it would break at the
+    // moment somebody is trying to hand a document to Fair Trading.
+    if (!/\.(png|jpe?g)$/i.test(path)) {
+      return { error: "The logo has to be a PNG or JPG.", saved: false };
+    }
+    if (!path.startsWith(`${profile.agency_id}/`)) {
+      return { error: "That file doesn't belong to your agency.", saved: false };
+    }
+  }
+
+  const { error } = await supabase.rpc("set_agency_logo", { p_path: path });
+  if (error) {
+    return { error: "Couldn't save the logo. Try again.", saved: false };
+  }
+
+  revalidatePath("/dashboard/team");
+  return { error: null, saved: true };
+}

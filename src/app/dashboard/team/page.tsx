@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { LicenseeEmailForm } from "@/components/team/LicenseeEmailForm";
+import { AgencyLogoForm } from "@/components/team/AgencyLogoForm";
+import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { requireProfile } from "@/lib/data/current-profile";
 import { InviteAgentForm } from "@/components/team/InviteAgentForm";
 import { PendingInvitesList } from "@/components/team/PendingInvitesList";
@@ -29,12 +31,19 @@ export default async function TeamPage() {
   // with a plain prop, not another round trip.
   const { data: agencyRow } = await supabase
     .from("agencies")
-    .select("licensee_email, licensee_name, website_url")
+    .select("licensee_email, licensee_name, website_url, logo_path")
     .eq("id", profile.agency_id)
     .maybeSingle();
-  const agencyDetails = agencyRow as { licensee_email?: string | null; licensee_name?: string | null; website_url?: string | null } | null;
+  const agencyDetails = agencyRow as { licensee_email?: string | null; licensee_name?: string | null; website_url?: string | null; logo_path?: string | null } | null;
   const licenseeEmail = agencyDetails?.licensee_email ?? null;
   const licenseeName = agencyDetails?.licensee_name ?? null;
+
+  // Signed here rather than in the client component: the bucket is private, and
+  // doing it on the server means the form needs no effect and no loading state.
+  const logoPath = agencyDetails?.logo_path ?? null;
+  const logoUrl = logoPath
+    ? (await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrl(logoPath, 3600)).data?.signedUrl ?? null
+    : null;
   const websiteUrl = agencyDetails?.website_url ?? null;
 
   const staff = (staffRows ?? []) as Profile[];
@@ -75,6 +84,7 @@ export default async function TeamPage() {
               Sign-off
             </h3>
             <LicenseeEmailForm current={licenseeEmail} currentName={licenseeName} website={websiteUrl} />
+            <AgencyLogoForm currentPath={agencyDetails?.logo_path ?? null} currentUrl={logoUrl} />
           </div>
         )}
 

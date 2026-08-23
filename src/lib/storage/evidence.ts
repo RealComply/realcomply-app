@@ -32,6 +32,13 @@ export function buildCpdDocPath(agencyId: string, profileId: string, fileName: s
   return `${agencyId}/_cpd/${profileId}/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// The agency's own logo, drawn on the finalised compliance record. Same bucket
+// and same RLS as everything else here — only the first path segment is
+// checked — with its own second segment so it cannot collide with evidence.
+export function buildAgencyLogoPath(agencyId: string, fileName: string): string {
+  return `${agencyId}/_brand/${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 export function buildSgManualPath(agencyId: string, fileName: string): string {
   return `${agencyId}/_sg-manual/${Date.now()}-${sanitizeFileName(fileName)}`;
 }

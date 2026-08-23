@@ -159,6 +159,24 @@ class Cursor {
 
 export type ComplianceRecordInput = {
   property: Property;
+  /** The agency's own name. This is their document; RealComply made it. */
+  agencyName: string;
+  /**
+   * The agent this listing belongs to. Shown under the office name, and it is
+   * the whole masthead for an agency with no logo — the individual-agent case
+   * (Adam, 23 Aug 2026: "the office name then the agent's name without a
+   * logo").
+   */
+  agentName: string | null;
+  /**
+   * The agency's own logo, already fetched. PNG or JPEG only: pdf-lib embeds
+   * those two and nothing else, which is why the upload control refuses SVG
+   * rather than accepting it and failing here, where the agent cannot see it.
+   *
+   * Null means no logo, which is not a degraded state — it is the individual
+   * agent, and the text masthead is the correct output for them.
+   */
+  logo: { bytes: Uint8Array; type: "png" | "jpg" } | null;
   items: ComplianceItem[];
   byKey: Record<string, PropertyItem | undefined>;
   rulesetVersion: string;
@@ -167,10 +185,12 @@ export type ComplianceRecordInput = {
 };
 
 export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Promise<Uint8Array> {
-  const { property, items, byKey, rulesetVersion, preparedFor, generatedAt } = input;
+  const { property, agencyName, agentName, logo, items, byKey, rulesetVersion, preparedFor, generatedAt } =
+    input;
 
   const doc = await PDFDocument.create();
-  doc.setTitle(`RealComply compliance record - ${property.address}`);
+  doc.setTitle(`${agencyName} - compliance record - ${property.address}`);
+  doc.setAuthor(agencyName);
   doc.setSubject(rulesetVersion);
   doc.setProducer("RealComply");
   doc.setCreationDate(generatedAt);
@@ -182,12 +202,37 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
 
   const c = new Cursor(doc, fonts);
 
-  // Masthead
+  // Masthead.
+  //
+  // The AGENCY leads, not us (Adam, 23 Aug 2026): their logo if they have one,
+  // then the office name, then the agent whose file this is, then the title,
+  // with RealComply credited underneath as the platform. This is the document
+  // the agency hands to Fair Trading and it should read as theirs.
+  //
+  // No logo is not a fallback. An individual agent has no office branding to
+  // apply, and a text masthead is the right output for them rather than a
+  // second-class version of somebody else's.
   c.page.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: GREEN });
-  c.text("RealComply", { size: 20, bold: true, color: GREEN });
-  c.text("Finalised compliance record", { size: 14, bold: true });
+
+  if (logo) {
+    const image = logo.type === "png" ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes);
+    // Fit inside a box rather than forcing a size, so a wide wordmark and a
+    // square badge both come out looking deliberate.
+    const MAX_W = 190;
+    const MAX_H = 52;
+    const scale = Math.min(MAX_W / image.width, MAX_H / image.height, 1);
+    const w = image.width * scale;
+    const h = image.height * scale;
+    c.page.drawImage(image, { x: MARGIN, y: c.y - h, width: w, height: h });
+    c.y -= h + 14;
+  }
+
+  c.text(agencyName, { size: 17, bold: true });
+  if (agentName) c.text(agentName, { size: 11, color: MUTED });
   c.y -= 4;
-  c.text(property.address, { size: 11, color: MUTED });
+  c.text("Finalised compliance record", { size: 12.5, bold: true });
+  c.text("Powered by RealComply", { size: 8.5, bold: true, color: GREEN, gap: 6 });
+  c.text(property.address, { size: 11, bold: true });
   c.text(
     `Generated ${formatAuDate(generatedAt.toISOString().slice(0, 10))} · ${rulesetVersion}`,
     { size: 8.5, color: FAINT },
@@ -250,11 +295,18 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
 }
 
 /** A filename that survives Windows, macOS and email. */
-export function complianceRecordFilename(property: Property, generatedAt: Date): string {
-  const address = ascii(property.address)
-    .replace(/[\\/:*?"<>|]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+export function complianceRecordFilename(
+  property: Property,
+  agencyName: string,
+  generatedAt: Date,
+): string {
+  const clean = (s: string) =>
+    ascii(s)
+      .replace(/[\\/:*?"<>|]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   const stamp = generatedAt.toISOString().slice(0, 10);
-  return `RealComply compliance record - ${address} - ${stamp}.pdf`;
+  // Agency first, so a regulator with several agencies' packs in one folder can
+  // sort them into piles without opening any of them.
+  return `${clean(agencyName)} - compliance record - ${clean(property.address)} - ${stamp}.pdf`;
 }
