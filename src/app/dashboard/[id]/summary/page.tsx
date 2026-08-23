@@ -5,12 +5,10 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
+import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
+import { formatAuDate } from "@/lib/format-date";
 
-// Bump this when the item set/wording in nsw-sales.ts changes meaningfully —
-// stamped on every export so it's traceable to the exact ruleset in force
-// when it was generated, per the "immutable audit trail stamped with the
-// ruleset version" design principle in the website IA doc.
-const RULESET_VERSION = "NSW Sales Ruleset 2026.2";
+
 
 // The finalised, read-only compliance record — what item f2 ("Generate
 // finalised compliance file") produces, and also the one-click "audit pack"
@@ -41,11 +39,20 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         <Link href={`/dashboard/${p.id}`} className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
           ← Back to file
         </Link>
-        <button
+        {/* A link, not a button, and it points at a route that returns the
+            file with Content-Disposition: attachment. One click, one file in
+            Downloads, no dialog and no decision.
+
+            It used to read "Use your browser's Print → Save as PDF" and had no
+            click handler at all: a label telling the agent to go and find a
+            browser menu. Adam, 23 Aug 2026: plenty of agents will not know how,
+            and this is the document Fair Trading asks for. */}
+        <a
+          href={`/dashboard/${p.id}/summary/pdf`}
           className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600"
         >
-          Use your browser&rsquo;s Print → Save as PDF
-        </button>
+          Save as PDF
+        </a>
       </div>
 
       <h1 className="mt-6 text-2xl font-bold text-rc-ink">
@@ -75,7 +82,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                       <span className="font-medium text-rc-ink">{item.label}</span>{" "}
                       <span className={current?.status === "flagged" ? "font-medium text-rc-amber-deep" : "text-rc-muted"}>
                         — {current?.status ?? "open"}
-                        {current?.event_date ? ` · ${current.event_date}` : ""}
+                        {current?.event_date ? ` · ${formatAuDate(current.event_date)}` : ""}
                       </span>
                       {item.legalBasis && <span className="ml-1 text-xs text-rc-faint">({item.legalBasis})</span>}
                       {flaggedNote && <p className="mt-0.5 text-xs text-rc-amber-deep">Open flag: {flaggedNote}</p>}
