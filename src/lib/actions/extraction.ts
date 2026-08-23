@@ -82,7 +82,7 @@ const KIND_LABELS: Record<DocumentKind, string> = {
 
 // Only these items can ever be patched by extraction — a hard allow-list,
 // independent of whatever the model returns. Deliberately excludes every
-// licenseeOnly item (amc, f1, sign_licensee) and every log-style item
+// licenseeOnly item (f1, sign_licensee) and every log-style item
 // (d1/d2/d3, offers, reviews) — those have their own entry semantics and
 // AI must never touch a licensee sign-off, full stop.
 //

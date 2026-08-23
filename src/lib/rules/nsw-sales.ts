@@ -933,26 +933,24 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
   },
-  {
-    key: "amc",
-    // Follows amp. This confirms the position on BOTH parties, so it cannot
-    // sit a stage earlier than the purchaser item it depends on.
-    stage: 4,
-    kind: "checklist",
-    label: "AML COMPLETE — licensee sign-off",
-    // Wording widened 17 Aug 2026. It used to say flatly that CDD is complete
-    // on both parties, which stops being true the moment a vendor is closed as
-    // a pre-commencement customer — and asking the licensee to attest to
-    // something the file itself contradicts is worse than asking nothing.
-    // "Properly dealt with" covers both endings; the file shows which one, and
-    // the licensee is the person who reads it.
-    description:
-      "Confirms the AML position is properly dealt with for both the vendor and the purchaser — checked with your provider, or, for a vendor under an agreement predating 1 July 2026, recorded as a pre-commencement customer. This must be signed off by the licensee in charge — never the sales agent, never auto-ticked. The AML compliance officer must be a named human.",
-    legalBasis: "AML/CTF Act 2006 (Cth)",
-    licenseeOnly: true,
-    requiresDate: false,
-    requiredForStageCompletion: true,
-  },
+  // REMOVED 22 Aug 2026 (Adam): "AML COMPLETE — licensee sign-off", which sat
+  // here at Sold and asked the licensee in charge to attest that the AML
+  // position was properly dealt with for both parties.
+  //
+  // It was not a legal requirement and the card implied it was. The AML/CTF Act
+  // 2006 requires the program, a named compliance officer, and the customer
+  // checks themselves. It does not require a per-file sign-off by the licensee;
+  // that is an agency supervision layer, and Cass covers supervision in the
+  // Supervision Guidelines rather than per listing.
+  //
+  // Nothing about the actual AML record is lost. "Vendor check with your AML
+  // provider" (Listing set-up) and "Purchaser check with your AML provider"
+  // (Sold, directly above) are the items that carry the provider reference and
+  // the pre-commencement position, and both stay.
+  //
+  // Do not re-add this on the reasoning that AML needs a human sign-off. The
+  // named-human requirement attaches to the COMPLIANCE OFFICER ROLE, agency
+  // wide, not to each transaction file.
 
   {
     // s73B: every price statement made to a buyer, prospective buyer or seller
