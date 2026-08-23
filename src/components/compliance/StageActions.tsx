@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { Sparkles, FlaskConical } from "lucide-react";
 import { completeStage, toggleTestMode, type ActionState } from "@/lib/actions/compliance";
 import { extractFromDocuments } from "@/lib/actions/extraction";
-import type { PropertyStage } from "@/lib/types";
+import { STAGE_LABELS, type PropertyStage } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
 
@@ -41,6 +41,21 @@ export function CompleteStageButton({
     wasPending.current = pending;
   }, [pending, state.error]);
 
+  // NAMED AFTER WHERE IT GOES, not after a stage number.
+  //
+  // Adam, 22 Aug 2026, finishing listing set-up: "there is no button at the
+  // bottom of the page to continue to pre-market stage." The button was
+  // there. It said "Complete stage 1 & continue", which is the one place in
+  // the app that numbers a stage — everything else, including the stage strip
+  // directly above this and the item cards themselves, uses the name. Looking
+  // for "Pre-market" and finding "stage 1" is close enough to not finding
+  // anything at all.
+  //
+  // Falls back to the old wording past the last named stage, which cannot
+  // happen while the caller guards on stage < 5, but costs nothing.
+  const next = STAGE_LABELS[(stage + 1) as PropertyStage];
+  const label = next ? `Continue to ${next}` : `Complete stage ${stage + 1} & continue`;
+
   return (
     <form action={formAction} className="mt-6 border-t border-rc-border pt-6">
       <button
@@ -48,7 +63,7 @@ export function CompleteStageButton({
         disabled={pending}
         className="rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
       >
-        {pending ? "Checking…" : `Complete stage ${stage + 1} & continue`}
+        {pending ? "Checking…" : label}
       </button>
       {state.error && <p className="mt-2 text-sm text-rc-amber-deep">{state.error}</p>}
     </form>

@@ -147,6 +147,13 @@ function aiDraft(current?: PropertyItem): ExtractionDraft {
   return ((current?.data as { aiDraft?: ExtractionDraft } | undefined)?.aiDraft ?? {}) as ExtractionDraft;
 }
 
+// t1. The agent's own answer, not the AI's — nobody but the agency knows
+// whether the agency also manages the property, and there is no document that
+// says so. Saved by setItemStatus, read here and by ItemCard.
+export function selfManaged(current?: PropertyItem): boolean {
+  return (current?.data as { selfManaged?: boolean } | undefined)?.selfManaged === true;
+}
+
 const items: ComplianceItem[] = [
   // ── Stage 0 — Listing set-up ──────────────────────────────────────────
   // a3 (signed agreement) leads the stage — Adam wants it front and centre
@@ -513,6 +520,25 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: true,
     showIf: (p) => Boolean(p.is_tenanted),
     hideNote: true,
+    // The duty runs to "any agent responsible for managing the property".
+    //
+    // Adam, 22 Aug 2026: "if the managing agency is also the selling agency,
+    // the managing agent wouldn't need to be notified in writing, only the
+    // tenant, so no need for an evidence upload there."
+    //
+    // He is right, and the rule's own words are why. Sch 2 r7 requires written
+    // notice of the appointment to any agent responsible for managing the
+    // property. Where that agent is you, there is no one to serve it on and no
+    // document that could exist. The tenant notice is a different duty under a
+    // different Act (s53 Residential Tenancies Act, item t2 below) and is
+    // untouched by this.
+    //
+    // The item is answered rather than hidden. A file that simply omits t1
+    // looks like an obligation nobody got to; one that records "we manage it"
+    // shows the agent considered it and says why it did not apply, which is
+    // the record worth having in front of Fair Trading.
+    hideEvidenceWhen: (current) => selfManaged(current),
+    evidenceLabel: "The written notice",
   },
   {
     key: "t2",

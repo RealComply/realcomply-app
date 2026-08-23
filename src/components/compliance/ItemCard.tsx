@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { Paperclip, Sparkles, AlertTriangle, Check, Info, X } from "lucide-react";
+import { selfManaged } from "@/lib/rules/nsw-sales";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
 import {
@@ -375,6 +376,7 @@ function ChecklistItem({
   propertyId,
   current,
   preCommencementOffer,
+  noteSeed,
 }: {
   item: ComplianceItem;
   propertyId: string;
@@ -383,6 +385,12 @@ function ChecklistItem({
   // this file's agreement predates commencement. Absent means the choice is
   // not on the table and the card looks exactly as it always has.
   preCommencementOffer?: { agreementDate: string };
+  // A starting value for the note box, taken from another item's document.
+  // Used by b4, where the price statement being approved is the offering price
+  // the agency agreement already states. Only ever a default: it is editable,
+  // it loses to anything the agent has saved, and it is not recorded until
+  // they save it themselves.
+  noteSeed?: string;
 }) {
   const boundAction = setItemStatus.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -591,6 +599,35 @@ function ChecklistItem({
             >
               Record as pre-commencement
             </button>
+          </div>
+        )}
+        {/* t1. Sch 2 r7 requires written notice of the appointment to "any
+            agent responsible for managing the property". Where that agent is
+            this agency there is nobody to serve and no document that could
+            exist, so ticking this answers the item instead of leaving it to
+            look outstanding, and the evidence slot disappears with it.
+
+            Adam, 22 Aug 2026. The tenant's own notice is untouched: that is
+            s53 of the Residential Tenancies Act, on the card below this one,
+            and it still has to be given and dated. */}
+        {item.key === "t1" && (
+          <div>
+            <label className="flex items-start gap-2.5 text-sm text-rc-ink">
+              <input
+                type="checkbox"
+                name="selfManaged"
+                value="yes"
+                defaultChecked={selfManaged(current)}
+                className="mt-0.5 shrink-0 accent-rc-green-deep"
+              />
+              <span>
+                We manage this property
+                <span className="mt-0.5 block text-xs text-rc-muted">
+                  There is no separate managing agent to notify, so no notice is needed. The tenant still
+                  has to be given written notice, on the next card.
+                </span>
+              </span>
+            </label>
           </div>
         )}
         {item.key === "a7" && (
@@ -814,11 +851,23 @@ function ChecklistItem({
               </label>
               <DictatableTextarea
                 name="note"
-                defaultValue={data.note ?? draft?.note ?? ""}
+                defaultValue={data.note ?? draft?.note ?? noteSeed ?? ""}
                 rows={2}
                 placeholder={item.notePlaceholder}
                 className="mt-1 w-full rounded-md border border-rc-border px-2 py-1 text-sm"
               />
+              {/* Only while it is still a suggestion. Same rule as a7's select
+                  above: it has to be obvious which of the two answered this,
+                  because the licensee is the one who carries the approval. */}
+              {noteSeed && data.note == null && (
+                <p className="mt-1.5 flex items-start gap-1.5 text-xs text-rc-green-deep">
+                  <Sparkles size={12} className="mt-0.5 shrink-0" />
+                  <span>
+                    The offering price from the agency agreement. Check it matches what is actually being
+                    advertised, edit it if it doesn&rsquo;t, and save. It isn&rsquo;t recorded until you do.
+                  </span>
+                </p>
+              )}
             </div>
           )
         )}
@@ -2427,6 +2476,27 @@ export function ItemCard({
           preCommencementOffer={
             item.key === "amv" && amlPreCommencementEnabled && agreementPredatesAml(allItems)
               ? { agreementDate: allItems["a3"]!.event_date! }
+              : undefined
+          }
+          // b4 asks the licensee to write down WHAT price statement they are
+          // approving, and for a private treaty sale the agreement already
+          // states it: Schedule 6 section 5 of the Regulation requires the
+          // agreement to specify the price at which the property is to be
+          // offered. Retyping a figure that is sitting in an attached document
+          // is both a waste and a chance to fat-finger the number this item
+          // exists to pin down (Adam, 22 Aug 2026).
+          //
+          // Read across from a3 rather than extracted onto b4 directly. b4 is
+          // licenseeOnly, and extraction never writes to a licensee item — the
+          // approval has to remain an act the licensee took. This only fills
+          // the box in front of them.
+          //
+          // Undefined for an auction file, where the agreement has no such
+          // term and the model is told to omit it.
+          noteSeed={
+            item.key === "b4"
+              ? (allItems["a3"]?.data as { aiDraft?: { offerPrice?: string } } | undefined)?.aiDraft
+                  ?.offerPrice
               : undefined
           }
         />

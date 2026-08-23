@@ -116,6 +116,8 @@ type DraftPatch = {
   note?: string;
   espLow?: number;
   espHigh?: number;
+  /** a3 only. The private-treaty offering price, verbatim from the agreement. */
+  offerPrice?: string;
   eventDate?: string;
   consumerGuideProvided?: boolean;
   identityVerified?: boolean;
@@ -213,6 +215,11 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
             espHigh: {
               type: "number",
               description: "Item a4 only — high end, only if explicitly stated.",
+            },
+            offerPrice: {
+              type: "string",
+              description:
+                "Item a3 only, and only for a PRIVATE TREATY agreement. Schedule 6, section 5 of the Property and Stock Agents Regulation 2022 requires an agency agreement for the sale of residential property by private treaty to specify the price at which the property is to be offered, usually under a heading like 'Price at which the property is to be offered'. Copy that figure or range EXACTLY as the agreement states it, including the dollar signs and any wording such as 'Offers above'. Do not convert a range into a single figure, do not round, and do not substitute the estimated selling price, which is a different field with a different legal meaning. An auction agreement has no such term: omit this field entirely rather than supplying the reserve, a guide, or the ESP in its place.",
             },
             eventDate: {
               type: "string",
@@ -382,6 +389,10 @@ const AGENCY_AGREEMENT_PROMPT =
   "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
   "note-flagging rule: if the document contains that reasoning text, paraphrase it as a short " +
   "editable starting draft for the agent to refine, not just a gap-flag), " +
+  "a3 (set offerPrice from the private-treaty offering price the agreement is required to specify " +
+  "under Schedule 6 section 5 of the Regulation, copied exactly as written. This is NOT the estimated " +
+  "selling price and must not be taken from the ESP field, and an auction agreement has none, so leave " +
+  "it out rather than substituting a reserve or a guide), " +
   "a5 (commission, rebates, discounts and vendor-paid advertising, as disclosed to the vendor in " +
   "this agreement — s57), " +
   "a6 (the AGENCY AGREEMENT's own cooling-off period: one business day, under the Property and Stock " +
@@ -1434,6 +1445,11 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
             note: patch.note,
             espLow: patch.espLow,
             espHigh: patch.espHigh,
+            // a3 only. Seeds b4's "what the price statement is" note, which is
+            // a licensee-only item extraction must never write to directly —
+            // so it is parked here on the agreement's own card and read across
+            // by the b4 card. See ItemCard.
+            offerPrice: patch.offerPrice,
             eventDate: patch.eventDate,
             consumerGuideProvided: patch.consumerGuideProvided,
             identityVerified: patch.identityVerified,
