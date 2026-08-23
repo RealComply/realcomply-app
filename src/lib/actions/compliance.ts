@@ -7,6 +7,7 @@ import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
+import { formatAuDate } from "@/lib/format-date";
 import { finalizeEvidenceRecord, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type {
   AuctionOutcomeData,
@@ -241,7 +242,7 @@ export async function setItemStatus(
     }
     if (signed >= AML_COMMENCEMENT_DATE) {
       return {
-        error: `This agreement was signed ${signed}, on or after ${AML_COMMENCEMENT_DATE}. CDD is required.`,
+        error: `This agreement was signed ${formatAuDate(signed)}, on or after ${formatAuDate(AML_COMMENCEMENT_DATE)}. CDD is required.`,
       };
     }
 
@@ -1741,7 +1742,7 @@ async function revokePreCommencementIfAgreementIsNew(
       status: "open",
       completed_by: null,
       data: {
-        note: `Reopened automatically. The agency agreement is now dated ${agreementDate}, on or after ${AML_COMMENCEMENT_DATE}, so the pre-commencement basis no longer applies and customer due diligence is required for the vendor.`,
+        note: `Reopened automatically. The agency agreement is now dated ${formatAuDate(agreementDate)}, on or after ${formatAuDate(AML_COMMENCEMENT_DATE)}, so the pre-commencement basis no longer applies and customer due diligence is required for the vendor.`,
         preCommencement: false,
         preCommencementRevokedOn: agreementDate,
       },

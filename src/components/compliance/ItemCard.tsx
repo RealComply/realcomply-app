@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { Paperclip, Sparkles, AlertTriangle, Check, Info, Plus, X } from "lucide-react";
 import { selfManaged } from "@/lib/rules/nsw-sales";
+import { formatAuDate } from "@/lib/format-date";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
 import {
@@ -498,7 +499,7 @@ function ChecklistItem({
             <Sparkles size={13} className="mt-0.5 shrink-0" />
             <span>
               Auto-marked done — the agency agreement confirmed{" "}
-              {item.key === "a1" ? "identity was verified" : "the guide was given"}, dated {draft.eventDate}. Check
+              {item.key === "a1" ? "identity was verified" : "the guide was given"}, dated {formatAuDate(draft.eventDate)}. Check
               it against the source; use Reopen below if that&apos;s not right.
             </span>
           </p>
@@ -565,8 +566,8 @@ function ChecklistItem({
               Closed as a pre-commencement customer, without a provider check
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-              Agency agreement signed {data.preCommencementAgreementDate}, before{" "}
-              {AML_COMMENCEMENT_DATE}. Ongoing monitoring obligations still apply, and this reverses
+              Agency agreement signed {formatAuDate(data.preCommencementAgreementDate)}, before{" "}
+              {formatAuDate(AML_COMMENCEMENT_DATE)}. Ongoing monitoring obligations still apply, and this reverses
               automatically if the agreement is renewed or re-signed.
             </p>
           </div>
@@ -586,7 +587,7 @@ function ChecklistItem({
               This agreement predates the AML/CTF start date
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-              Signed {preCommencementOffer.agreementDate}, before {AML_COMMENCEMENT_DATE}. Your
+              Signed {formatAuDate(preCommencementOffer.agreementDate)}, before {formatAuDate(AML_COMMENCEMENT_DATE)}. Your
               agency treats vendors under agreements from before that date as pre-commencement
               customers, which means no provider check is required to keep acting. Record one above if
               it was done anyway — that is always the stronger record.
@@ -1555,7 +1556,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
               — prepared by {e.preparerName || "unknown"}
               {e.preparerContact && ` (${e.preparerContact})`}
               {e.preparerInsured ? ", PI insured" : ""}
-              {e.inspectionDate && ` · inspected ${e.inspectionDate}`}
+              {e.inspectionDate && ` · inspected ${formatAuDate(e.inspectionDate)}`}
               {e.availableForRepurchase && " · available for repurchase"}
               {e.note && <> — {e.note}</>}
               {e.evidencePath && e.evidenceFileName && (

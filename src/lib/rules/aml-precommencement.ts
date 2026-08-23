@@ -18,6 +18,8 @@ import type { PropertyItem } from "@/lib/types";
  * agreement signed strictly before this date is capable of being a
  * pre-commencement relationship; one signed on or after it is not.
  */
+import { formatAuDate } from "@/lib/format-date";
+
 export const AML_COMMENCEMENT_DATE = "2026-07-01";
 
 /**
@@ -60,7 +62,7 @@ export const PRE_COMMENCEMENT_CONDITIONS = [
 export function preCommencementNote(agreementDate: string): string {
   return [
     `No identity check recorded with an AML provider: treated as a pre-commencement customer.`,
-    `The agency agreement was signed ${agreementDate}, before the sector's commencement date of ${AML_COMMENCEMENT_DATE}.`,
+    `The agency agreement was signed ${formatAuDate(agreementDate)}, before the sector's commencement date of ${formatAuDate(AML_COMMENCEMENT_DATE)}.`,
     `This is the agency's position under AUSTRAC's pre-commencement customer guidance, taken by the licensee in charge, not a determination by RealComply.`,
     `Ongoing monitoring obligations continue to apply.`,
   ].join(" ");

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatAuDate } from "@/lib/format-date";
 import { useActionState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { setAmlPreCommencement } from "@/lib/actions/registers";
@@ -37,10 +38,10 @@ export function AmlPreCommencementCard({
   return (
     <div className="mt-6 rounded-card border border-rc-border bg-white px-4 py-4 shadow-card">
       <h2 className="text-sm font-semibold text-rc-ink">
-        AML/CTF — vendors under agreements signed before {AML_COMMENCEMENT_DATE}
+        AML/CTF — vendors under agreements signed before {formatAuDate(AML_COMMENCEMENT_DATE)}
       </h2>
       <p className="mt-1.5 text-sm leading-relaxed text-rc-muted">
-        Real estate became a reporting sector on {AML_COMMENCEMENT_DATE}. For a seller&rsquo;s agent the
+        Real estate became a reporting sector on {formatAuDate(AML_COMMENCEMENT_DATE)}. For a seller&rsquo;s agent the
         designated service starts when the agency agreement is signed, and AUSTRAC does not require
         an identity check to keep serving a customer whose relationship already existed
         on that date.
@@ -80,7 +81,7 @@ export function AmlPreCommencementCard({
               onChange={(e) => e.currentTarget.form?.requestSubmit()}
               className="h-4 w-4 rounded border-rc-border"
             />
-            Treat vendors under pre-{AML_COMMENCEMENT_DATE} agreements as pre-commencement customers
+            Treat vendors under agreements signed before {formatAuDate(AML_COMMENCEMENT_DATE)} as pre-commencement customers
           </label>
           {pending && <span className="text-xs text-rc-faint">Saving…</span>}
         </form>
