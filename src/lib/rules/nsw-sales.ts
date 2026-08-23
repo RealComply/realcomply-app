@@ -1094,16 +1094,30 @@ const items: ComplianceItem[] = [
     // and so is attaching the CRM export, but a bare tick is not.
     key: "f4",
     stage: 5,
+    // One line per buyer, added one at a time (Adam, 23 Aug 2026): "let's have
+    // an ADD BUYER button and each buyer gets their own line and field."
+    //
+    // A single free-text box was the wrong shape for a list. Names typed into
+    // one field come back as a blob nobody can count, and the thing cl 37(2)
+    // asks you to show is WHO — which is a list, and should be stored as one.
+    //
+    // Stays a "checklist" kind. The list renders inside ChecklistItem above its
+    // form rather than as a separate kind, so the note box, the CRM upload and
+    // Mark done all keep behaving exactly as they do on every other card. Its
+    // own add form sits outside that form, because forms cannot nest.
     kind: "checklist",
     label: "Buyers who received a copy of the Contract for Sale",
     description:
-      "Buyers who request a copy of the contract are entitled to see the building, pest and strata report register. Record each buyer's name here, or attach your own record.",
+      "Buyers who request a copy of the contract are entitled to see the building, pest and strata report register. Add each buyer, or point at the record your CRM already keeps.",
     legalBasis: "cl 37(2), Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
     requiresNote: true,
-    noteLabel: "Who was given a copy of the contract",
-    notePlaceholder: "Names, or note that the CRM list is attached below",
+    noteLabel: "Where the record is kept",
+    // Deliberately identical to the price-quotes card (Adam, 23 Aug 2026).
+    // Both ask the same question — which system holds this — so they should
+    // ask it in the same words.
+    notePlaceholder: "e.g. Box+Dice, AgentBox, LockedOn",
     evidenceLabel: "CRM record (instead of typing names)",
   },
   {

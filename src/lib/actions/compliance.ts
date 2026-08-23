@@ -12,6 +12,7 @@ import type {
   AuctionOutcomeKind,
   Property,
   PropertyItem,
+  PropertyItemStatus,
   PropertyStage,
 } from "@/lib/types";
 
@@ -152,12 +153,18 @@ export async function setItemStatus(
     // happens in its own request before this one.
     const { data: attached } = await supabase
       .from("property_items")
-      .select("evidence_path")
+      .select("evidence_path, data")
       .eq("property_id", propertyId)
       .eq("item_key", itemKey)
       .maybeSingle();
 
-    if (!(attached as { evidence_path?: string | null } | null)?.evidence_path) {
+    const row = attached as { evidence_path?: string | null; data?: { entries?: unknown[] } } | null;
+    // A named list counts too, since 23 Aug 2026: f4 now records buyers one
+    // per line rather than as a typed blob, and a list of names is a better
+    // answer to "who was given a copy" than any sentence about it.
+    const hasEntries = (row?.data?.entries ?? []).length > 0;
+
+    if (!row?.evidence_path && !hasEntries) {
       return {
         error: rule.noteLabel
           ? `Type in ${rule.noteLabel.toLowerCase()}, or attach the record, before marking it done.`
@@ -996,6 +1003,90 @@ export async function addVerbalQuoteEntry(
 
   revalidatePath(`/dashboard/${propertyId}`);
   return error ? { error: error.message } : ok;
+}
+
+// f4 — one buyer per line. cl 37(2) of the Regulation says the licensee must
+// disclose the report register records to a person requesting a copy of the
+// contract, so the thing worth keeping is WHO those people were. That is a
+// list, and until now it was a single free-text box: names typed into one
+// field come back as a blob nobody can count or check.
+//
+// Adam, 23 Aug 2026: "let's have an ADD BUYER button and each buyer gets their
+// own line and field."
+export async function addBuyerEntry(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const name = String(formData.get("buyerName") ?? "").trim();
+  if (!name) {
+    return { error: "Enter the buyer's name." };
+  }
+
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "f4")
+    .maybeSingle();
+
+  const current = (existing?.data ?? {}) as { entries?: Array<{ name?: string }> };
+  const entries = current.entries ?? [];
+
+  // Same name twice is almost always a double-submit rather than two people,
+  // and a duplicated name in this list is worse than useless — it makes the
+  // count wrong in the direction that flatters the file.
+  if (entries.some((e) => (e.name ?? "").toLowerCase() === name.toLowerCase())) {
+    return { error: `${name} is already on the list.` };
+  }
+
+  entries.push({ name, recordedAt: new Date().toISOString() } as { name: string });
+
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "f4",
+    // Deliberately NOT marked done. Adding one buyer does not mean the list is
+    // finished, and a card that ticks itself on the first entry invites the
+    // agent to stop there. They tick it when the list is complete.
+    status: ((existing as { status?: PropertyItemStatus } | null)?.status ?? "open") as PropertyItemStatus,
+    data: { ...current, entries },
+    completedBy: user.id,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return error ? { error: error.message } : ok;
+}
+
+// Removing one, because a list you cannot correct is a list people stop
+// trusting — and a misspelt buyer name is exactly the kind of thing spotted
+// one line after typing it.
+export async function removeBuyerEntry(propertyId: string, index: number): Promise<void> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("data, status")
+    .eq("property_id", propertyId)
+    .eq("item_key", "f4")
+    .maybeSingle();
+
+  const current = (existing?.data ?? {}) as { entries?: unknown[] };
+  const entries = [...(current.entries ?? [])];
+  if (index < 0 || index >= entries.length) return;
+  entries.splice(index, 1);
+
+  await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "f4",
+    status: ((existing as { status?: PropertyItemStatus } | null)?.status ?? "open") as PropertyItemStatus,
+    data: { ...current, entries },
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
 }
 
 // b5 — "nothing to log yet" fast path, same shape as markNoPriceRevision.

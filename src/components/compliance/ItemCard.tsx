@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Paperclip, Sparkles, AlertTriangle, Check, Info, X } from "lucide-react";
+import { Paperclip, Sparkles, AlertTriangle, Check, Info, Plus, X } from "lucide-react";
 import { selfManaged } from "@/lib/rules/nsw-sales";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
@@ -25,6 +25,8 @@ import {
   markNoPriceRevision,
   confirmEspRevision,
   addVerbalQuoteEntry,
+  addBuyerEntry,
+  removeBuyerEntry,
   markNoVerbalQuotes,
   markNoReports,
   recordSale,
@@ -479,6 +481,9 @@ function ChecklistItem({
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      {/* Outside the form below, because its own Add button is a form and
+          forms cannot nest. */}
+      {item.key === "f4" && <BuyerListItem propertyId={propertyId} current={current} />}
       <form action={formAction} className="space-y-3">
         {wrongDocument ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
@@ -1985,6 +1990,86 @@ function SendItem({ item, propertyId, current }: { item: ComplianceItem; propert
         </form>
       )}
     </ItemShell>
+  );
+}
+
+// f4 — who was given a copy of the contract, one name per line.
+//
+// cl 37(2) of the Regulation makes the licensee disclose the report register
+// records to anyone requesting a copy of the contract, so what the file needs
+// to show is WHO those people were. That is a list. It used to be a single
+// free-text box, which produced a blob nobody could count.
+//
+// Two routes, and either satisfies the item: name them here, or point at the
+// CRM record in the note and attach it. The note box and the upload still sit
+// below this, provided by ItemShell and the standard note field.
+function BuyerListItem({
+  propertyId,
+  current,
+}: {
+  propertyId: string;
+  current?: PropertyItem;
+}) {
+  const boundAction = addBuyerEntry.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(boundAction, initialState);
+  const data = (current?.data ?? {}) as { entries?: Array<{ name?: string; recordedAt?: string }> };
+  const entries = data.entries ?? [];
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Clear the box after a successful add, so the next name can be typed
+  // straight away. Without this the previous name sits there and the obvious
+  // next action looks like editing it.
+  useEffect(() => {
+    if (!pending && !state.error && inputRef.current) inputRef.current.value = "";
+  }, [pending, state.error]);
+
+  return (
+    <div>
+      {entries.length > 0 && (
+        <ul className="mb-3 divide-y divide-rc-border overflow-hidden rounded-lg border border-rc-border">
+          {entries.map((entry, i) => (
+            <li key={`${entry.name}-${i}`} className="flex items-center gap-3 bg-white px-3 py-2">
+              <span className="min-w-0 flex-1 truncate text-sm text-rc-ink">{entry.name}</span>
+              <form action={removeBuyerEntry.bind(null, propertyId, i)}>
+                <button
+                  type="submit"
+                  aria-label={`Remove ${entry.name}`}
+                  title="Remove"
+                  className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
+                >
+                  <X size={13} />
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form action={formAction} className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          ref={inputRef}
+          name="buyerName"
+          type="text"
+          autoComplete="off"
+          placeholder="Buyer's name"
+          className="min-w-0 flex-1 rounded-md border border-rc-border px-2 py-1.5 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="inline-flex items-center gap-1.5 rounded-md border border-rc-green-deep/40 bg-white px-3 py-1.5 text-xs font-semibold text-rc-green-deep transition hover:bg-rc-green-soft disabled:opacity-60"
+        >
+          <Plus size={13} />
+          {pending ? "Adding…" : "Add buyer"}
+        </button>
+      </form>
+      <FieldError error={state.error} />
+      {entries.length === 0 && (
+        <p className="mt-1.5 text-xs text-rc-muted">
+          Add each buyer who was given a copy, or name the system that holds the record below and attach it.
+        </p>
+      )}
+    </div>
   );
 }
 
