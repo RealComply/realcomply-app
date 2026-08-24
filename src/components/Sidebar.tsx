@@ -3,22 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BookOpen,
-  Building2,
-  FileText,
-  ClipboardCheck,
-  GraduationCap,
-  Home,
-  LayoutGrid,
-  Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PenLine,
-  Users,
-  X,
-} from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { LogoMark } from "@/components/Logo";
+import { NAV_GROUPS } from "@/lib/nav";
+import { EMPTY_NAV_COUNTS, type NavCounts } from "@/lib/data/nav-counts";
 
 // Left sidebar navigation, replacing the seven-link top bar (TopNav) that had
 // outgrown its row and scrolled sideways on smaller screens.
@@ -27,9 +15,9 @@ import { LogoMark } from "@/components/Logo";
 // destination now has an obvious home instead of competing for horizontal
 // room. Second, each row has space for a count badge — the point being that
 // an open breach or an outstanding sign-off becomes visible from any page,
-// not only once you've navigated to the register that holds it. The badges
-// themselves are a follow-up (they need counts plumbed through the layout);
-// the structure is here so adding them is a data change, not a redesign.
+// not only once you've navigated to the register that holds it. Those badges
+// landed on 24 Aug 2026; what each number actually claims, and why each is
+// drawn narrowly, is in lib/data/nav-counts.ts.
 //
 // The grouping is the part worth revisiting if it ever feels wrong: "Your
 // work" is the daily view, "Compliance records" is the evidence you would
@@ -53,56 +41,10 @@ import { LogoMark } from "@/components/Logo";
 const STORAGE_KEY = "rc-sidebar-collapsed";
 const RAIL_CLASS = "rc-nav-rail";
 
-// `exact` matters for "/dashboard": every other route starts with it, so the
-// default prefix match would light Listings up on every page in the app.
-// assistantSees marks the handful of entries an assistant keeps. Everything
-// without it is office-wide — the whole portfolio, the agency's registers,
-// the sign-off queue, the SG manual, the staff roster — and an assistant is
-// attached to particular agents, not to the office (Adam, 20 Aug 2026).
-//
-// Training and CPD stay, because those are the assistant's OWN record. If
-// they hold a certificate of registration the CPD obligation is theirs
-// personally, and hiding it from them would be hiding their own compliance.
-type NavLink = { href: string; label: string; Icon: typeof Home; exact?: boolean; assistantSees?: boolean };
-
-const GROUPS: { heading: string; links: NavLink[] }[] = [
-  {
-    heading: "Your work",
-    links: [
-      { href: "/dashboard/home", label: "Home", Icon: Home, assistantSees: true },
-      // Adam, 18 Aug 2026: "there is no obvious place for me to add a new
-      // listing". The page existed at /dashboard the whole time — it just had
-      // no way in from the nav, so the only route to it was the logo or the
-      // back button. A list you can't navigate to may as well not exist.
-      { href: "/dashboard", label: "Listings", Icon: Building2, exact: true, assistantSees: true },
-      { href: "/dashboard/portfolio", label: "Office overview", Icon: LayoutGrid },
-    ],
-  },
-  {
-    heading: "Compliance records",
-    links: [
-      { href: "/dashboard/registers", label: "Registers", Icon: FileText },
-      // One Training entry holding the plan and the log as tabs (Adam, 18 Aug
-      // 2026: "training plans and training logs should be in the same
-      // section"). They're two views of one thing — what a person will do
-      // this year, and what they actually did.
-      { href: "/dashboard/training", label: "Training", Icon: GraduationCap, assistantSees: true },
-      // CPD is its own section, NOT a tab under Training. It's a separate
-      // ledger with a licence condition attached (s 20(2)) and its own
-      // eligibility rule — only approved providers count. Putting it beside
-      // office training is what let internal sessions accrue CPD hours.
-      { href: "/dashboard/cpd", label: "CPD", Icon: ClipboardCheck, assistantSees: true },
-      { href: "/dashboard/document-signoffs", label: "Sign-offs", Icon: PenLine },
-    ],
-  },
-  {
-    heading: "Agency",
-    links: [
-      { href: "/dashboard/sg-manual", label: "SG Manual", Icon: BookOpen },
-      { href: "/dashboard/team", label: "Team", Icon: Users },
-    ],
-  },
-];
+// Navigation itself now lives in lib/nav.ts. Global search needs the same
+// list of destinations, and two copies of a nav list drift the first time a
+// page is added to one of them. What stays here is what depends on the
+// viewer: the assistant filter and the count badges.
 
 function isActive(pathname: string | null, href: string, exact?: boolean): boolean {
   if (!pathname) return false;
@@ -121,7 +63,13 @@ function toggleRail(button: HTMLButtonElement) {
   }
 }
 
-export function Sidebar({ isAssistant = false }: { isAssistant?: boolean }) {
+export function Sidebar({
+  isAssistant = false,
+  counts = EMPTY_NAV_COUNTS,
+}: {
+  isAssistant?: boolean;
+  counts?: NavCounts;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -161,7 +109,7 @@ export function Sidebar({ isAssistant = false }: { isAssistant?: boolean }) {
 
       {/* An assistant's nav is a subset, and a group that loses all its links
           loses its heading too — otherwise "Agency" sits there empty. */}
-      {GROUPS.map((g) => ({
+      {NAV_GROUPS.map((g) => ({
         ...g,
         links: isAssistant ? g.links.filter((l) => l.assistantSees) : g.links,
       }))
@@ -177,8 +125,13 @@ export function Sidebar({ isAssistant = false }: { isAssistant?: boolean }) {
           >
             {isAssistant && group.heading === "Compliance records" ? "Your record" : group.heading}
           </div>
-          {group.links.map(({ href, label, Icon, exact }) => {
+          {group.links.map(({ href, label, Icon, exact, countKey }) => {
             const active = isActive(pathname, href, exact);
+            const count = countKey ? counts[countKey] : 0;
+            // Red only where something has actually lapsed. Everything else
+            // is amber: these are things to look at, not emergencies, and a
+            // sidebar of red dots is a sidebar people stop reading.
+            const tone = countKey === "registers" ? counts.registersTone : "amber";
             return (
               <Link
                 key={href}
@@ -191,7 +144,7 @@ export function Sidebar({ isAssistant = false }: { isAssistant?: boolean }) {
                 title={label}
                 aria-current={active ? "page" : undefined}
                 data-rail-center
-                className={`flex items-center gap-2.5 rounded-[9px] px-3 py-2.5 text-sm transition ${
+                className={`relative flex items-center gap-2.5 rounded-[9px] px-3 py-2.5 text-sm transition ${
                   active
                     ? "bg-rc-green-deep font-semibold text-white shadow-[0_1px_0_rgba(255,255,255,0.09)_inset]"
                     : "font-medium text-rc-ink-muted hover:bg-white/[0.06] hover:text-white"
@@ -201,6 +154,34 @@ export function Sidebar({ isAssistant = false }: { isAssistant?: boolean }) {
                 <span data-rail-hide className="whitespace-nowrap">
                   {label}
                 </span>
+                {count > 0 && (
+                  <>
+                    <span
+                      data-rail-hide
+                      className={`ml-auto inline-flex h-[19px] min-w-[19px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums ${
+                        active
+                          ? "bg-white text-rc-green-deep"
+                          : tone === "red"
+                            ? "bg-rc-red text-white"
+                            : "bg-rc-amber text-rc-ink"
+                      }`}
+                    >
+                      {count > 99 ? "99+" : count}
+                      <span className="sr-only"> needing attention</span>
+                    </span>
+                    {/* Collapsed to a rail there is no room for a number, and
+                        dropping it would take away the one thing the badge is
+                        for — knowing without navigating. A dot on the icon
+                        still says "something here", which is the useful half. */}
+                    <span
+                      data-rail-only
+                      aria-hidden="true"
+                      className={`absolute right-[9px] top-[7px] h-2 w-2 rounded-full ring-2 ring-rc-nav-bg ${
+                        tone === "red" ? "bg-rc-red" : "bg-rc-amber"
+                      }`}
+                    />
+                  </>
+                )}
               </Link>
             );
           })}

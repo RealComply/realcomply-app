@@ -1,10 +1,20 @@
-import { logout } from "@/lib/actions/auth";
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import { GlobalSearch } from "@/components/GlobalSearch";
+import { UserMenu } from "@/components/UserMenu";
 import type { Profile } from "@/lib/types";
 
-// The right-hand end of the old TopNav — who you're signed in as, and the way
-// out — kept exactly where it was when navigation moved to the left sidebar
-// (Adam, 13 Aug 2026: "your name and role stay put"). Rendered once by the
-// dashboard layout rather than by each page.
+// The top bar.
+//
+// It used to hold a name and a Sign out button, both right-aligned, on a strip
+// that runs the full width of every page in the app. Adam, 24 Aug 2026, after
+// the CRM interface research: the sidebar is right, the top bar was the wasted
+// opportunity. It now carries the three things that belong in chrome —
+// somewhere to search from, somewhere to start a listing from, and who you are.
+//
+// Left to right: search, "New listing", identity. That order is not arbitrary:
+// search is the thing used most and reading starts on the left; the primary
+// action sits next to the identity where a primary action normally lives.
 
 // Every profile gets a role line, not just licensees — previously an ordinary
 // agent's header showed a name and nothing else, so there was no visual "this
@@ -27,35 +37,47 @@ function roleLabel(profile: Profile): string {
 }
 
 export function UserBar({ profile }: { profile: Profile }) {
+  const name = profile.full_name ?? profile.email;
+  const role = roleLabel(profile);
+
   return (
-    <header className="rc-app-chrome sticky top-0 z-20 flex items-center justify-end gap-4 border-b border-rc-border bg-white/85 px-4 py-3 backdrop-blur-md sm:px-6">
-      <div className="hidden items-center gap-3 sm:flex">
+    // pl-16 on mobile clears the sidebar's floating menu button, which is
+    // fixed at left-3 top-3 and would otherwise sit on top of the search field.
+    <header className="rc-app-chrome sticky top-0 z-20 flex items-center gap-3 border-b border-rc-border bg-white/85 py-3 pl-16 pr-4 backdrop-blur-md md:pl-6 md:pr-6">
+      <GlobalSearch isAssistant={Boolean(profile.is_assistant)} />
+
+      <Link
+        href="/dashboard/new"
+        className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600"
+      >
+        <Plus size={15} strokeWidth={2.6} aria-hidden="true" />
+        {/* The label is the first thing to go on a narrow screen, not the
+            button. An icon-only "+" next to a search field still reads as
+            "add", and losing the action entirely on a phone would be worse. */}
+        <span className="hidden sm:inline">New listing</span>
+        <span className="sr-only sm:hidden">New listing</span>
+      </Link>
+
+      {/* Identity stays on screen at desktop widths rather than hiding behind
+          the avatar, which is what it did before and what Adam asked for on
+          13 Aug. The menu holds the actions. */}
+      <div className="hidden flex-col leading-tight lg:flex">
+        <span className="text-[15px] font-semibold text-rc-ink">{name}</span>
         <span
-          className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]"
-          style={{ background: "linear-gradient(155deg, #1d3a31 0%, #0d1f19 100%)" }}
-          aria-hidden="true"
+          className={`text-xs font-medium ${
+            profile.is_licensee_in_charge ? "text-rc-green-deep" : "text-rc-muted"
+          }`}
         >
-          {(profile.full_name ?? profile.email).charAt(0).toUpperCase()}
+          {role}
         </span>
-        <div className="flex flex-col leading-tight">
-          <span className="text-[15px] font-semibold text-rc-ink">{profile.full_name ?? profile.email}</span>
-          <span
-            className={`text-xs font-medium ${
-              profile.is_licensee_in_charge ? "text-rc-green-deep" : "text-rc-muted"
-            }`}
-          >
-            {roleLabel(profile)}
-          </span>
-        </div>
       </div>
-      <form action={logout}>
-        <button
-          type="submit"
-          className="rounded-full border border-rc-border px-3.5 py-2 text-sm font-medium text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
-        >
-          Sign out
-        </button>
-      </form>
+
+      <UserMenu
+        name={name}
+        role={role}
+        isLicensee={profile.is_licensee_in_charge}
+        initial={name.charAt(0).toUpperCase()}
+      />
     </header>
   );
 }
