@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
-import { buildComplianceRecordPdf, complianceRecordFilename } from "@/lib/pdf/compliance-record";
+import { buildComplianceRecordPdf, complianceRecordFilename, type Attachment } from "@/lib/pdf/compliance-record";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem } from "@/lib/types";
@@ -69,6 +69,66 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const byKey = Object.fromEntries(((rows ?? []) as PropertyItem[]).map((i) => [i.item_key, i]));
   const items = allItemsFor(p, byKey, await ruleContextFor(supabase, p));
 
+  // ── The substance, not just the ticks (Adam, 24 Aug 2026) ───────────────
+  //
+  // He asked for the comparable sales, the ESP reasoning, the ESP revision
+  // notice, and the date the contract was received. Three of those are content
+  // this pack now reproduces; the fourth is a date, now captured on the
+  // contract card.
+  const noteOf = (key: string) => {
+    const n = (byKey[key]?.data as { note?: string } | undefined)?.note?.trim();
+    return n && n.length > 0 ? n : null;
+  };
+
+  const signatureOf = (key: string) => {
+    const d = byKey[key]?.data as { typedName?: string; signedAt?: string } | undefined;
+    return d?.typedName ? { typedName: d.typedName, signedAt: d.signedAt ?? null } : null;
+  };
+
+  // Deliberately NOT the contract for sale. Adam named the DATE it was
+  // received, not the document, and appending a contract would routinely add a
+  // hundred pages to a record that has to stay emailable.
+  const ATTACH: Array<{ key: string; title: string }> = [
+    { key: "a4", title: "Comparable sales report" },
+    { key: "d3", title: "Notice of revised estimated selling price" },
+  ];
+
+  const attachments: Attachment[] = [];
+  for (const { key, title } of ATTACH) {
+    const row = byKey[key];
+    if (!row?.evidence_path) continue;
+    const fileName =
+      (row.data as { evidenceFileName?: string } | undefined)?.evidenceFileName ??
+      row.evidence_path.split("/").pop() ??
+      "document";
+    const lower = fileName.toLowerCase();
+    const kind: Attachment["kind"] = lower.endsWith(".pdf")
+      ? "pdf"
+      : lower.endsWith(".png")
+        ? "png"
+        : /\.jpe?g$/.test(lower)
+          ? "jpg"
+          : "other";
+
+    if (kind === "other") {
+      // Listed, not silently dropped. A document missing from a pack with no
+      // explanation is worse than one the pack tells you to ask for.
+      attachments.push({ title, fileName, bytes: null, kind, omittedBecause: "not a PDF or image" });
+      continue;
+    }
+
+    try {
+      const { data: blob } = await supabase.storage.from(EVIDENCE_BUCKET).download(row.evidence_path);
+      attachments.push(
+        blob
+          ? { title, fileName, bytes: new Uint8Array(await blob.arrayBuffer()), kind }
+          : { title, fileName, bytes: null, kind, omittedBecause: "could not be read" },
+      );
+    } catch {
+      attachments.push({ title, fileName, bytes: null, kind, omittedBecause: "could not be read" });
+    }
+  }
+
   const generatedAt = new Date();
   const pdf = await buildComplianceRecordPdf({
     property: p,
@@ -77,6 +137,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     logo,
     items,
     byKey,
+    espReasoning: noteOf("a4c"),
+    signatures: { agent: signatureOf("sign_agent"), licensee: signatureOf("sign_licensee") },
+    attachments,
     rulesetVersion: RULESET_VERSION,
     preparedFor: profile.full_name ?? profile.email,
     generatedAt,

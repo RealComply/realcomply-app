@@ -157,6 +157,17 @@ class Cursor {
   }
 }
 
+export type Attachment = {
+  /** What this document is, in the words the card uses. */
+  title: string;
+  fileName: string;
+  /** Absent where the file could not be read, or is a kind we cannot append. */
+  bytes: Uint8Array | null;
+  kind: "pdf" | "png" | "jpg" | "other";
+  /** Why it is not attached, where it is not. Shown in the index. */
+  omittedBecause?: string;
+};
+
 export type ComplianceRecordInput = {
   property: Property;
   /** The agency's own name. This is their document; RealComply made it. */
@@ -179,14 +190,50 @@ export type ComplianceRecordInput = {
   logo: { bytes: Uint8Array; type: "png" | "jpg" } | null;
   items: ComplianceItem[];
   byKey: Record<string, PropertyItem | undefined>;
+  /**
+   * The agent's own words on how the estimate was formed, reproduced in full.
+   *
+   * This is the one piece of free text in the whole file that a regulator is
+   * likely to actually read: s72A(5) requires evidence the estimate was
+   * reasonable, and s74 lets the Secretary demand it be substantiated. A record
+   * that says "ESP reasoning recorded - done" and omits the reasoning proves
+   * nothing at all.
+   */
+  espReasoning: string | null;
+  /** Typed-name attestations, reproduced with the date each was given. */
+  signatures: {
+    agent: { typedName: string; signedAt: string | null } | null;
+    licensee: { typedName: string; signedAt: string | null } | null;
+  };
+  /**
+   * Source documents appended after the summary (Adam, 24 Aug 2026).
+   *
+   * PDFs have their pages copied in; images become a page of their own.
+   * Anything else is listed in the index as held-but-not-attached rather than
+   * silently omitted — a document missing from a pack with no explanation is
+   * worse than one the pack tells you to go and ask for.
+   */
+  attachments: Attachment[];
   rulesetVersion: string;
   preparedFor: string;
   generatedAt: Date;
 };
 
 export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Promise<Uint8Array> {
-  const { property, agencyName, agentName, logo, items, byKey, rulesetVersion, preparedFor, generatedAt } =
-    input;
+  const {
+    property,
+    agencyName,
+    agentName,
+    logo,
+    items,
+    byKey,
+    espReasoning,
+    signatures,
+    attachments,
+    rulesetVersion,
+    preparedFor,
+    generatedAt,
+  } = input;
 
   const doc = await PDFDocument.create();
   doc.setTitle(`${agencyName} - compliance record - ${property.address}`);
@@ -271,7 +318,15 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     for (const item of stageItems) {
       const current = byKey[item.key];
       const status = current?.status ?? "open";
-      const dated = current?.event_date ? ` · ${formatAuDate(current.event_date)}` : "";
+      // A bare date under a status tells a reader nothing about what happened
+      // on it. Where the card names its date — "Date the contract was
+      // received" — the record says so too, because that is the whole reason
+      // the field exists.
+      const dated = current?.event_date
+        ? item.dateLabel
+          ? ` · ${item.dateLabel.toLowerCase()}: ${formatAuDate(current.event_date)}`
+          : ` · ${formatAuDate(current.event_date)}`
+        : "";
       c.text(item.label, { size: 9.5, bold: true, indent: 4 });
       c.text(`${status}${dated}`, {
         size: 9,
@@ -284,6 +339,78 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     c.y -= 8;
   }
 
+  // The agent's own reasoning, in full.
+  //
+  // Reproduced rather than summarised. s72A(5) wants evidence the estimate was
+  // reasonable and s74 lets the Secretary demand it be substantiated, so a line
+  // reading "ESP reasoning recorded - done" with the reasoning left out proves
+  // nothing. If it runs to a page, it runs to a page.
+  if (espReasoning && espReasoning.trim()) {
+    c.rule(6, 10);
+    c.text("How the estimated selling price was formed", { size: 11, bold: true, gap: 4 });
+    c.text(espReasoning.trim(), { size: 9.5, color: MUTED, gap: 2 });
+    c.text("In the agent's own words. s72A(5), Property and Stock Agents Act 2002 (NSW).", {
+      size: 8,
+      color: FAINT,
+    });
+  }
+
+  // Signatures (Adam, 24 Aug 2026: "we should have signatures on the final
+  // settlement PDF too").
+  //
+  // A typed name adopted as a signature, with the date it was given. Drawn as a
+  // signature block rather than another checklist line, because that is what it
+  // is: the two people who take responsibility for this file, named, on the
+  // document handed over. A record that merely says "Licensee signature - done"
+  // makes a reader go looking for who signed.
+  if (signatures.agent || signatures.licensee) {
+    c.rule(10, 12);
+    c.text("Signed", { size: 11, bold: true, gap: 6 });
+
+    const block = (role: string, sig: { typedName: string; signedAt: string | null } | null) => {
+      if (!sig) return;
+      c.need(46);
+      c.text(sig.typedName, { size: 12, bold: true });
+      c.text(role, { size: 8.5, color: FAINT });
+      if (sig.signedAt) {
+        c.text(`Signed ${formatAuDate(sig.signedAt.slice(0, 10))}`, { size: 8.5, color: MUTED });
+      }
+      c.y -= 8;
+    };
+
+    block("Agent", signatures.agent);
+    block("Licensee in charge", signatures.licensee);
+
+    c.text(
+      "Typed names adopted as signatures in RealComply, recorded against this file and not editable once given.",
+      { size: 8, color: FAINT },
+    );
+  }
+
+  // What is appended, listed before it appears.
+  if (attachments.length > 0) {
+    c.rule(10, 12);
+    c.text(`Documents attached (${attachments.filter((a) => a.bytes).length})`, {
+      size: 11,
+      bold: true,
+      gap: 4,
+    });
+    attachments.forEach((a, i) => {
+      const n = i + 1;
+      if (a.bytes) {
+        c.text(`${n}. ${a.title}`, { size: 9.5, bold: true, indent: 4 });
+        c.text(a.fileName, { size: 8.5, color: MUTED, indent: 14 });
+      } else {
+        c.text(`${a.title}`, { size: 9.5, bold: true, color: AMBER, indent: 4 });
+        c.text(`${a.fileName} - ${a.omittedBecause ?? "not attached"}. Held on file.`, {
+          size: 8.5,
+          color: AMBER,
+          indent: 14,
+        });
+      }
+    });
+  }
+
   c.rule(8, 10);
   c.text(
     `Prepared for ${preparedFor}. This record reflects diligence-support content maintained in RealComply and is not legal advice.`,
@@ -291,6 +418,79 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   );
 
   c.stampFooter();
+
+  // ── Appended source documents ────────────────────────────────────────────
+  //
+  // Each gets a separator page naming it, so a thirty-page pack can be
+  // navigated by someone who did not assemble it.
+  //
+  // A document that fails to open does NOT fail the export. An encrypted or
+  // malformed PDF is entirely possible in a pile of files from solicitors and
+  // valuers, and losing the whole record over one of them would be the worst
+  // possible trade.
+  let attachmentNo = 0;
+  for (const a of attachments) {
+    if (!a.bytes) continue;
+    attachmentNo += 1;
+
+    const sep = doc.addPage([PAGE_W, PAGE_H]);
+    sep.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: GREEN });
+    sep.drawText(ascii(`Attachment ${attachmentNo}`), {
+      x: MARGIN,
+      y: PAGE_H - 120,
+      size: 9,
+      font: fonts.regular,
+      color: FAINT,
+    });
+    sep.drawText(ascii(a.title), {
+      x: MARGIN,
+      y: PAGE_H - 146,
+      size: 18,
+      font: fonts.bold,
+      color: INK,
+    });
+    sep.drawText(ascii(a.fileName), {
+      x: MARGIN,
+      y: PAGE_H - 168,
+      size: 9.5,
+      font: fonts.regular,
+      color: MUTED,
+    });
+    sep.drawText(ascii(property.address), {
+      x: MARGIN,
+      y: PAGE_H - 190,
+      size: 9.5,
+      font: fonts.regular,
+      color: FAINT,
+    });
+
+    try {
+      if (a.kind === "pdf") {
+        const src = await PDFDocument.load(a.bytes);
+        const copied = await doc.copyPages(src, src.getPageIndices());
+        copied.forEach((pg) => doc.addPage(pg));
+      } else if (a.kind === "png" || a.kind === "jpg") {
+        const img = a.kind === "png" ? await doc.embedPng(a.bytes) : await doc.embedJpg(a.bytes);
+        const page = doc.addPage([PAGE_W, PAGE_H]);
+        const scale = Math.min((PAGE_W - MARGIN * 2) / img.width, (PAGE_H - MARGIN * 2) / img.height, 1);
+        page.drawImage(img, {
+          x: (PAGE_W - img.width * scale) / 2,
+          y: (PAGE_H - img.height * scale) / 2,
+          width: img.width * scale,
+          height: img.height * scale,
+        });
+      }
+    } catch {
+      sep.drawText(ascii("This document could not be opened and is held on file in RealComply."), {
+        x: MARGIN,
+        y: PAGE_H - 220,
+        size: 9.5,
+        font: fonts.regular,
+        color: AMBER,
+      });
+    }
+  }
+
   return doc.save();
 }
 

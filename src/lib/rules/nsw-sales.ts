@@ -85,6 +85,13 @@ export type ComplianceItem = {
   legalBasis?: string;
   licenseeOnly?: boolean;
   requiresDate?: boolean;
+  /**
+   * Replaces the generic "Event date" heading. Worth setting wherever the date
+   * means something specific: "Event date" on a contract card does not tell the
+   * agent whether we want the date it was prepared, received, or served, and
+   * three agents will answer three different questions.
+   */
+  dateLabel?: string;
   requiredForStageCompletion: boolean;
   // Second argument gives a conditional item visibility into ANOTHER item's
   // recorded data (not just the property's own setup fields) — e.g. e2
@@ -435,7 +442,16 @@ const items: ComplianceItem[] = [
     description:
       "Contract available before marketing, with the s52A prescribed documents attached. Attach the contract and the documents are checked off one by one.",
     legalBasis: "s52A, Conveyancing Act 1919 (NSW); Conveyancing (Sale of Land) Regulation 2022, Sch 1",
-    requiresDate: false,
+    // The date the contract came back from the vendor's solicitor (Adam,
+    // 24 Aug 2026), so it appears on the audit record.
+    //
+    // It is the date the agent became ABLE to comply with s63(2) — the section
+    // forbids offering the property for sale unless a copy of the contract is
+    // available for inspection at the registered office. The gap between this
+    // date and the first marketing is the thing a regulator would look at, and
+    // until now nothing recorded the first half of it.
+    requiresDate: true,
+    dateLabel: "Date the contract was received",
     requiredForStageCompletion: true,
     hideNote: true,
     showFindings: true,

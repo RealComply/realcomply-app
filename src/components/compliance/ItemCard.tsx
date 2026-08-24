@@ -755,7 +755,7 @@ function ChecklistItem({
         )}
         {item.requiresDate && (
           <div>
-            <label className="block text-xs text-rc-muted">Event date</label>
+            <label className="block text-xs text-rc-muted">{item.dateLabel ?? "Event date"}</label>
             <input
               type="date"
               name="eventDate"
