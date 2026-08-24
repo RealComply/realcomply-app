@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { Check, ChevronRight, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { LogoMark } from "@/components/Logo";
 import { NAV_GROUPS } from "@/lib/nav";
 import { EMPTY_NAV_COUNTS, type NavCounts } from "@/lib/data/nav-counts";
@@ -41,6 +41,15 @@ import { EMPTY_NAV_COUNTS, type NavCounts } from "@/lib/data/nav-counts";
 const STORAGE_KEY = "rc-sidebar-collapsed";
 const RAIL_CLASS = "rc-nav-rail";
 
+const LISTINGS_KEY = "rc-listings-expanded";
+const LISTINGS_CLASS = "rc-nav-listings-open";
+
+// How many listings the breakdown shows before handing over to the Listings
+// page. Six is what fits under the row without the sidebar becoming a scroll
+// of its own; an office with forty listings does not want forty rows here, it
+// wants the worst few and a way through.
+const SUBLIST_LIMIT = 6;
+
 // Navigation itself now lives in lib/nav.ts. Global search needs the same
 // list of destinations, and two copies of a nav list drift the first time a
 // page is added to one of them. What stays here is what depends on the
@@ -60,6 +69,19 @@ function toggleRail(button: HTMLButtonElement) {
   } catch {
     // Private browsing or blocked storage — not remembering the choice is not
     // worth failing over.
+  }
+}
+
+// Same mechanism as the rail, for the same reason: the open/closed state is
+// restored before first paint by the inline script in app/layout.tsx, so it
+// cannot live in React state without either a flash or a hydration mismatch.
+function toggleListings(button: HTMLButtonElement) {
+  const open = document.documentElement.classList.toggle(LISTINGS_CLASS);
+  button.setAttribute("aria-expanded", String(open));
+  try {
+    window.localStorage.setItem(LISTINGS_KEY, open ? "1" : "0");
+  } catch {
+    // As above.
   }
 }
 
@@ -132,7 +154,10 @@ export function Sidebar({
             // is amber: these are things to look at, not emergencies, and a
             // sidebar of red dots is a sidebar people stop reading.
             const tone = countKey === "registers" ? counts.registersTone : "amber";
-            return (
+            // Only Listings unfolds, and only when there is something to
+            // unfold onto.
+            const unfolds = countKey === "listings" && counts.listingRows.length > 0;
+            const row = (
               <Link
                 key={href}
                 href={href}
@@ -159,6 +184,10 @@ export function Sidebar({
                     <span
                       data-rail-hide
                       className={`ml-auto inline-flex h-[19px] min-w-[19px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums ${
+                        // Room for the chevron, which sits over the row's
+                        // right edge rather than inside the link.
+                        unfolds ? "mr-[22px]" : ""
+                      } ${
                         active
                           ? "bg-white text-rc-green-deep"
                           : tone === "red"
@@ -183,6 +212,94 @@ export function Sidebar({
                   </>
                 )}
               </Link>
+            );
+
+            if (!unfolds) return row;
+
+            return (
+              <div key={href} className="relative">
+                {row}
+                {/* A sibling of the link, not a child: a button inside an
+                    anchor is invalid, and nesting it would make the whole row
+                    navigate when you meant to unfold it. Positioned over the
+                    row's right edge so the row itself keeps every class and
+                    every rail behaviour it already had. */}
+                <button
+                  type="button"
+                  data-listings-toggle
+                  onClick={(e) => toggleListings(e.currentTarget)}
+                  aria-expanded="false"
+                  aria-label="Show or hide your listings"
+                  title="Show or hide your listings"
+                  className={`absolute right-2 top-[11px] flex h-[18px] w-[18px] items-center justify-center rounded-[5px] transition hover:bg-white/15 ${
+                    active ? "text-white" : "text-rc-nav-muted hover:text-white"
+                  }`}
+                >
+                  <ChevronRight
+                    data-listings-chevron
+                    size={12}
+                    strokeWidth={2.6}
+                    className="transition-transform"
+                    aria-hidden="true"
+                  />
+                </button>
+
+                {/* Always rendered; only its visibility moves, so opening the
+                    list costs no request and no re-render. `flex-col` without
+                    `flex` is deliberate — display comes from globals.css,
+                    which is what the class on <html> switches. */}
+                <div
+                  data-listings-sublist
+                  className="ml-[19px] flex-col gap-px border-l border-rc-ink-line py-1 pl-1.5"
+                >
+                  {counts.listingRows.slice(0, SUBLIST_LIMIT).map((l) => {
+                    const clear = l.flagged === 0 && l.outstanding === 0;
+                    return (
+                      <Link
+                        key={l.id}
+                        href={`/dashboard/${l.id}`}
+                        onClick={() => setOpen(false)}
+                        // The full address, since the visible one is truncated
+                        // to fit a 236px column.
+                        title={l.address}
+                        className="group/sub flex items-center gap-1.5 rounded-[7px] px-1.5 py-1.5 transition hover:bg-white/[0.06]"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-[12.4px] font-medium text-rc-ink-muted group-hover/sub:text-white">
+                          {l.address}
+                        </span>
+                        {l.flagged > 0 && (
+                          <span className="inline-flex h-[17px] min-w-[17px] shrink-0 items-center justify-center rounded-full bg-rc-red px-1 text-[9.5px] font-bold tabular-nums text-white">
+                            {l.flagged}
+                            <span className="sr-only"> flagged</span>
+                          </span>
+                        )}
+                        {l.outstanding > 0 && (
+                          <span className="inline-flex h-[17px] min-w-[17px] shrink-0 items-center justify-center rounded-full bg-rc-amber px-1 text-[9.5px] font-bold tabular-nums text-rc-ink">
+                            {l.outstanding}
+                            <span className="sr-only"> left in this stage</span>
+                          </span>
+                        )}
+                        {clear && (
+                          <>
+                            <Check size={12} strokeWidth={3} className="shrink-0 text-rc-green" aria-hidden="true" />
+                            <span className="sr-only">stage complete</span>
+                          </>
+                        )}
+                      </Link>
+                    );
+                  })}
+
+                  {counts.listingRows.length > SUBLIST_LIMIT && (
+                    <Link
+                      href="/dashboard"
+                      onClick={() => setOpen(false)}
+                      className="rounded-[7px] px-1.5 py-1.5 text-[11.8px] font-semibold text-rc-nav-muted transition hover:bg-white/[0.06] hover:text-white"
+                    >
+                      See all {counts.listingRows.length} listings →
+                    </Link>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>

@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Home as HomeIcon, Plus } from "lucide-react";
+import { Check, Home as HomeIcon, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
+import { navCountsFor } from "@/lib/data/nav-counts";
 import { STAGE_LABELS, type Property } from "@/lib/types";
 
 export default async function DashboardPage() {
@@ -14,6 +15,13 @@ export default async function DashboardPage() {
     .order("created_at", { ascending: false });
 
   const list = (properties ?? []) as Property[];
+
+  // The same numbers the sidebar shows, in the place you would look for them
+  // when deciding which file to open. Free: the dashboard layout has already
+  // called this in the same request and navCountsFor is cached, so this is a
+  // map lookup rather than a second set of queries.
+  const { listingRows } = await navCountsFor(supabase, profile);
+  const statusById = new Map(listingRows.map((l) => [l.id, l]));
 
   return (
     <>
@@ -74,9 +82,40 @@ export default async function DashboardPage() {
                       </p>
                     </div>
                   </div>
-                  <span className="shrink-0 rounded-full bg-rc-green-soft px-3 py-1 text-xs font-medium text-rc-green-deep shadow-[inset_0_0_0_1px_rgba(12,166,120,0.14)]">
-                    {STAGE_LABELS[property.stage]}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {/* What this file still needs, in the stage it is in.
+                        Absent on a test listing, which is deliberately not
+                        counted anywhere — see nav-counts.ts. */}
+                    {(() => {
+                      const s = statusById.get(property.id);
+                      if (!s) return null;
+                      if (s.flagged === 0 && s.outstanding === 0) {
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-rc-green-soft px-2.5 py-1 text-xs font-semibold text-rc-green-deep">
+                            <Check size={12} strokeWidth={3} aria-hidden="true" />
+                            Stage complete
+                          </span>
+                        );
+                      }
+                      return (
+                        <>
+                          {s.flagged > 0 && (
+                            <span className="rounded-full bg-rc-red-soft px-2.5 py-1 text-xs font-semibold text-rc-red">
+                              {s.flagged} flagged
+                            </span>
+                          )}
+                          {s.outstanding > 0 && (
+                            <span className="rounded-full bg-rc-amber/15 px-2.5 py-1 text-xs font-semibold text-rc-amber-deep">
+                              {s.outstanding} to do
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
+                    <span className="rounded-full bg-rc-green-soft px-3 py-1 text-xs font-medium text-rc-green-deep shadow-[inset_0_0_0_1px_rgba(12,166,120,0.14)]">
+                      {STAGE_LABELS[property.stage]}
+                    </span>
+                  </div>
                 </Link>
               </li>
             ))}

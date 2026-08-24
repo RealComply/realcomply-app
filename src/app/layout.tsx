@@ -41,16 +41,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${plusJakarta.variable} h-full antialiased`}>
       <head>
         {/*
-          Restores the collapsed/expanded sidebar choice before first paint.
-          It has to run here, ahead of the body, or the sidebar renders at its
-          default width and visibly snaps to the saved one — the flash is more
-          noticeable than the feature. Doing it in React state instead would
-          mean either that flash or a hydration mismatch, so the choice lives
-          in a class on <html> and the CSS in globals.css keys off it.
+          Restores two sidebar choices before first paint: whether it is
+          collapsed to a rail, and whether the Listings breakdown is unfolded.
+          Both have to run here, ahead of the body, or the sidebar renders in
+          its default state and visibly snaps to the saved one — the flash is
+          more noticeable than the feature. Doing either in React state instead
+          would mean that flash or a hydration mismatch, so both live as
+          classes on <html> and the CSS in globals.css keys off them.
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem('rc-sidebar-collapsed')==='1'){document.documentElement.classList.add('rc-nav-rail')}}catch(e){}`,
+            __html: `try{var d=document.documentElement,s=localStorage;if(s.getItem('rc-sidebar-collapsed')==='1'){d.classList.add('rc-nav-rail')}if(s.getItem('rc-listings-expanded')==='1'){d.classList.add('rc-nav-listings-open')}}catch(e){}`,
           }}
         />
       </head>

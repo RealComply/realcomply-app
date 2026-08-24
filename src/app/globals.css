@@ -213,6 +213,38 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   The Listings breakdown — Adam, 24 Aug 2026: "a little arrow next to the word
+   listings... you click that arrow down, it then unfolds all of the current
+   listings and has the number in red of what is flagged and then in an orange
+   circle, the number of items left to check off within whichever stage the
+   listing is at."
+
+   Open/closed is a class on <html>, not React state, for exactly the reason
+   the rail is — see the note beside the inline script in app/layout.tsx. The
+   markup is always rendered; only its visibility moves, so opening the list
+   costs no request and no re-render.
+--------------------------------------------------------------------------- */
+[data-listings-sublist] {
+  display: none;
+}
+html.rc-nav-listings-open [data-listings-sublist] {
+  display: flex;
+}
+html.rc-nav-listings-open [data-listings-chevron] {
+  transform: rotate(90deg);
+}
+
+@media (min-width: 768px) {
+  /* Collapsed to a 68px rail there is nowhere to put an address, so the
+     breakdown and its control both go. The saved choice is untouched, so
+     expanding the sidebar again reopens it where it was left. */
+  html.rc-nav-rail [data-listings-sublist],
+  html.rc-nav-rail [data-listings-toggle] {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Printing. Two dashboard routes exist to be printed rather than read on
    screen — the per-property finalised summary (/dashboard/[id]/summary) and
    the registers export (/dashboard/registers/export), both of which rely on

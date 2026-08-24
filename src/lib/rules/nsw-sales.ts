@@ -724,6 +724,7 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "Advertising identifies the licensed agent/agency",
     description: "Every ad identifies the licensed agent and agency.",
+    legalBasis: "s50, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
   },
@@ -745,6 +746,7 @@ const items: ComplianceItem[] = [
     label: "Agent's interest included in all marketing material",
     description:
       "Every advertisement and marketing piece for this listing discloses that you (or a related party) have an interest in the property, consistent with the written consent given under s49.",
+    legalBasis: "s49, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
     showIf: (p) => Boolean(p.agent_interest),
