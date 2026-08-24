@@ -22,6 +22,20 @@
 // As prompts they cost nothing, record nothing, and help someone facing an
 // empty box — which is the actual problem.
 //
+// EXPECTED TO BE TEMPORARY (Adam, 24 Aug 2026: "we can remove the worth
+// considering prompts when the new SOI laws come in").
+//
+// Stage 2 of the underquoting reforms introduces a Statement of Information —
+// an approved form carrying the agent's comparable sales — which will impose
+// its own structure and make a hand-rolled list of factors redundant. Delete
+// this file and the panel then.
+//
+// DO NOT delete the reasoning card with it. The same reforms add a
+// record-keeping obligation covering the METHODOLOGY used to determine and
+// revise the estimate, which is precisely what that box holds: it goes from
+// good practice to law at the same moment these prompts stop being useful.
+// See RealComply-NSW-underquoting-reforms-late-2026.md.
+//
 // MATERIAL FACTS ARE DELIBERATELY ABSENT. They are the one part of the REINSW
 // checklist that IS law (s52(1)(b), reg 60) and they already have their own
 // card. Asking again here would be the double entry the product exists to
