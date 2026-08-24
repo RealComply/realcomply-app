@@ -43,6 +43,7 @@ import {
 } from "@/lib/actions/compliance";
 import { extractReportDetails, type ReportExtractionFields } from "@/lib/actions/extraction";
 import { DictatableTextarea } from "@/components/Dictate";
+import { EspPrompts } from "@/components/compliance/EspPrompts";
 
 const initialState: ActionState = { error: null };
 
@@ -860,12 +861,21 @@ function ChecklistItem({
                 {item.requiresNote && <span className="text-rc-amber-deep"> — required</span>}
               </label>
               <DictatableTextarea
+                // Stable id so the ESP prompts panel below can insert a heading
+                // into this box, the same way the dictate button already writes
+                // into it.
+                id={`note-${item.key}`}
                 name="note"
                 defaultValue={data.note ?? draft?.note ?? noteSeed ?? ""}
-                rows={2}
+                rows={item.key === "a4c" ? 5 : 2}
                 placeholder={item.notePlaceholder}
                 className="mt-1 w-full rounded-md border border-rc-border px-2 py-1 text-sm"
               />
+              {/* a4c only. The REINSW factors as prompts, never tick boxes —
+                  see lib/rules/esp-prompts.ts for why that distinction is the
+                  whole point. Mocked up 22 Aug, approved, built 24 Aug after
+                  Adam noticed it had never landed. */}
+              {item.key === "a4c" && <EspPrompts noteId={`note-${item.key}`} />}
               {/* Only while it is still a suggestion. Same rule as a7's select
                   above: it has to be obvious which of the two answered this,
                   because the licensee is the one who carries the approval. */}
