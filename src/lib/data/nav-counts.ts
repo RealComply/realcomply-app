@@ -47,8 +47,21 @@ export type ListingStatus = {
 };
 
 export type NavCounts = {
-  /** Every outstanding task across the office — the number on the Listings row. */
+  /**
+   * Everything outstanding across the office, flagged plus to-do.
+   *
+   * NOT rendered as a number on the Listings row. Adam, 24 Aug 2026: "the
+   * number next to listings in the sidebar makes it look like I have thirty
+   * one listings" — and he is right, a number immediately after a plural noun
+   * is read as a count of that noun. The row shows a red and an amber dot
+   * instead and the counting happens in the breakdown underneath, where each
+   * number sits against the address it belongs to. This total survives for
+   * screen readers and for anything that needs a single figure.
+   */
   listings: number;
+  /** Split out because the row shows one dot per kind, not a combined number. */
+  listingsFlagged: number;
+  listingsOutstanding: number;
   /** One entry per listing, most urgent first. The sidebar shows the first few. */
   listingRows: ListingStatus[];
   signoffs: number;
@@ -59,6 +72,8 @@ export type NavCounts = {
 
 export const EMPTY_NAV_COUNTS: NavCounts = {
   listings: 0,
+  listingsFlagged: 0,
+  listingsOutstanding: 0,
   listingRows: [],
   signoffs: 0,
   registers: 0,
@@ -144,8 +159,13 @@ export const navCountsFor = cache(async function navCountsFor(
   const expired = licences.filter((s) => s === "expired").length;
   const urgent = licences.filter((s) => s === "urgent").length;
 
+  const listingsFlagged = listingRows.reduce((n, l) => n + l.flagged, 0);
+  const listingsOutstanding = listingRows.reduce((n, l) => n + l.outstanding, 0);
+
   return {
-    listings: listingRows.reduce((n, l) => n + l.flagged + l.outstanding, 0),
+    listings: listingsFlagged + listingsOutstanding,
+    listingsFlagged,
+    listingsOutstanding,
     listingRows,
     signoffs: signoffCount ?? 0,
     // "soon" (within 90 days) is deliberately excluded. A licence three months

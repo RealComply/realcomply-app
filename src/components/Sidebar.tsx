@@ -157,6 +157,26 @@ export function Sidebar({
             // Only Listings unfolds, and only when there is something to
             // unfold onto.
             const unfolds = countKey === "listings" && counts.listingRows.length > 0;
+
+            // Listings shows DOTS, not a number (Adam, 24 Aug 2026: "the
+            // number next to listings in the sidebar makes it look like I have
+            // thirty one listings"). He is right — a figure immediately after
+            // a plural noun is read as a count of that noun, and no tooltip
+            // fixes that. A pair of dots says "there is something here, in two
+            // kinds" and leaves the counting to the breakdown underneath,
+            // where each number sits against the address it belongs to.
+            //
+            // Every other row keeps its number, because "2" next to Sign-offs
+            // does mean two sign-offs. Listings was the only row where the
+            // figure counted something other than the thing beside it.
+            const dots =
+              countKey === "listings"
+                ? ([
+                    counts.listingsFlagged > 0 ? ("red" as const) : null,
+                    counts.listingsOutstanding > 0 ? ("amber" as const) : null,
+                  ].filter(Boolean) as ("red" | "amber")[])
+                : [];
+            const showsNumber = count > 0 && countKey !== "listings";
             const row = (
               <Link
                 key={href}
@@ -179,15 +199,49 @@ export function Sidebar({
                 <span data-rail-hide className="whitespace-nowrap">
                   {label}
                 </span>
-                {count > 0 && (
+                {dots.length > 0 && (
+                  <>
+                    <span
+                      data-rail-hide
+                      className={`ml-auto flex items-center gap-1.5 ${unfolds ? "mr-[22px]" : ""}`}
+                    >
+                      {dots.map((d) => (
+                        <span
+                          key={d}
+                          className={`h-2 w-2 rounded-full ${d === "red" ? "bg-rc-red" : "bg-rc-amber"} ${
+                            // On the green active pill a bare red dot muddies
+                            // against the background; a hairline ring lifts
+                            // both off it without changing the colour.
+                            active ? "ring-[1.5px] ring-white/35" : ""
+                          }`}
+                        />
+                      ))}
+                      {/* The numbers are not shown here, but a screen reader
+                          should still get them — it cannot see the breakdown
+                          below without navigating to it. */}
+                      <span className="sr-only">
+                        {counts.listingsFlagged > 0 ? `${counts.listingsFlagged} flagged` : ""}
+                        {counts.listingsFlagged > 0 && counts.listingsOutstanding > 0 ? ", " : ""}
+                        {counts.listingsOutstanding > 0 ? `${counts.listingsOutstanding} still to do` : ""}
+                      </span>
+                    </span>
+                    <span
+                      data-rail-only
+                      aria-hidden="true"
+                      className={`absolute right-[9px] top-[7px] h-2 w-2 rounded-full ring-2 ring-rc-nav-bg ${
+                        // One dot in the rail, not two — there is no room, and
+                        // the more serious of the two is the one to show.
+                        counts.listingsFlagged > 0 ? "bg-rc-red" : "bg-rc-amber"
+                      }`}
+                    />
+                  </>
+                )}
+
+                {showsNumber && (
                   <>
                     <span
                       data-rail-hide
                       className={`ml-auto inline-flex h-[19px] min-w-[19px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums ${
-                        // Room for the chevron, which sits over the row's
-                        // right edge rather than inside the link.
-                        unfolds ? "mr-[22px]" : ""
-                      } ${
                         active
                           ? "bg-white text-rc-green-deep"
                           : tone === "red"
