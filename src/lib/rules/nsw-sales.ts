@@ -655,6 +655,7 @@ const items: ComplianceItem[] = [
     label: "Vendor approved all marketing material",
     description:
       "Confirm the vendor has approved the marketing material (photos, copy, floorplan, signage) before it goes live.",
+    legalBasis: "Sch 1 rr 8 & 9, Property and Stock Agents Regulation 2022 (NSW); Sch 2 r 3(2)(k)",
     requiresDate: false,
     requiredForStageCompletion: true,
     hideNote: true,
@@ -688,6 +689,7 @@ const items: ComplianceItem[] = [
     label: "Licensee approved the price statement before publication",
     description:
       "The licensee in charge confirms the price statement on the marketing material (the advertised guide/range) is accurate, before it's published.",
+    legalBasis: "Supports ss 73 & 73A, Property and Stock Agents Act 2002 (NSW); s32 (duty to properly supervise)",
     licenseeOnly: true,
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -1185,6 +1187,7 @@ const items: ComplianceItem[] = [
     kind: "sign",
     label: "Agent signature",
     description: "Type your name to adopt it as your signature on this file.",
+    legalBasis: "Supports s104, Property and Stock Agents Act 2002 (NSW) — records a licensee must make and keep",
     requiresDate: false,
     requiredForStageCompletion: true,
     hideEvidence: true,
@@ -1196,6 +1199,7 @@ const items: ComplianceItem[] = [
     label: "Send to licensee",
     description:
       "Hand the file to the licensee for sign-off. (Email delivery isn't wired up yet — let your licensee know directly that it's ready.)",
+    legalBasis: "Supports s32, Property and Stock Agents Act 2002 (NSW) — duty to properly supervise the business",
     requiresDate: false,
     requiredForStageCompletion: true,
     hideEvidence: true,
@@ -1211,6 +1215,7 @@ const items: ComplianceItem[] = [
     kind: "sign",
     label: "Licensee signature",
     description: "The licensee in charge types their name to adopt it as their signature.",
+    legalBasis: "Supports s32, Property and Stock Agents Act 2002 (NSW) — duty to properly supervise the business",
     licenseeOnly: true,
     hideEvidence: true,
     requiresDate: false,
@@ -1231,6 +1236,7 @@ const items: ComplianceItem[] = [
     label: "Generate finalised compliance file",
     description:
       "Generates the finalised, read-only compliance record for this file. (A polished branded PDF export is a follow-up — this produces a printable summary today.)",
+    legalBasis: "Supports s104, Property and Stock Agents Act 2002 (NSW) — records a licensee must make and keep",
     requiresDate: false,
     requiredForStageCompletion: false,
   },
