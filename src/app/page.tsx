@@ -225,7 +225,11 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               harder to place. It gets a band of its own further down. */}
           <p className="mx-auto mt-4 max-w-lg text-lg text-rc-muted">{DESCRIPTION}</p>
 
-          <EarlyAccessForm source={src} />
+          {/* Anchored so the closed-signup page can send someone straight to
+              the form rather than to the top of the page (24 Aug 2026). */}
+          <div id="early-access" className="scroll-mt-24">
+            <EarlyAccessForm source={src} />
+          </div>
 
           {/* RISK REVERSAL. Adam, 15 Aug 2026: "I really want the person who
               lands on the landing page to feel like there is absolutely no

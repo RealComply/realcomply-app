@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { currentLegalVersions } from "@/lib/legal/documents";
+import { openSignupsAllowed } from "@/lib/signups";
 
 // Resolves the origin the request actually came in on (e.g. the exact
 // Vercel domain the user is visiting), so the email confirmation link
@@ -68,6 +69,26 @@ export async function signup(
     return { error: website.error };
   }
   const websiteUrl = website.url;
+
+  // THE ACTUAL DOOR (Adam, 24 Aug 2026: "can we put a block on that like we had
+  // before?").
+  //
+  // Checked here, not just on the page. A Server Action is a real POST endpoint,
+  // and a page that declines to render a form stops an ordinary visitor while
+  // doing nothing at all about a hand-rolled request. The same reasoning as the
+  // legal-acceptance check below.
+  //
+  // Invites are deliberately exempt. An invite is bound to one address, only a
+  // licensee in charge can issue one, and a human has vouched for the person —
+  // which is precisely the arrangement that made running with email
+  // confirmation switched off acceptable. Closing public signup restores that
+  // arrangement rather than adding a new restriction.
+  if (!inviteToken && !openSignupsAllowed()) {
+    return {
+      error:
+        "RealComply is invite-only at the moment. If your licensee has sent you a link, open that link to join their office.",
+    };
+  }
 
   if (!inviteToken && !agencyName.trim()) {
     return { error: "Agency name is required." };
