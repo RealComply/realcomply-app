@@ -1152,7 +1152,28 @@ const items: ComplianceItem[] = [
     label: "Buyers who received a copy of the Contract for Sale",
     description:
       "Buyers who request a copy of the contract are entitled to see the building, pest and strata report register. Add each buyer, or point at the record your CRM already keeps.",
-    legalBasis: "cl 37(2), Property and Stock Agents Regulation 2022 (NSW)",
+    // "Supports", not a bare citation, and the distinction is the honest one.
+    //
+    // Checked against the Regulation on 25 Aug 2026 when Adam asked what the
+    // legal basis for this list actually is. NOTHING in the Act or the
+    // Regulation requires an agent to keep a register of who received a copy
+    // of the contract. What cl 37 requires is a record of the BUILDING, PEST
+    // AND STRATA REPORTS the licensee is aware of; cl 37(2) then requires that
+    // record to be disclosed "to a person requesting a copy of the contract for
+    // the sale of the residential property".
+    //
+    // So the duty is triggered by a person asking for a contract, and this list
+    // is how an agency evidences that it met the duty each time it was
+    // triggered — you cannot show you disclosed to everyone who asked without
+    // knowing who asked. That makes it a control, not an obligation, and the
+    // wording has to say so.
+    //
+    // s63 sits behind it too: the proposed contract and its s52A documents must
+    // be available for inspection at all times an offer may be made. Serving
+    // the contract after exchange is a different duty again and has its own
+    // card (Sch 2 r17).
+    legalBasis:
+      "Supports cl 37(2), Property and Stock Agents Regulation 2022 (NSW) — the property-reports record must be disclosed to anyone requesting a copy of the contract; s63 PSA Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
     requiresNote: true,
