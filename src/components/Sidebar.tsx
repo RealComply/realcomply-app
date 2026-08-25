@@ -149,34 +149,46 @@ export function Sidebar({
           </div>
           {group.links.map(({ href, label, Icon, exact, countKey }) => {
             const active = isActive(pathname, href, exact);
-            const count = countKey ? counts[countKey] : 0;
-            // Red only where something has actually lapsed. Everything else
-            // is amber: these are things to look at, not emergencies, and a
-            // sidebar of red dots is a sidebar people stop reading.
-            const tone = countKey === "registers" ? counts.registersTone : "amber";
             // Only Listings unfolds, and only when there is something to
             // unfold onto.
             const unfolds = countKey === "listings" && counts.listingRows.length > 0;
 
-            // Listings shows DOTS, not a number (Adam, 24 Aug 2026: "the
-            // number next to listings in the sidebar makes it look like I have
-            // thirty one listings"). He is right — a figure immediately after
-            // a plural noun is read as a count of that noun, and no tooltip
-            // fixes that. A pair of dots says "there is something here, in two
-            // kinds" and leaves the counting to the breakdown underneath,
-            // where each number sits against the address it belongs to.
+            // EVERY row with something outstanding shows DOTS, not a number.
             //
-            // Every other row keeps its number, because "2" next to Sign-offs
-            // does mean two sign-offs. Listings was the only row where the
-            // figure counted something other than the thing beside it.
-            const dots =
+            // Listings went first (Adam, 24 Aug 2026: "the number next to
+            // listings in the sidebar makes it look like I have thirty one
+            // listings") — a figure immediately after a plural noun is read as
+            // a count of that noun, and no tooltip fixes it. Then, 25 Aug:
+            // "can we also add the orange and red dots to anything outstanding
+            // in the licensee section". So the whole sidebar now speaks one
+            // language: a dot means there is something here, and its colour
+            // says how bad. Red is something that has actually lapsed or run
+            // out of time; amber is something that wants a look.
+            //
+            // The counting happens one level down — in the Listings breakdown,
+            // or on the page itself — where each number sits against the thing
+            // it belongs to. The figures are still announced to screen
+            // readers, which cannot see that next level without navigating.
+            const signal: { red: number; amber: number } =
               countKey === "listings"
-                ? ([
-                    counts.listingsFlagged > 0 ? ("red" as const) : null,
-                    counts.listingsOutstanding > 0 ? ("amber" as const) : null,
-                  ].filter(Boolean) as ("red" | "amber")[])
-                : [];
-            const showsNumber = count > 0 && countKey !== "listings";
+                ? { red: counts.listingsFlagged, amber: counts.listingsOutstanding }
+                : countKey === "registers"
+                  ? { red: counts.registersRed, amber: counts.registersAmber }
+                  : countKey === "signoffs"
+                    ? { red: 0, amber: counts.signoffs }
+                    : { red: 0, amber: 0 };
+
+            const dots = ([
+              signal.red > 0 ? ("red" as const) : null,
+              signal.amber > 0 ? ("amber" as const) : null,
+            ].filter(Boolean) as ("red" | "amber")[]);
+
+            const spoken = [
+              signal.red > 0 ? `${signal.red} overdue` : "",
+              signal.amber > 0 ? `${signal.amber} needing attention` : "",
+            ]
+              .filter(Boolean)
+              .join(", ");
             const row = (
               <Link
                 key={href}
@@ -219,11 +231,7 @@ export function Sidebar({
                       {/* The numbers are not shown here, but a screen reader
                           should still get them — it cannot see the breakdown
                           below without navigating to it. */}
-                      <span className="sr-only">
-                        {counts.listingsFlagged > 0 ? `${counts.listingsFlagged} flagged` : ""}
-                        {counts.listingsFlagged > 0 && counts.listingsOutstanding > 0 ? ", " : ""}
-                        {counts.listingsOutstanding > 0 ? `${counts.listingsOutstanding} still to do` : ""}
-                      </span>
+                      <span className="sr-only">{spoken}</span>
                     </span>
                     <span
                       data-rail-only
@@ -231,40 +239,12 @@ export function Sidebar({
                       className={`absolute right-[9px] top-[7px] h-2 w-2 rounded-full ring-2 ring-rc-nav-bg ${
                         // One dot in the rail, not two — there is no room, and
                         // the more serious of the two is the one to show.
-                        counts.listingsFlagged > 0 ? "bg-rc-red" : "bg-rc-amber"
+                        signal.red > 0 ? "bg-rc-red" : "bg-rc-amber"
                       }`}
                     />
                   </>
                 )}
 
-                {showsNumber && (
-                  <>
-                    <span
-                      data-rail-hide
-                      className={`ml-auto inline-flex h-[19px] min-w-[19px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums ${
-                        active
-                          ? "bg-white text-rc-green-deep"
-                          : tone === "red"
-                            ? "bg-rc-red text-white"
-                            : "bg-rc-amber text-rc-ink"
-                      }`}
-                    >
-                      {count > 99 ? "99+" : count}
-                      <span className="sr-only"> needing attention</span>
-                    </span>
-                    {/* Collapsed to a rail there is no room for a number, and
-                        dropping it would take away the one thing the badge is
-                        for — knowing without navigating. A dot on the icon
-                        still says "something here", which is the useful half. */}
-                    <span
-                      data-rail-only
-                      aria-hidden="true"
-                      className={`absolute right-[9px] top-[7px] h-2 w-2 rounded-full ring-2 ring-rc-nav-bg ${
-                        tone === "red" ? "bg-rc-red" : "bg-rc-amber"
-                      }`}
-                    />
-                  </>
-                )}
               </Link>
             );
 

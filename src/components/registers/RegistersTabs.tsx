@@ -22,6 +22,21 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
+// A tab's badge carries a severity, not just a number.
+//
+// Every badge on this strip used to render in red-100/red-700 whatever it was
+// counting, so an open complaint looked exactly as urgent as an expired
+// licence. Adam, 25 Aug 2026, asked for the sidebar's orange and red dots
+// "on anything outstanding in the licensee section" — and the honest version of
+// that is one rule applied everywhere: amber means someone needs to look at
+// this, red means something has actually lapsed or is wrong.
+//
+// A dot rather than a number, matching the Listings row in the sidebar. The
+// count is still announced to screen readers and sits in the tab's title, so
+// nothing is lost — it just stops competing with the label for attention when
+// five tabs all have something to say.
+export type TabBadge = { count: number; tone: "amber" | "red" };
+
 // Keeps every panel mounted (display:none on the inactive ones) so switching
 // tabs is instant and doesn't lose in-progress form state — the panels
 // themselves are server-rendered content passed down as props, per the
@@ -33,6 +48,7 @@ export function RegistersTabs({
   complaints,
   breaches,
   trust,
+  licenceBadge,
   insuranceBadge,
   giftsBadge,
   complaintsBadge,
@@ -46,11 +62,12 @@ export function RegistersTabs({
   complaints: ReactNode;
   breaches: ReactNode;
   trust: ReactNode;
-  insuranceBadge?: number;
-  giftsBadge?: number;
-  complaintsBadge?: number;
-  breachesBadge?: number;
-  trustBadge?: number;
+  licenceBadge?: TabBadge;
+  insuranceBadge?: TabBadge;
+  giftsBadge?: TabBadge;
+  complaintsBadge?: TabBadge;
+  breachesBadge?: TabBadge;
+  trustBadge?: TabBadge;
   // Lets a link elsewhere in the app (e.g. the Home page's Gifts widget,
   // or an agent's own nav shortcut) land directly on a specific tab
   // instead of always opening on Licence register — see ?tab= on
@@ -58,7 +75,8 @@ export function RegistersTabs({
   defaultTab?: TabKey;
 }) {
   const [active, setActive] = useState<TabKey>(defaultTab);
-  const badges: Partial<Record<TabKey, number>> = {
+  const badges: Partial<Record<TabKey, TabBadge | undefined>> = {
+    licence: licenceBadge,
     insurance: insuranceBadge,
     gifts: giftsBadge,
     complaints: complaintsBadge,
@@ -76,6 +94,11 @@ export function RegistersTabs({
               key={tab.key}
               type="button"
               onClick={() => setActive(tab.key)}
+              title={
+                badges[tab.key]?.count
+                  ? `${tab.label} — ${badges[tab.key]!.count} needing attention`
+                  : tab.label
+              }
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold transition ${
                 active === tab.key
                   ? "border-b-2 border-rc-green-deep text-rc-green-deep"
@@ -84,10 +107,18 @@ export function RegistersTabs({
             >
               <Icon size={15} strokeWidth={2} />
               {tab.label}
-              {!!badges[tab.key] && (
-                <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
-                  {badges[tab.key]}
-                </span>
+              {!!badges[tab.key]?.count && (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className={`h-2 w-2 shrink-0 rounded-full ${
+                      badges[tab.key]!.tone === "red" ? "bg-rc-red" : "bg-rc-amber"
+                    }`}
+                  />
+                  <span className="sr-only">
+                    {badges[tab.key]!.count} needing attention
+                  </span>
+                </>
               )}
             </button>
           );

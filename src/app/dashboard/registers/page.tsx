@@ -165,22 +165,60 @@ export default async function RegistersPage({
   const auditPeriod = previousAuditPeriodEnd(today);
   const audit = audits.find((a) => a.period_end === auditPeriod) ?? null;
   const auditDue = auditDueOn(auditPeriod);
-  const trustBadge =
-    trustMonths.filter((m) => m.status === "overdue").length + (audit?.confirmed_at ? 0 : daysUntil(auditDue, today) < 0 ? 1 : 0);
+  // Overdue is red: the 21 days are gone, or the audit is past 30 September.
+  // Waiting on a signature inside the window is amber.
+  const trustOverdue =
+    trustMonths.filter((m) => m.status === "overdue").length +
+    (!audit?.confirmed_at && daysUntil(auditDue, today) < 0 ? 1 : 0);
+  const trustPending =
+    trustMonths.filter((m) => m.status === "awaiting_signature" || m.status === "awaiting_upload").length +
+    (!audit?.confirmed_at && daysUntil(auditDue, today) >= 0 ? 1 : 0);
+  const trustBadge = {
+    count: trustOverdue + trustPending,
+    tone: (trustOverdue > 0 ? "red" : "amber") as "amber" | "red",
+  };
 
-  const giftsBadge = gifts.filter((g) => g.status === "flagged").length;
-  const complaintsBadge = complaints.filter((c) => c.status !== "resolved").length;
+  // Each tab badge now carries a severity as well as a count (Adam, 25 Aug
+  // 2026). The rule is the same one the sidebar uses: amber means somebody
+  // needs to look at this, red means something has actually lapsed, been
+  // missed, or is legally overdue. Before this, every badge on the strip was
+  // red — an open complaint shouted as loudly as an expired licence, which is
+  // the fastest way to teach someone to ignore all of them.
+  const giftsBadge = { count: gifts.filter((g) => g.status === "flagged").length, tone: "amber" as const };
+  const complaintsBadge = {
+    count: complaints.filter((c) => c.status !== "resolved").length,
+    tone: "amber" as const,
+  };
   // Anything still open, plus any notifiable breach not yet notified — the
   // latter carries a statutory deadline (s89: 5 days), so it earns a badge
   // even once the breach itself has a corrective action recorded.
-  const breachesBadge =
-    breaches.filter((b) => b.status !== "closed" || (b.notifiable && !b.notified_date)).length;
-  const insuranceBadge = agency
-    ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry].filter((d) => {
-        const s = expiryStatus(d);
-        return s === "expired" || s === "urgent";
-      }).length
-    : 0;
+  // A notifiable breach that has not been notified is the red one: s89 gives
+  // 5 days and the clock is running. An open breach with its notification done
+  // is work in progress, which is amber.
+  const breachesUnnotified = breaches.filter((b) => b.notifiable && !b.notified_date).length;
+  const breachesBadge = {
+    count: breaches.filter((b) => b.status !== "closed" || (b.notifiable && !b.notified_date)).length,
+    tone: (breachesUnnotified > 0 ? "red" : "amber") as "amber" | "red",
+  };
+  const insuranceStatuses = agency
+    ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry].map((d) => expiryStatus(d))
+    : [];
+  const insuranceBadge = {
+    count: insuranceStatuses.filter((st) => st === "expired" || st === "urgent").length,
+    tone: (insuranceStatuses.some((st) => st === "expired") ? "red" : "amber") as "amber" | "red",
+  };
+
+  // Licences and certificates had no badge at all, which was the odd one out —
+  // the register that carries the hardest deadline in the office was the only
+  // tab that said nothing.
+  const licenceStatuses = staff.map((p) => expiryStatus(p.licence_expiry));
+  if (agency?.corporation_licence_expiry) {
+    licenceStatuses.push(expiryStatus(agency.corporation_licence_expiry));
+  }
+  const licenceBadge = {
+    count: licenceStatuses.filter((st) => st === "expired" || st === "urgent").length,
+    tone: (licenceStatuses.some((st) => st === "expired") ? "red" : "amber") as "amber" | "red",
+  };
 
   return (
     <>
@@ -208,6 +246,7 @@ export default async function RegistersPage({
         {agency && (
           <div className="mt-6">
             <RegistersTabs
+              licenceBadge={licenceBadge}
               insuranceBadge={insuranceBadge}
               giftsBadge={giftsBadge}
               complaintsBadge={complaintsBadge}
