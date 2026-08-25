@@ -1167,7 +1167,10 @@ const items: ComplianceItem[] = [
     // Mark done all keep behaving exactly as they do on every other card. Its
     // own add form sits outside that form, because forms cannot nest.
     kind: "checklist",
-    label: "Buyers who asked for the contract were told about the reports",
+    // "Property reports" is cl 37's own term — the clause is headed "Records of
+    // property reports to be kept by real estate agents" — so the title now
+    // uses the language of the provision it cites (Adam, 25 Aug 2026).
+    label: "Property reports disclosed to contract requests",
     description:
       "Anyone who asks you for a copy of the contract for sale is entitled to see your register of building, pest and strata reports — including when there aren't any on file. Add each buyer who asked, or point at the record your CRM already keeps.",
     // A DIRECT citation, not a "supports" line, and only because the question
