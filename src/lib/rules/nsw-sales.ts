@@ -1132,11 +1132,29 @@ const items: ComplianceItem[] = [
     // sent a contract to. Most CRMs do this, or they can just enter the names
     // of the buyers manually."
     //
+    // MOVED FROM SETTLED TO CAMPAIGN, 25 Aug 2026, and reworded. Adam asked
+    // what the legal basis for the list actually was; checking it showed the
+    // card was asking the wrong question. Nothing requires a register of who
+    // received a contract. cl 37(2) requires the REPORTS record to be disclosed
+    // to anyone requesting one — so the question is whether they were told,
+    // and the list of who asked is the evidence for it.
+    //
+    // That reframing is what turns this from a control into an actual
+    // obligation, which is why the citation below is now direct rather than
+    // "supports".
+    //
+    // Campaign rather than Settled (Adam: "I think sitting somewhere at the
+    // bottom of the campaign stage is best"), and he is right — the duty is
+    // triggered every time someone asks during the campaign, so confirming it
+    // at settlement asked an agent to vouch retrospectively for months of
+    // enquiries. It now sits in the stage where it happens, beside f3, the
+    // register it is about.
+    //
     // Hence requiresNote AND an upload, either of which satisfies it. See the
     // note-or-evidence carve-out in setItemStatus: typing the names is enough,
     // and so is attaching the CRM export, but a bare tick is not.
     key: "f4",
-    stage: 5,
+    stage: 3,
     // One line per buyer, added one at a time (Adam, 23 Aug 2026): "let's have
     // an ADD BUYER button and each buyer gets their own line and field."
     //
@@ -1149,31 +1167,29 @@ const items: ComplianceItem[] = [
     // Mark done all keep behaving exactly as they do on every other card. Its
     // own add form sits outside that form, because forms cannot nest.
     kind: "checklist",
-    label: "Buyers who received a copy of the Contract for Sale",
+    label: "Buyers who asked for the contract were told about the reports",
     description:
-      "Buyers who request a copy of the contract are entitled to see the building, pest and strata report register. Add each buyer, or point at the record your CRM already keeps.",
-    // "Supports", not a bare citation, and the distinction is the honest one.
+      "Anyone who asks you for a copy of the contract for sale is entitled to see your register of building, pest and strata reports — including when there aren't any on file. Add each buyer who asked, or point at the record your CRM already keeps.",
+    // A DIRECT citation, not a "supports" line, and only because the question
+    // changed. Until 25 Aug this card asked who received a contract, which no
+    // provision requires; it was cited as "supports cl 37(2)" for that reason.
+    // Asking whether those people were told about the reports IS cl 37(2) —
+    // "the licensee must disclose the records made under this section to a
+    // person requesting a copy of the contract for the sale of the residential
+    // property".
     //
-    // Checked against the Regulation on 25 Aug 2026 when Adam asked what the
-    // legal basis for this list actually is. NOTHING in the Act or the
-    // Regulation requires an agent to keep a register of who received a copy
-    // of the contract. What cl 37 requires is a record of the BUILDING, PEST
-    // AND STRATA REPORTS the licensee is aware of; cl 37(2) then requires that
-    // record to be disclosed "to a person requesting a copy of the contract for
-    // the sale of the residential property".
+    // Note the trigger is REQUESTING, not receiving. Someone who got a contract
+    // from their solicitor never triggered it; someone who asked and walked
+    // away did.
     //
-    // So the duty is triggered by a person asking for a contract, and this list
-    // is how an agency evidences that it met the duty each time it was
-    // triggered — you cannot show you disclosed to everyone who asked without
-    // knowing who asked. That makes it a control, not an obligation, and the
-    // wording has to say so.
-    //
-    // s63 sits behind it too: the proposed contract and its s52A documents must
-    // be available for inspection at all times an offer may be made. Serving
-    // the contract after exchange is a different duty again and has its own
-    // card (Sch 2 r17).
-    legalBasis:
-      "Supports cl 37(2), Property and Stock Agents Regulation 2022 (NSW) — the property-reports record must be disclosed to anyone requesting a copy of the contract; s63 PSA Act 2002 (NSW)",
+    // The five report kinds in cl 37(1) are wider than the two people usually
+    // name — building inspection, pest, a strata s182 document inspection, a
+    // s184 certificate as to financial matters, and Community Land Act Part 10
+    // Div 2. The copy says "reports" and lets f3, the register itself, carry
+    // the detail. And the duty survives there being no reports at all: "there
+    // are none on file" is a disclosure, so a yes must be available without
+    // inventing one.
+    legalBasis: "cl 37(2), Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
     requiresNote: true,
