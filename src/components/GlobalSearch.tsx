@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Building2, Search, User, X } from "lucide-react";
 import { NAV_LINKS, type NavLink } from "@/lib/nav";
@@ -181,81 +182,99 @@ export function GlobalSearch({ isAssistant = false }: { isAssistant?: boolean })
         <Search size={16} strokeWidth={2.2} aria-hidden="true" />
       </button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex justify-center bg-rc-ink/40 px-4 pt-[12vh] backdrop-blur-[2px]"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) close();
-          }}
-        >
+      {/* PORTALLED TO document.body, and it has to be.
+          
+          The bug this fixes (Adam, 25 Aug 2026: "the magnifying glass... the
+          header is blanking out"): this panel is rendered by a component that
+          lives inside the top bar, and the top bar carries `backdrop-blur-md`.
+          An element with a backdrop-filter becomes the CONTAINING BLOCK for its
+          position:fixed descendants — the same rule that applies to transform
+          and filter. So `fixed inset-0` stopped meaning "the viewport" and
+          started meaning "the header", and the dark scrim painted itself over
+          the header alone. It looked like the header was blanking out because
+          that is exactly what was happening.
+          
+          A portal moves the panel out of the header's subtree entirely, so
+          inset-0 resolves against the viewport again. Safe without a mounted
+          guard because it only renders when `open` is true, which cannot
+          happen during server rendering. */}
+      {open &&
+        createPortal(
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Search"
-            className="flex max-h-[60vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-[0_20px_60px_rgba(13,31,25,0.3)]"
+            className="fixed inset-0 z-50 flex justify-center bg-rc-ink/40 px-4 pt-[12vh] backdrop-blur-[2px]"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) close();
+            }}
           >
-            <div className="flex items-center gap-2.5 border-b border-rc-border px-4 py-3.5">
-              <Search size={17} strokeWidth={2.2} className="shrink-0 text-rc-faint" aria-hidden="true" />
-              <input
-                ref={inputRef}
-                value={term}
-                onChange={(e) => onTermChange(e.target.value)}
-                onKeyDown={onFieldKeyDown}
-                placeholder="Address, name, or what you're looking for"
-                autoComplete="off"
-                spellCheck={false}
-                className="min-w-0 flex-1 bg-transparent text-[15px] text-rc-ink outline-none placeholder:text-rc-faint"
-              />
-              <button
-                type="button"
-                onClick={close}
-                aria-label="Close search"
-                className="shrink-0 rounded-lg p-1 text-rc-faint transition hover:bg-rc-bg-alt hover:text-rc-ink"
-              >
-                <X size={16} aria-hidden="true" />
-              </button>
-            </div>
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Search"
+              className="flex max-h-[60vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-[0_20px_60px_rgba(13,31,25,0.3)]"
+            >
+              <div className="flex items-center gap-2.5 border-b border-rc-border px-4 py-3.5">
+                <Search size={17} strokeWidth={2.2} className="shrink-0 text-rc-faint" aria-hidden="true" />
+                <input
+                  ref={inputRef}
+                  value={term}
+                  onChange={(e) => onTermChange(e.target.value)}
+                  onKeyDown={onFieldKeyDown}
+                  placeholder="Address, name, or what you're looking for"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 bg-transparent text-[15px] text-rc-ink outline-none placeholder:text-rc-faint"
+                />
+                <button
+                  type="button"
+                  onClick={close}
+                  aria-label="Close search"
+                  className="shrink-0 rounded-lg p-1 text-rc-faint transition hover:bg-rc-bg-alt hover:text-rc-ink"
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+              </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-              {rows.length > 0 ? (
-                rows.map((row, i) => (
-                  <button
-                    key={row.key}
-                    type="button"
-                    onMouseEnter={() => setCursor(i)}
-                    onClick={() => go(row.href)}
-                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                      i === cursor ? "bg-rc-green-soft" : "hover:bg-rc-bg-alt"
-                    }`}
-                  >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rc-bg-alt text-rc-green-deep">
-                      {row.icon === "listing" ? (
-                        <Building2 size={15} aria-hidden="true" />
-                      ) : row.icon === "person" ? (
-                        <User size={15} aria-hidden="true" />
-                      ) : (
-                        <Search size={15} aria-hidden="true" />
-                      )}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-rc-ink">{row.title}</span>
-                      <span className="block truncate text-xs text-rc-muted">{row.subtitle}</span>
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <p className="px-4 py-8 text-center text-sm text-rc-faint">
-                  {term.trim().length < 2
-                    ? "Start typing — an address, someone's name, or a page."
-                    : loading
-                      ? "Looking…"
-                      : `Nothing matches “${term.trim()}”.`}
-                </p>
-              )}
+              <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+                {rows.length > 0 ? (
+                  rows.map((row, i) => (
+                    <button
+                      key={row.key}
+                      type="button"
+                      onMouseEnter={() => setCursor(i)}
+                      onClick={() => go(row.href)}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                        i === cursor ? "bg-rc-green-soft" : "hover:bg-rc-bg-alt"
+                      }`}
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rc-bg-alt text-rc-green-deep">
+                        {row.icon === "listing" ? (
+                          <Building2 size={15} aria-hidden="true" />
+                        ) : row.icon === "person" ? (
+                          <User size={15} aria-hidden="true" />
+                        ) : (
+                          <Search size={15} aria-hidden="true" />
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-rc-ink">{row.title}</span>
+                        <span className="block truncate text-xs text-rc-muted">{row.subtitle}</span>
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-4 py-8 text-center text-sm text-rc-faint">
+                    {term.trim().length < 2
+                      ? "Start typing — an address, someone's name, or a page."
+                      : loading
+                        ? "Looking…"
+                        : `Nothing matches “${term.trim()}”.`}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
