@@ -15,6 +15,10 @@ import type { Profile } from "@/lib/types";
 // Left to right: search, "New listing", identity. That order is not arbitrary:
 // search is the thing used most and reading starts on the left; the primary
 // action sits next to the identity where a primary action normally lives.
+//
+// Search became a circular icon button on 25 Aug 2026 rather than a labelled
+// field. It keeps its place at the left of the bar — see the note on the button
+// itself in GlobalSearch.tsx for what that costs and what buys it back.
 
 // Every profile gets a role line, not just licensees — previously an ordinary
 // agent's header showed a name and nothing else, so there was no visual "this

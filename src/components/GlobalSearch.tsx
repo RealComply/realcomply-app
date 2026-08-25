@@ -159,19 +159,26 @@ export function GlobalSearch({ isAssistant = false }: { isAssistant?: boolean })
 
   return (
     <>
+      {/* A circular icon button, not a labelled field (Adam, 25 Aug 2026:
+          "it needs to be a magnifying glass icon in a small circle").
+          Same place in the bar — only the shape changed.
+
+          The trade-off, stated rather than buried: an icon on its own is less
+          discoverable than a field that says "Search a listing, a person, a
+          page". What buys that back is that the magnifying glass is close to a
+          universal symbol, the circle matches the avatar beside it so it reads
+          as a control rather than decoration, and the tooltip carries both the
+          word and the shortcut for anyone who hovers. If agents turn out not to
+          find it, the fix is a label on this one — not a second search
+          somewhere else. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-rc-border bg-white px-3 py-2 text-left text-sm text-rc-faint transition hover:border-rc-ink/15 hover:shadow-[0_1px_3px_rgba(13,31,25,0.06)] sm:max-w-[420px]"
+        aria-label="Search"
+        title="Search — ⌘K"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-rc-border bg-white text-rc-muted transition hover:border-rc-ink/15 hover:text-rc-ink hover:shadow-[0_1px_3px_rgba(13,31,25,0.06)]"
       >
-        <Search size={15} strokeWidth={2.2} aria-hidden="true" className="shrink-0" />
-        <span className="truncate">
-          Search a listing<span className="hidden sm:inline">, a person, a page</span>&hellip;
-        </span>
-        {/* Hidden on touch, where there is no keyboard to press it with. */}
-        <span className="ml-auto hidden shrink-0 rounded border border-rc-border bg-rc-bg-alt px-1.5 py-px text-[10px] font-semibold text-rc-faint md:inline">
-          ⌘K
-        </span>
+        <Search size={16} strokeWidth={2.2} aria-hidden="true" />
       </button>
 
       {open && (
