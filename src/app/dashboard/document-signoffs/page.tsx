@@ -2,15 +2,15 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
-import { TrustReconciliationUploader } from "@/components/registers/TrustReconciliationUploader";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Profile, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // Document sign-offs — the generic register for "upload a document, the
 // right people sign it in RealComply" (Adam, 9 Aug 2026). Currently feeds
-// two sources: SG Manual versions (published from the SG Manual page,
-// every staff member signs) and trust account reconciliations (uploaded
-// here, licensee only). See signoffs.ts and 0009_document_signoffs.sql.
+// two sources: SG Manual versions (published from the SG Manual page, every
+// staff member signs) and trust account reconciliations (uploaded and signed
+// on Registers → Trust account since 25 Aug 2026, licensee signs). Both show
+// up in the list below. See signoffs.ts and 0009_document_signoffs.sql.
 export default async function DocumentSignoffsPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
@@ -54,9 +54,22 @@ export default async function DocumentSignoffsPage() {
           </div>
         )}
 
-        {profile.is_licensee_in_charge && (
-          <div className="mt-6">
-            <TrustReconciliationUploader profile={profile} />
+        {/* The uploader that used to sit here has moved to Registers → Trust
+            account (25 Aug 2026). It had to: this one asked for the period as
+            free text, so nothing could tell which months were missing, and a
+            second way in would keep producing undated rows that the calendar
+            there cannot place. Signed reconciliations still appear in the list
+            below like any other document. */}
+        {(profile.is_licensee_in_charge || profile.is_assistant) && (
+          <div className="mt-6 rounded-card border border-rc-border bg-rc-bg-alt px-4 py-3 text-sm text-rc-muted">
+            Trust account reconciliations are now uploaded and signed on the{" "}
+            <Link
+              href="/dashboard/registers?tab=trust"
+              className="font-medium text-rc-green-deep hover:underline"
+            >
+              Trust account register
+            </Link>
+            , which tracks which months are outstanding.
           </div>
         )}
 
@@ -67,7 +80,7 @@ export default async function DocumentSignoffsPage() {
               <Link href="/dashboard/sg-manual" className="text-rc-green-deep hover:underline">
                 SG Manual version
               </Link>{" "}
-              or a trust reconciliation above will show up here for sign-off.
+              will show up here for sign-off.
             </p>
           )}
           {documents.map((doc, i) => (

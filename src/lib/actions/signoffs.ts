@@ -17,6 +17,8 @@ export async function createSignoffDocument(params: {
   category: SignoffCategory;
   title: string;
   periodLabel: string | null;
+  /** First day of the month a trust reconciliation covers. Null elsewhere. */
+  periodMonth?: string | null;
   filePath: string;
   fileName: string;
   notes: string | null;
@@ -24,9 +26,27 @@ export async function createSignoffDocument(params: {
 }): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can publish a document for sign-off." };
+  // Trust reconciliations are the one exception to licensee-only publishing
+  // (Adam, 25 Aug 2026: "I want the licensee or the licensee's assistant to be
+  // able to [put] the PDF into RealComply so that the licensee can sign within
+  // RealComply").
+  //
+  // The exception is narrow and it costs nothing, because uploading is not the
+  // act that matters here. The signature is, and that stays licensee-only —
+  // signerScope is forced to licensee_only below rather than trusted from the
+  // caller, so an assistant cannot publish a trust document that they are then
+  // able to sign themselves.
+  const isReconciliation = params.category === "trust_reconciliation";
+  const mayPublish =
+    profile.is_licensee_in_charge || (isReconciliation && Boolean(profile.is_assistant));
+
+  if (!mayPublish) {
+    return isReconciliation
+      ? { error: "Only the licensee in charge or their assistant can upload a trust reconciliation." }
+      : { error: "Only the licensee in charge can publish a document for sign-off." };
   }
+
+  const signerScope: SignerScope = isReconciliation ? "licensee_only" : params.signerScope;
 
   const { data: doc, error: docError } = await supabase
     .from("signoff_documents")
@@ -35,10 +55,11 @@ export async function createSignoffDocument(params: {
       category: params.category,
       title: params.title,
       period_label: params.periodLabel,
+      period_month: params.periodMonth ?? null,
       file_path: params.filePath,
       file_name: params.fileName,
       notes: params.notes,
-      signer_scope: params.signerScope,
+      signer_scope: signerScope,
       uploaded_by: profile.id,
     })
     .select()
@@ -49,7 +70,7 @@ export async function createSignoffDocument(params: {
   }
 
   const signers =
-    params.signerScope === "all_staff"
+    signerScope === "all_staff"
       ? (await supabase.from("profiles").select("id").eq("agency_id", profile.agency_id)).data ?? []
       : (
           await supabase

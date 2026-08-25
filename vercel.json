@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/licence-reminders",
       "schedule": "30 21 * * *"
+    },
+    {
+      "path": "/api/cron/trust-reminders",
+      "schedule": "40 21 * * *"
     }
   ]
 }

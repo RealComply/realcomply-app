@@ -1,7 +1,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const EVIDENCE_BUCKET = "compliance-evidence";
-export const MAX_EVIDENCE_BYTES = 20 * 1024 * 1024; // 20MB
+// The cap on anything uploaded as evidence.
+//
+// Raised from 20MB to 50MB on 25 Aug 2026. Adam: "there is a size limit of
+// 20MB which will stop many contract for sale being uploaded" — and he is
+// right. A NSW contract for sale with the prescribed documents attached is
+// routinely 10-20MB and not rarely more; the contracts in his own Dropbox run
+// to 36MB.
+//
+// 20MB was ours, not a platform limit. The bucket sets no file_size_limit
+// (0002_evidence_storage.sql), so it inherits the project-level global limit,
+// which Supabase defaults to 50MB — hence 50MB here rather than something
+// larger. Going beyond that needs the project setting raised first, and above
+// roughly 6MB Supabase's own guidance is to use resumable uploads, which this
+// does not yet do: a 45MB file over a phone connection at an open home is the
+// case that will fail. See RealComply-launch-readiness.md.
+//
+// Compressing a contract to fit was considered and rejected. It is a legal
+// document; altering it to save storage is not a trade this product makes.
+export const MAX_EVIDENCE_BYTES = 50 * 1024 * 1024; // 50MB
 
 export function sanitizeFileName(name: string): string {
   // Keep it simple and storage-path-safe; the original name is preserved

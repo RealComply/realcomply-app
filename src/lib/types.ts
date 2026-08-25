@@ -242,12 +242,39 @@ export type SignoffDocument = {
   category: SignoffCategory;
   title: string;
   period_label: string | null;
+  /**
+   * For a trust reconciliation, the first day of the month it covers. Null on
+   * every other category, and null on rows written before 0031 whose free-text
+   * label could not be parsed. What makes a missing month knowable.
+   */
+  period_month: string | null;
   file_path: string;
   file_name: string;
   notes: string | null;
   signer_scope: SignerScope;
   uploaded_by: string | null;
   created_at: string;
+};
+
+// The annual trust account audit — s111 (audit within 3 months of the period
+// ending) and s112 (the period is the year ending 30 June) of the Property and
+// Stock Agents Act 2002 (NSW). One row per audit period.
+export type TrustAudit = {
+  id: string;
+  agency_id: string;
+  /** 30 June of the audit year. */
+  period_end: string;
+  auditor_name: string | null;
+  report_received_on: string | null;
+  file_path: string | null;
+  file_name: string | null;
+  /** Who confirmed the audit was carried out, and when. Not a bare boolean —
+   *  a tick with nobody's name against it is not a record of anything. */
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SignoffSignature = {

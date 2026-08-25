@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { IdCard, ShieldCheck, Gift, Mail, TriangleAlert } from "lucide-react";
+import { IdCard, ShieldCheck, Gift, Mail, TriangleAlert, Landmark } from "lucide-react";
 
 const TABS = [
   // "Licences & certificates", not "Licence register" — a certificate of
@@ -14,6 +14,10 @@ const TABS = [
   { key: "gifts", label: "Gift register", icon: Gift },
   { key: "complaints", label: "Complaints register", icon: Mail },
   { key: "breaches", label: "Breach register", icon: TriangleAlert },
+  // Trust account (Adam, 25 Aug 2026). Lives here rather than in its own nav
+  // entry because it is an agency-level record the licensee keeps, which is
+  // exactly what this page is for.
+  { key: "trust", label: "Trust account", icon: Landmark },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -28,10 +32,12 @@ export function RegistersTabs({
   gifts,
   complaints,
   breaches,
+  trust,
   insuranceBadge,
   giftsBadge,
   complaintsBadge,
   breachesBadge,
+  trustBadge,
   defaultTab = "licence",
 }: {
   licence: ReactNode;
@@ -39,10 +45,12 @@ export function RegistersTabs({
   gifts: ReactNode;
   complaints: ReactNode;
   breaches: ReactNode;
+  trust: ReactNode;
   insuranceBadge?: number;
   giftsBadge?: number;
   complaintsBadge?: number;
   breachesBadge?: number;
+  trustBadge?: number;
   // Lets a link elsewhere in the app (e.g. the Home page's Gifts widget,
   // or an agent's own nav shortcut) land directly on a specific tab
   // instead of always opening on Licence register — see ?tab= on
@@ -55,6 +63,7 @@ export function RegistersTabs({
     gifts: giftsBadge,
     complaints: complaintsBadge,
     breaches: breachesBadge,
+    trust: trustBadge,
   };
 
   return (
@@ -99,6 +108,9 @@ export function RegistersTabs({
       </div>
       <div className="mt-4" style={{ display: active === "breaches" ? "block" : "none" }}>
         {breaches}
+      </div>
+      <div className="mt-4" style={{ display: active === "trust" ? "block" : "none" }}>
+        {trust}
       </div>
     </div>
   );
