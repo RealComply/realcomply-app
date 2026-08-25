@@ -99,6 +99,14 @@ export type NavCounts = {
    */
   registersRed: number;
   registersAmber: number;
+  /**
+   * The trust accounts row, split out of registers on 25 Aug 2026 when Trust
+   * accounts became its own page. Red where a reconciliation is past its 21
+   * days or an audit is past 30 September; amber where either is waiting.
+   * Counted across every account the agency operates.
+   */
+  trustRed: number;
+  trustAmber: number;
 };
 
 export const EMPTY_NAV_COUNTS: NavCounts = {
@@ -109,6 +117,8 @@ export const EMPTY_NAV_COUNTS: NavCounts = {
   signoffs: 0,
   registersRed: 0,
   registersAmber: 0,
+  trustRed: 0,
+  trustAmber: 0,
 };
 
 // Runs in the dashboard layout, so it runs on every page. Wrapped in cache()
@@ -155,6 +165,7 @@ export const navCountsFor = cache(async function navCountsFor(
     { count: giftCount },
     { count: complaintCount },
     { data: breachRows },
+    { data: trustAccountRows },
     { data: trustDocRows },
     { data: trustAuditRows },
   ] = await Promise.all([
@@ -178,8 +189,12 @@ export const navCountsFor = cache(async function navCountsFor(
     supabase.from("gifts").select("id", { count: "exact", head: true }).eq("status", "flagged"),
     supabase.from("complaints").select("id", { count: "exact", head: true }).neq("status", "resolved"),
     supabase.from("breaches").select("status, notifiable, notified_date"),
-    supabase.from("signoff_documents").select("id, period_month").eq("category", "trust_reconciliation"),
-    supabase.from("trust_audits").select("period_end, confirmed_at"),
+    supabase.from("trust_accounts").select("id, archived_at"),
+    supabase
+      .from("signoff_documents")
+      .select("id, period_month, trust_account_id")
+      .eq("category", "trust_reconciliation"),
+    supabase.from("trust_audits").select("period_end, confirmed_at, trust_account_id"),
   ]);
 
   const itemsByProperty = new Map<string, Map<string, PropertyItem>>();
@@ -240,45 +255,61 @@ export const navCountsFor = cache(async function navCountsFor(
   const breachesUnnotified = breachRowsTyped.filter((b) => b.notifiable && !b.notified_date).length;
   const breachesOpen = breachRowsTyped.filter((b) => b.status !== "closed").length;
 
-  // Trust account. Reuses the same helpers the Trust register screen uses, so
-  // the dot and the page can never disagree about whether something is late.
-  const trustRecords = new Map<string, ReconciliationRecord>();
-  for (const doc of (trustDocRows ?? []) as Pick<SignoffDocument, "id" | "period_month">[]) {
-    if (!doc.period_month || trustRecords.has(doc.period_month)) continue;
-    trustRecords.set(doc.period_month, {
-      documentId: doc.id,
-      month: doc.period_month,
-      fileName: null,
-      uploadedByName: null,
-      signedAt: signatures.find((sig) => sig.document_id === doc.id && sig.signed_at)?.signed_at ?? null,
-    });
-  }
-  const trustMonths = buildMonths(auditPeriodEndFor(today), trustRecords, today);
-  const trustOverdue = trustMonths.filter((m) => m.status === "overdue").length;
-  const trustPending = trustMonths.filter(
-    (m) => m.status === "awaiting_signature" || m.status === "awaiting_upload",
-  ).length;
-
+  // Trust accounts, per account. Reuses the same helpers the Trust accounts
+  // screen uses, so the dot and the page can never disagree about whether
+  // something is late.
   const auditPeriod = previousAuditPeriodEnd(today);
-  const audit = ((trustAuditRows ?? []) as Pick<TrustAudit, "period_end" | "confirmed_at">[]).find(
-    (a) => a.period_end === auditPeriod,
-  );
-  const auditOutstanding = !audit?.confirmed_at;
-  const auditLate = auditOutstanding && daysUntil(auditDueOn(auditPeriod), today) < 0;
+  const auditLateAt = daysUntil(auditDueOn(auditPeriod), today) < 0;
+  const audits = (trustAuditRows ?? []) as Pick<
+    TrustAudit,
+    "period_end" | "confirmed_at" | "trust_account_id"
+  >[];
+  const docs = (trustDocRows ?? []) as Pick<
+    SignoffDocument,
+    "id" | "period_month" | "trust_account_id"
+  >[];
+
+  let trustOverdue = 0;
+  let trustPending = 0;
+  for (const acct of (trustAccountRows ?? []) as { id: string; archived_at: string | null }[]) {
+    // A closed account still holds records worth reading, but nothing new is
+    // owed on it, so it cannot be outstanding.
+    if (acct.archived_at) continue;
+
+    const records = new Map<string, ReconciliationRecord>();
+    for (const doc of docs) {
+      if (doc.trust_account_id !== acct.id || !doc.period_month) continue;
+      if (records.has(doc.period_month)) continue;
+      records.set(doc.period_month, {
+        documentId: doc.id,
+        month: doc.period_month,
+        fileName: null,
+        uploadedByName: null,
+        signedAt: signatures.find((sig) => sig.document_id === doc.id && sig.signed_at)?.signed_at ?? null,
+      });
+    }
+    const months = buildMonths(auditPeriodEndFor(today), records, today);
+    trustOverdue += months.filter((m) => m.status === "overdue").length;
+    trustPending += months.filter(
+      (m) => m.status === "awaiting_signature" || m.status === "awaiting_upload",
+    ).length;
+
+    // One audit per account per year (Adam, 25 Aug 2026).
+    const audit = audits.find((a) => a.trust_account_id === acct.id && a.period_end === auditPeriod);
+    if (!audit?.confirmed_at) {
+      if (auditLateAt) trustOverdue += 1;
+      else trustPending += 1;
+    }
+  }
 
   const registersRed =
-    allExpiries.filter((st) => st === "expired").length +
-    breachesUnnotified +
-    trustOverdue +
-    (auditLate ? 1 : 0);
+    allExpiries.filter((st) => st === "expired").length + breachesUnnotified;
 
   const registersAmber =
     allExpiries.filter((st) => st === "urgent").length +
     (giftCount ?? 0) +
     (complaintCount ?? 0) +
-    (breachesOpen - breachesUnnotified > 0 ? breachesOpen - breachesUnnotified : 0) +
-    trustPending +
-    (auditOutstanding && !auditLate ? 1 : 0);
+    (breachesOpen - breachesUnnotified > 0 ? breachesOpen - breachesUnnotified : 0);
 
   const listingsFlagged = listingRows.reduce((n, l) => n + l.flagged, 0);
   const listingsOutstanding = listingRows.reduce((n, l) => n + l.outstanding, 0);
@@ -295,5 +326,7 @@ export const navCountsFor = cache(async function navCountsFor(
     signoffs: signatures.filter((sig) => sig.signer_id === profile.id && !sig.signed_at).length,
     registersRed,
     registersAmber,
+    trustRed: trustOverdue,
+    trustAmber: trustPending,
   };
 });

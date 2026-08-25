@@ -12,7 +12,9 @@ import {
   reconciliationDueOn,
   type ReminderStage,
 } from "@/lib/trust-account";
-import type { Agency, Profile, SignoffDocument, SignoffSignature, TrustAudit } from "@/lib/types";
+import type {
+  Agency, Profile, SignoffDocument, SignoffSignature, TrustAccount, TrustAudit,
+} from "@/lib/types";
 
 // Trust account reminders — the daily job.
 //
@@ -33,8 +35,13 @@ import type { Agency, Profile, SignoffDocument, SignoffSignature, TrustAudit } f
 // sender, which is why the 7th and 18th check first and the 1st is the only
 // unconditional one.
 //
+// PER ACCOUNT (Adam, 25 Aug 2026). An agency with a sales account and a
+// property management account owes two reconciliations every month and gets
+// two reminders — one naming each. Sending one for "the trust account" when
+// there are two is worse than sending none, because it looks handled.
+//
 // NEVER TWICE. The guarantee lives in the unique index on
-// (agency, kind, period, stage) in 0031_trust_account.sql, not here. This
+// (agency, account, kind, period, stage) in 0032_trust_accounts.sql, not here. This
 // checks first and inserts second, so the index is a backstop against two
 // overlapping runs rather than the primary path — same shape as
 // licence-reminders, and written BEFORE the email goes out for the same
@@ -46,7 +53,7 @@ const FOOTER =
   "\n\n---\nRealComply provides diligence support to help you stay on top of compliance. " +
   "It doesn't prepare your reconciliation or lodge anything for you, and the licensee in charge " +
   "remains responsible for the agency's trust account records.\n" +
-  "See the register any time at https://realcomply.com.au/dashboard/registers?tab=trust";
+  "See it any time at https://realcomply.com.au/dashboard/trust";
 
 export type TrustReminderResult = {
   checked: number;
@@ -59,6 +66,7 @@ export type TrustReminderResult = {
 async function alreadyRecorded(
   supabase: ReturnType<typeof createServiceClient>,
   agencyId: string,
+  accountId: string,
   kind: "reconciliation" | "audit",
   period: string,
   stage: string,
@@ -67,6 +75,7 @@ async function alreadyRecorded(
     .from("trust_reminders")
     .select("id")
     .eq("agency_id", agencyId)
+    .eq("trust_account_id", accountId)
     .eq("kind", kind)
     .eq("period", period)
     .eq("stage", stage)
@@ -103,69 +112,82 @@ export async function runTrustReminders(today: Date = new Date()): Promise<Trust
     if (licensees.length === 0) continue;
     const recipients = licensees.map((p) => p.email);
 
-    // ── Monthly reconciliation ──
-    if (stage) {
-      const month = lastCompletedMonth(today);
-      const due = reconciliationDueOn(month);
-      const left = daysUntil(due, today);
+    // A closed account owes nothing, so it is not chased.
+    const { data: accountRows } = await supabase
+      .from("trust_accounts")
+      .select("*")
+      .eq("agency_id", agency.id)
+      .is("archived_at", null);
+    const accounts = (accountRows ?? []) as TrustAccount[];
 
-      const signed = await isMonthSigned(supabase, agency.id, month);
+    for (const account of accounts) {
+        // ── Monthly reconciliation ──
+        if (stage) {
+          const month = lastCompletedMonth(today);
+          const due = reconciliationDueOn(month);
+          const left = daysUntil(due, today);
 
-      // The 1st is the prompt to start and goes regardless. The other two are
-      // only worth sending while it is genuinely outstanding.
-      const worthSending = stage === "day1" || !signed;
+          const signed = await isMonthSigned(supabase, account.id, month);
 
-      if (!worthSending) {
-        result.skippedNothingDue += 1;
-      } else if (await alreadyRecorded(supabase, agency.id, "reconciliation", month, stage)) {
-        result.alreadySent += 1;
-      } else {
-        const ok = await sendReconciliation(agency, recipients, month, due, left, stage, signed);
-        if (ok) {
-          await supabase.from("trust_reminders").insert({
-            agency_id: agency.id,
-            kind: "reconciliation",
-            period: month,
-            stage,
-            recipients,
-          });
-          result.sent += 1;
-        } else {
-          result.failed += 1;
+          // The 1st is the prompt to start and goes regardless. The other two are
+          // only worth sending while it is genuinely outstanding.
+          const worthSending = stage === "day1" || !signed;
+
+          if (!worthSending) {
+            result.skippedNothingDue += 1;
+          } else if (await alreadyRecorded(supabase, agency.id, account.id, "reconciliation", month, stage)) {
+            result.alreadySent += 1;
+          } else {
+            const ok = await sendReconciliation(agency, account, recipients, month, due, left, stage, signed);
+            if (ok) {
+              await supabase.from("trust_reminders").insert({
+                agency_id: agency.id,
+                trust_account_id: account.id,
+                kind: "reconciliation",
+                period: month,
+                stage,
+                recipients,
+              });
+              result.sent += 1;
+            } else {
+              result.failed += 1;
+            }
+          }
         }
-      }
-    }
 
-    // ── Annual audit ──
-    if (auditStage) {
-      const period = previousAuditPeriodEnd(today);
-      const due = auditDueOn(period);
+      // ── Annual audit ──
+      if (auditStage) {
+        const period = previousAuditPeriodEnd(today);
+        const due = auditDueOn(period);
 
-      const { data: auditRow } = await supabase
-        .from("trust_audits")
-        .select("*")
-        .eq("agency_id", agency.id)
-        .eq("period_end", period)
-        .maybeSingle();
-      const audit = auditRow as TrustAudit | null;
+        const { data: auditRow } = await supabase
+          .from("trust_audits")
+          .select("*")
+          .eq("agency_id", agency.id)
+          .eq("trust_account_id", account.id)
+          .eq("period_end", period)
+          .maybeSingle();
+        const audit = auditRow as TrustAudit | null;
 
-      if (audit?.confirmed_at) {
-        result.skippedNothingDue += 1;
-      } else if (await alreadyRecorded(supabase, agency.id, "audit", period, auditStage)) {
-        result.alreadySent += 1;
-      } else {
-        const ok = await sendAudit(agency, recipients, period, due, daysUntil(due, today));
-        if (ok) {
-          await supabase.from("trust_reminders").insert({
-            agency_id: agency.id,
-            kind: "audit",
-            period,
-            stage: auditStage,
-            recipients,
-          });
-          result.sent += 1;
+        if (audit?.confirmed_at) {
+          result.skippedNothingDue += 1;
+        } else if (await alreadyRecorded(supabase, agency.id, account.id, "audit", period, auditStage)) {
+          result.alreadySent += 1;
         } else {
-          result.failed += 1;
+          const ok = await sendAudit(agency, account, recipients, period, due, daysUntil(due, today));
+          if (ok) {
+            await supabase.from("trust_reminders").insert({
+              agency_id: agency.id,
+              trust_account_id: account.id,
+              kind: "audit",
+              period,
+              stage: auditStage,
+              recipients,
+            });
+            result.sent += 1;
+          } else {
+            result.failed += 1;
+          }
         }
       }
     }
@@ -176,13 +198,13 @@ export async function runTrustReminders(today: Date = new Date()): Promise<Trust
 
 async function isMonthSigned(
   supabase: ReturnType<typeof createServiceClient>,
-  agencyId: string,
+  accountId: string,
   month: string,
 ): Promise<boolean> {
   const { data: docs } = await supabase
     .from("signoff_documents")
     .select("id")
-    .eq("agency_id", agencyId)
+    .eq("trust_account_id", accountId)
     .eq("category", "trust_reconciliation")
     .eq("period_month", month);
 
@@ -200,6 +222,7 @@ async function isMonthSigned(
 
 function sendReconciliation(
   agency: Agency,
+  account: TrustAccount,
   recipients: string[],
   month: string,
   due: string,
@@ -211,19 +234,19 @@ function sendReconciliation(
   const late = daysLeft < 0;
 
   const subject = late
-    ? `${label} trust reconciliation is overdue`
+    ? `${account.name}: ${label} reconciliation is overdue`
     : stage === "day1"
-      ? `${label} trust reconciliation`
-      : `${label} trust reconciliation — ${daysLeft} days left`;
+      ? `${account.name}: ${label} reconciliation`
+      : `${account.name}: ${label} reconciliation — ${daysLeft} days left`;
 
   const opening =
     stage === "day1"
       ? signed
-        ? `${label} has ended. Your trust account reconciliation for the month is already signed — nothing to do.`
-        : `${label} has ended, so the trust account reconciliation for the month can be prepared and signed.`
+        ? `${label} has ended. The reconciliation for ${account.name} is already signed — nothing to do.`
+        : `${label} has ended, so the reconciliation for ${account.name} can be prepared and signed.`
       : late
-        ? `The ${label} trust account reconciliation was due on ${formatAuDate(due)} and is not signed.`
-        : `The ${label} trust account reconciliation is still unsigned. It is due on ${formatAuDate(due)} — ${daysLeft} ${daysLeft === 1 ? "day" : "days"} away.`;
+        ? `The ${label} reconciliation for ${account.name} was due on ${formatAuDate(due)} and is not signed.`
+        : `The ${label} reconciliation for ${account.name} is still unsigned. It is due on ${formatAuDate(due)} — ${daysLeft} ${daysLeft === 1 ? "day" : "days"} away.`;
 
   const text =
     `${opening}\n\n` +
@@ -238,6 +261,7 @@ function sendReconciliation(
 
 function sendAudit(
   agency: Agency,
+  account: TrustAccount,
   recipients: string[],
   periodEnd: string,
   due: string,
@@ -245,13 +269,13 @@ function sendAudit(
 ): Promise<boolean> {
   const late = daysLeft < 0;
   const subject = late
-    ? `Trust account audit for the year ended ${formatAuDate(periodEnd)} is overdue`
-    : `Trust account audit due ${formatAuDate(due)}`;
+    ? `${account.name}: audit for the year ended ${formatAuDate(periodEnd)} is overdue`
+    : `${account.name}: trust account audit due ${formatAuDate(due)}`;
 
   const text =
     (late
-      ? `The trust account audit for the year ended ${formatAuDate(periodEnd)} was due on ${formatAuDate(due)} and has not been confirmed in RealComply.`
-      : `The trust account audit for the year ended ${formatAuDate(periodEnd)} is due on ${formatAuDate(due)} — ${daysLeft} ${daysLeft === 1 ? "day" : "days"} away.`) +
+      ? `The audit of ${account.name} for the year ended ${formatAuDate(periodEnd)} was due on ${formatAuDate(due)} and has not been confirmed in RealComply.`
+      : `The audit of ${account.name} for the year ended ${formatAuDate(periodEnd)} is due on ${formatAuDate(due)} — ${daysLeft} ${daysLeft === 1 ? "day" : "days"} away.`) +
     "\n\ns111 of the Property and Stock Agents Act 2002 (NSW) requires the audit within 3 months of the " +
     "end of the audit period, and s112 fixes that period as the year ending 30 June. The auditor's " +
     "report is kept for at least 3 years.\n\n" +

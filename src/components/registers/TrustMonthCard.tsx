@@ -22,12 +22,16 @@ const initial: ActionState = { error: null };
 export function TrustMonthCard({
   month,
   agencyId,
+  trustAccountId,
+  accountName,
   canUpload,
   canSign,
   signerName,
 }: {
   month: ReconciliationMonth;
   agencyId: string;
+  trustAccountId: string;
+  accountName: string;
   canUpload: boolean;
   canSign: boolean;
   /** Pre-fills the signature field with the licensee's own name. */
@@ -60,11 +64,14 @@ export function TrustMonthCard({
 
     const { error: saveError } = await createSignoffDocument({
       category: "trust_reconciliation",
-      title: `Trust account reconciliation — ${month.label}`,
+      title: `${accountName} reconciliation — ${month.label}`,
       periodLabel: month.label,
       // The whole point of 0031: a machine-readable period, so a missing month
       // is knowable and a reminder can decide whether to fire.
       periodMonth: month.month,
+      // Which account this reconciles. Two accounts means two reconciliations
+      // every month, and without this they would be indistinguishable.
+      trustAccountId,
       filePath: path,
       fileName: file.name,
       notes: null,

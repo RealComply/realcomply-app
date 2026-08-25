@@ -174,6 +174,8 @@ export function Sidebar({
                 ? { red: counts.listingsFlagged, amber: counts.listingsOutstanding }
                 : countKey === "registers"
                   ? { red: counts.registersRed, amber: counts.registersAmber }
+                  : countKey === "trust"
+                    ? { red: counts.trustRed, amber: counts.trustAmber }
                   : countKey === "signoffs"
                     ? { red: 0, amber: counts.signoffs }
                     : { red: 0, amber: 0 };

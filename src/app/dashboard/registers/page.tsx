@@ -7,26 +7,15 @@ import { InsurancePanel } from "@/components/registers/InsurancePanel";
 import { GiftsPanel } from "@/components/registers/GiftsPanel";
 import { ComplaintsPanel } from "@/components/registers/ComplaintsPanel";
 import { BreachesPanel } from "@/components/registers/BreachesPanel";
-import { TrustAccountPanel } from "@/components/registers/TrustAccountPanel";
-import { formatAuDate } from "@/lib/format-date";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { expiryStatus } from "@/lib/expiry-status";
 import { nextReminderDate } from "@/lib/licence-reminders";
 import type { ReminderInfo } from "@/components/registers/ReminderLine";
-import {
-  auditDueOn,
-  auditPeriodEndFor,
-  buildMonths,
-  daysUntil,
-  previousAuditPeriodEnd,
-  type ReconciliationRecord,
-} from "@/lib/trust-account";
 import type {
   Agency, Breach, Complaint, CpdRecord, Gift, LicenceReminder, Profile, Property,
-  SignoffDocument, SignoffSignature, TrustAudit,
 } from "@/lib/types";
 
-const TAB_KEYS = new Set(["licence", "insurance", "gifts", "complaints", "breaches", "trust"]);
+const TAB_KEYS = new Set(["licence", "insurance", "gifts", "complaints", "breaches"]);
 
 // Registers — RealComply-website-IA.md's "Registers" screen, all three tabs
 // from the mockup: licence register (+ PI insurance + CPD), gift register
@@ -46,7 +35,7 @@ export default async function RegistersPage({
   const supabase = await createClient();
   const { tab, add } = await searchParams;
   const defaultTab = (tab && TAB_KEYS.has(tab) ? tab : "licence") as
-    | "licence" | "insurance" | "gifts" | "complaints" | "breaches" | "trust";
+    | "licence" | "insurance" | "gifts" | "complaints" | "breaches";
 
   const cpdYear = currentCpdYear();
 
@@ -59,9 +48,6 @@ export default async function RegistersPage({
     { data: propertyRows },
     { data: breachRows },
     { data: reminderRows },
-    { data: trustDocRows },
-    { data: trustSigRows },
-    { data: trustAuditRows },
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
@@ -74,16 +60,6 @@ export default async function RegistersPage({
     // without sorting per card. Read-only (0019_licence_reminders.sql grants
     // select and nothing else) — these are written by the daily cron.
     supabase.from("licence_reminders").select("*").order("sent_at", { ascending: false }),
-    // Trust account. The reconciliations are ordinary sign-off documents —
-    // 0031 only added the machine-readable month, which is what lets the
-    // calendar say which ones are missing.
-    supabase
-      .from("signoff_documents")
-      .select("*")
-      .eq("category", "trust_reconciliation")
-      .order("created_at", { ascending: false }),
-    supabase.from("signoff_signatures").select("*"),
-    supabase.from("trust_audits").select("*"),
   ]);
 
   const staff = (staffRows ?? []) as Profile[];
@@ -130,60 +106,6 @@ export default async function RegistersPage({
     (cpdByProfile[row.profile_id] ??= []).push(row);
   }
 
-  // ── Trust account ──────────────────────────────────────────────────────
-  // "Today" is read once here, in the server component, and everything derived
-  // from it is passed down as a finished value — the same reason the licence
-  // reminder dates are computed here. A client component recomputing a
-  // deadline would mismatch on hydration either side of midnight UTC.
-  const today = new Date();
-  const trustDocs = (trustDocRows ?? []) as SignoffDocument[];
-  const trustSigs = (trustSigRows ?? []) as SignoffSignature[];
-  const audits = (trustAuditRows ?? []) as TrustAudit[];
-  const nameOf = (id: string | null) => (id ? staff.find((p) => p.id === id)?.full_name ?? null : null);
-
-  const reconciliationsByMonth = new Map<string, ReconciliationRecord>();
-  for (const doc of trustDocs) {
-    if (!doc.period_month) continue;
-    // Newest first from the query, so the first row for a month wins. Someone
-    // re-uploading a corrected reconciliation should not be represented by the
-    // superseded one.
-    if (reconciliationsByMonth.has(doc.period_month)) continue;
-    const signed = trustSigs.find((sig) => sig.document_id === doc.id && sig.signed_at);
-    reconciliationsByMonth.set(doc.period_month, {
-      documentId: doc.id,
-      month: doc.period_month,
-      fileName: doc.file_name,
-      uploadedByName: nameOf(doc.uploaded_by),
-      signedAt: signed?.signed_at ?? null,
-    });
-  }
-
-  const currentAuditPeriod = auditPeriodEndFor(today);
-  const trustMonths = buildMonths(currentAuditPeriod, reconciliationsByMonth, today);
-  // The period being audited NOW is the one that has just ended, not the one
-  // currently running — you cannot audit a year still in progress.
-  const auditPeriod = previousAuditPeriodEnd(today);
-  const audit = audits.find((a) => a.period_end === auditPeriod) ?? null;
-  const auditDue = auditDueOn(auditPeriod);
-  // Overdue is red: the 21 days are gone, or the audit is past 30 September.
-  // Waiting on a signature inside the window is amber.
-  const trustOverdue =
-    trustMonths.filter((m) => m.status === "overdue").length +
-    (!audit?.confirmed_at && daysUntil(auditDue, today) < 0 ? 1 : 0);
-  const trustPending =
-    trustMonths.filter((m) => m.status === "awaiting_signature" || m.status === "awaiting_upload").length +
-    (!audit?.confirmed_at && daysUntil(auditDue, today) >= 0 ? 1 : 0);
-  const trustBadge = {
-    count: trustOverdue + trustPending,
-    tone: (trustOverdue > 0 ? "red" : "amber") as "amber" | "red",
-  };
-
-  // Each tab badge now carries a severity as well as a count (Adam, 25 Aug
-  // 2026). The rule is the same one the sidebar uses: amber means somebody
-  // needs to look at this, red means something has actually lapsed, been
-  // missed, or is legally overdue. Before this, every badge on the strip was
-  // red — an open complaint shouted as loudly as an expired licence, which is
-  // the fastest way to teach someone to ignore all of them.
   const giftsBadge = { count: gifts.filter((g) => g.status === "flagged").length, tone: "amber" as const };
   const complaintsBadge = {
     count: complaints.filter((c) => c.status !== "resolved").length,
@@ -251,7 +173,6 @@ export default async function RegistersPage({
               giftsBadge={giftsBadge}
               complaintsBadge={complaintsBadge}
               breachesBadge={breachesBadge}
-              trustBadge={trustBadge}
               defaultTab={defaultTab}
               licence={
                 <LicencePanel
@@ -289,24 +210,6 @@ export default async function RegistersPage({
                   staff={staff}
                   properties={properties}
                   viewerProfile={profile}
-                />
-              }
-              trust={
-                <TrustAccountPanel
-                  months={trustMonths}
-                  agencyId={profile.agency_id}
-                  // Uploading is clerical, so the assistant can do it. Signing
-                  // is the licensee's and stays theirs — the server enforces
-                  // both, these only decide what is worth rendering.
-                  canUpload={Boolean(profile.is_licensee_in_charge || profile.is_assistant)}
-                  canSign={Boolean(profile.is_licensee_in_charge)}
-                  signerName={profile.full_name ?? ""}
-                  auditPeriodEnd={auditPeriod}
-                  auditDueOn={auditDue}
-                  auditDaysToDue={daysUntil(auditDue, today)}
-                  audit={audit}
-                  auditConfirmedByName={nameOf(audit?.confirmed_by ?? null)}
-                  auditYearLabel={`Year ending ${formatAuDate(currentAuditPeriod)}`}
                 />
               }
             />

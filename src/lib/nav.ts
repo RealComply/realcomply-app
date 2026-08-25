@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   GraduationCap,
   Home,
+  Landmark,
   LayoutGrid,
   PenLine,
   Users,
@@ -41,7 +42,7 @@ export type NavLink = {
   keywords?: string[];
 };
 
-export type NavCountKey = "listings" | "signoffs" | "registers";
+export type NavCountKey = "listings" | "signoffs" | "registers" | "trust";
 
 export type NavGroup = { heading: string; links: NavLink[] };
 
@@ -97,6 +98,16 @@ export const NAV_GROUPS: NavGroup[] = [
         Icon: ClipboardCheck,
         assistantSees: true,
         keywords: ["continuing professional development", "hours"],
+      },
+      // Trust accounts got its own entry on 25 Aug 2026, having been the sixth
+      // tab inside Registers for a few hours. Several named accounts, a monthly
+      // cadence and real penalties made it too big to sit in a tab strip.
+      {
+        href: "/dashboard/trust",
+        label: "Trust accounts",
+        Icon: Landmark,
+        countKey: "trust",
+        keywords: ["reconciliation", "reconciliations", "audit", "bank", "sales trust", "property management trust"],
       },
       {
         href: "/dashboard/document-signoffs",

@@ -19,6 +19,8 @@ export async function createSignoffDocument(params: {
   periodLabel: string | null;
   /** First day of the month a trust reconciliation covers. Null elsewhere. */
   periodMonth?: string | null;
+  /** Which trust account a reconciliation belongs to. Null elsewhere. */
+  trustAccountId?: string | null;
   filePath: string;
   fileName: string;
   notes: string | null;
@@ -56,6 +58,7 @@ export async function createSignoffDocument(params: {
       title: params.title,
       period_label: params.periodLabel,
       period_month: params.periodMonth ?? null,
+      trust_account_id: params.trustAccountId ?? null,
       file_path: params.filePath,
       file_name: params.fileName,
       notes: params.notes,

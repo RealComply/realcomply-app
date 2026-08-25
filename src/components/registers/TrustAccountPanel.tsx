@@ -32,6 +32,8 @@ const CHIP: Record<ReconciliationMonth["status"], string> = {
 export function TrustAccountPanel({
   months,
   agencyId,
+  trustAccountId,
+  accountName,
   canUpload,
   canSign,
   signerName,
@@ -44,6 +46,9 @@ export function TrustAccountPanel({
 }: {
   months: ReconciliationMonth[];
   agencyId: string;
+  trustAccountId: string;
+  /** Named in the copy so a two-account agency can tell the panels apart. */
+  accountName: string;
   canUpload: boolean;
   canSign: boolean;
   signerName: string;
@@ -71,7 +76,7 @@ export function TrustAccountPanel({
       <section className="rounded-card border border-rc-border bg-white p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-sm font-bold text-rc-ink">Monthly reconciliation</h3>
+            <h3 className="text-sm font-bold text-rc-ink">Monthly reconciliation — {accountName}</h3>
             <p className="mt-1 text-xs text-rc-muted">
               A statement reconciling the trust account against the cash book, prepared at the end of each
               month and signed by the licensee in charge.
@@ -112,6 +117,8 @@ export function TrustAccountPanel({
                 key={m.month}
                 month={m}
                 agencyId={agencyId}
+                trustAccountId={trustAccountId}
+                accountName={accountName}
                 canUpload={canUpload}
                 canSign={canSign}
                 signerName={signerName}
@@ -124,6 +131,8 @@ export function TrustAccountPanel({
       {/* ── Annual ── */}
       <TrustAuditForm
         agencyId={agencyId}
+        trustAccountId={trustAccountId}
+        accountName={accountName}
         periodEnd={auditPeriodEnd}
         dueOn={auditDueOn}
         daysToDue={auditDaysToDue}

@@ -248,6 +248,8 @@ export type SignoffDocument = {
    * label could not be parsed. What makes a missing month knowable.
    */
   period_month: string | null;
+  /** For a trust reconciliation, which account it reconciles. Null elsewhere. */
+  trust_account_id: string | null;
   file_path: string;
   file_name: string;
   notes: string | null;
@@ -259,9 +261,25 @@ export type SignoffDocument = {
 // The annual trust account audit — s111 (audit within 3 months of the period
 // ending) and s112 (the period is the year ending 30 June) of the Property and
 // Stock Agents Act 2002 (NSW). One row per audit period.
+// One trust account the agency operates. s86 contemplates several — "a trust
+// account (whether general or separate)" — and the usual split is sales and
+// property management (Adam, 25 Aug 2026).
+export type TrustAccount = {
+  id: string;
+  agency_id: string;
+  name: string;
+  /** Closed accounts are archived, never removed: their reconciliations are
+   *  still records the agency has to keep. */
+  archived_at: string | null;
+  created_at: string;
+};
+
 export type TrustAudit = {
   id: string;
   agency_id: string;
+  /** Which account this audit covers. One audit per account per year
+   *  (Adam, 25 Aug 2026: "annual audit is 1 per account"). */
+  trust_account_id: string | null;
   /** 30 June of the audit year. */
   period_end: string;
   auditor_name: string | null;

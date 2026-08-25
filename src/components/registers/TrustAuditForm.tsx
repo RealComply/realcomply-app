@@ -24,6 +24,8 @@ const initial: ActionState = { error: null };
 
 export function TrustAuditForm({
   agencyId,
+  trustAccountId,
+  accountName,
   periodEnd,
   dueOn,
   daysToDue,
@@ -32,6 +34,8 @@ export function TrustAuditForm({
   canEdit,
 }: {
   agencyId: string;
+  trustAccountId: string;
+  accountName: string;
   periodEnd: string;
   dueOn: string;
   daysToDue: number;
@@ -71,7 +75,7 @@ export function TrustAuditForm({
     <form action={action} className="rounded-card border border-rc-border bg-white p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-rc-ink">Annual trust account audit</h3>
+          <h3 className="text-sm font-bold text-rc-ink">Annual audit — {accountName}</h3>
           <p className="mt-1 text-xs text-rc-muted">
             Audit period: year ended {formatAuDate(periodEnd)}
           </p>
@@ -96,10 +100,11 @@ export function TrustAuditForm({
       <p className="mt-3 text-xs leading-relaxed text-rc-faint">
         s111 and s112, Property and Stock Agents Act 2002 (NSW) — the audit period is the year ending
         30 June, the audit must be carried out within 3 months of it ending, and the auditor&rsquo;s report
-        is kept for at least 3 years.
+        is kept for at least 3 years. One audit per account per year.
       </p>
 
       <input type="hidden" name="periodEnd" value={periodEnd} />
+      <input type="hidden" name="trustAccountId" value={trustAccountId} />
       <input type="hidden" name="filePath" value={filePath} />
       <input type="hidden" name="fileName" value={fileName} />
       <input type="hidden" name="confirmed" value={confirmed ? "yes" : "no"} />
