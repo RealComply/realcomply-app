@@ -29,14 +29,18 @@ export default function ForgotPasswordPage() {
           // true either way: it describes what was done, not what exists.
           <>
             <h1 className="mt-8 text-lg font-bold tracking-tight text-rc-ink">Check your email</h1>
+            {/* Trimmed 26 Aug 2026 (Adam: "too many words").
+
+                Two sentences went. One reassured people the link works on any
+                device — which was only ever worth saying while it didn't, and
+                /auth/confirm fixed that. You warn about a limitation; you don't
+                announce that something works normally. The other spelled out
+                single-use, which nobody acts on differently.
+
+                What's left is the two things a waiting person can use: roughly
+                how long they have, and what to do if nothing turns up. */}
             <p className="mt-2 text-sm text-rc-muted">
-              If that address has a RealComply account, a link to set a new password is on its way.
-              {/* This used to read "and it only works in the browser you asked
-                  from" — a limitation dressed up as a fact. Adam quoted it back
-                  on 26 Aug, which is what got it fixed rather than explained.
-                  The link now works from any device; see auth/confirm/route.ts. */}
-              It lasts an hour and can only be used once. Open it on whichever device suits — your
-              phone is fine.
+              If that address has an account, a reset link is on its way. It lasts an hour.
             </p>
             <p className="mt-4 text-sm text-rc-muted">
               Nothing after a few minutes? Check junk mail, then{" "}
