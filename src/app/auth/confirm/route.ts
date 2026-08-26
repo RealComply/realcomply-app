@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { completeSignup } from "@/lib/auth/complete-signup";
 
 // An emailed link that works from any device.
 //
@@ -65,9 +66,22 @@ export async function GET(request: Request) {
 
   if (tokenHash && type && ALLOWED_TYPES.has(type)) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
+    const { data, error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
 
-    if (!error) {
+    if (!error && data.user) {
+      // The same setup /auth/callback performs, from the same function.
+      //
+      // Not optional, and not only for signup links. A person confirming their
+      // email is arriving with everything the signup form collected sitting in
+      // user metadata and nowhere else — accepted terms, agency name, whether
+      // they are the licensee in charge. If this route verified the link and
+      // redirected without doing this, they would land in an app with no agency
+      // and no way to make one.
+      //
+      // Safe on a recovery link too: completeSignup returns as soon as it finds
+      // an existing profile, which someone resetting a password always has.
+      await completeSignup(supabase, data.user);
+
       // ?reset=1 tells /dashboard/password to say "set a new password" and
       // explain how they got there, rather than the "change your password"
       // wording someone sees when they arrive from the avatar menu.
