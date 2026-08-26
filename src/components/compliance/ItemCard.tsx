@@ -42,7 +42,12 @@ import {
   removeEvidence,
   type ActionState,
 } from "@/lib/actions/compliance";
-import { extractReportDetails, type ReportExtractionFields } from "@/lib/actions/extraction";
+import {
+  extractReportDetails,
+  rereadAttachedDocument,
+  type ReportExtractionFields,
+} from "@/lib/actions/extraction";
+import { isAiReadItem } from "@/lib/documents/ai-read-items";
 import { DictatableTextarea } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 
@@ -166,6 +171,45 @@ function NotStated({ text = "not stated in the document" }: { text?: string }) {
 // to record. A Server Action can't reliably carry the file bytes itself —
 // Vercel Functions hard-cap every request body at 4.5MB, well under real
 // contracts/agreements/comps reports — see src/lib/storage/evidence.ts.
+
+// "Read it again", sitting beside the attached file.
+//
+// Added 26 Aug 2026. The read already ran when the document was attached, and
+// will have finished before the card re-rendered — so most of the time this is
+// not needed. It exists for the times it is: a photo that came out blurry, a
+// notice re-attached after being flattened out, or a read that failed and left
+// the card asking for figures the document plainly contains.
+//
+// Errors are shown. That is the point of it. The automatic read on attach
+// swallows its failure by design (a failed read should not look like a failed
+// upload), which is defensible until the read is the thing the item is waiting
+// on — see the Greenmount write-up. Pressed here, whatever the read says comes
+// back to the person who pressed it.
+function RereadButton({ propertyId, itemKey }: { propertyId: string; itemKey: string }) {
+  const action = rereadAttachedDocument.bind(null, propertyId, itemKey);
+  const [state, formAction, pending] = useActionState(action, initialState);
+
+  return (
+    <form action={formAction} className="contents">
+      <button
+        type="submit"
+        disabled={pending}
+        title="Read this document again and update the details on this card"
+        className="inline-flex items-center gap-1 text-xs text-rc-faint transition hover:text-rc-green-deep hover:underline disabled:opacity-60"
+      >
+        <Sparkles size={12} className="shrink-0" />
+        {pending ? "Reading…" : "Read again"}
+      </button>
+      {state.error && (
+        <p className="mt-1 flex w-full items-start gap-1.5 text-xs text-rc-amber-deep">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <span>{state.error}</span>
+        </p>
+      )}
+    </form>
+  );
+}
+
 function EvidenceUploader({
   propertyId,
   itemKey,
@@ -297,6 +341,13 @@ function EvidenceUploader({
               <Paperclip size={13} /> {evidenceFileName ?? "file"} (loading link…)
             </span>
           )}
+          {/* The read, where the document is — not at the top of the page.
+              It runs automatically on attach, so this is the retry: for a
+              photo that came out blurry, for a notice re-attached after being
+              straightened, or simply when someone wants to see it happen.
+              Only on items that actually have a reader behind them; offering
+              it on a pool certificate would be a button that does nothing. */}
+          {isAiReadItem(itemKey) && <RereadButton propertyId={propertyId} itemKey={itemKey} />}
           {replaceOnly ? (
             <button
               type="button"
@@ -349,7 +400,18 @@ function EvidenceUploader({
                   : "rounded-md border border-rc-border px-2 py-1 text-xs font-medium text-rc-muted transition hover:bg-rc-bg-alt disabled:opacity-60"
               }
             >
-              {uploading ? "Uploading…" : uploadPending ? "Saving…" : "Attach file"}
+              {/* "Reading the document…" rather than "Saving…" on an item the
+                  AI reads, because that is what the wait actually is — the
+                  attach action awaits the read before it returns, and an AI
+                  call takes long enough that a label saying "Saving" reads as
+                  stuck. Being told what is happening is most of the fix here. */}
+              {uploading
+                ? "Uploading…"
+                : uploadPending
+                  ? isAiReadItem(itemKey)
+                    ? "Reading the document…"
+                    : "Saving…"
+                  : "Attach file"}
             </button>
           </div>
           {selectedFile && !uploading && !uploadPending && (

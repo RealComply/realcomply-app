@@ -1181,6 +1181,32 @@ export async function extractFromDocuments(propertyId: string): Promise<ActionSt
 // Called after a document is attached. No-ops silently unless the file landed
 // on one of the three items the AI actually reads, so attaching a pool
 // certificate or a photo does not spend an AI call.
+// The same read, asked for again from the card the document is attached to
+// (Adam, 26 Aug 2026: "we upload it, then have to go all the way back up to the
+// top of the page for the system to extract the information. I think we should
+// have that button showing within the card next to where the evidence has been
+// uploaded").
+//
+// Worth recording that the trip to the top was never doing anything for d3.
+// ExtractDocumentsButton calls extractFromDocuments, which is runExtraction
+// over the three set-up documents only — it has never touched the revised-ESP
+// notice. The read Adam was trying to trigger had already run automatically on
+// attach and failed silently on the HEIC. So the button he was pressing did
+// nothing, and the thing that did run said nothing. Both halves of that are
+// fixed now; this is the half that gives him somewhere to press.
+//
+// Deliberately the same entry point as the automatic read rather than a
+// parallel one. Two code paths that are supposed to do the same thing are two
+// code paths that will eventually stop doing the same thing.
+export async function rereadAttachedDocument(
+  propertyId: string,
+  itemKey: string,
+  _prevState: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  return extractForAttachment(propertyId, itemKey);
+}
+
 export async function extractForAttachment(propertyId: string, itemKey: string): Promise<ActionState> {
   // d3 is not one of the three setup documents and does not go through the
   // per-item allow-list machinery. It has exactly one document and one job:
