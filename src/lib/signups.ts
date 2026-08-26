@@ -1,26 +1,43 @@
+import { cache } from "react";
+import { createClient } from "@/lib/supabase/server";
+
 // Whether anyone can create a brand-new agency from the public signup page.
 //
 // CLOSED BY DEFAULT (Adam, 24 Aug 2026: "at the moment, anyone can create an
 // account from the landing page. Can we put a block on that like we had
 // before?").
 //
-// This closes a risk that has been sitting open in the launch notes since the
-// first inbound lead. Email confirmation is currently OFF in Supabase — turned
-// off on 19 Aug so Adam could invite his own team past the 2/hour cap — and
-// `/signup` creates an agency without an invite. Together that means a stranger
-// can create an account on an address they do not control, including somebody
-// else's, and nothing checks. The launch-readiness doc names this as the
-// condition that forces confirmation back on.
+// ONE SWITCH, IN THE DATABASE — changed 26 Aug 2026, migration 0033.
 //
-// INVITES ARE NOT AFFECTED, and that is the whole point. An invite is bound to
-// one email address, can only be issued by a licensee in charge, and represents
-// a human vouching for the person. That path stays open with signups closed,
-// which is exactly the arrangement that made the confirmation-off period
-// acceptable in the first place.
+// This used to read process.env.SIGNUPS_OPEN, and the check lived only in
+// application code. That was a lock on the front door of a building whose side
+// door was open. The anon key ships in every browser bundle, as it is designed
+// to; Postgres default privileges had granted EXECUTE on bootstrap_agency_v2 to
+// authenticated; and Supabase's "allow new users to sign up" has to stay on
+// because invite signups go through the same call. So the sequence "create an
+// account against the auth API, confirm your own address, call
+// bootstrap_agency_v2 yourself" never touched a line of our code, and it worked.
 //
-// Default-closed rather than default-open on purpose. A missing or misspelt
-// environment variable should fail towards nobody getting in, not towards
-// everybody.
-export function openSignupsAllowed(): boolean {
-  return process.env.SIGNUPS_OPEN === "true";
-}
+// The switch is now a row that both sides read: the app, here, to decide what
+// to render and whether to accept a signup; and bootstrap_agency_v2 itself, to
+// refuse outright. Two layers, one answer, no way for them to disagree — which
+// is the part an environment variable could never give us, because the database
+// could not see it.
+//
+// Default-closed on purpose, and now in three senses: the column defaults to
+// false, the SQL function coalesces a missing row to false, and the catch below
+// answers false if the lookup fails at all. A switch nobody can read should
+// fail towards nobody getting in.
+//
+// Wrapped in React's cache() so a page and the action behind it share one
+// lookup per request.
+export const openSignupsAllowed = cache(async function openSignupsAllowed(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("signups_open");
+    if (error) return false;
+    return data === true;
+  } catch {
+    return false;
+  }
+});

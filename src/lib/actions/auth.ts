@@ -83,7 +83,7 @@ export async function signup(
   // which is precisely the arrangement that made running with email
   // confirmation switched off acceptable. Closing public signup restores that
   // arrangement rather than adding a new restriction.
-  if (!inviteToken && !openSignupsAllowed()) {
+  if (!inviteToken && !(await openSignupsAllowed())) {
     return {
       error:
         "RealComply is invite-only at the moment. If your licensee has sent you a link, open that link to join their office.",
