@@ -7,6 +7,7 @@ import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { requireProfile } from "@/lib/data/current-profile";
 import { InviteAgentForm } from "@/components/team/InviteAgentForm";
 import { PendingInvitesList } from "@/components/team/PendingInvitesList";
+import { StaffRow } from "@/components/team/StaffRow";
 import type { AgencyInvite, Profile } from "@/lib/types";
 
 // Team — where the licensee in charge adds real agents to the office
@@ -52,7 +53,14 @@ export default async function TeamPage() {
 
   // Only real agents can be supported — an assistant supporting another
   // assistant is meaningless, and the licensee already sees everything.
-  const agents = staff.filter((s) => s.is_agent);
+  // Archived people sink to the bottom: the roster is read to answer "who is
+  // here", and someone who left should not sit between two people who haven't.
+  staff.sort((a, b) => Number(Boolean(a.archived_at)) - Number(Boolean(b.archived_at)));
+
+  // Only active agents can be supported or moved work to. An archived person
+  // cannot sign anything, so offering them is offering a dead end.
+  const agents = staff.filter((s) => s.is_agent && !s.archived_at);
+  const activeCount = staff.filter((s) => !s.archived_at).length;
   const nameOf = (id: string) => staff.find((s) => s.id === id)?.full_name ?? "someone";
 
   // "Assistant to Adam Castelnuovo and Sue Nguyen" — the arrangement stated in
@@ -90,44 +98,26 @@ export default async function TeamPage() {
 
         <div className="mt-6">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">
-            Staff ({staff.length})
+            Staff ({activeCount})
           </h3>
           <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
             {staff.map((s) => (
-              <li key={s.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                <span
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]"
-                  style={{ background: "linear-gradient(155deg, #1d3a31 0%, #0d1f19 100%)" }}
-                >
-                  {(s.full_name ?? s.email).charAt(0).toUpperCase()}
-                </span>
-                <div className="flex-1">
-                  <p className="font-medium text-rc-ink">
-                    {s.full_name ?? s.email}
-                    {s.id === profile.id && <span className="ml-1.5 text-xs font-normal text-rc-faint">(you)</span>}
-                  </p>
-                  <p className="text-xs text-rc-muted">
-                    {s.is_assistant ? supportLine(s.id) : s.email}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-1.5">
-                  {s.is_licensee_in_charge && (
-                    <span className="rounded-full bg-rc-green-soft px-2 py-0.5 text-[11px] font-medium text-rc-green-deep">
-                      Licensee
-                    </span>
-                  )}
-                  {s.is_agent && (
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-rc-muted">
-                      Agent
-                    </span>
-                  )}
-                  {s.is_assistant && (
-                    <span className="rounded-full bg-rc-green-soft px-2 py-0.5 text-[11px] font-medium text-rc-green-deep-600">
-                      Assistant
-                    </span>
-                  )}
-                </div>
-              </li>
+              <StaffRow
+                key={s.id}
+                person={{
+                  id: s.id,
+                  fullName: s.full_name,
+                  email: s.email,
+                  isAgent: s.is_agent,
+                  isAssistant: Boolean(s.is_assistant),
+                  isLicensee: s.is_licensee_in_charge,
+                  archivedAt: s.archived_at ?? null,
+                }}
+                isSelf={s.id === profile.id}
+                canManage={Boolean(profile.is_licensee_in_charge)}
+                agents={agents.filter((a) => a.id !== s.id).map((a) => ({ id: a.id, name: a.full_name ?? a.email }))}
+                subtitle={s.is_assistant ? supportLine(s.id) ?? s.email : s.email}
+              />
             ))}
           </ul>
         </div>

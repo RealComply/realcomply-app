@@ -46,6 +46,13 @@ export type Profile = {
   // Null means not recorded, and the app must say it can't state a
   // requirement rather than fall back to a number.
   cpd_practice_category: CpdPracticeCategory | null;
+  /** Set when the licensee removes someone who has left the office (0035).
+   *  Archived, never deleted: their signatures, CPD records and the listings
+   *  they ran are the compliance history, and the person leaving does not
+   *  change what they did. current_agency_id() returns null for them, so every
+   *  agency-scoped policy in the database fails closed at once. */
+  archived_at: string | null;
+  archived_by: string | null;
   created_at: string;
 };
 

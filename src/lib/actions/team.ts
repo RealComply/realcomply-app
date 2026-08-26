@@ -279,3 +279,281 @@ export async function saveAgencyLogo(
   revalidatePath("/dashboard/team");
   return { error: null, saved: true };
 }
+
+// ── Managing the people in the office ──────────────────────────────────────
+//
+// Adam, 26 Aug 2026: "as the licensee i should be able to edit staff."
+//
+// Until now a licensee could invite someone and correct their licence details,
+// and that was the whole of it. A name typed wrong at invite time stayed wrong,
+// a role chosen then could never change, and nobody could ever be removed. The
+// roster only grew.
+//
+// All three actions below are licensee-only, and all three lean on the RLS
+// policy 0004 opened for the licence-details case ("profiles: licensee can
+// update agency members"). The invariant that an agency always has a licensee
+// in charge is enforced by a trigger in 0035, not here — an agency with nobody
+// able to sign off is unrecoverable from the UI, so that one belongs in the
+// database.
+
+type StaffRow = {
+  id: string;
+  agency_id: string;
+  full_name: string | null;
+  is_agent: boolean;
+  is_assistant: boolean;
+  is_licensee_in_charge: boolean;
+  archived_at: string | null;
+};
+
+// Shared preamble: the caller must be the licensee, and the subject must be
+// somebody in their own agency. The agency check matters — a profile id is a
+// uuid off a form, and RLS scopes the read, but saying so plainly here means a
+// wrong id gets a sentence rather than a silent no-op.
+type LicenseeCheck =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      supabase: Awaited<ReturnType<typeof requireAuthContext>>["supabase"];
+      profile: Awaited<ReturnType<typeof requireAuthContext>>["profile"];
+      subject: StaffRow;
+    };
+
+// Discriminated on `ok`, not on whether `error` happens to be null. TypeScript
+// narrows a literal boolean cleanly; it will not narrow a union whose other
+// members carry optional fields, which is how the first attempt at this failed
+// to compile.
+async function requireLicenseeAndSubject(profileId: string): Promise<LicenseeCheck> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (!profile.is_licensee_in_charge) {
+    return { ok: false, error: "Only the licensee in charge can change someone's details." };
+  }
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, agency_id, full_name, is_agent, is_assistant, is_licensee_in_charge, archived_at")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  const subject = data as StaffRow | null;
+  if (!subject || subject.agency_id !== profile.agency_id) {
+    return { ok: false, error: "That person isn't in your agency." };
+  }
+
+  return { ok: true, supabase, profile, subject };
+}
+
+/** Listings still on someone's name that are not yet finished. */
+async function openListingsFor(
+  supabase: Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
+  profileId: string,
+): Promise<number> {
+  const { count } = await supabase
+    .from("properties")
+    .select("id", { count: "exact", head: true })
+    .eq("created_by", profileId)
+    .lt("stage", 5);
+  return count ?? 0;
+}
+
+export async function updateStaffName(
+  profileId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await requireLicenseeAndSubject(profileId);
+  if (!ctx.ok) return { error: ctx.error };
+
+  const fullName = String(formData.get("fullName") ?? "").trim();
+  if (!fullName) {
+    return { error: "A name is required." };
+  }
+
+  const { error } = await ctx.supabase
+    .from("profiles")
+    .update({ full_name: fullName })
+    .eq("id", profileId);
+
+  if (error) return { error: "Couldn't save that name — try again." };
+
+  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/registers");
+  return { error: null };
+}
+
+/**
+ * Agent, assistant, or licensee in charge.
+ *
+ * Two refusals here rather than in the database, because both are recoverable
+ * workflow problems rather than corruption — and both have a next step the
+ * licensee can actually take.
+ *
+ *   * An agent holding unfinished listings cannot become an assistant.
+ *     Assistants prepare files for other people and cannot sign one, so those
+ *     listings would have nobody able to complete them. The fix is to move them
+ *     first, which is what listing transfer is for (0034).
+ *
+ *   * An assistant cannot be made licensee in charge while still an assistant.
+ *     The two are contradictory: an assistant is defined by working on behalf
+ *     of particular agents, and a licensee in charge supervises all of them.
+ *
+ * Losing the last licensee is a different class of problem and is refused by
+ * the trigger in 0035 — that one would leave an agency where no file can ever
+ * be signed off again.
+ */
+export async function setStaffRole(
+  profileId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await requireLicenseeAndSubject(profileId);
+  if (!ctx.ok) return { error: ctx.error };
+
+  const role = String(formData.get("role") ?? "");
+  if (!["agent", "assistant", "licensee"].includes(role)) {
+    return { error: "Choose a role." };
+  }
+
+  const supportsAgentIds = formData
+    .getAll("supportsAgentIds")
+    .map((v) => String(v))
+    .filter(Boolean);
+
+  if (role === "assistant") {
+    const open = await openListingsFor(ctx.supabase, profileId);
+    if (open > 0) {
+      return {
+        error: `${ctx.subject.full_name ?? "They"} still has ${open} listing${open === 1 ? "" : "s"} on the go. An assistant can't hold a listing or sign one, so move those to another agent first.`,
+      };
+    }
+    if (supportsAgentIds.length === 0) {
+      return { error: "Choose at least one agent for this assistant to support." };
+    }
+  }
+
+  const { error } = await ctx.supabase
+    .from("profiles")
+    .update({
+      // is_agent stays true for a licensee in charge: plenty of licensees run
+      // their own listings, and the two were always independent (see 0001).
+      is_agent: role !== "assistant",
+      is_assistant: role === "assistant",
+      is_licensee_in_charge: role === "licensee",
+    })
+    .eq("id", profileId);
+
+  if (error) {
+    // The trigger's message is already written for a person to read, so pass it
+    // through rather than replacing it with something vaguer.
+    const fromTrigger = /licensee in charge/i.test(error.message);
+    return { error: fromTrigger ? error.message : "Couldn't change that role — try again." };
+  }
+
+  // Someone who is no longer an assistant should not keep the agents they
+  // supported: that list IS their access, and leaving it behind would quietly
+  // grant it again if they were ever made an assistant a second time.
+  if (role !== "assistant") {
+    await ctx.supabase.from("assistant_agents").delete().eq("assistant_id", profileId);
+  } else {
+    const { data: existingRows } = await ctx.supabase
+      .from("assistant_agents")
+      .select("id, agent_id")
+      .eq("assistant_id", profileId);
+
+    const existing = (existingRows ?? []) as { id: string; agent_id: string }[];
+    const wanted = new Set(supportsAgentIds);
+    const have = new Set(existing.map((r) => r.agent_id));
+
+    const toAdd = [...wanted].filter((id) => !have.has(id));
+    const toRemove = existing.filter((r) => !wanted.has(r.agent_id)).map((r) => r.id);
+
+    if (toAdd.length > 0) {
+      await ctx.supabase.from("assistant_agents").insert(
+        toAdd.map((agentId) => ({
+          agency_id: ctx.profile.agency_id,
+          assistant_id: profileId,
+          agent_id: agentId,
+          created_by: ctx.profile.id,
+        })),
+      );
+    }
+    if (toRemove.length > 0) {
+      await ctx.supabase.from("assistant_agents").delete().in("id", toRemove);
+    }
+  }
+
+  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard");
+  return { error: null };
+}
+
+/**
+ * Removing someone who has left.
+ *
+ * Archiving, never deleting. Their signatures, CPD records, gift entries and
+ * the listings they ran are the record of what happened; the person leaving
+ * does not change what they did. 0035 has the full reasoning.
+ *
+ * Refused while they still hold unfinished listings, because an archived person
+ * cannot sign anything — those files would stall with nobody able to finish
+ * them. Move the listings first.
+ */
+export async function archiveStaff(profileId: string): Promise<ActionState> {
+  const ctx = await requireLicenseeAndSubject(profileId);
+  if (!ctx.ok) return { error: ctx.error };
+
+  if (profileId === ctx.profile.id) {
+    return { error: "You can't remove yourself. Appoint another licensee in charge first, and they can do it." };
+  }
+  if (ctx.subject.archived_at) {
+    return { error: "They've already been removed." };
+  }
+
+  const open = await openListingsFor(ctx.supabase, profileId);
+  if (open > 0) {
+    return {
+      error: `${ctx.subject.full_name ?? "They"} still has ${open} unfinished listing${open === 1 ? "" : "s"}. Move those to another agent first — an archived person can't sign a file, so they'd have nobody to complete them.`,
+    };
+  }
+
+  const { error } = await ctx.supabase
+    .from("profiles")
+    .update({ archived_at: new Date().toISOString(), archived_by: ctx.profile.id })
+    .eq("id", profileId);
+
+  if (error) {
+    const fromTrigger = /licensee in charge/i.test(error.message);
+    return { error: fromTrigger ? error.message : "Couldn't remove them — try again." };
+  }
+
+  // An assistant's agent list is their access. Clearing it on the way out means
+  // restoring them later starts from nothing rather than silently handing back
+  // whatever they could see a year ago.
+  await ctx.supabase.from("assistant_agents").delete().eq("assistant_id", profileId);
+
+  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard");
+  return { error: null };
+}
+
+/** Someone archived by mistake, or back after a break. */
+export async function restoreStaff(profileId: string): Promise<ActionState> {
+  const ctx = await requireLicenseeAndSubject(profileId);
+  if (!ctx.ok) return { error: ctx.error };
+
+  if (!ctx.subject.archived_at) {
+    return { error: "They're already active." };
+  }
+
+  const { error } = await ctx.supabase
+    .from("profiles")
+    .update({ archived_at: null, archived_by: null })
+    .eq("id", profileId);
+
+  if (error) return { error: "Couldn't bring them back — try again." };
+
+  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard");
+  return { error: null };
+}
