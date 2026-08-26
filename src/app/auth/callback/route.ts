@@ -2,13 +2,30 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 
-// Handles the redirect after a user clicks the email confirmation link.
-// If this is their first sign-in (no profile yet), bootstrap the agency
-// using the full_name/agency_name that were stashed in user metadata at
-// signup — see lib/actions/auth.ts.
+// Handles the redirect after a user clicks an emailed link — an email
+// confirmation, or (since 26 Aug 2026) a password reset. If this is their
+// first sign-in (no profile yet), bootstrap the agency using the
+// full_name/agency_name that were stashed in user metadata at signup — see
+// lib/actions/auth.ts.
+
+// Where to send someone once the code has been exchanged. Defaults to Home,
+// which is what an email confirmation wants; a password reset passes
+// ?next=/dashboard/password so they land on the form that finishes the job.
+//
+// Only same-site paths are honoured. A value that came in on the query string
+// is attacker-controllable, and handing it straight to a redirect is how an
+// open redirect gets built by accident — the "//evil.example" case matters as
+// much as "https://evil.example", because a protocol-relative URL leaves the
+// site while looking like a path.
+function safeNext(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/dashboard/home";
+  return raw;
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const next = safeNext(searchParams.get("next"));
 
   if (code) {
     const supabase = await createClient();
@@ -86,13 +103,20 @@ export async function GET(request: Request) {
         }
       }
 
-      return NextResponse.redirect(`${origin}/dashboard/home`);
+      return NextResponse.redirect(`${origin}${next}`);
     }
   }
 
+  // Which link failed changes what the person should do about it, so say the
+  // right one. "Try signing in" is useless advice to somebody who is here
+  // precisely because they cannot.
+  const isReset = next.startsWith("/dashboard/password");
+
   return NextResponse.redirect(
     `${origin}/login?message=${encodeURIComponent(
-      "That confirmation link didn't work — try signing in.",
+      isReset
+        ? "That reset link didn't work — it may have expired, or already been used. Ask for a new one below."
+        : "That confirmation link didn't work — try signing in.",
     )}`,
   );
 }

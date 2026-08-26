@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ClipboardCheck, LogOut } from "lucide-react";
+import { ChevronDown, ClipboardCheck, KeyRound, LogOut } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
 
 // Who you are, and the way out.
@@ -82,6 +82,15 @@ export function UserMenu({
             className="mt-1 flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-rc-muted transition hover:bg-rc-bg-alt hover:text-rc-ink"
           >
             <ClipboardCheck size={15} aria-hidden="true" /> Your CPD record
+          </Link>
+
+          <Link
+            href="/dashboard/password"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-rc-muted transition hover:bg-rc-bg-alt hover:text-rc-ink"
+          >
+            <KeyRound size={15} aria-hidden="true" /> Change password
           </Link>
 
           <form action={logout}>

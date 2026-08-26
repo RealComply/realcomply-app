@@ -56,9 +56,20 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-rc-ink">
-              Password
-            </label>
+            {/* The label and the way out of a forgotten password sit on one
+                line, which is where people look for it. Added 26 Aug 2026 —
+                before this there was no route back into an account at all. */}
+            <div className="flex items-baseline justify-between gap-3">
+              <label htmlFor="password" className="block text-sm font-medium text-rc-ink">
+                Password
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-xs font-medium text-rc-muted transition hover:text-rc-green-deep"
+              >
+                Forgotten?
+              </Link>
+            </div>
             <input
               id="password"
               name="password"

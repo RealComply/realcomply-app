@@ -225,6 +225,116 @@ export async function logout() {
   redirect("/login");
 }
 
+// ── Forgotten and changed passwords ────────────────────────────────────────
+//
+// Added 26 Aug 2026, after Sue at Cass Property couldn't sign in. Her account
+// was healthy in every respect — confirmed, password set, profile attached to
+// the agency — and her last sign-in was the exact second she created it on
+// 19 August. She had simply lost the password, and until today a RealComply
+// password could be set exactly once, at signup, and never recovered or
+// changed. There was no link, no route, and nothing an agency could do about
+// it except ask us to reach into the database.
+//
+// Every agency would have hit this. It is also the kind of hole that is much
+// worse in a compliance product than elsewhere: the person locked out is
+// usually the one being chased for a sign-off.
+
+export type ResetRequestState = { error: string | null; sent: boolean };
+
+export async function requestPasswordReset(
+  _prevState: ResetRequestState,
+  formData: FormData,
+): Promise<ResetRequestState> {
+  const email = String(formData.get("email") ?? "").trim();
+
+  if (!email) {
+    return { error: "Enter the email address you sign in with.", sent: false };
+  }
+
+  const supabase = await createClient();
+  const origin = await getOrigin();
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    // Explicit, for the same reason emailRedirectTo is explicit on signup:
+    // without it Supabase falls back to the configured Site URL, which is the
+    // bare site root. The root is the marketing page and it ignores ?code=
+    // entirely, so the link would land the person on a page about RealComply
+    // and leave them just as locked out. Verified 26 Aug — Site URL is
+    // https://realcomply.com.au, and this callback path is covered by the
+    // redirect allow-list entry https://realcomply.com.au/**.
+    redirectTo: `${origin}/auth/callback?next=${encodeURIComponent("/dashboard/password?reset=1")}`,
+  });
+
+  // The same answer whether or not that address has an account. Anything else
+  // turns this form into a way of asking "does this agent use RealComply?",
+  // and an address that is not registered is not the sender's business.
+  //
+  // The one exception is a rate limit. Supabase's built-in auth mail is capped
+  // (2/hour on this project — the cap that forced email confirmation off on
+  // 19 Aug), and silently swallowing that would leave someone refreshing an
+  // inbox that is never going to receive anything. Telling them to wait leaks
+  // nothing they could not learn by waiting.
+  if (error?.status === 429) {
+    return {
+      error:
+        "That's been asked for very recently. The email is on its way — give it a few minutes before trying again.",
+      sent: false,
+    };
+  }
+
+  return { error: null, sent: true };
+}
+
+export type PasswordState = { error: string | null; saved: boolean };
+
+// Used by both arrivals: someone who followed a reset link (and therefore has
+// a session created by the code exchange in /auth/callback) and someone
+// already signed in who just wants to change their password. Supabase treats
+// both identically — updateUser acts on the caller's own session and nothing
+// else — so one action and one screen serve both, and there is no second path
+// to keep correct.
+export async function updatePassword(
+  _prevState: PasswordState,
+  formData: FormData,
+): Promise<PasswordState> {
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  // Eight rather than Supabase's default six. Not a policy anyone has to
+  // remember or rotate — just a floor low enough that nobody is fighting it
+  // and high enough not to be embarrassing in a compliance product.
+  if (password.length < 8) {
+    return { error: "Use at least 8 characters.", saved: false };
+  }
+  if (password !== confirmPassword) {
+    return { error: "Those two don't match — check the second box.", saved: false };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // No session means the reset link expired before they got to this form, or
+  // they arrived here directly. Either way the honest answer is to start again
+  // rather than fail on save.
+  if (!user) {
+    redirect(
+      `/login?message=${encodeURIComponent(
+        "That reset link has expired. Ask for a new one and it'll come straight through.",
+      )}`,
+    );
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) {
+    return { error: error.message, saved: false };
+  }
+
+  return { error: null, saved: true };
+}
+
 export type InvitePreview = { agencyName: string; email: string; isLicenseeInCharge: boolean } | null;
 
 // Called from the (unauthenticated) signup page when it's reached via an
