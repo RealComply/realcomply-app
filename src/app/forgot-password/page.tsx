@@ -31,7 +31,12 @@ export default function ForgotPasswordPage() {
             <h1 className="mt-8 text-lg font-bold tracking-tight text-rc-ink">Check your email</h1>
             <p className="mt-2 text-sm text-rc-muted">
               If that address has a RealComply account, a link to set a new password is on its way.
-              It expires in an hour, and it only works in the browser you asked from.
+              {/* This used to read "and it only works in the browser you asked
+                  from" — a limitation dressed up as a fact. Adam quoted it back
+                  on 26 Aug, which is what got it fixed rather than explained.
+                  The link now works from any device; see auth/confirm/route.ts. */}
+              It lasts an hour and can only be used once. Open it on whichever device suits — your
+              phone is fine.
             </p>
             <p className="mt-4 text-sm text-rc-muted">
               Nothing after a few minutes? Check junk mail, then{" "}

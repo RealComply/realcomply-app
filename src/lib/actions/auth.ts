@@ -281,6 +281,17 @@ export async function requestPasswordReset(
     // and leave them just as locked out. Verified 26 Aug — Site URL is
     // https://realcomply.com.au, and this callback path is covered by the
     // redirect allow-list entry https://realcomply.com.au/**.
+    // NOTE, 26 Aug 2026: with the Supabase "Reset password" template pointing at
+    // /auth/confirm (the token-hash flow), this redirectTo is NOT what builds the
+    // link — the template does, and it produces a link that works from any
+    // device rather than only the browser that asked.
+    //
+    // It stays anyway, and on purpose. If that template is ever reset to
+    // Supabase's default {{ .ConfirmationURL }} — a stray click in the dashboard
+    // is all it takes — this is what stops resets breaking outright: the link
+    // falls back to /auth/callback and the old browser-bound flow, which is
+    // worse but is not nothing. Two lines of insurance against a one-click
+    // mistake in a console.
     redirectTo: `${origin}/auth/callback?next=${encodeURIComponent("/dashboard/password?reset=1")}`,
   });
 
