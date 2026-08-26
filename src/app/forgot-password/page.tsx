@@ -39,8 +39,13 @@ export default function ForgotPasswordPage() {
 
                 What's left is the two things a waiting person can use: roughly
                 how long they have, and what to do if nothing turns up. */}
+            {/* Adam's wording, 26 Aug 2026, used as he wrote it. "matches an
+                active account" is better than my "has an account": it covers a
+                closed or removed account without promising anything about which
+                addresses exist. */}
             <p className="mt-2 text-sm text-rc-muted">
-              If that address has an account, a reset link is on its way. It lasts an hour.
+              If that address matches an active account, a reset link will be on its way. Link
+              expires in one hour.
             </p>
             <p className="mt-4 text-sm text-rc-muted">
               Nothing after a few minutes? Check junk mail, then{" "}
