@@ -162,6 +162,25 @@ export async function signup(
   });
 
   if (signUpError) {
+    // The rate limit deserves its own words. Supabase's own message is "email
+    // rate limit exceeded", which tells a new agent nothing they can act on and
+    // sounds like they did something wrong.
+    //
+    // What has actually happened: the confirmation email was refused, so the
+    // signup did not complete. While Supabase custom SMTP is off the whole
+    // project shares a cap of 2 auth emails per hour — so the third person to
+    // join in an hour, across every agency, simply cannot. That is a hard
+    // refusal rather than a delay; nothing is queued and nothing arrives late.
+    //
+    // See RealComply-email-sending-status.md: pointing custom SMTP at SES
+    // removes the cap entirely, and this message stops being reachable in
+    // ordinary use.
+    if (signUpError.status === 429) {
+      return {
+        error:
+          "We couldn't send your confirmation email just now, so the account wasn't created. Wait a few minutes and try again — and if it keeps happening, let us know rather than trying repeatedly.",
+      };
+    }
     return { error: signUpError.message };
   }
 
@@ -274,10 +293,23 @@ export async function requestPasswordReset(
   // 19 Aug), and silently swallowing that would leave someone refreshing an
   // inbox that is never going to receive anything. Telling them to wait leaks
   // nothing they could not learn by waiting.
+  // CORRECTED 26 Aug 2026, and the earlier wording was a lie the app told.
+  //
+  // This used to read "The email is on its way — give it a few minutes." It is
+  // not on its way. A 429 here means the send was REFUSED: either the
+  // per-address cooldown (asked again within a minute) or the project-wide cap
+  // on auth email, which is 2 per hour while Supabase custom SMTP is off. In
+  // neither case is anything queued for later — Supabase does not hold the
+  // message and retry it.
+  //
+  // Telling someone locked out of their account that a reset is coming, when
+  // nothing was sent, leaves them refreshing an inbox instead of trying again.
+  // The message has to be true in both cases, so it says what happened and
+  // what to do rather than making a promise about delivery.
   if (error?.status === 429) {
     return {
       error:
-        "That's been asked for very recently. The email is on its way — give it a few minutes before trying again.",
+        "That didn't send — too many emails have gone out in the last little while. Nothing is on its way yet, so wait a few minutes and ask again.",
       sent: false,
     };
   }
