@@ -175,6 +175,93 @@ export async function createProperty(
 // licensee_only.sql tightened the RLS delete policy from "any agency
 // member" to this same check, so this app-layer gate isn't the only thing
 // standing between an agent and a destructive action they shouldn't have).
+// Moving a listing to another agent (Adam, 26 Aug 2026).
+//
+// There is no owner column to change: properties.created_by IS the owning
+// agent, and has been since 0001 — see the comment in lib/data/rule-context.ts,
+// and note that createProperty already writes an ownerId there rather than the
+// caller's own id, so an assistant preparing a file never becomes its agent.
+//
+// What moves with it, and it is worth being clear because none of it is
+// bookkeeping:
+//
+//   * Who signs. The agent's signature on the file is theirs; the new agent is
+//     the one the app will ask from here.
+//   * Which assistants can see it. Assistant access is scoped to the agents
+//     they support (0025), so a transfer can both grant and withdraw access.
+//   * Whose Monday digest it appears in, and whose Home page.
+//
+// The checks that matter are in the database, not here. Migration 0034 puts a
+// trigger on the column: it refuses the change unless the caller is the
+// licensee in charge, refuses a destination outside the agency, and writes the
+// transfer to property_transfers as it goes. This function's job is to be
+// pleasant about it — to say "only the licensee can do that" in English rather
+// than surface a Postgres exception — not to be the thing standing in the way.
+export async function transferListing(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (!profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can move a listing to another agent." };
+  }
+
+  const toAgentId = String(formData.get("toAgentId") ?? "").trim();
+  if (!toAgentId) {
+    return { error: "Choose the agent this listing should move to." };
+  }
+
+  const { data: property } = await supabase
+    .from("properties")
+    .select("id, created_by")
+    .eq("id", propertyId)
+    .maybeSingle();
+
+  if (!property) {
+    return { error: "That listing couldn't be found." };
+  }
+  if (property.created_by === toAgentId) {
+    return { error: "That's already the agent on this listing." };
+  }
+
+  // An assistant is not an agent. They prepare files on behalf of the agents
+  // they support and cannot sign one, so a listing that belonged to them would
+  // have nobody who could complete it.
+  const { data: target } = await supabase
+    .from("profiles")
+    .select("id, full_name, is_assistant")
+    .eq("id", toAgentId)
+    .maybeSingle();
+
+  if (!target) {
+    return { error: "That person isn't in your agency." };
+  }
+  if (target.is_assistant) {
+    return { error: "Assistants can't hold a listing — they prepare files for an agent, and only an agent can sign one." };
+  }
+
+  const { error } = await supabase
+    .from("properties")
+    .update({ created_by: toAgentId })
+    .eq("id", propertyId);
+
+  if (error) {
+    // The trigger's own messages are already written for a person to read, so
+    // pass one through when that is what came back rather than replacing it
+    // with something vaguer.
+    const fromTrigger = /only the licensee in charge|same agency/i.test(error.message);
+    return { error: fromTrigger ? error.message : "Couldn't move that listing — try again." };
+  }
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/portfolio");
+  revalidatePath("/dashboard/home");
+  return { error: null };
+}
+
 //
 // Requires typing the address back exactly (case-insensitive) as a
 // deliberate confirmation step — there's no undo once this runs.

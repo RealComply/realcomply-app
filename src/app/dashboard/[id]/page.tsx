@@ -6,6 +6,7 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
 import { DeletePropertySection } from "@/components/compliance/DeletePropertySection";
+import { TransferListingSection } from "@/components/compliance/TransferListingSection";
 import { HandToAgent } from "@/components/compliance/HandToAgent";
 import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
@@ -67,7 +68,11 @@ export default async function PropertyPage({
       .eq("id", profile.agency_id)
       .maybeSingle(),
     // For the hand-over card: whose listing this is, and who handed it over.
-    supabase.from("profiles").select("id, full_name, email"),
+    // is_assistant as well, since 26 Aug — the transfer control has to leave
+    // assistants out of the list. An assistant prepares files for an agent and
+    // cannot sign one, so a listing sitting on their name could never be
+    // completed by anybody.
+    supabase.from("profiles").select("id, full_name, email, is_assistant"),
   ]);
 
   const allItems = Object.fromEntries(
@@ -87,11 +92,22 @@ export default async function PropertyPage({
   const isCurrentStage = viewedStage === p.stage;
   const countdown = auctionCountdown(p.auction_date);
 
-  const people = (peopleRows ?? []) as { id: string; full_name: string | null; email: string }[];
+  const people = (peopleRows ?? []) as {
+    id: string;
+    full_name: string | null;
+    email: string;
+    is_assistant: boolean | null;
+  }[];
   const personName = (id: string | null) => {
     const found = people.find((x) => x.id === id);
     return found?.full_name ?? found?.email ?? "the agent";
   };
+
+  // Everyone this listing could move to: the agency's agents, minus assistants
+  // and minus whoever already holds it.
+  const transferCandidates = people
+    .filter((x) => !x.is_assistant && x.id !== p.created_by)
+    .map((x) => ({ id: x.id, name: x.full_name ?? x.email }));
 
   // The auction-day items are pulled out of the Campaign list and shown
   // together under one heading, in the order they happen. They are ordinary
@@ -277,6 +293,14 @@ export default async function PropertyPage({
           requestedByName={p.review_requested_by ? personName(p.review_requested_by) : null}
           viewerIsAssistant={Boolean(profile.is_assistant)}
         />
+
+        {profile.is_licensee_in_charge && (
+          <TransferListingSection
+            propertyId={p.id}
+            currentAgentName={personName(p.created_by)}
+            agents={transferCandidates}
+          />
+        )}
 
         {profile.is_licensee_in_charge && <DeletePropertySection propertyId={p.id} address={p.address} />}
       </main>

@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { readableBytes } from "@/lib/documents/readable-bytes";
 import { getItem } from "@/lib/rules/nsw-sales";
 import {
   PRESCRIBED_DOC_KEYS,
@@ -589,9 +590,9 @@ export async function extractCpdCertificate(
   const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
   if (error || !blob) return { error: "Couldn't download the uploaded file." };
 
-  const arrayBuffer = await blob.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString("base64");
-  const contentType = blob.type || "application/octet-stream";
+  // readableBytes rather than a plain arrayBuffer: an iPhone photo arrives as
+  // HEIC, which nothing downstream can open. See lib/documents/readable-bytes.
+  const { base64, contentType } = await readableBytes(blob, fileName);
 
   const documentBlock = buildDocumentBlock(contentType, base64, fileName);
   if (!documentBlock) {
@@ -723,9 +724,12 @@ export async function extractRevisedEspNotice(
     const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
     if (error || !blob) return null;
 
-    const arrayBuffer = await blob.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-    const documentBlock = buildDocumentBlock(blob.type || "application/octet-stream", base64, fileName);
+    // The read that failed on 16 Greenmount Way, 26 Aug 2026. The notice was a
+    // photograph taken on an iPhone — IMG_9352.HEIC — and HEIC was not a format
+    // this could open, so the block came back null, the read returned null, and
+    // the revised figures were never recorded. readableBytes converts it.
+    const { base64, contentType } = await readableBytes(blob, fileName);
+    const documentBlock = buildDocumentBlock(contentType, base64, fileName);
     if (!documentBlock) return null;
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -861,9 +865,8 @@ export async function screenForIdDocument(
     const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
     if (error || !blob) return null;
 
-    const arrayBuffer = await blob.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-    const documentBlock = buildDocumentBlock(blob.type || "application/octet-stream", base64, fileName);
+    const { base64, contentType } = await readableBytes(blob, fileName);
+    const documentBlock = buildDocumentBlock(contentType, base64, fileName);
     // A file type we cannot read cannot be screened. Let it through rather
     // than refusing on the basis of not having looked.
     if (!documentBlock) return null;
@@ -940,9 +943,7 @@ export async function extractReportDetails(
     return { error: "Couldn't download the uploaded file." };
   }
 
-  const arrayBuffer = await blob.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString("base64");
-  const contentType = blob.type || "application/octet-stream";
+  const { base64, contentType } = await readableBytes(blob, fileName);
 
   const MIN_TEXT_CHARS = 400;
   if (contentType === "text/plain") {
@@ -1038,11 +1039,9 @@ async function extractOneDocument(
     throw new Error("couldn't download the file");
   }
 
-  const arrayBuffer = await blob.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString("base64");
-  const contentType = blob.type || "application/octet-stream";
   const fileName =
     (item.data as { evidenceFileName?: string } | null)?.evidenceFileName ?? path.split("/").pop() ?? "document";
+  const { base64, contentType } = await readableBytes(blob, fileName);
 
   // Deterministic backstop, not a prompt instruction: a real contract, agency
   // agreement, or comps report is never this short. Skip the model call
@@ -1219,8 +1218,42 @@ async function readRevisedEspNoticeOnto(propertyId: string): Promise<ActionState
     item.evidence_path.split("/").pop() ??
     "notice";
 
+  // A failed read has to survive on the item, not just be returned.
+  //
+  // Until 26 Aug 2026 this returned an error string that the caller logged to
+  // the server console and deliberately did not show — reasonable for a
+  // comparables report, where a stale finding is the only cost and the
+  // page-level button is the retry. It was wrong here. For this document the
+  // read IS the record: there was no manual path, so a failed read left the
+  // item permanently un-completable with nothing on screen to say why. That is
+  // what happened on 16 Greenmount Way, and the first anyone knew of it was a
+  // flag at settlement weeks later.
+  //
+  // Now the failure is written to the item, the card shows it, and the manual
+  // fallback (enterRevisedEspManually) opens.
+  const markReadFailed = async (reason: string) => {
+    await supabase
+      .from("property_items")
+      .update({
+        agency_id: profile.agency_id,
+        data: {
+          ...((item.data as Record<string, unknown>) ?? {}),
+          espRevised: true,
+          noticeReadFailed: true,
+          noticeReadFailedReason: reason,
+          noticeReadAttemptedAt: new Date().toISOString(),
+        },
+      })
+      .eq("property_id", propertyId)
+      .eq("item_key", "d3");
+    revalidatePath(`/dashboard/${propertyId}`);
+  };
+
   const fields = await extractRevisedEspNotice(supabase, item.evidence_path, fileName);
   if (!fields) {
+    await markReadFailed(
+      "The file couldn't be opened for reading. It may be a format we can't read, or the scan may be damaged.",
+    );
     return { error: "Couldn't read that notice. Check it opens, then try attaching it again." };
   }
 
@@ -1233,6 +1266,13 @@ async function readRevisedEspNoticeOnto(propertyId: string): Promise<ActionState
           noticeNotRecognised: true,
           revisedEspLow: undefined,
           revisedEspHigh: undefined,
+          // Distinct from a failed read, and deliberately does NOT open the
+          // manual fallback. This document was readable — it just is not a
+          // revision notice. Offering to type the revised price beside the
+          // wrong document would produce a record pointing at evidence that
+          // does not support it.
+          noticeReadFailed: undefined,
+          noticeReadFailedReason: undefined,
         },
       })
       .eq("property_id", propertyId)
@@ -1263,6 +1303,23 @@ async function readRevisedEspNoticeOnto(propertyId: string): Promise<ActionState
         reason: fields.reason,
         evidenceProvidedBeforeNotice: fields.evidenceProvidedBeforeNotice,
         noticeReadAt: new Date().toISOString(),
+        // Written in the SAME update as the figures rather than in a second
+        // pass. markReadFailed spreads the item.data this function loaded at
+        // the start, so calling it after this write would put the pre-read
+        // values back — including figures from an earlier successful read that
+        // this one has just superseded.
+        //
+        // A clean read clears the failure and the typed-by-hand mark: the
+        // figures come off the document again, and the card should stop saying
+        // otherwise. A read that could not make out the numbers records why,
+        // which is what opens the manual fallback on the card — a handwritten
+        // notice, a figure amended in pen, a photo at an angle.
+        noticeReadFailed: bothFigures ? undefined : true,
+        noticeReadFailedReason: bothFigures
+          ? undefined
+          : "The notice was read, but the revised price couldn't be made out. If it's handwritten or the photo is unclear, put the figures in yourself.",
+        noticeReadAttemptedAt: bothFigures ? undefined : new Date().toISOString(),
+        enteredManually: undefined,
       },
     })
     .eq("property_id", propertyId)

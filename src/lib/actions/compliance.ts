@@ -911,6 +911,100 @@ export async function confirmEspRevision(
   return ok;
 }
 
+// d3 — the manual fallback, when the notice cannot be read.
+//
+// ADDED 26 August 2026, and it reverses a decision made on 22 August.
+//
+// The original design had no manual path on purpose: the notice is what
+// s72A(4) requires, it amends the agency agreement by its own words, and a
+// figure retyped beside it would be a second source of truth with nothing to
+// reconcile it against. That reasoning still holds, and the upload is still
+// the expected path.
+//
+// What it did not allow for is a document the reader genuinely cannot make
+// out. Adam, 26 Aug 2026: "in the event the document is handwritten and the AI
+// can't read it, it should put up a notice and ask for manual confirmation."
+// A signed notice photographed on a kitchen table, a price amended in pen, a
+// scan at an angle — these are real, and with no fallback the item could never
+// be completed. On 16 Greenmount Way that is exactly what happened, and the
+// flag at settlement had no route to being cleared.
+//
+// So: still not a free-text alternative to attaching the notice. The document
+// must be attached before this is reachable, and this only unlocks once a read
+// has actually been attempted and failed. What is typed is recorded as typed —
+// enteredManually rides on the item and the card says so — because a licensee
+// putting their name to this file should be able to see which figures came off
+// the page and which came off a keyboard.
+export async function enterRevisedEspManually(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3")
+    .maybeSingle();
+
+  const item = row as PropertyItem | null;
+  const data = ((item?.data as Record<string, unknown>) ?? {}) as Record<string, unknown>;
+
+  // The notice still has to exist. This is a fallback for reading it, not for
+  // having one.
+  if (!item?.evidence_path) {
+    return { error: "Attach the notice you served on the vendor first." };
+  }
+
+  const low = Number(String(formData.get("revisedEspLow") ?? "").replace(/[^0-9.]/g, ""));
+  const high = Number(String(formData.get("revisedEspHigh") ?? "").replace(/[^0-9.]/g, ""));
+  const servedOn = String(formData.get("noticeServedOn") ?? "").trim();
+
+  if (!Number.isFinite(low) || !Number.isFinite(high) || low <= 0 || high <= 0) {
+    return { error: "Put in both figures from the notice." };
+  }
+  if (high < low) {
+    return { error: "The higher figure is below the lower one — check which way round they go." };
+  }
+  if (!servedOn) {
+    return { error: "Put in the date the notice was served on the vendor." };
+  }
+
+  // A spread over 10% is recorded, not refused. s72A(2) caps the range, so a
+  // notice carrying a wider one is a problem with the notice — and a product
+  // that refuses to record what the document actually says would hide the
+  // breach rather than surface it. It goes in, and the spread shown on the
+  // card is what makes it visible.
+  await supabase
+    .from("property_items")
+    .update({
+      agency_id: profile.agency_id,
+      data: {
+        ...data,
+        espRevised: true,
+        revisedEspLow: low,
+        revisedEspHigh: high,
+        noticeServedOn: servedOn,
+        enteredManually: true,
+        enteredManuallyAt: new Date().toISOString(),
+        noticeReadFailed: undefined,
+        noticeReadFailedReason: undefined,
+        noticeNotRecognised: undefined,
+      },
+    })
+    .eq("property_id", propertyId)
+    .eq("item_key", "d3");
+
+  // Same reason as confirmEspRevision: the price on foot has just changed, so
+  // the live advertisement is at its most likely to be wrong right now.
+  await recheckAdvertisedPrice(propertyId, true);
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return ok;
+}
+
 // d3 — "no revision" outcome. Most listings never need an ESP change, so
 // this marks the item done immediately without asking for evidence.
 export async function markNoPriceRevision(propertyId: string): Promise<void> {

@@ -25,6 +25,7 @@ import {
   markEspRevised,
   markNoPriceRevision,
   confirmEspRevision,
+  enterRevisedEspManually,
   addVerbalQuoteEntry,
   addBuyerEntry,
   removeBuyerEntry,
@@ -1611,6 +1612,77 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
 //
 // Three states, in order: unanswered, answered Yes and waiting for the notice,
 // notice read and waiting for the two confirmations only a person can give.
+// The fallback for a notice the reader could not make out — a handwritten
+// amendment, a photo taken at an angle, a fax-of-a-fax scan. Added 26 Aug 2026
+// on Adam's instruction.
+//
+// It is deliberately not offered up front. The upload is still the expected
+// path, and this only appears once a read has actually been attempted and
+// failed, so nobody reaches for the keyboard while the document would have
+// answered. What gets typed is marked as typed: enterRevisedEspManually sets
+// enteredManually, and the confirmation panel says so, because a licensee
+// signing this file should be able to tell which figures came off the page.
+function ManualEspEntry({ propertyId, reason }: { propertyId: string; reason: string }) {
+  const action = enterRevisedEspManually.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(action, initialState);
+
+  return (
+    <div className="rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
+      <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
+        <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+        <span>Couldn&rsquo;t read the notice</span>
+      </p>
+      <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{reason}</p>
+      <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">
+        The notice stays attached either way — it&rsquo;s still the record. Copy the figures from it below and
+        they&rsquo;ll be marked as entered by hand.
+      </p>
+
+      <form action={formAction} className="mt-3 space-y-2.5">
+        {state.error && <p className="text-[11px] font-medium text-rc-red">{state.error}</p>}
+        <div className="flex flex-wrap gap-2">
+          <label className="text-[11px] font-medium text-rc-ink">
+            <span className="block">Revised from</span>
+            <input
+              name="revisedEspLow"
+              inputMode="numeric"
+              required
+              placeholder="1,200,000"
+              className="mt-0.5 w-32 rounded-md border border-rc-border px-2 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
+            />
+          </label>
+          <label className="text-[11px] font-medium text-rc-ink">
+            <span className="block">to</span>
+            <input
+              name="revisedEspHigh"
+              inputMode="numeric"
+              required
+              placeholder="1,280,000"
+              className="mt-0.5 w-32 rounded-md border border-rc-border px-2 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
+            />
+          </label>
+          <label className="text-[11px] font-medium text-rc-ink">
+            <span className="block">Served on the vendor</span>
+            <input
+              name="noticeServedOn"
+              type="date"
+              required
+              className="mt-0.5 rounded-md border border-rc-border px-2 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
+            />
+          </label>
+        </div>
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+        >
+          {pending ? "Saving…" : "Save these figures"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const yesAction = markEspRevised.bind(null, propertyId);
   const noAction = markNoPriceRevision.bind(null, propertyId);
@@ -1620,6 +1692,9 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
     espRevised?: boolean;
     reopenedReason?: string;
     noticeNotRecognised?: boolean;
+    noticeReadFailed?: boolean;
+    noticeReadFailedReason?: string;
+    enteredManually?: boolean;
     revisedEspLow?: number;
     revisedEspHigh?: number;
     noticeServedOn?: string;
@@ -1705,6 +1780,20 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
                 served on the vendor.
               </span>
             </p>
+          ) : data.noticeReadFailed ? (
+            /* The read was attempted and failed. Adam, 26 Aug 2026: "in the
+               event the document is handwritten and the AI can't read it, it
+               should put up a notice and ask for manual confirmation."
+               Before this, a failed read was logged to a server console and
+               the card said nothing — so the item simply could not be
+               completed, and the first anyone knew was a flag at settlement. */
+            <ManualEspEntry
+              propertyId={propertyId}
+              reason={
+                data.noticeReadFailedReason ??
+                "The notice couldn't be read. Put the figures in yourself."
+              }
+            />
           ) : (
             <p className="text-sm text-rc-muted">
               Attach the notice you served on the vendor and the figures will be read off it. Serving that notice
@@ -1721,10 +1810,24 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
         </div>
       ) : (
         <form action={confirmFormAction} className="space-y-3">
-          <p className="flex items-start gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-2 text-xs text-rc-green-deep">
-            <Sparkles size={13} className="mt-0.5 shrink-0" />
+          {/* Says where these figures came from, and it matters. Everything
+              downstream — the weekly advertised-price check, the rejected-offer
+              check, the licensee's sign-off summary — measures against this
+              number. A licensee putting their name to the file is entitled to
+              know whether it was read off the document or typed beside it. */}
+          <p
+            className={`flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-xs ${
+              data.enteredManually ? "bg-rc-bg-alt text-rc-ink" : "bg-rc-green-soft text-rc-green-deep"
+            }`}
+          >
+            {data.enteredManually ? (
+              <Info size={13} className="mt-0.5 shrink-0" />
+            ) : (
+              <Sparkles size={13} className="mt-0.5 shrink-0" />
+            )}
             <span>
-              Read from the notice: revised to <strong>{money(data.revisedEspLow)}</strong> to{" "}
+              {data.enteredManually ? "Entered by hand from the notice" : "Read from the notice"}: revised to{" "}
+              <strong>{money(data.revisedEspLow)}</strong> to{" "}
               <strong>{money(data.revisedEspHigh)}</strong>
               {data.noticeServedOn ? (
                 <>
@@ -1732,7 +1835,15 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
                   <strong>{data.noticeServedOn}</strong>
                 </>
               ) : null}
-              {spread !== null ? `. Spread ${spread.toFixed(1)}%` : ""}. Check it against the document before saving.
+              {spread !== null ? `. Spread ${spread.toFixed(1)}%` : ""}
+              {spread !== null && spread > 10 ? (
+                <>
+                  {" "}
+                  &mdash; <strong>wider than the 10% s72A(2) allows</strong>, which is a problem with the notice
+                  itself, not with this record.
+                </>
+              ) : null}
+              . {data.enteredManually ? "Check these against the notice before saving." : "Check it against the document before saving."}
             </span>
           </p>
 
