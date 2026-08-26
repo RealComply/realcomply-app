@@ -59,14 +59,14 @@ export function TrustAuditForm({
     setUploading(true);
     const supabase = createBrowserClient();
     const path = buildSignoffDocPath(agencyId, "trust_audit", chosen.name);
-    const { error } = await uploadEvidenceObject(supabase, { path, file: chosen });
+    const { error, file: stored } = await uploadEvidenceObject(supabase, { path, file: chosen });
     setUploading(false);
     if (error) {
       setUploadError(error);
       return;
     }
     setFilePath(path);
-    setFileName(chosen.name);
+    setFileName(stored.name);
   }
 
   const overdue = daysToDue < 0;

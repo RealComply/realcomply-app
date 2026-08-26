@@ -245,13 +245,13 @@ function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: bool
     setUploading(true);
     const supabase = createBrowserClient();
     const path = buildLicenceDocPath(profile.agency_id, profile.id, file.name);
-    const { error: uploadError } = await uploadEvidenceObject(supabase, { path, file });
+    const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
     if (uploadError) {
       setError(uploadError);
       setUploading(false);
       return;
     }
-    const { error: saveError } = await finalizeLicenceDocument(profile.id, path, file.name);
+    const { error: saveError } = await finalizeLicenceDocument(profile.id, path, stored.name);
     setUploading(false);
     if (saveError) setError(saveError);
   }

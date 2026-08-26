@@ -28,13 +28,13 @@ export function SgManualUploader({ profile, isFirstUpload }: { profile: Profile;
     setUploading(true);
     const supabase = createBrowserClient();
     const path = buildSgManualPath(profile.agency_id, file.name);
-    const { error: uploadError } = await uploadEvidenceObject(supabase, { path, file });
+    const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
     if (uploadError) {
       setError(uploadError);
       setUploading(false);
       return;
     }
-    const { error: saveError } = await addSgManualVersion(path, file.name, versionLabel.trim() || null, notes.trim() || null);
+    const { error: saveError } = await addSgManualVersion(path, stored.name, versionLabel.trim() || null, notes.trim() || null);
     setUploading(false);
     if (saveError) {
       setError(saveError);

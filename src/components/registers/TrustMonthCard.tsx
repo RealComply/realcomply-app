@@ -55,7 +55,7 @@ export function TrustMonthCard({
 
     const supabase = createBrowserClient();
     const path = buildSignoffDocPath(agencyId, "trust_reconciliation", file.name);
-    const { error: uploadError } = await uploadEvidenceObject(supabase, { path, file });
+    const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
     if (uploadError) {
       setError(uploadError);
       setUploading(false);
@@ -73,7 +73,7 @@ export function TrustMonthCard({
       // every month, and without this they would be indistinguishable.
       trustAccountId,
       filePath: path,
-      fileName: file.name,
+      fileName: stored.name,
       notes: null,
       // Ignored by the server for this category, which forces licensee_only.
       signerScope: "licensee_only",

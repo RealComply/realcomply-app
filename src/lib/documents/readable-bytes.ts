@@ -18,18 +18,25 @@
 // a phone photo of a signed notice is a compliance product that will be worked
 // around, and being worked around is worse than being slow.
 //
-// Conversion happens here, on the server, at read time — not in the browser.
-// Uploads go straight from the browser to Storage (Vercel caps request bodies
-// at 4.5MB, so a real contract can never travel through a Server Action), and
-// putting a HEIC decoder into the client bundle to solve a server-side problem
-// is the wrong trade.
+// THIS IS THE SECOND OF TWO CONVERSIONS, and it is the belt rather than the
+// braces. heic-in-the-browser.ts now converts on the way in, so anything
+// uploaded from here on is already a JPEG in Storage — which is what makes a
+// preview render and an audit pack able to embed it.
 //
-// NOTE ON WHAT THIS DOES NOT FIX: the object in Storage is still HEIC, so a
-// browser preview of that file, and any later audit pack that embeds it, still
-// cannot display it. Reading is fixed; showing is not. See
-// RealComply-current-state.md.
+// This one stays, and is not redundant, for three reasons:
+//
+//   * every HEIC uploaded before 26 Aug 2026 is still HEIC in the bucket,
+//     including the notice on 16 Greenmount Way,
+//   * browser-side conversion is allowed to fail — a decoder that cannot run
+//     uploads the original rather than costing someone their evidence, and
+//     this is what catches that,
+//   * and it is the only one of the two that cannot be skipped by anything
+//     writing to Storage by another route.
+//
+// Reading must not depend on an upload path having done the right thing.
 
 import { Buffer } from "node:buffer";
+import { looksLikeHeic } from "@/lib/documents/heic-detect";
 
 export type ReadableBytes = {
   base64: string;
@@ -38,52 +45,6 @@ export type ReadableBytes = {
   /** True when this arrived as HEIC and was converted, so callers can say so. */
   convertedFromHeic: boolean;
 };
-
-const HEIC_CONTENT_TYPES = new Set([
-  "image/heic",
-  "image/heif",
-  "image/heic-sequence",
-  "image/heif-sequence",
-]);
-
-const HEIC_EXTENSIONS = [".heic", ".heif"];
-
-/**
- * Three ways of spotting a HEIC, because any one of them can be absent.
- *
- * The declared content type is what the browser put on the upload, and it is
- * usually right — but an upload from a file picker on an older browser, or a
- * file that has been renamed, can arrive as application/octet-stream. The
- * extension is what the agent sees and is often all that is left. The magic
- * bytes are the only one of the three that cannot lie.
- *
- * ISO base media format: bytes 4–8 are "ftyp", and the brand that follows says
- * which flavour. heic/heix/hevc/hevx/mif1/msf1 all decode through the same
- * library, and mif1 in particular is what a lot of iPhone photos actually carry
- * rather than the "heic" brand people expect.
- */
-export function looksLikeHeic(params: {
-  contentType?: string | null;
-  fileName?: string | null;
-  bytes?: Uint8Array;
-}): boolean {
-  const declared = (params.contentType ?? "").toLowerCase().split(";")[0].trim();
-  if (HEIC_CONTENT_TYPES.has(declared)) return true;
-
-  const name = (params.fileName ?? "").toLowerCase();
-  if (HEIC_EXTENSIONS.some((ext) => name.endsWith(ext))) return true;
-
-  const bytes = params.bytes;
-  if (bytes && bytes.length >= 12) {
-    const ftyp = Buffer.from(bytes.subarray(4, 8)).toString("ascii");
-    if (ftyp === "ftyp") {
-      const brand = Buffer.from(bytes.subarray(8, 12)).toString("ascii").toLowerCase();
-      if (["heic", "heix", "hevc", "hevx", "mif1", "msf1"].includes(brand)) return true;
-    }
-  }
-
-  return false;
-}
 
 /**
  * Reads a downloaded evidence object into something the model can be handed.

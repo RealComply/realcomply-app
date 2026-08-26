@@ -60,13 +60,13 @@ export function CpdPersonCard({
     setUploading(true);
     const supabase = createBrowserClient();
     const path = buildCpdDocPath(subject.agency_id, subject.id, file.name);
-    const { error: uploadError } = await uploadEvidenceObject(supabase, { path, file });
+    const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
     if (uploadError) {
       setError(uploadError);
       setUploading(false);
       return;
     }
-    const { error: saveError } = await addCpdFromCertificate(subject.id, path, file.name);
+    const { error: saveError } = await addCpdFromCertificate(subject.id, path, stored.name);
     setUploading(false);
     if (saveError) setError(saveError);
   }

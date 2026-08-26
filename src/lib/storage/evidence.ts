@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fileForUpload } from "@/lib/documents/heic-in-the-browser";
 
 export const EVIDENCE_BUCKET = "compliance-evidence";
 // The cap on anything uploaded as evidence.
@@ -88,21 +89,43 @@ export function buildStagingPath(agencyId: string, stagingId: string, itemKey: s
 // on this page, so it can write directly to Storage — RLS (agency_id
 // prefix match) enforces the same tenant isolation either way. Only the
 // resulting path (a short string) then travels through any Server Action.
+// HEIC IS CONVERTED HERE, in the one function every upload in the app goes
+// through, rather than at the nine call sites that use it (26 Aug 2026).
+//
+// Nine places is nine chances to forget, and the one that gets forgotten is
+// always the one an agent uses at an open home. Doing it here means a new
+// upload path added next month inherits the behaviour without anybody
+// remembering to ask for it.
+//
+// Only HEIC is touched. Everything else — every contract, every agency
+// agreement — is uploaded byte for byte as the agent chose it. See
+// documents/heic-in-the-browser.ts for why this cannot happen on the server.
+//
+// The returned `file` is what actually went up, so a caller recording a
+// display name can use its name rather than the .HEIC the agent picked.
+// Callers that ignore it are not broken by it.
 export async function uploadEvidenceObject(
   supabase: SupabaseClient,
   params: { path: string; file: File },
-): Promise<{ error: string | null }> {
-  const { path, file } = params;
+): Promise<{ error: string | null; file: File }> {
+  const { path } = params;
+  const file = await fileForUpload(params.file);
 
+  // Checked after conversion, not before: what matters is the size of the
+  // thing being stored. A JPEG off a HEIC is usually the larger of the two.
   if (file.size > MAX_EVIDENCE_BYTES) {
-    return { error: `${file.name} is larger than the 20 MB limit.` };
+    // The message used to say 20 MB, which stopped being true on 25 Aug when
+    // the cap went to 50 — a stale number in an error is worse than no number,
+    // because someone will act on it and compress a legal document to fit.
+    const mb = Math.round(MAX_EVIDENCE_BYTES / (1024 * 1024));
+    return { error: `${file.name} is larger than the ${mb} MB limit.`, file };
   }
 
   const { error } = await supabase.storage
     .from(EVIDENCE_BUCKET)
     .upload(path, file, { contentType: file.type || undefined });
 
-  return { error: error?.message ?? null };
+  return { error: error?.message ?? null, file };
 }
 
 // Records that a property_items row now points at an already-uploaded

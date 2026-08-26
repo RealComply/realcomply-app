@@ -243,7 +243,11 @@ function EvidenceUploader({
     }
 
     const path = buildEvidencePath(profile.agency_id, propertyId, itemKey, selectedFile.name);
-    const { error } = await uploadEvidenceObject(supabase, { path, file: selectedFile });
+    // `stored` is what actually went up. An iPhone photo is converted to JPEG
+    // on the way (see uploadEvidenceObject), so the name recorded against the
+    // item should be the .jpg that exists rather than the .HEIC that was
+    // picked — otherwise the file list names a file nobody can open.
+    const { error, file: stored } = await uploadEvidenceObject(supabase, { path, file: selectedFile });
     setUploading(false);
     if (error) {
       setClientError(error);
@@ -252,7 +256,7 @@ function EvidenceUploader({
 
     const fd = new FormData();
     fd.set("path", path);
-    fd.set("fileName", selectedFile.name);
+    fd.set("fileName", stored.name);
     uploadFormAction(fd);
   }
 
@@ -1363,16 +1367,18 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
     }
 
     const path = buildEvidencePath(profile.agency_id, propertyId, item.key, file.name);
-    const { error } = await uploadEvidenceObject(supabase, { path, file });
+    const { error, file: stored } = await uploadEvidenceObject(supabase, { path, file });
     setUploading(false);
     if (error) {
       setClientError(error);
       return;
     }
 
-    setEvidence({ path, fileName: file.name });
+    // stored.name throughout, not file.name: a HEIC has become a JPEG by this
+    // point, and the read below is told which file it is looking at.
+    setEvidence({ path, fileName: stored.name });
     setExtracting(true);
-    const { error: extractError, fields } = await extractReportDetails(path, file.name);
+    const { error: extractError, fields } = await extractReportDetails(path, stored.name);
     setExtracting(false);
     if (extractError) {
       setClientError(extractError);
