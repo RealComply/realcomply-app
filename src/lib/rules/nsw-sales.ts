@@ -408,22 +408,41 @@ const items: ComplianceItem[] = [
     showIf: (p) => Boolean(p.agent_interest),
     hideNote: true,
   },
+  // ── AML/KYC: SENT and CLEARED are two different facts ─────────────────
+  //
+  // Split on 27 Aug 2026 (Adam). He asked for the item to read "AML/KYC checks
+  // sent to vendor" rather than requiring the check to be complete, because
+  // Listing set-up was stalling on something outside the agent's control: the
+  // link goes out on day one and the vendor answers it whenever they feel like
+  // it.
+  //
+  // The workflow complaint was right. Relabelling the single item would have
+  // been wrong, because "sent" and "came back clean" are not the same fact and
+  // only one of them discharges anything. Tranche 2 requires the CDD to be
+  // CARRIED OUT, not requested. A file showing all-green on a KYC link that was
+  // ignored for six weeks is worse than a file showing an open flag — it is an
+  // open flag that has been made invisible.
+  //
+  // So: two items per party. "Sent" is inside the agent's control and closes
+  // the early stage. "Cleared" carries the obligation and sits at the stage
+  // where it genuinely cannot be deferred any further.
+  //
+  // Plain English, 17 Aug 2026, carried over. The old wording ran three pieces
+  // of jargon together — "AML/CDD", "CDD has been completed", "reference/
+  // outcome pointer" — and Adam, a licensee, had to ask what CDD meant. If he
+  // had to ask, an agent certainly would.
+  //
+  // PEXA Clear removed. Naming Cass's provider inside a rule is exactly the
+  // hard-coding the REINSW forms mapping flagged as a hit on the separable
+  // rules layer: an agency using a different provider reads a rule that
+  // names a competitor's product.
   {
     key: "amv",
     stage: 0,
     kind: "checklist",
-    label: "Vendor check with your AML provider",
-    // Plain English, 17 Aug 2026. The old wording ran three pieces of jargon
-    // together — "AML/CDD", "CDD has been completed", "reference/outcome
-    // pointer" — and Adam, a licensee, had to ask what CDD meant. If he had
-    // to ask, an agent certainly would.
-    //
-    // PEXA Clear removed. Naming Cass's provider inside a rule is exactly the
-    // hard-coding the REINSW forms mapping flagged as a hit on the separable
-    // rules layer: an agency using a different provider reads a rule that
-    // names a competitor's product.
+    label: "AML/KYC check sent to vendor",
     description:
-      "Run each vendor through your AML provider and note the reference. RealComply doesn't do the check itself.",
+      "Send each vendor through your AML provider. This confirms you've sent it — the result is recorded separately at Sold. RealComply doesn't do the check itself.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -969,11 +988,35 @@ const items: ComplianceItem[] = [
     key: "amp",
     stage: 4,
     kind: "checklist",
-    label: "Purchaser check with your AML provider",
+    label: "AML/KYC check sent to purchaser",
     description:
-      "Now the property is sold, run each purchaser through your AML provider and note the reference.",
+      "Now the property is sold, send each purchaser through your AML provider. The result is recorded separately at Settled.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
+    requiredForStageCompletion: true,
+  },
+  // The vendor result lands here rather than back at Listing set-up, because
+  // Sold is the last stage at which it can honestly be deferred. By exchange
+  // you are brokering a real transaction and you must know who your customer
+  // is; before that, a vendor who is merely slow shouldn't stop the campaign.
+  //
+  // Placed here deliberately and not at On market: blocking a listing from
+  // going live because a vendor hasn't opened an email costs the agency real
+  // money for no compliance gain. Blocking exchange costs nothing, because a
+  // vendor who still won't complete KYC by exchange is itself the red flag.
+  //
+  // requiresDate is true on both cleared items. "When did the check come back"
+  // is the fact an AUSTRAC reviewer asks for, and it is the one a tick alone
+  // cannot answer.
+  {
+    key: "amvc",
+    stage: 4,
+    kind: "checklist",
+    label: "Vendor AML/KYC check returned and cleared",
+    description:
+      "The vendor's check has come back and is clear. Don't leave this to exchange week — chase it as soon as the campaign starts. Anything unusual goes to the licensee.",
+    legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
+    requiresDate: true,
     requiredForStageCompletion: true,
   },
   // REMOVED 22 Aug 2026 (Adam): "AML COMPLETE — licensee sign-off", which sat
@@ -986,14 +1029,31 @@ const items: ComplianceItem[] = [
   // that is an agency supervision layer, and Cass covers supervision in the
   // Supervision Guidelines rather than per listing.
   //
-  // Nothing about the actual AML record is lost. "Vendor check with your AML
-  // provider" (Listing set-up) and "Purchaser check with your AML provider"
+  // Nothing about the actual AML record is lost. The vendor and purchaser
+  // provider checks (since 27 Aug 2026 split into sent + cleared: amv/amvc and amp/ampc)
   // (Sold, directly above) are the items that carry the provider reference and
   // the pre-commencement position, and both stay.
   //
   // Do not re-add this on the reasoning that AML needs a human sign-off. The
   // named-human requirement attaches to the COMPLIANCE OFFICER ROLE, agency
   // wide, not to each transaction file.
+  //
+  // NOTE (27 Aug 2026): "amvc" and "ampc" below are NOT that removed sign-off
+  // returning by the back door. They record a fact about the CHECK — that the
+  // provider's result came back and was clear, and on what date. They do not
+  // ask the licensee to attest to the agency's AML position per file.
+
+  {
+    key: "ampc",
+    stage: 5,
+    kind: "checklist",
+    label: "Purchaser AML/KYC check returned and cleared",
+    description:
+      "The purchaser's check has come back and is clear. This is the last point it can be done — chase it from exchange, not from settlement week. Anything unusual goes to the licensee.",
+    legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
+    requiresDate: true,
+    requiredForStageCompletion: true,
+  },
 
   {
     // s73B: every price statement made to a buyer, prospective buyer or seller
