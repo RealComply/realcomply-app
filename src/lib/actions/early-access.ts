@@ -44,6 +44,10 @@ export async function joinEarlyAccess(
   // Trimmed and capped rather than pattern-matched: any string a person types
   // here is a plausible agency name, and there is nothing to validate against.
   const agencyName = String(formData.get("agencyName") ?? "").trim().slice(0, 160);
+  // First name, added the same day as the office name. Capped short: this is a
+  // given name, and anything longer than 80 characters is a paste accident or
+  // someone filling the wrong box.
+  const firstName = String(formData.get("firstName") ?? "").trim().slice(0, 80);
 
   if (!email) {
     return { ok: false, error: "Enter your email address." };
@@ -54,12 +58,17 @@ export async function joinEarlyAccess(
   // Checked server-side as well as by the browser's required attribute, which
   // is a convenience for people and no obstacle at all to anything posting
   // straight at the action.
+  if (!firstName) {
+    return { ok: false, error: "Enter your first name." };
+  }
   if (!agencyName) {
     return { ok: false, error: "Enter your office or agency name." };
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("early_access").insert({ email, source, agency_name: agencyName });
+  const { error } = await supabase
+    .from("early_access")
+    .insert({ email, source, agency_name: agencyName, first_name: firstName });
 
   if (error) {
     // 23505 = unique violation, i.e. already on the list. Treat as success:
@@ -83,8 +92,8 @@ export async function joinEarlyAccess(
   // happen on a genuinely NEW row — a duplicate address returns above, before
   // reaching here — and a row created a line ago cannot already have been
   // unsubscribed. Any future send that walks the existing list must check it.
-  await sendEarlyAccessAcknowledgement(email);
-  await notifyEarlyAccessSignup(email, source, agencyName);
+  await sendEarlyAccessAcknowledgement(email, firstName);
+  await notifyEarlyAccessSignup(email, source, agencyName, firstName);
 
   return { ok: true, error: null };
 }
@@ -105,11 +114,11 @@ export async function joinEarlyAccess(
  * identities — a stranger's address would have bounced with "Email address is
  * not verified." An acknowledgement was undeliverable by design until then.
  */
-async function sendEarlyAccessAcknowledgement(email: string): Promise<void> {
+async function sendEarlyAccessAcknowledgement(email: string, firstName: string): Promise<void> {
   const sent = await sendEmail({
     to: email,
     subject: EARLY_ACCESS_SUBJECT,
-    text: earlyAccessAcknowledgementText(email),
+    text: earlyAccessAcknowledgementText(email, firstName),
   });
 
   if (!sent) {
@@ -132,6 +141,7 @@ async function notifyEarlyAccessSignup(
   email: string,
   source: string | null,
   agencyName: string,
+  firstName: string,
 ): Promise<void> {
   const to = process.env.ADMIN_NOTIFICATION_EMAIL;
   if (!to) {
@@ -148,6 +158,7 @@ async function notifyEarlyAccessSignup(
     text: [
       "Someone registered for early access on the landing page.",
       "",
+      `Name: ${firstName}`,
       `Office: ${agencyName}`,
       `Email: ${email}`,
       // ?src= on the ad's link, so a run of these reads as which ad is working

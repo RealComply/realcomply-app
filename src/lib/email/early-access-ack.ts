@@ -55,6 +55,28 @@ export function unsubscribeUrl(email: string): string | null {
 }
 
 /**
+ * Who to greet.
+ *
+ * Adam's approved copy opens "Hi [first name]," and always did. It shipped as
+ * "Hi there," on 3 Sep only because the form collected an address and nothing
+ * else; the field was added hours later and the copy goes back to what he
+ * actually wrote.
+ *
+ * "Hi there," survives as the fallback for the rows captured before the field
+ * existed, and for anything that reaches here with a blank. A greeting reading
+ * "Hi ," is worse than not using a name at all.
+ *
+ * Only the first character is touched. Full title-casing would rewrite names
+ * it has no business rewriting, and someone who types "sarah" is better served
+ * by "Sarah" than by a system that decides it knows how "de Silva" is spelt.
+ */
+function greetingName(firstName?: string | null): string {
+  const name = (firstName ?? "").trim();
+  if (!name) return "there";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/**
  * The message body.
  *
  * Adam's copy is the first block and is reproduced exactly. Everything after
@@ -63,7 +85,7 @@ export function unsubscribeUrl(email: string): string | null {
  * unsubscribe facility that the Spam Act 2003 requires on a commercial
  * electronic message.
  */
-export function earlyAccessAcknowledgementText(email: string): string {
+export function earlyAccessAcknowledgementText(email: string, firstName?: string | null): string {
   const link = unsubscribeUrl(email);
 
   const optOut = link
@@ -71,7 +93,7 @@ export function earlyAccessAcknowledgementText(email: string): string {
     : "To stop receiving these, reply to this email with UNSUBSCRIBE and we will remove you.";
 
   return [
-    "Hi there,",
+    `Hi ${greetingName(firstName)},`,
     "",
     "Thank you for registering for early access to RealComply. You're on the list!",
     "",

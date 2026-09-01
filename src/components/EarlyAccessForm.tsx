@@ -43,6 +43,12 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
 
   const dark = tone === "dark";
 
+  // Three inputs now, so the tone-dependent classes live in one place rather
+  // than being copied three times and drifting apart at the first restyle.
+  const field = dark
+    ? "border-white/15 bg-white/10 text-white placeholder:text-rc-ink-muted focus:border-rc-green focus:ring-rc-green/30"
+    : "border-rc-border bg-white text-rc-ink placeholder:text-rc-faint focus:border-rc-green-deep focus:ring-rc-green-deep/20";
+
   if (state.ok) {
     return (
       <div
@@ -70,25 +76,38 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
         <input id="company_website" name="company_website" type="text" tabIndex={-1} autoComplete="off" />
       </div>
 
-      {/* Above the email row rather than beside it, so the email-and-button
-          pairing that the page was designed around stays intact on desktop. */}
-      <label htmlFor="early-access-agency" className="sr-only">
-        Office or agency name
-      </label>
-      <input
-        id="early-access-agency"
-        name="agencyName"
-        type="text"
-        required
-        maxLength={160}
-        autoComplete="organization"
-        placeholder="Your office or agency name"
-        className={`mb-2.5 w-full rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${
-          dark
-            ? "border-white/15 bg-white/10 text-white placeholder:text-rc-ink-muted focus:border-rc-green focus:ring-rc-green/30"
-            : "border-rc-border bg-white text-rc-ink placeholder:text-rc-faint focus:border-rc-green-deep focus:ring-rc-green-deep/20"
-        }`}
-      />
+      {/* Name and office share a row above the email, so three fields still
+          read as two lines and the email-and-button pairing that the page was
+          designed around stays intact on desktop. They stack on mobile. */}
+      <div className="mb-2.5 flex flex-col gap-2.5 sm:flex-row">
+        <label htmlFor="early-access-first-name" className="sr-only">
+          First name
+        </label>
+        <input
+          id="early-access-first-name"
+          name="firstName"
+          type="text"
+          required
+          maxLength={80}
+          autoComplete="given-name"
+          placeholder="First name"
+          className={`min-w-0 flex-1 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${field}`}
+        />
+
+        <label htmlFor="early-access-agency" className="sr-only">
+          Office or agency name
+        </label>
+        <input
+          id="early-access-agency"
+          name="agencyName"
+          type="text"
+          required
+          maxLength={160}
+          autoComplete="organization"
+          placeholder="Office or agency"
+          className={`min-w-0 flex-1 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${field}`}
+        />
+      </div>
 
       <div className="flex flex-col gap-2.5 sm:flex-row">
         <label htmlFor="early-access-email" className="sr-only">
@@ -101,11 +120,7 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
           required
           autoComplete="email"
           placeholder="you@youragency.com.au"
-          className={`min-w-0 flex-1 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${
-            dark
-              ? "border-white/15 bg-white/10 text-white placeholder:text-rc-ink-muted focus:border-rc-green focus:ring-rc-green/30"
-              : "border-rc-border bg-white text-rc-ink placeholder:text-rc-faint focus:border-rc-green-deep focus:ring-rc-green-deep/20"
-          }`}
+          className={`min-w-0 flex-1 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${field}`}
         />
         <button
           type="submit"
