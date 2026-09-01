@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email/send";
+import { EARLY_ACCESS_SUBJECT, earlyAccessAcknowledgementText } from "@/lib/email/early-access-ack";
 
 // Early-access signup from the public landing page. Runs unauthenticated —
 // this is the one action in the app reachable by a stranger — so it stays
@@ -39,6 +40,14 @@ export async function joinEarlyAccess(
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const source = String(formData.get("source") ?? "").trim().slice(0, 120) || null;
+  // Office name, added 3 Sep 2026 so a registration says who it came from.
+  // Trimmed and capped rather than pattern-matched: any string a person types
+  // here is a plausible agency name, and there is nothing to validate against.
+  const agencyName = String(formData.get("agencyName") ?? "").trim().slice(0, 160);
+  // First name, added the same day as the office name. Capped short: this is a
+  // given name, and anything longer than 80 characters is a paste accident or
+  // someone filling the wrong box.
+  const firstName = String(formData.get("firstName") ?? "").trim().slice(0, 80);
 
   if (!email) {
     return { ok: false, error: "Enter your email address." };
@@ -46,9 +55,20 @@ export async function joinEarlyAccess(
   if (!EMAIL.test(email) || email.length > 320) {
     return { ok: false, error: "That does not look like an email address." };
   }
+  // Checked server-side as well as by the browser's required attribute, which
+  // is a convenience for people and no obstacle at all to anything posting
+  // straight at the action.
+  if (!firstName) {
+    return { ok: false, error: "Enter your first name." };
+  }
+  if (!agencyName) {
+    return { ok: false, error: "Enter your office or agency name." };
+  }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("early_access").insert({ email, source });
+  const { error } = await supabase
+    .from("early_access")
+    .insert({ email, source, agency_name: agencyName, first_name: firstName });
 
   if (error) {
     // 23505 = unique violation, i.e. already on the list. Treat as success:
@@ -62,9 +82,48 @@ export async function joinEarlyAccess(
     return { ok: false, error: "Something went wrong at our end. Please try again." };
   }
 
-  await notifyEarlyAccessSignup(email, source);
+  // Two emails now, and only the first is new.
+  //
+  // Order is deliberate: acknowledge the person first, tell ourselves second.
+  // If the process dies between them, the registrant has been looked after and
+  // Adam can still find the row in the table.
+  //
+  // No unsubscribed_at check on this path, and none is needed. Both sends only
+  // happen on a genuinely NEW row — a duplicate address returns above, before
+  // reaching here — and a row created a line ago cannot already have been
+  // unsubscribed. Any future send that walks the existing list must check it.
+  await sendEarlyAccessAcknowledgement(email, firstName);
+  await notifyEarlyAccessSignup(email, source, agencyName, firstName);
 
   return { ok: true, error: null };
+}
+
+/**
+ * Acknowledges the registration to the person who made it.
+ *
+ * Adam, 3 Sep 2026: "All i want right now is an acknowledgment email in reply
+ * to the early access request so we look professional." Until this, someone
+ * handed over their address, saw "You are on the list", and heard nothing.
+ *
+ * Never awaited into the result, same reasoning as the notification below: the
+ * row is already saved and the list is the source of truth, so a mail server
+ * having a bad moment must not report a successful registration as failed.
+ *
+ * This became possible only in late August. Before SES production access came
+ * through, the account was sandboxed and could deliver solely to verified
+ * identities — a stranger's address would have bounced with "Email address is
+ * not verified." An acknowledgement was undeliverable by design until then.
+ */
+async function sendEarlyAccessAcknowledgement(email: string, firstName: string): Promise<void> {
+  const sent = await sendEmail({
+    to: email,
+    subject: EARLY_ACCESS_SUBJECT,
+    text: earlyAccessAcknowledgementText(email, firstName),
+  });
+
+  if (!sent) {
+    console.error("Early-access acknowledgement failed to send:", email);
+  }
 }
 
 /**
@@ -78,7 +137,12 @@ export async function joinEarlyAccess(
  * already saved, and the list in Supabase remains the source of truth. Failures
  * are logged, not surfaced.
  */
-async function notifyEarlyAccessSignup(email: string, source: string | null): Promise<void> {
+async function notifyEarlyAccessSignup(
+  email: string,
+  source: string | null,
+  agencyName: string,
+  firstName: string,
+): Promise<void> {
   const to = process.env.ADMIN_NOTIFICATION_EMAIL;
   if (!to) {
     console.error("Early-access signup not notified: ADMIN_NOTIFICATION_EMAIL is not set.", { email });
@@ -87,10 +151,15 @@ async function notifyEarlyAccessSignup(email: string, source: string | null): Pr
 
   const sent = await sendEmail({
     to,
-    subject: `RealComply early access — ${email}`,
+    // Office name in the subject, not just the body. A run of these in an
+    // inbox then reads as a list of agencies rather than a list of addresses,
+    // which is the whole reason the field was added.
+    subject: `RealComply early access — ${agencyName}`,
     text: [
       "Someone registered for early access on the landing page.",
       "",
+      `Name: ${firstName}`,
+      `Office: ${agencyName}`,
       `Email: ${email}`,
       // ?src= on the ad's link, so a run of these reads as which ad is working
       // without going to Meta's own attribution for it.

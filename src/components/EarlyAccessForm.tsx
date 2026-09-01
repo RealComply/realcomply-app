@@ -3,11 +3,21 @@
 import { useActionState, useEffect } from "react";
 import { joinEarlyAccess, type EarlyAccessState } from "@/lib/actions/early-access";
 
-// The single ask on the landing page. One field, one button — Adam's call,
-// 13 Aug 2026: cold traffic from a Meta ad will give up an email and not much
-// more, so asking for name and agency as well would cost more signups than the
-// extra detail is worth. Adding them later is a field each here and a column
-// each in the table.
+// The ask on the landing page. Email plus office name.
+//
+// Started as one field, one button — Adam's call, 13 Aug 2026: cold traffic
+// from a Meta ad will give up an email and not much more, so asking for name
+// and agency as well would cost more signups than the extra detail is worth.
+//
+// Office name added 3 Sep 2026: "i think we should ask for their office name
+// too so i can look them up." That is the reason it is REQUIRED rather than
+// optional — a field he cannot rely on being filled does not let him look
+// anyone up, which was the whole point of adding it.
+//
+// A first name was considered at the same time and deliberately left out. An
+// office name is a business detail a real estate professional gives without
+// hesitation; a personal name reads as a form. This is the higher-value half
+// of the pair anyway: it tells him the agency, the area and the likely size.
 
 const initial: EarlyAccessState = { ok: false, error: null };
 
@@ -32,6 +42,12 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
   }, [state.ok]);
 
   const dark = tone === "dark";
+
+  // Three inputs now, so the tone-dependent classes live in one place rather
+  // than being copied three times and drifting apart at the first restyle.
+  const field = dark
+    ? "border-white/15 bg-white/10 text-white placeholder:text-rc-ink-muted focus:border-rc-green focus:ring-rc-green/30"
+    : "border-rc-border bg-white text-rc-ink placeholder:text-rc-faint focus:border-rc-green-deep focus:ring-rc-green-deep/20";
 
   if (state.ok) {
     return (
@@ -60,6 +76,39 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
         <input id="company_website" name="company_website" type="text" tabIndex={-1} autoComplete="off" />
       </div>
 
+      {/* Name and office share a row above the email, so three fields still
+          read as two lines and the email-and-button pairing that the page was
+          designed around stays intact on desktop. They stack on mobile. */}
+      <div className="mb-2.5 flex flex-col gap-2.5 sm:flex-row">
+        <label htmlFor="early-access-first-name" className="sr-only">
+          First name
+        </label>
+        <input
+          id="early-access-first-name"
+          name="firstName"
+          type="text"
+          required
+          maxLength={80}
+          autoComplete="given-name"
+          placeholder="First name"
+          className={`min-w-0 flex-1 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${field}`}
+        />
+
+        <label htmlFor="early-access-agency" className="sr-only">
+          Office or agency name
+        </label>
+        <input
+          id="early-access-agency"
+          name="agencyName"
+          type="text"
+          required
+          maxLength={160}
+          autoComplete="organization"
+          placeholder="Office or agency"
+          className={`min-w-0 flex-1 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${field}`}
+        />
+      </div>
+
       <div className="flex flex-col gap-2.5 sm:flex-row">
         <label htmlFor="early-access-email" className="sr-only">
           Email address
@@ -71,11 +120,7 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
           required
           autoComplete="email"
           placeholder="you@youragency.com.au"
-          className={`min-w-0 flex-1 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${
-            dark
-              ? "border-white/15 bg-white/10 text-white placeholder:text-rc-ink-muted focus:border-rc-green focus:ring-rc-green/30"
-              : "border-rc-border bg-white text-rc-ink placeholder:text-rc-faint focus:border-rc-green-deep focus:ring-rc-green-deep/20"
-          }`}
+          className={`min-w-0 flex-1 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${field}`}
         />
         <button
           type="submit"
