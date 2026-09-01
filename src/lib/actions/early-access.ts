@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email/send";
+import { EARLY_ACCESS_SUBJECT, earlyAccessAcknowledgementText } from "@/lib/email/early-access-ack";
 
 // Early-access signup from the public landing page. Runs unauthenticated —
 // this is the one action in the app reachable by a stranger — so it stays
@@ -62,9 +63,48 @@ export async function joinEarlyAccess(
     return { ok: false, error: "Something went wrong at our end. Please try again." };
   }
 
+  // Two emails now, and only the first is new.
+  //
+  // Order is deliberate: acknowledge the person first, tell ourselves second.
+  // If the process dies between them, the registrant has been looked after and
+  // Adam can still find the row in the table.
+  //
+  // No unsubscribed_at check on this path, and none is needed. Both sends only
+  // happen on a genuinely NEW row — a duplicate address returns above, before
+  // reaching here — and a row created a line ago cannot already have been
+  // unsubscribed. Any future send that walks the existing list must check it.
+  await sendEarlyAccessAcknowledgement(email);
   await notifyEarlyAccessSignup(email, source);
 
   return { ok: true, error: null };
+}
+
+/**
+ * Acknowledges the registration to the person who made it.
+ *
+ * Adam, 3 Sep 2026: "All i want right now is an acknowledgment email in reply
+ * to the early access request so we look professional." Until this, someone
+ * handed over their address, saw "You are on the list", and heard nothing.
+ *
+ * Never awaited into the result, same reasoning as the notification below: the
+ * row is already saved and the list is the source of truth, so a mail server
+ * having a bad moment must not report a successful registration as failed.
+ *
+ * This became possible only in late August. Before SES production access came
+ * through, the account was sandboxed and could deliver solely to verified
+ * identities — a stranger's address would have bounced with "Email address is
+ * not verified." An acknowledgement was undeliverable by design until then.
+ */
+async function sendEarlyAccessAcknowledgement(email: string): Promise<void> {
+  const sent = await sendEmail({
+    to: email,
+    subject: EARLY_ACCESS_SUBJECT,
+    text: earlyAccessAcknowledgementText(email),
+  });
+
+  if (!sent) {
+    console.error("Early-access acknowledgement failed to send:", email);
+  }
 }
 
 /**
