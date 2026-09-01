@@ -2,7 +2,11 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email/send";
-import { EARLY_ACCESS_SUBJECT, earlyAccessAcknowledgementText } from "@/lib/email/early-access-ack";
+import {
+  EARLY_ACCESS_SUBJECT,
+  earlyAccessAcknowledgementText,
+  earlyAccessAcknowledgementHtml,
+} from "@/lib/email/early-access-ack";
 
 // Early-access signup from the public landing page. Runs unauthenticated —
 // this is the one action in the app reachable by a stranger — so it stays
@@ -119,6 +123,7 @@ async function sendEarlyAccessAcknowledgement(email: string, firstName: string):
     to: email,
     subject: EARLY_ACCESS_SUBJECT,
     text: earlyAccessAcknowledgementText(email, firstName),
+    html: earlyAccessAcknowledgementHtml(email, firstName),
   });
 
   if (!sent) {

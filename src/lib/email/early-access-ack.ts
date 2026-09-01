@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { renderEmailHtml, renderEmailText, type EmailDocument } from "./layout";
 
 // The acknowledgement a registrant receives after joining the early-access
 // list, and the unsubscribe machinery that has to travel with it.
@@ -85,28 +86,46 @@ function greetingName(firstName?: string | null): string {
  * unsubscribe facility that the Spam Act 2003 requires on a commercial
  * electronic message.
  */
-export function earlyAccessAcknowledgementText(email: string, firstName?: string | null): string {
+function acknowledgementDocument(email: string, firstName?: string | null): EmailDocument {
   const link = unsubscribeUrl(email);
 
   const optOut = link
-    ? `Unsubscribe: ${link}`
-    : "To stop receiving these, reply to this email with UNSUBSCRIBE and we will remove you.";
+    ? `You are receiving this because you registered for early access at realcomply.com.au.<br><a href="${link}" style="color:#5c6f68">Unsubscribe</a>`
+    : "You are receiving this because you registered for early access at realcomply.com.au. To stop receiving these, reply to this email with UNSUBSCRIBE and we will remove you.";
 
-  return [
-    `Hi ${greetingName(firstName)},`,
-    "",
-    "Thank you for registering for early access to RealComply. You're on the list!",
-    "",
-    "We will be onboarding new clients over the next two weeks and will be in touch to get you set up.",
-    "",
-    "We look forward to assisting you with your real estate compliance.",
-    "",
-    "The RealComply Team",
-    "",
-    "—",
-    "RealComply provides diligence support. It is not legal advice, and the licensee remains responsible for decisions and sign-off.",
-    "",
-    "You are receiving this because you registered for early access at realcomply.com.au.",
-    optOut,
-  ].join("\n");
+  return {
+    // Written, not inherited. Left alone, the client fills this line with the
+    // first words of the body, which here would just repeat the subject.
+    preheader: "You're on the list. We'll be onboarding over the next two weeks.",
+    sections: [
+      { kind: "paragraph", lead: true, text: `Hi ${greetingName(firstName)},` },
+      {
+        kind: "paragraph",
+        text: "Thank you for registering for early access to RealComply. You're on the list!",
+      },
+      {
+        kind: "paragraph",
+        text:
+          "We will be onboarding new clients over the next two weeks and will be in touch to get you set up.",
+      },
+      {
+        kind: "paragraph",
+        text: "We look forward to assisting you with your real estate compliance.",
+      },
+      { kind: "paragraph", lead: true, text: "The RealComply Team" },
+    ],
+    footer: [
+      "RealComply provides diligence support. It is not legal advice, and the licensee remains responsible for decisions and sign-off.",
+      optOut,
+    ],
+  };
+}
+
+/** Adam's approved copy. Both versions come from one document, so they cannot drift. */
+export function earlyAccessAcknowledgementText(email: string, firstName?: string | null): string {
+  return renderEmailText(acknowledgementDocument(email, firstName));
+}
+
+export function earlyAccessAcknowledgementHtml(email: string, firstName?: string | null): string {
+  return renderEmailHtml(acknowledgementDocument(email, firstName));
 }

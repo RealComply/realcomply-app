@@ -1,6 +1,14 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { sendEmail } from "@/lib/email/send";
 import {
+  renderEmailHtml,
+  renderEmailText,
+  DILIGENCE_LINE,
+  type EmailDocument,
+  type EmailSection,
+  type EmailRow,
+} from "./layout";
+import {
   computePropertyDigests,
   daysSinceActivity,
   awaitingAgentReview,
@@ -102,7 +110,11 @@ function agentName(profiles: Profile[], id: string): string {
   return profiles.find((p) => p.id === id)?.full_name || profiles.find((p) => p.id === id)?.email || "Unknown agent";
 }
 
-function renderDigestSection(title: string, digests: PropertyDigest[], profiles: Profile[]): string {
+function renderDigestSection(
+  title: string,
+  digests: PropertyDigest[],
+  profiles: Profile[],
+): EmailSection[] {
   const needsYou = digests.filter(
     (d) => d.pendingSignoff.length > 0 || d.flagged.length > 0 || d.awaiting.length > 0,
   );
@@ -111,29 +123,43 @@ function renderDigestSection(title: string, digests: PropertyDigest[], profiles:
     return d.property.stage < 5 && (days === null || days > 7);
   });
 
-  const lines: string[] = [`${title}`, "=".repeat(title.length)];
+  const out: EmailSection[] = [{ kind: "label", text: `${title} — needs attention` }];
 
-  lines.push("", `Needs attention (${needsYou.length})`);
   if (needsYou.length === 0) {
-    lines.push("  Nothing needs attention right now.");
+    out.push({ kind: "note", text: "Nothing needs attention right now." });
   } else {
-    for (const d of needsYou) {
-      const items = [...d.pendingSignoff, ...d.flagged, ...d.awaiting].map((i) => i.label).join(", ");
-      lines.push(`  - ${d.property.address} (${STAGE_LABELS[d.property.stage]}, ${agentName(profiles, d.property.created_by)}): ${items}`);
-    }
+    out.push({
+      kind: "rows",
+      rows: needsYou.map((d) => ({
+        title: d.property.address,
+        sub: `${STAGE_LABELS[d.property.stage]} · ${agentName(profiles, d.property.created_by)}`,
+        detail: [...d.pendingSignoff, ...d.flagged, ...d.awaiting].map((i) => i.label).join(", "),
+        // A flag is a live compliance or pricing problem; a pending signature
+        // is work waiting on a person. Different colours because they are
+        // different kinds of urgent.
+        tone: d.flagged.length > 0 ? ("risk" as const) : ("attention" as const),
+      })),
+    });
   }
 
-  lines.push("", `Due for weekly review (${dueForReview.length})`);
+  out.push({ kind: "label", text: "Due for weekly review" });
   if (dueForReview.length === 0) {
-    lines.push("  Every active file has had activity this week.");
+    out.push({ kind: "note", text: "Every active file has had activity this week." });
   } else {
-    for (const d of dueForReview) {
-      const days = daysSinceActivity(d.lastActivityAt);
-      lines.push(`  - ${d.property.address}: ${days === null ? "no activity yet" : `${days} days since last activity`}`);
-    }
+    out.push({
+      kind: "rows",
+      rows: dueForReview.map((d) => {
+        const days = daysSinceActivity(d.lastActivityAt);
+        return {
+          title: d.property.address,
+          sub: days === null ? "no activity yet" : `${days} days since last activity`,
+          tone: "routine" as const,
+        };
+      }),
+    });
   }
 
-  return lines.join("\n");
+  return out;
 }
 
 // Widened from 30 days to 90 (Adam, 18 Aug 2026), matching the first
@@ -149,50 +175,93 @@ function renderDigestSection(title: string, digests: PropertyDigest[], profiles:
 // Files an assistant has prepared and handed to an agent. Licensee section
 // only: it is a supervision picture, not a to-do — the agent already gets
 // these at the top of their own Home page.
-function renderAwaitingAgentSection(properties: Property[], profiles: Profile[]): string {
+function renderAwaitingAgentSection(properties: Property[], profiles: Profile[]): EmailSection[] {
   const waiting = awaitingAgentReview(properties);
-  if (waiting.length === 0) return "";
+  if (waiting.length === 0) return [];
 
-  const lines = ["", `Waiting on an agent (${waiting.length})`, "=".repeat(22)];
-  for (const p of waiting) {
-    const since = p.review_requested_at
-      ? new Date(p.review_requested_at).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })
-      : "recently";
-    const preparer = p.review_requested_by ? agentName(profiles, p.review_requested_by) : "an assistant";
-    lines.push(`  - ${p.address} — prepared by ${preparer}, with ${agentName(profiles, p.created_by)} since ${since}`);
-  }
-  lines.push("  Prepared, not signed. The agent's signature is what attests to the file.");
-  return lines.join("\n");
+  return [
+    { kind: "label", text: "Waiting on an agent" },
+    {
+      kind: "rows",
+      rows: waiting.map((p) => {
+        const since = p.review_requested_at
+          ? new Date(p.review_requested_at).toLocaleDateString("en-AU", {
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+            })
+          : "recently";
+        const preparer = p.review_requested_by ? agentName(profiles, p.review_requested_by) : "an assistant";
+        return {
+          title: p.address,
+          sub: `prepared by ${preparer}`,
+          detail: `With ${agentName(profiles, p.created_by)} since ${since}`,
+          tone: "attention" as const,
+        };
+      }),
+    },
+    {
+      kind: "note",
+      text: "Prepared, not signed. The agent's signature is what attests to the file.",
+    },
+  ];
 }
 
-function renderLicenceAndPiSection(agency: Agency, profiles: Profile[]): string {
+// ISO dates are how the database stores an expiry; they are not how a person
+// reads one. "2026-11-21" in an email to a licensee reads as machine output.
+function humanDate(iso: string | null | undefined): string | undefined {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function renderLicenceAndPiSection(agency: Agency, profiles: Profile[]): EmailSection[] {
   const concerning = (s: ReturnType<typeof expiryStatus>) => s === "expired" || s === "urgent" || s === "soon";
   const phrase = (s: ReturnType<typeof expiryStatus>) =>
     s === "expired" ? "has expired" : s === "urgent" ? "expires within 30 days" : "expires within 3 months";
+  // Expired is a risk today. Anything still in the future is attention.
+  const tone = (s: ReturnType<typeof expiryStatus>) =>
+    s === "expired" ? ("risk" as const) : ("attention" as const);
 
   const expiringStaff = profiles.filter((p) => concerning(expiryStatus(p.licence_expiry)));
   const piConcern = expiryStatus(agency.pi_expiry);
   const corpConcern = expiryStatus(agency.corporation_licence_expiry);
 
   if (expiringStaff.length === 0 && !concerning(piConcern) && !concerning(corpConcern)) {
-    return "";
+    return [];
   }
 
-  const lines = ["", "Licences & insurance", "===================="];
+  const rows: EmailRow[] = [];
   if (concerning(piConcern)) {
-    lines.push(`  - PI insurance ${phrase(piConcern)}.`);
+    rows.push({ title: "Professional indemnity insurance", detail: `PI insurance ${phrase(piConcern)}.`, tone: tone(piConcern) });
   }
   if (concerning(corpConcern)) {
-    lines.push(`  - The agency's corporation licence ${phrase(corpConcern)} (${agency.corporation_licence_expiry}).`);
+    rows.push({
+      title: "Agency corporation licence",
+      sub: humanDate(agency.corporation_licence_expiry),
+      detail: `The agency's corporation licence ${phrase(corpConcern)}.`,
+      tone: tone(corpConcern),
+    });
   }
   for (const p of expiringStaff) {
     const status = expiryStatus(p.licence_expiry);
-    lines.push(
-      `  - ${p.full_name ?? p.email}: ${credentialLabel(p.licence_type)} ${phrase(status)} (${p.licence_expiry}).`,
-    );
+    rows.push({
+      title: p.full_name ?? p.email,
+      sub: humanDate(p.licence_expiry),
+      detail: `${credentialLabel(p.licence_type)} ${phrase(status)}.`,
+      tone: tone(status),
+    });
   }
-  lines.push("  Renewals are made with NSW Fair Trading. Update the date in the register once one comes through.");
-  return lines.join("\n");
+
+  return [
+    { kind: "label", text: "Licences & insurance" },
+    { kind: "rows", rows },
+    {
+      kind: "note",
+      text: "Renewals are made with NSW Fair Trading. Update the date in the register once one comes through.",
+    },
+  ];
 }
 
 // The agent's own credential, in the agent's own email.
@@ -203,18 +272,28 @@ function renderLicenceAndPiSection(agency: Agency, profiles: Profile[]): string 
 // is the real mechanism; this is the weekly backstop, so a credential inside
 // three months is visible in both places rather than depending on one email
 // having been opened three months ago.
-function renderOwnCredentialSection(profile: Profile): string {
+function renderOwnCredentialSection(profile: Profile): EmailSection[] {
   const status = expiryStatus(profile.licence_expiry);
-  if (status !== "expired" && status !== "urgent" && status !== "soon") return "";
+  if (status !== "expired" && status !== "urgent" && status !== "soon") return [];
 
   const label = credentialLabel(profile.licence_type);
-  const lines = ["", "Your licence", "============"];
-  lines.push(
-    status === "expired"
-      ? `  - Your ${label} expired on ${profile.licence_expiry}.`
-      : `  - Your ${label} expires on ${profile.licence_expiry}.`,
-  );
-  return lines.join("\n");
+  return [
+    { kind: "label", text: "Your licence" },
+    {
+      kind: "rows",
+      rows: [
+        {
+          title: label,
+          sub: humanDate(profile.licence_expiry),
+          detail:
+            status === "expired"
+              ? `Your ${label} expired on ${humanDate(profile.licence_expiry)}.`
+              : `Your ${label} expires on ${humanDate(profile.licence_expiry)}.`,
+          tone: status === "expired" ? ("risk" as const) : ("attention" as const),
+        },
+      ],
+    },
+  ];
 }
 
 // Same "flag only when it's actually due" shape as renderLicenceAndPiSection
@@ -226,7 +305,7 @@ function renderTrainingSection(
   profiles: Profile[],
   plans: TrainingPlan[],
   cpdYearLabel: string,
-): string {
+): EmailSection[] {
   const days = daysSinceActivity(lastTrainingSessionDate);
   const staleSessions = days === null || days > TRAINING_REMINDER_DAYS;
 
@@ -242,29 +321,43 @@ function renderTrainingSection(
     return plan && !plan.principal_signed_at;
   });
 
-  if (!staleSessions && noPlan.length === 0 && unapproved.length === 0) return "";
+  if (!staleSessions && noPlan.length === 0 && unapproved.length === 0) return [];
 
-  const lines = ["", "Training", "========"];
+  const out: EmailSection[] = [{ kind: "label", text: "Training" }];
+
   if (staleSessions) {
-    lines.push(
-      days === null
-        ? "  - No training session logged yet."
-        : `  - ${days} days since the last logged training session — worth booking one in.`,
-    );
+    out.push({
+      kind: "note",
+      text:
+        days === null
+          ? "No training session logged yet."
+          : `${days} days since the last logged training session. Worth booking one in.`,
+    });
   }
-  for (const p of noPlan) {
-    lines.push(`  - ${p.full_name ?? p.email}: no ${cpdYearLabel} training plan yet.`);
-  }
-  for (const p of unapproved) {
-    lines.push(`  - ${p.full_name ?? p.email}: training plan started but not signed off.`);
-  }
-  return lines.join("\n");
+
+  const rows: EmailRow[] = [
+    ...noPlan.map((p) => ({
+      title: p.full_name ?? p.email,
+      detail: `No ${cpdYearLabel} training plan yet.`,
+      tone: "attention" as const,
+    })),
+    ...unapproved.map((p) => ({
+      title: p.full_name ?? p.email,
+      detail: "Training plan started but not signed off.",
+      tone: "attention" as const,
+    })),
+  ];
+  if (rows.length > 0) out.push({ kind: "rows", rows });
+
+  return out;
 }
 
-const FOOTER =
-  "\n\n---\nRealComply provides diligence support to help you stay on top of compliance. " +
-  "It doesn't guarantee compliance and doesn't replace your own judgement — you decide.\n" +
-  "View the live picture any time at https://realcomply.com.au/dashboard/portfolio";
+const PORTFOLIO_URL = "https://www.realcomply.com.au/dashboard/portfolio";
+
+const DIGEST_FOOTER = [
+  DILIGENCE_LINE,
+  `<a href="${PORTFOLIO_URL}" style="color:#8a9a93">View the live picture any time</a>`,
+];
 
 // Runs the whole weekly digest: one pass per agency, one email per
 // recipient. A profile with both is_agent and is_licensee_in_charge (a
@@ -295,30 +388,69 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
         continue;
       }
 
-      const sections: string[] = [`Weekly compliance digest — ${bundle.agency.name}`, ""];
+      const sections: EmailSection[] = [];
+
+      // The count that leads the email. Scoped to what this recipient is
+      // actually responsible for, so an agent is never shown a number that
+      // includes files they cannot act on.
+      const scope = profile.is_licensee_in_charge
+        ? bundle.digests
+        : bundle.digests.filter((d) => d.property.created_by === profile.id);
+      const needsYouCount = scope.filter(
+        (d) => d.pendingSignoff.length > 0 || d.flagged.length > 0 || d.awaiting.length > 0,
+      ).length;
+
+      sections.push({
+        kind: "counter",
+        n: needsYouCount,
+        caption: needsYouCount === 1 ? "file needs you this week" : "files need you this week",
+        tone: needsYouCount === 0 ? "good" : "warn",
+      });
 
       if (profile.is_agent) {
         const ownDigests = bundle.digests.filter((d) => d.property.created_by === profile.id);
-        sections.push(renderDigestSection("Your listings", ownDigests, bundle.profiles));
-        const ownCredential = renderOwnCredentialSection(profile);
-        if (ownCredential) sections.push(ownCredential);
+        sections.push(...renderDigestSection("Your listings", ownDigests, bundle.profiles));
+        sections.push(...renderOwnCredentialSection(profile));
       }
 
       if (profile.is_licensee_in_charge) {
-        sections.push("");
-        sections.push(renderDigestSection("Whole agency", bundle.digests, bundle.profiles));
-        const awaitingSection = renderAwaitingAgentSection(bundle.properties, bundle.profiles);
-        if (awaitingSection) sections.push(awaitingSection);
-        if (licenceSection) sections.push(licenceSection);
-        if (trainingSection) sections.push(trainingSection);
+        sections.push(...renderDigestSection("Whole agency", bundle.digests, bundle.profiles));
+        sections.push(...renderAwaitingAgentSection(bundle.properties, bundle.profiles));
+        sections.push(...licenceSection);
+        sections.push(...trainingSection);
       }
 
-      const text = sections.join("\n") + FOOTER;
+      sections.push({ kind: "button", label: "Open the portfolio", href: PORTFOLIO_URL });
+
+      const doc: EmailDocument = {
+        // Written rather than inherited: left alone the client would fill the
+        // inbox preview line with the agency name it already shows in the
+        // subject. The counts are what make it worth opening.
+        preheader:
+          needsYouCount === 0
+            ? "Nothing needs you this week."
+            : `${needsYouCount} ${needsYouCount === 1 ? "file needs" : "files need"} you this week.`,
+        title: "Weekly digest",
+        meta: `${bundle.agency.name} · ${new Date().toLocaleDateString("en-AU", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          timeZone: "Australia/Sydney",
+        })}`,
+        sections,
+        footer: DIGEST_FOOTER,
+      };
+
       const subject = profile.is_licensee_in_charge
         ? `Weekly digest — ${bundle.agency.name}`
         : `Your weekly digest — ${bundle.agency.name}`;
 
-      const ok = await sendEmail({ to: profile.email, subject, text });
+      const ok = await sendEmail({
+        to: profile.email,
+        subject,
+        text: renderEmailText(doc),
+        html: renderEmailHtml(doc),
+      });
       if (ok) sent += 1;
       else failed += 1;
     }
