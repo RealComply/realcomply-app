@@ -40,6 +40,10 @@ export async function joinEarlyAccess(
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const source = String(formData.get("source") ?? "").trim().slice(0, 120) || null;
+  // Office name, added 3 Sep 2026 so a registration says who it came from.
+  // Trimmed and capped rather than pattern-matched: any string a person types
+  // here is a plausible agency name, and there is nothing to validate against.
+  const agencyName = String(formData.get("agencyName") ?? "").trim().slice(0, 160);
 
   if (!email) {
     return { ok: false, error: "Enter your email address." };
@@ -47,9 +51,15 @@ export async function joinEarlyAccess(
   if (!EMAIL.test(email) || email.length > 320) {
     return { ok: false, error: "That does not look like an email address." };
   }
+  // Checked server-side as well as by the browser's required attribute, which
+  // is a convenience for people and no obstacle at all to anything posting
+  // straight at the action.
+  if (!agencyName) {
+    return { ok: false, error: "Enter your office or agency name." };
+  }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("early_access").insert({ email, source });
+  const { error } = await supabase.from("early_access").insert({ email, source, agency_name: agencyName });
 
   if (error) {
     // 23505 = unique violation, i.e. already on the list. Treat as success:
@@ -74,7 +84,7 @@ export async function joinEarlyAccess(
   // reaching here — and a row created a line ago cannot already have been
   // unsubscribed. Any future send that walks the existing list must check it.
   await sendEarlyAccessAcknowledgement(email);
-  await notifyEarlyAccessSignup(email, source);
+  await notifyEarlyAccessSignup(email, source, agencyName);
 
   return { ok: true, error: null };
 }
@@ -118,7 +128,11 @@ async function sendEarlyAccessAcknowledgement(email: string): Promise<void> {
  * already saved, and the list in Supabase remains the source of truth. Failures
  * are logged, not surfaced.
  */
-async function notifyEarlyAccessSignup(email: string, source: string | null): Promise<void> {
+async function notifyEarlyAccessSignup(
+  email: string,
+  source: string | null,
+  agencyName: string,
+): Promise<void> {
   const to = process.env.ADMIN_NOTIFICATION_EMAIL;
   if (!to) {
     console.error("Early-access signup not notified: ADMIN_NOTIFICATION_EMAIL is not set.", { email });
@@ -127,10 +141,14 @@ async function notifyEarlyAccessSignup(email: string, source: string | null): Pr
 
   const sent = await sendEmail({
     to,
-    subject: `RealComply early access — ${email}`,
+    // Office name in the subject, not just the body. A run of these in an
+    // inbox then reads as a list of agencies rather than a list of addresses,
+    // which is the whole reason the field was added.
+    subject: `RealComply early access — ${agencyName}`,
     text: [
       "Someone registered for early access on the landing page.",
       "",
+      `Office: ${agencyName}`,
       `Email: ${email}`,
       // ?src= on the ad's link, so a run of these reads as which ad is working
       // without going to Meta's own attribution for it.
