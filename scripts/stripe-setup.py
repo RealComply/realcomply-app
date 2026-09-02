@@ -36,7 +36,7 @@ there is nothing to pip install first.
 import json
 import os
 import sys
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -66,21 +66,74 @@ ANNUAL_MONTHS = 10  # two months free
 STATEMENT_DESCRIPTOR = "REALCOMPLY"
 PRODUCT_URL = "https://www.realcomply.com.au"
 
-KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+def looks_like_a_key(value):
+    return value.startswith("sk_test_") or value.startswith("sk_live_")
 
-if not KEY:
-    print("\nSTRIPE_SECRET_KEY is not set.\n")
-    print("Run it like this, with your own key in place of sk_test_...:\n")
-    print("  STRIPE_SECRET_KEY=sk_test_... python3 scripts/stripe-setup.py\n")
-    sys.exit(1)
 
-if KEY.startswith("sk_live_"):
-    MODE = "LIVE"
-elif KEY.startswith("sk_test_"):
-    MODE = "TEST"
-else:
-    print("\nThat does not look like a Stripe secret key. It should begin sk_test_ or sk_live_.\n")
-    sys.exit(1)
+def get_key():
+    """The key, from the environment or by asking.
+
+    ASKING IS THE PRIMARY PATH, not a fallback, and it exists because the
+    alternatives both went wrong in practice on 2 Sep 2026. Putting the key in
+    the command means editing the middle of a line someone has just pasted;
+    setting it up first with `read` means two commands, and two commands pasted
+    together means the first one swallows the second as its input and the real
+    key ends up typed at the shell prompt, in the history, where it has to be
+    rolled.
+
+    So: one command, and the script asks. An environment variable still wins
+    when it is set, for anywhere this runs unattended.
+
+    A value that is present but malformed falls through to the prompt rather
+    than stopping. That is the exact shape of the failure above — the variable
+    held a stray command, not a key — and the useful response is to ask again,
+    not to exit and make someone work out what is in a variable they cannot
+    see.
+    """
+    from_env = os.environ.get("STRIPE_SECRET_KEY", "").strip()
+    if looks_like_a_key(from_env):
+        return from_env
+
+    if from_env:
+        print("\nSTRIPE_SECRET_KEY is set, but it isn't a Stripe key. Ignoring it.")
+
+    print("\nPaste your Stripe SECRET key and press Enter.")
+    print("It is the one that starts sk_test_ (or sk_live_), not pk_.")
+    print("Nothing is shown back and nothing is saved.\n")
+
+    try:
+        typed = input("Key: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nStopped, nothing changed.\n")
+        sys.exit(1)
+
+    if not looks_like_a_key(typed):
+        if typed.startswith("pk_"):
+            print("\nThat's the publishable key. The secret one is the row below it,")
+            print("behind the Reveal button.\n")
+        else:
+            print("\nThat doesn't look like a Stripe secret key — it should start sk_test_ or sk_live_.\n")
+        sys.exit(1)
+
+    return typed
+
+
+KEY = get_key()
+MODE = "LIVE" if KEY.startswith("sk_live_") else "TEST"
+
+# Going live should be a decision, not a paste. Everything this script writes
+# in live mode is a real price tag that a real customer can be charged against,
+# and the difference between the two keys is four characters in the middle of a
+# long string nobody reads.
+if MODE == "LIVE":
+    print("\nThat is a LIVE key. This will create real, chargeable prices.")
+    try:
+        if input("Type LIVE to continue: ").strip() != "LIVE":
+            print("\nStopped, nothing changed.\n")
+            sys.exit(1)
+    except (EOFError, KeyboardInterrupt):
+        print("\nStopped, nothing changed.\n")
+        sys.exit(1)
 
 
 def stripe(method, path, params=None):
@@ -116,6 +169,16 @@ def stripe(method, path, params=None):
         err = body.get("error", {})
         raise SystemExit(
             "\nStopped: " + err.get("message", "HTTP %s from Stripe" % e.code) + "\n"
+        )
+    except URLError as e:
+        # No network, DNS down, Stripe unreachable. Left uncaught this prints
+        # forty lines of Python traceback, which reads as "the script is
+        # broken" to anyone who is not a programmer. It isn't; nothing was
+        # written, and trying again later is the whole fix.
+        raise SystemExit(
+            "\nCouldn't reach Stripe (%s).\n"
+            "Nothing was created. Check the internet connection and run it again.\n"
+            % (e.reason,)
         )
 
 
