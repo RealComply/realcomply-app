@@ -1,4 +1,5 @@
 import { sendEmail } from "@/lib/email/send";
+import { renderEmailHtml, renderEmailText, type EmailDocument } from "./layout";
 
 export type NewAgencySignup = {
   agencyName: string;
@@ -20,17 +21,33 @@ export async function notifyNewAgencySignup(signup: NewAgencySignup) {
 
   const when = new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney", dateStyle: "medium", timeStyle: "short" });
 
-  const text = [
-    "New RealComply agency signup.",
-    "",
-    `Agency: ${signup.agencyName}`,
-    `Principal: ${signup.fullName} <${signup.email}>`,
-    `When: ${when} AEST/AEDT`,
-  ].join("\n");
+  // Internal, but branded like everything else. Adam, 3 Sep: "I think it's
+  // important to be consistent." A notification that looks unlike the product
+  // is also harder to spot in an inbox than one that does.
+  const doc: EmailDocument = {
+    preheader: `${signup.agencyName} — ${signup.fullName}`,
+    title: "New agency signup",
+    meta: when + " AEST/AEDT",
+    sections: [
+      {
+        kind: "rows",
+        rows: [
+          {
+            title: signup.agencyName,
+            sub: signup.email,
+            detail: `Principal: ${signup.fullName}`,
+            tone: "routine",
+          },
+        ],
+      },
+    ],
+    footer: ["Sent by RealComply because a new agency completed signup."],
+  };
 
   await sendEmail({
     to,
     subject: `New signup: ${signup.agencyName}`,
-    text,
+    text: renderEmailText(doc),
+    html: renderEmailHtml(doc),
   });
 }

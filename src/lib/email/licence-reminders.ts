@@ -1,6 +1,11 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { sendEmail } from "@/lib/email/send";
 import {
+  renderEmailHtml,
+  renderEmailText,
+  type EmailDocument,
+} from "./layout";
+import {
   credentialLabel,
   daysUntil,
   dueThreshold,
@@ -37,11 +42,14 @@ type Subject = {
   expiry: string;
 };
 
-const FOOTER =
-  "\n\n---\nRealComply provides diligence support to help you stay on top of compliance. " +
-  "Renewals are made with NSW Fair Trading — RealComply doesn't lodge them for you, and the " +
-  "licensee in charge remains responsible for making sure everyone in the office is properly " +
-  "licensed.\nSee the register any time at https://realcomply.com.au/dashboard/registers";
+const REGISTERS_URL = "https://www.realcomply.com.au/dashboard/registers";
+
+const LICENCE_FOOTER = [
+  "RealComply provides diligence support to help you stay on top of compliance. Renewals are made " +
+    "with NSW Fair Trading. RealComply doesn't lodge them for you, and the licensee in charge " +
+    "remains responsible for making sure everyone in the office is properly licensed.",
+  `<a href="${REGISTERS_URL}" style="color:#8a9a93">See the register any time</a>`,
+];
 
 function subjectsForAgency(agency: Agency, profiles: Profile[]): Subject[] {
   const subjects: Subject[] = [];
@@ -76,50 +84,79 @@ function subjectsForAgency(agency: Agency, profiles: Profile[]): Subject[] {
   return subjects;
 }
 
-function holderBody(subject: Subject, days: number): string {
-  const lines = [
-    `Hi ${subject.holderName.split(" ")[0]},`,
-    "",
-    days < 0
-      ? `Your ${subject.credential} expired ${expiryPhrase(days)}, on ${subject.expiry}.`
-      : `Your ${subject.credential} expires ${expiryPhrase(days)}, on ${subject.expiry}.`,
-  ];
-  if (subject.licenceNumber) lines.push(`Number: ${subject.licenceNumber}`);
-  lines.push("");
-  lines.push(
-    days < 0
-      ? "Trading on an expired credential isn't something to leave sitting. Renew with NSW Fair Trading, then update the date in the register so your office can see it's sorted."
-      : days <= 7
-        ? "This one's close. If the renewal is already in with NSW Fair Trading, update the date in the register once it comes through and these reminders stop."
-        : "No rush today, but it's worth starting — renewals can take a few weeks, and a certificate of registration can't simply be renewed a second time, so if you're due to move up to a Class 2 licence you'll want the lead time.",
-  );
-  lines.push("");
-  lines.push("Your licensee in charge has been sent a copy of this.");
-  return lines.join("\n") + FOOTER;
+function holderDocument(subject: Subject, days: number): EmailDocument {
+  const expired = days < 0;
+
+  const advice = expired
+    ? "Trading on an expired credential isn't something to leave sitting. Renew with NSW Fair Trading, then update the date in the register so your office can see it's sorted."
+    : days <= 7
+      ? "This one's close. If the renewal is already in with NSW Fair Trading, update the date in the register once it comes through and these reminders stop."
+      : "No rush today, but it's worth starting. Renewals can take a few weeks, and a certificate of registration can't simply be renewed a second time, so if you're due to move up to a Class 2 licence you'll want the lead time.";
+
+  return {
+    preheader: expired
+      ? `Your ${subject.credential} expired on ${subject.expiry}.`
+      : `Expires ${expiryPhrase(days)}, on ${subject.expiry}.`,
+    title: `Hi ${subject.holderName.split(" ")[0]},`,
+    sections: [
+      {
+        kind: "rows",
+        rows: [
+          {
+            title: subject.credential,
+            sub: subject.licenceNumber ? `No. ${subject.licenceNumber} · ${subject.expiry}` : subject.expiry,
+            detail: expired
+              ? `Expired ${expiryPhrase(days)}.`
+              : `Expires ${expiryPhrase(days)}.`,
+            tone: expired ? "risk" : "attention",
+          },
+        ],
+      },
+      { kind: "paragraph", text: advice },
+      { kind: "note", text: "Your licensee in charge has been sent a copy of this." },
+      { kind: "button", label: "Open the register", href: REGISTERS_URL },
+    ],
+    footer: LICENCE_FOOTER,
+  };
 }
 
-function licenseeBody(subject: Subject, days: number, agency: Agency): string {
-  const who = subject.kind === "corporation" ? `${agency.name}'s corporation licence` : `${subject.holderName}'s ${subject.credential}`;
+function licenseeDocument(subject: Subject, days: number, agency: Agency): EmailDocument {
+  const expired = days < 0;
+  const who =
+    subject.kind === "corporation"
+      ? `${agency.name}'s corporation licence`
+      : `${subject.holderName}'s ${subject.credential}`;
 
-  const lines = [
-    days < 0 ? `${who} expired ${expiryPhrase(days)}, on ${subject.expiry}.` : `${who} expires ${expiryPhrase(days)}, on ${subject.expiry}.`,
-  ];
-  if (subject.licenceNumber) lines.push(`Number: ${subject.licenceNumber}`);
-  lines.push("");
-  if (subject.kind === "corporation") {
-    lines.push(
-      days < 0
+  const advice =
+    subject.kind === "corporation"
+      ? expired
         ? "The agency can't trade on an expired corporation licence. This one is yours to deal with directly with NSW Fair Trading."
-        : "The corporation licence is the agency's own, separate from anyone's personal licence — worth putting the renewal in early.",
-    );
-  } else {
-    lines.push(
-      days < 0
+        : "The corporation licence is the agency's own, separate from anyone's personal licence. Worth putting the renewal in early."
+      : expired
         ? "Supervising someone whose credential has lapsed is your exposure, not just theirs. They've had the same notice."
-        : "They've had the same notice. Nothing needed from you unless the date passes without the register being updated.",
-    );
-  }
-  return lines.join("\n") + FOOTER;
+        : "They've had the same notice. Nothing needed from you unless the date passes without the register being updated.";
+
+  return {
+    preheader: expired ? `${who} has expired.` : `${who} expires on ${subject.expiry}.`,
+    title: expired ? "A credential has expired" : "A credential is expiring",
+    meta: agency.name,
+    sections: [
+      {
+        kind: "rows",
+        rows: [
+          {
+            title: who,
+            sub: subject.licenceNumber ? `No. ${subject.licenceNumber} · ${subject.expiry}` : subject.expiry,
+            detail: expired ? `Expired ${expiryPhrase(days)}.` : `Expires ${expiryPhrase(days)}.`,
+            tone: expired ? "risk" : "attention",
+          },
+        ],
+      },
+      { kind: "paragraph", text: advice },
+      { kind: "button", label: "Open the register", href: REGISTERS_URL },
+    ],
+    footer: LICENCE_FOOTER,
+  };
 }
 
 function subjectLine(subject: Subject, days: number, forHolder: boolean): string {
@@ -201,10 +238,14 @@ export async function runLicenceReminders(
       let anyFailed = false;
       for (const to of recipients) {
         const isHolder = to === subject.holderEmail;
+        const doc = isHolder
+          ? holderDocument(subject, days)
+          : licenseeDocument(subject, days, agency);
         const ok = await sendEmail({
           to,
           subject: subjectLine(subject, days, isHolder),
-          text: isHolder ? holderBody(subject, days) : licenseeBody(subject, days, agency),
+          text: renderEmailText(doc),
+          html: renderEmailHtml(doc),
         });
         if (!ok) anyFailed = true;
       }

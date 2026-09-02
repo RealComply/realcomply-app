@@ -1,5 +1,11 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { sendEmail } from "@/lib/email/send";
+import {
+  renderEmailHtml,
+  renderEmailText,
+  type EmailDocument,
+  type EmailSection,
+} from "./layout";
 import { formatAuDate } from "@/lib/format-date";
 import {
   auditDueOn,
@@ -49,11 +55,14 @@ import type {
 // occasionally fails to send, because the failure is visible and the
 // duplicate just trains people to ignore it.
 
-const FOOTER =
-  "\n\n---\nRealComply provides diligence support to help you stay on top of compliance. " +
-  "It doesn't prepare your reconciliation or lodge anything for you, and the licensee in charge " +
-  "remains responsible for the agency's trust account records.\n" +
-  "See it any time at https://realcomply.com.au/dashboard/trust";
+const TRUST_URL = "https://www.realcomply.com.au/dashboard/trust";
+
+const TRUST_FOOTER = [
+  "RealComply provides diligence support to help you stay on top of compliance. It doesn't prepare " +
+    "your reconciliation or lodge anything for you, and the licensee in charge remains responsible " +
+    "for the agency's trust account records.",
+  `<a href="${TRUST_URL}" style="color:#8a9a93">See it any time</a>`,
+];
 
 export type TrustReminderResult = {
   checked: number;
@@ -248,15 +257,54 @@ function sendReconciliation(
         ? `The ${label} reconciliation for ${account.name} was due on ${formatAuDate(due)} and is not signed.`
         : `The ${label} reconciliation for ${account.name} is still unsigned. It is due on ${formatAuDate(due)} — ${daysLeft} ${daysLeft === 1 ? "day" : "days"} away.`;
 
-  const text =
-    `${opening}\n\n` +
-    "Reg cl 27(5)(b) requires the reconciliation statement to be prepared at the end of each named " +
-    "month, and cl 30(1) requires the trial balance comparison within 21 days after the month ends.\n\n" +
-    "Your assistant can upload the report; the signature is yours.\n" +
-    `Agency: ${agency.name}` +
-    FOOTER;
+  // Opening is a plain paragraph, not a lead. The title already carries the
+  // month, and two bold lines stacked read as two competing headings.
+  const sections: EmailSection[] = [{ kind: "paragraph", text: opening }];
 
-  return sendEmail({ to: recipients, subject, text });
+  // Nothing outstanding, so the email says so and stops. A reminder that reads
+  // identically whether or not the work is done trains people to ignore it.
+  if (!(stage === "day1" && signed)) {
+    sections.push({
+      kind: "rows",
+      rows: [
+        {
+          // Names the obligation rather than repeating the month, which the
+          // title and the opening line have both already said.
+          title: "Reconciliation statement and trial balance",
+          sub: `Due ${formatAuDate(due)}`,
+          detail:
+            "Reg cl 27(5)(b) requires the reconciliation statement at the end of each named month, " +
+            "and cl 30(1) the trial balance comparison within 21 days after the month ends.",
+          // Overdue is a live problem. Anything still ahead is a prompt.
+          tone: late ? "risk" : "attention",
+        },
+      ],
+    });
+    sections.push({
+      kind: "note",
+      text: "Your assistant can upload the report. The signature is yours.",
+    });
+    sections.push({ kind: "button", label: "Open the trust register", href: TRUST_URL });
+  }
+
+  const doc: EmailDocument = {
+    preheader: late
+      ? `${label} reconciliation is overdue.`
+      : signed && stage === "day1"
+        ? `${label} is already signed. Nothing to do.`
+        : `Due ${formatAuDate(due)}.`,
+    title: `${label} reconciliation`,
+    meta: `${account.name} · ${agency.name}`,
+    sections,
+    footer: TRUST_FOOTER,
+  };
+
+  return sendEmail({
+    to: recipients,
+    subject,
+    text: renderEmailText(doc),
+    html: renderEmailHtml(doc),
+  });
 }
 
 function sendAudit(
@@ -272,16 +320,45 @@ function sendAudit(
     ? `${account.name}: audit for the year ended ${formatAuDate(periodEnd)} is overdue`
     : `${account.name}: trust account audit due ${formatAuDate(due)}`;
 
-  const text =
-    (late
-      ? `The audit of ${account.name} for the year ended ${formatAuDate(periodEnd)} was due on ${formatAuDate(due)} and has not been confirmed in RealComply.`
-      : `The audit of ${account.name} for the year ended ${formatAuDate(periodEnd)} is due on ${formatAuDate(due)} — ${daysLeft} ${daysLeft === 1 ? "day" : "days"} away.`) +
-    "\n\ns111 of the Property and Stock Agents Act 2002 (NSW) requires the audit within 3 months of the " +
-    "end of the audit period, and s112 fixes that period as the year ending 30 June. The auditor's " +
-    "report is kept for at least 3 years.\n\n" +
-    "Record the auditor, the report and your confirmation on the Trust account register.\n" +
-    `Agency: ${agency.name}` +
-    FOOTER;
+  const doc: EmailDocument = {
+    preheader: late
+      ? `Audit for the year ended ${formatAuDate(periodEnd)} is overdue.`
+      : `Due ${formatAuDate(due)}.`,
+    title: "Trust account audit",
+    meta: `${account.name} · ${agency.name}`,
+    sections: [
+      {
+        kind: "paragraph",
+        text: late
+          ? `The audit for the year ended ${formatAuDate(periodEnd)} was due on ${formatAuDate(due)} and has not been confirmed in RealComply.`
+          : `The audit for the year ended ${formatAuDate(periodEnd)} is due on ${formatAuDate(due)}, ${daysLeft} ${daysLeft === 1 ? "day" : "days"} away.`,
+      },
+      {
+        kind: "rows",
+        rows: [
+          {
+            title: "Independent audit and auditor's report",
+            sub: `Year ended ${formatAuDate(periodEnd)} · due ${formatAuDate(due)}`,
+            detail:
+              "s111 requires the audit within 3 months of the end of the audit period, and s112 fixes " +
+              "that period as the year ending 30 June. The auditor's report is kept for at least 3 years.",
+            tone: late ? "risk" : "attention",
+          },
+        ],
+      },
+      {
+        kind: "note",
+        text: "Record the auditor, the report and your confirmation on the trust account register.",
+      },
+      { kind: "button", label: "Open the trust register", href: TRUST_URL },
+    ],
+    footer: TRUST_FOOTER,
+  };
 
-  return sendEmail({ to: recipients, subject, text });
+  return sendEmail({
+    to: recipients,
+    subject,
+    text: renderEmailText(doc),
+    html: renderEmailHtml(doc),
+  });
 }
