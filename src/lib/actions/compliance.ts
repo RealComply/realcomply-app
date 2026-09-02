@@ -197,6 +197,37 @@ export async function setItemStatus(
     }
   }
 
+  // b1a / c0 — the contract has to be in hand BEFORE the property is offered
+  // for sale (s63(2) PSA Act). A contract received after the listing launched
+  // means the property was marketed without one, which is the offence itself
+  // rather than a filing untidiness.
+  //
+  // Checked in BOTH directions, unlike the b6 check above which only fires
+  // when b6 is the item being saved. Either of these two dates can be entered
+  // second, and a discrepancy that only surfaces depending on data-entry order
+  // is a check that works by luck.
+  //
+  // Flagged, never blocked. The agent may have mistyped, the contract may have
+  // arrived by email the evening before and been dated the next morning, and
+  // in any case the product's job is to put the discrepancy in front of a
+  // human rather than refuse to record what actually happened.
+  let contractAfterLaunch = false;
+  if ((itemKey === "b1a" || itemKey === "c0") && status === "done" && eventDate) {
+    const otherKey = itemKey === "b1a" ? "c0" : "b1a";
+    const { data: otherRow } = await supabase
+      .from("property_items")
+      .select("event_date")
+      .eq("property_id", propertyId)
+      .eq("item_key", otherKey)
+      .maybeSingle();
+    const otherDate = (otherRow as { event_date?: string | null } | null)?.event_date ?? null;
+    if (otherDate) {
+      const received = itemKey === "b1a" ? eventDate : otherDate;
+      const launched = itemKey === "c0" ? eventDate : otherDate;
+      if (received > launched) contractAfterLaunch = true;
+    }
+  }
+
   const data: Record<string, unknown> = { note };
 
   // amv — closing the vendor AML item by pre-commencement rather than by CDD.
@@ -394,17 +425,27 @@ export async function setItemStatus(
       "This inspection is dated after the agency agreement was signed. The inspection has to come first, because it is what you are allowed to act on. If the date is a typo, correct it. If it is not, tell the licensee.";
   }
 
+  // Worded for whichever card the agent is standing on, so the message names
+  // the date in front of them rather than making them work out which of the
+  // two is the problem.
+  if (contractAfterLaunch) {
+    data.flagReason =
+      itemKey === "b1a"
+        ? "This contract is dated after the listing went live. The contract has to be available before the property is offered for sale (s63(2)), so as recorded the property was marketed without one. If the date is a typo, correct it. If it is not, tell the licensee."
+        : "This launch date is earlier than the date the contract was received. The contract has to be available before the property is offered for sale (s63(2)), so as recorded the property was marketed without one. If the date is a typo, correct it. If it is not, tell the licensee.";
+  }
+
   const { error } = await upsertItem(supabase, {
     agencyId: profile.agency_id,
     propertyId,
     itemKey,
-    status: inspectionAfterAgreement ? "flagged" : status,
+    status: inspectionAfterAgreement || contractAfterLaunch ? "flagged" : status,
     data,
     eventDate,
     // A flagged item is not a completed one, so it does not carry a
     // completed_by. Otherwise the file would show a person as having
     // finished something the app is still objecting to.
-    completedBy: status === "done" && !inspectionAfterAgreement ? user.id : null,
+    completedBy: status === "done" && !inspectionAfterAgreement && !contractAfterLaunch ? user.id : null,
   });
 
   if (!error && itemKey === "a4") {

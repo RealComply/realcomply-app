@@ -492,7 +492,7 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "Date the contract was received",
     description:
-      "When the contract came back from the vendor's solicitor. Good practice rather than a legal requirement, so nothing here blocks you.",
+      "When the contract came back from the vendor's solicitor. Checked against the listing launch date: a contract that arrived after the listing went live means the property was offered for sale without one.",
     legalBasis: "Good practice — supports s63(2), Property and Stock Agents Act 2002 (NSW)",
     requiresDate: true,
     dateLabel: "Date the contract was received",
@@ -796,6 +796,43 @@ const items: ComplianceItem[] = [
   },
 
   // ── Stage 2 — On market ───────────────────────────────────────────────
+  {
+    // FIRST CARD ON THE STAGE, and deliberately so. Adam, 3 Sep 2026: "so we
+    // have a 'Listing launch date' card as the first card on the 'on market'
+    // stage."
+    //
+    // This exists because a date was needed to compare other dates against.
+    // The alternative on the table was stamping a timestamp when a property
+    // first reached Stage 2, and Adam's version is better: the stage button
+    // records when somebody clicked it, which can be days after the listing
+    // actually went live. What matters legally is when the property was
+    // OFFERED for sale, and only the agent knows that.
+    //
+    // Same dual-timestamp shape used elsewhere in the file: the agent asserts
+    // the real-world event, and the system's own updated_at records when the
+    // assertion was made. The pair is what makes it defensible — a launch date
+    // typed three weeks late is visible as exactly that.
+    //
+    // WHAT IT UNLOCKS. s63(2) stops an agent offering a property for sale
+    // unless the contract and its s52A documents are available. b1 already
+    // gates the contract existing before Pre-market can close. This date is
+    // what lets the file PROVE the ordering rather than merely assert it: a
+    // contract received after the listing launched means the property was
+    // marketed without one, which is the actual offence, and setItemStatus
+    // now flags that pair in both directions.
+    key: "c0",
+    stage: 2,
+    kind: "checklist",
+    label: "Listing launch date",
+    description:
+      "The day the property was first advertised or otherwise offered for sale. Other checks measure from this date, so it's worth getting right.",
+    legalBasis: "s63(2), Property and Stock Agents Act 2002 (NSW)",
+    requiresDate: true,
+    dateLabel: "Date the listing went live",
+    requiredForStageCompletion: true,
+    hideNote: true,
+    hideEvidence: true,
+  },
   {
     key: "c1",
     stage: 2,
