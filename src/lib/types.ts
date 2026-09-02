@@ -2,6 +2,12 @@
 // Keep these in sync with the schema by hand for now; once the schema
 // stabilises, generate these with `supabase gen types typescript`.
 
+// Plan and BillingStatus live in lib/billing/entitlement.ts rather than here,
+// beside the ladder they belong to and the rules that read them. Imported so
+// the Agency row below is typed by the same two unions the rest of billing
+// uses, instead of a second copy that can drift.
+import type { BillingStatus, Plan } from "@/lib/billing/entitlement";
+
 // 'class_1' / 'class_2' — real estate licence classes; 'certificate_of_registration'
 // — the certificate an assistant agent holds instead (PSA Act licensing).
 export type LicenceType = "class_1" | "class_2" | "certificate_of_registration";
@@ -81,6 +87,18 @@ export type Agency = {
   // 0018_aml_precommencement.sql and lib/rules/aml-precommencement.ts.
   // Off unless the licensee has turned it on.
   aml_precommencement_enabled: boolean;
+  // Billing (0036, and 0040 for the agent tiers). The plan and status decide
+  // what the agency may do; Stripe writes to them and never the other way
+  // round, which is why they are ordinary columns here rather than something
+  // looked up live. See lib/billing/entitlement.ts.
+  plan: Plan;
+  status: BillingStatus;
+  trial_ends_at: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  comped_by: string | null;
+  comped_reason: string | null;
+  comped_until: string | null;
   created_at: string;
 };
 

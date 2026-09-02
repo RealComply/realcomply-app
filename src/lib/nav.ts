@@ -1,6 +1,7 @@
 import {
   BookOpen,
   Building2,
+  CreditCard,
   FileText,
   ClipboardCheck,
   GraduationCap,
@@ -128,6 +129,16 @@ export const NAV_GROUPS: NavGroup[] = [
         keywords: ["supervision guidelines", "policies", "manual"],
       },
       { href: "/dashboard/team", label: "Team", Icon: Users, keywords: ["staff", "agents", "invite"] },
+      // Last in the last group, deliberately. Billing is looked for when
+      // something is wrong with it or when someone is signing up, and neither
+      // is a daily job — putting it above the work would be a shop putting the
+      // till in the doorway.
+      {
+        href: "/dashboard/billing",
+        label: "Billing",
+        Icon: CreditCard,
+        keywords: ["subscription", "plan", "invoice", "invoices", "payment", "card", "price", "pricing", "cancel", "upgrade"],
+      },
     ],
   },
 ];
