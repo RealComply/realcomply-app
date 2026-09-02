@@ -294,7 +294,17 @@ export default async function PropertyPage({
           viewerIsAssistant={Boolean(profile.is_assistant)}
         />
 
-        {profile.is_licensee_in_charge && (
+        {/* Listing set-up only. Adam, 3 Sep 2026: "this should only be on the
+            listing set up page."
+
+            Moving a listing changes who signs it, whose weekly summary it
+            appears in, and which assistants can see it. That is a set-up
+            decision, and putting it at the foot of every stage offers it
+            during a live campaign where nobody wants it and one misclick is
+            expensive. The Server Action and the 0034 trigger still police who
+            may do it; this only stops the control being where it is not
+            wanted. */}
+        {profile.is_licensee_in_charge && viewedStage === 0 && (
           <TransferListingSection
             propertyId={p.id}
             currentAgentName={personName(p.created_by)}

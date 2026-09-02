@@ -41,6 +41,7 @@ import {
   uploadEvidence,
   removeEvidence,
   type ActionState,
+  setOffersLoggedElsewhere,
 } from "@/lib/actions/compliance";
 import {
   extractReportDetails,
@@ -137,6 +138,7 @@ function ItemShell({
           evidencePath={current?.evidence_path ?? null}
           evidenceFileName={(current?.data as { evidenceFileName?: string } | undefined)?.evidenceFileName}
           label={item.evidenceLabel}
+          required={item.evidenceRequired}
           warning={item.evidenceWarning}
           replaceOnly={item.evidenceReplaceOnly}
         />
@@ -216,6 +218,7 @@ function EvidenceUploader({
   evidencePath,
   evidenceFileName,
   label,
+  required,
   warning,
   replaceOnly = false,
 }: {
@@ -224,6 +227,7 @@ function EvidenceUploader({
   evidencePath: string | null;
   evidenceFileName?: string;
   label?: string;
+  required?: boolean;
   warning?: string;
   /**
    * Swap Remove for Replace. For the documents collected at listing setup,
@@ -306,7 +310,19 @@ function EvidenceUploader({
 
   return (
     <div className="mt-3 border-t border-rc-border pt-3">
-      <p className="text-xs font-medium text-rc-muted">{label ?? "Evidence"}</p>
+      {/* "(optional)" on everything except the four documents an agent must
+          attach. Adam, 3 Sep 2026: "that way the user doesnt feel like they
+          have to add it in order to move on."
+
+          The word carries real weight here. Most of these slots are a place to
+          keep something useful, not a gate — but an unlabelled upload box on a
+          compliance product reads as a requirement, and an agent who thinks
+          they are blocked stops rather than continues. Saying so is cheaper
+          than explaining it later. */}
+      <p className="text-xs font-medium text-rc-muted">
+        {label ?? "Evidence"}
+        {!required && <span className="font-normal text-rc-faint"> (optional)</span>}
+      </p>
       {/* Rendered above the control, and above the attached-file row too, so
           it is still visible to whoever looks at the file later — not just to
           the person uploading.
@@ -1030,6 +1046,11 @@ function GuideItem({
     flagReasons?: string[];
     websiteScan?: ScanFinding;
     rejectionPrompt?: string;
+    // Persisted by setItemStatus (lib/actions/compliance.ts). Declared here so
+    // the inputs can default to what was last recorded rather than resetting
+    // to the ESP every time the card re-renders.
+    guideLow?: number | null;
+    guideHigh?: number | null;
   };
   const esp = (espItem?.data ?? {}) as { espLow?: number; espHigh?: number };
 
@@ -1051,14 +1072,46 @@ function GuideItem({
       {esp.espLow == null ? (
         <p className="text-sm text-rc-muted">Record the ESP (item a4) first — the live check needs it.</p>
       ) : (
-        <p className="text-xs text-rc-faint">Recorded ESP: ${esp.espLow.toLocaleString()}
-          {esp.espHigh && esp.espHigh !== esp.espLow ? ` – $${esp.espHigh.toLocaleString()}` : ""}
+        <p className="text-xs text-rc-muted">
+          Recorded ESP{" "}
+          <span className="font-semibold text-rc-ink">
+            ${esp.espLow.toLocaleString()}
+            {esp.espHigh && esp.espHigh !== esp.espLow ? ` – $${esp.espHigh.toLocaleString()}` : ""}
+          </span>
+          . The guide below is pre-filled from it — change it if the ad says something different.
         </p>
       )}
       <form action={formAction} className="mt-2 space-y-3">
         <div className="flex gap-3">
-          <input type="number" name="guideLow" placeholder="Guide low" className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm" />
-          <input type="number" name="guideHigh" placeholder="Guide high (optional)" className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm" />
+          {/* PRE-FILLED, not placeholdered. Adam, 3 Sep 2026: "pre load for
+              agent to confirm. the light grey text isnt obvious enough. it
+              still feel like you have to enter manually."
+
+              He is describing exactly what placeholder text does — it looks
+              like an empty box with a hint, because that is what it is. A
+              defaultValue is a real value in a real input: the agent reads it,
+              agrees or changes it, and submits. The common case (the guide
+              matches the estimate) becomes one click instead of two numbers
+              retyped from the card above.
+
+              Keyed on the ESP so the default follows a revision rather than
+              freezing at whatever was recorded the first time this rendered. */}
+          <input
+            key={`gl-${esp.espLow ?? "none"}`}
+            type="number"
+            name="guideLow"
+            defaultValue={data.guideLow ?? esp.espLow ?? ""}
+            placeholder="Guide low"
+            className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm"
+          />
+          <input
+            key={`gh-${esp.espHigh ?? "none"}`}
+            type="number"
+            name="guideHigh"
+            defaultValue={data.guideHigh ?? esp.espHigh ?? ""}
+            placeholder="Guide high (optional)"
+            className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm"
+          />
         </div>
         <DictatableTextarea name="note" defaultValue={data.note ?? ""} placeholder="Exact wording used in the ad" rows={2} className="w-full rounded-md border border-rc-border px-2 py-1 text-sm" />
         {/* Same state-aware treatment as ChecklistItem. This one stays fully
@@ -1098,6 +1151,80 @@ function GuideItem({
   );
 }
 
+// "Logged somewhere else", above the offer form rather than below it.
+//
+// Placed first deliberately. An agent whose offers live in their CRM should be
+// able to say so and move on without scrolling past a form asking them to type
+// the same offers in again. Below the form it would read as an afterthought
+// for people who had already given up on it.
+//
+// Ticking marks the item done, because for that agency it IS done — the record
+// exists, it just is not here. Unticking hands the form back.
+function ElsewhereToggle({
+  propertyId,
+  elsewhere,
+  where,
+}: {
+  propertyId: string;
+  elsewhere: boolean;
+  where: string;
+}) {
+  const action = setOffersLoggedElsewhere.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(action, initialState);
+  const [checked, setChecked] = useState(elsewhere);
+
+  return (
+    <form action={formAction} className="mb-3 rounded-lg border border-rc-border bg-white p-3">
+      <label className="flex cursor-pointer items-start gap-2 text-sm text-rc-ink">
+        <input
+          type="checkbox"
+          name="elsewhere"
+          checked={checked}
+          onChange={(e) => setChecked(e.target.checked)}
+          className="mt-0.5 accent-rc-green-deep"
+        />
+        <span>
+          Offers are logged somewhere else
+          <span className="block text-xs text-rc-faint">
+            Your CRM, for example. The file will point there instead.
+          </span>
+        </span>
+      </label>
+
+      {checked && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <input
+            name="where"
+            defaultValue={where}
+            maxLength={160}
+            placeholder="Where? e.g. LockedOn, Rex, VaultRE"
+            className="min-w-0 flex-1 rounded-md border border-rc-border px-2 py-1 text-sm focus:border-rc-green-deep focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+          >
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      )}
+
+      {!checked && elsewhere && (
+        <button
+          type="submit"
+          disabled={pending}
+          className="mt-2 text-xs font-medium text-rc-muted hover:text-rc-ink"
+        >
+          {pending ? "Saving…" : "Save — log offers here instead"}
+        </button>
+      )}
+
+      <FieldError error={state.error} />
+    </form>
+  );
+}
+
 function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const boundAction = addOfferEntry.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -1114,11 +1241,19 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
     }>;
     flagReason?: string;
     guideAmendmentPrompt?: string;
+    loggedElsewhere?: boolean;
+    loggedElsewhereWhere?: string | null;
   };
   const entries = data.entries ?? [];
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      <ElsewhereToggle
+        propertyId={propertyId}
+        elsewhere={Boolean(data.loggedElsewhere)}
+        where={data.loggedElsewhereWhere ?? ""}
+      />
+
       <form action={formAction} className="space-y-2 rounded-lg bg-rc-bg-alt p-3">
         <OfferFields />
         <button
@@ -1590,20 +1725,42 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
               <Sparkles size={12} className="text-rc-green-deep" />
               From the report <span className="font-normal text-rc-faint">(read by AI — check it against the document)</span>
             </p>
+            {/* THREE FIELDS STOPPED BEING FLAGGED AS MISSING, 3 Sep 2026.
+                Adam: "acts states that we only have to provide info that is
+                reasonably available, so date, inspection type and provider
+                name should be enough."
+
+                He is right, and the Regulation says so in terms. Cl 37(3)
+                lists the particulars, and cl 37(4): "A licensee is not
+                required to make a record of particulars referred to in
+                subsection (3) that are not known to, or cannot be reasonably
+                obtained by, the licensee."
+
+                A building report simply does not state the preparer's PI
+                position or whether it is available for repurchase. Flagging
+                their absence as a gap invented an obligation the Regulation
+                expressly does not impose — and overstating an obligation is a
+                worse failure than omitting a feature, because it creates work
+                the Act never asked for and, in a dispute, cuts against the
+                agency rather than for it.
+
+                They are still EXTRACTED and still submitted, so a report that
+                does mention them keeps the detail on file. What changed is
+                that silence is now treated as silence rather than as a
+                finding. Amber is reserved for things that are actually
+                wrong. */}
             <ul className="mt-1.5 space-y-1">
               <li>Type: {reportType}</li>
               <li>Inspected: {draft.inspectionDate || <NotStated />}</li>
-              <li>
-                Preparer: {draft.preparerName || <NotStated />}
-                {draft.preparerContact ? ` (${draft.preparerContact})` : draft.preparerName ? <> · <NotStated text="contact not stated" /></> : null}
-              </li>
-              <li>PI insurance: {draft.preparerInsured ? "confirmed in the document" : <NotStated />}</li>
-              <li>
-                Available for repurchase: {draft.availableForRepurchase ? "confirmed in the document" : <NotStated />}
-              </li>
+              <li>Preparer: {draft.preparerName || <NotStated />}</li>
+              {draft.preparerContact && <li>Contact: {draft.preparerContact}</li>}
+              {draft.preparerInsured && <li>PI insurance: confirmed in the document</li>}
+              {draft.availableForRepurchase && (
+                <li>Available for repurchase: confirmed in the document</li>
+              )}
             </ul>
             <p className="mt-1.5 text-rc-faint">
-              Cl 37 also asks who requested the report — that&rsquo;s rarely written in the report itself, so add it in the note below if it matters.
+              Anything the report doesn&rsquo;t state isn&rsquo;t required to be recorded, under cl 37(4). Add anything worth keeping in the note below.
             </p>
           </div>
         )}

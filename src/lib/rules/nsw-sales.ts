@@ -133,6 +133,20 @@ export type ComplianceItem = {
   // Renames the "Evidence" heading on the upload control, where the generic
   // word is too vague to tell the agent WHICH document belongs there.
   evidenceLabel?: string;
+  // Marks the four documents an agent MUST attach. Everything else renders
+  // its upload control as "(optional)".
+  //
+  // Adam, 3 Sep 2026: "apart from the contract, comparable sales, agency
+  // agreement and revised ESP doc, all uploads should be optional and say so
+  // ... that way the user doesnt feel like they have to add it in order to
+  // move on."
+  //
+  // Deliberately opt-IN rather than opt-out. A new item added later is
+  // optional until someone decides otherwise, which is the safe default: the
+  // failure mode of an unmarked optional slot is a tidier file, and the
+  // failure mode of an unmarked mandatory one is an agent who thinks they are
+  // blocked and stops.
+  evidenceRequired?: boolean;
   // A short caution rendered above the upload control. Used where the wrong
   // file being attached carries a consequence beyond untidiness — a1, where
   // it would mean identity documents landing in storage.
@@ -191,6 +205,7 @@ const items: ComplianceItem[] = [
   // of the AML/consumer-guide housekeeping items that used to precede it.
   {
     key: "a3",
+    evidenceRequired: true,
     stage: 0,
     kind: "checklist",
     label: "Agency agreement signed; copy served within 48 hours",
@@ -297,6 +312,7 @@ const items: ComplianceItem[] = [
   },
   {
     key: "a4",
+    evidenceRequired: true,
     stage: 0,
     kind: "checklist",
     label: "Estimated selling price (ESP) recorded",
@@ -450,7 +466,43 @@ const items: ComplianceItem[] = [
 
   // ── Stage 1 — Pre-market ──────────────────────────────────────────────
   {
+    // ⚠️ THIS ITEM WAS DESIGNED, THEN DROPPED BY ADAM, THEN ASKED FOR AGAIN.
+    //
+    // 19 Aug 2026 he asked for it, it was built as b1a, and he killed it the
+    // same evening: "if we are looking to minimise as much work as possible
+    // and streamline the whole process, then let's leave out the requirement
+    // to keep a record of when the contract was provided." The product
+    // philosophy doc recorded that as "do not re-propose it".
+    //
+    // 3 Sep 2026, in his words: "Date contract was received should have a
+    // seperate card with an option to upload evidence." He is reversing his
+    // own call, which is his to reverse — but it is recorded here so nobody
+    // later reads the philosophy doc, finds the do-not-propose note, and
+    // deletes this thinking it crept back in by mistake.
+    //
+    // The legal position has not changed and is worth restating: s63(2) PSA
+    // Act stops an agent OFFERING a property unless the contract and its s52A
+    // documents are available at the registered office. Neither that section
+    // nor s66R of the Conveyancing Act requires the agent to keep proof of
+    // WHEN the contract arrived. So this is good practice the agency has
+    // chosen, not an obligation — which is exactly why the evidence is
+    // optional and the item does not gate the stage.
+    key: "b1a",
+    stage: 1,
+    kind: "checklist",
+    label: "Date the contract was received",
+    description:
+      "When the contract came back from the vendor's solicitor. Good practice rather than a legal requirement, so nothing here blocks you.",
+    legalBasis: "Good practice — supports s63(2), Property and Stock Agents Act 2002 (NSW)",
+    requiresDate: true,
+    dateLabel: "Date the contract was received",
+    requiredForStageCompletion: false,
+    evidenceLabel: "Covering letter or forwarding email",
+    hideNote: true,
+  },
+  {
     key: "b1",
+    evidenceRequired: true,
     stage: 1,
     kind: "checklist",
     label: "Contract of sale prepared with prescribed documents",
@@ -649,15 +701,21 @@ const items: ComplianceItem[] = [
     // we add in the pre-marketing stage a space where the agent can enter the
     // date that the property was physically inspected."
     //
-    // Stage 1 on Adam's call, though the duty bites earlier: the inspection
-    // must precede acting for the vendor, which means it precedes the
-    // agreement at Stage 0. Recording it later is fine, because the agent
-    // enters the date it actually happened rather than the date they ticked
-    // the box. What makes the placement safe is the check in setItemStatus:
-    // an inspection date AFTER the agency agreement was signed means the
-    // agent acted before inspecting, and the item flags rather than closes.
+    // MOVED TO STAGE 0, 3 Sep 2026 (Adam: "Property physically inspected
+    // before acting should move to the listing set up stage"). It sat at
+    // Stage 1 on his earlier call, with a note conceding the duty bites
+    // earlier — the inspection must precede ACTING for the vendor, which
+    // means it precedes the agency agreement collected at Stage 0. So this
+    // moves the item to where the obligation actually sits rather than one
+    // stage after it.
+    //
+    // The safety check is unchanged and still matters: setItemStatus flags
+    // rather than closes when the inspection date falls AFTER the agency
+    // agreement was signed, because that ordering means the agent acted
+    // before inspecting. Recording the date late is fine; inspecting late is
+    // not, and only the dates can tell those apart.
     key: "b6",
-    stage: 1,
+    stage: 0,
     kind: "checklist",
     label: "Property physically inspected before acting",
     description:
@@ -695,6 +753,16 @@ const items: ComplianceItem[] = [
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
+    // No evidence slot. Adam, 3 Sep 2026: "this should just be a yes or no.
+    // No evidence required as all offices will have AML systems that sit
+    // outside of RealComply and we dont want to double up on tasks."
+    //
+    // He is right, and it follows the product's own line: RealComply records
+    // that AML was dealt with and points at the system that did it. It is not
+    // the AML system. An upload slot here invites an agency to keep a second
+    // copy of something their provider already holds, which is more personal
+    // information in more places for no compliance gain.
+    hideEvidence: true,
   },
   {
     // Gap-analysis finding, 7 Aug 2026: appeared independently in both the
@@ -932,6 +1000,19 @@ const items: ComplianceItem[] = [
     stage: 3,
     kind: "offers",
     label: "Offers log",
+    // Optional, and now says so on the card. Adam, 3 Sep 2026: "Offer log
+    // should be optional. Tick box that stated offers have been logged in
+    // another location eg: agent's crm."
+    //
+    // Same principle as the price-quote record: the duty is that every offer
+    // reaches the vendor and that no price is represented below a rejected
+    // one. The duty is not that the log lives HERE. A CRM that already
+    // captures offers satisfies it, and asking an agent to retype them
+    // produces a worse record than the one they already have.
+    //
+    // What the tickbox preserves is the pointer. A file that says "logged in
+    // LockedOn" tells a regulator where to look; a file that is simply empty
+    // tells them nothing.
     description:
       "Every offer, presented and recorded. The vendor must be told of every offer in writing, and price can never be represented below a rejected offer once it's in writing.",
     legalBasis: "Sch 2 r5 (PSA Reg); s73A (PSA Act)",
@@ -1140,6 +1221,7 @@ const items: ComplianceItem[] = [
   },
   {
     key: "d3",
+    evidenceRequired: true,
     stage: 3,
     kind: "reduction",
     // CORRECTED 22 Aug 2026, and the correction matters because the previous

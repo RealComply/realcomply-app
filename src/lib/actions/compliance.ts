@@ -772,6 +772,76 @@ export async function addOfferEntry(
 }
 
 /**
+ * Records that offers are kept somewhere else.
+ *
+ * Adam, 3 Sep 2026: "Offer log should be optional. Tick box that stated offers
+ * have been logged in another location eg: agent's crm."
+ *
+ * Same reasoning as the price-quote record (b5), and the same conclusion. The
+ * duty in Sch 2 r5 and s73A is that the vendor is told of every offer and that
+ * no price is represented below a rejected one. It is not a duty to keep the
+ * log in any particular system. A CRM that captures offers as they arrive
+ * produces a better record than an agent retyping them here from memory a week
+ * later.
+ *
+ * What this preserves is the POINTER. A file that says "logged in LockedOn"
+ * tells an inspector where to look. A file that is simply empty tells them
+ * nothing, and looks identical to an agent who never logged anything at all.
+ * That distinction is the whole value of the tickbox.
+ *
+ * Unticking is allowed and clears the note: someone who ticks this and then
+ * starts logging offers here should not be left with a stale pointer to a
+ * system they have stopped using.
+ */
+export async function setOffersLoggedElsewhere(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const elsewhere = String(formData.get("elsewhere") ?? "") === "on";
+  const where = String(formData.get("where") ?? "").trim().slice(0, 160);
+
+  if (elsewhere && !where) {
+    return { error: "Say where they're logged, so the file points at something." };
+  }
+
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d2")
+    .maybeSingle();
+
+  const existing = ((row as PropertyItem | null)?.data ?? {}) as Record<string, unknown>;
+
+  const { error } = await supabase.from("property_items").upsert(
+    {
+      agency_id: profile.agency_id,
+      property_id: propertyId,
+      item_key: "d2",
+      status: elsewhere ? "done" : (row as PropertyItem | null)?.status ?? "open",
+      updated_by: user.id,
+      data: {
+        ...existing,
+        loggedElsewhere: elsewhere,
+        loggedElsewhereWhere: elsewhere ? where : null,
+      },
+    },
+    { onConflict: "property_id,item_key" },
+  );
+
+  if (error) {
+    console.error("setOffersLoggedElsewhere failed:", error.message);
+    return { error: "Couldn't save that. Try again." };
+  }
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return ok;
+}
+
+/**
  * Edits an offer already in the log.
  *
  * An offer is not a one-shot event — it starts pending, becomes accepted or
