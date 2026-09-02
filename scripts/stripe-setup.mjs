@@ -29,7 +29,9 @@
 //
 // Annual is ten months for twelve, matching annualPrice() in entitlement.ts.
 const PLANS = [
-  { plan: "agent",    name: "Agent",    monthly: 99,   blurb: "One agent, their own listings." },
+  { plan: "agent_1",  name: "Agent 1",  monthly: 99,   blurb: "One agent, up to 25 listings a year." },
+  { plan: "agent_2",  name: "Agent 2",  monthly: 169,  blurb: "One agent, 26 to 60 listings a year." },
+  { plan: "agent_3",  name: "Agent 3",  monthly: 249,  blurb: "One agent, more than 60 listings a year." },
   { plan: "office_1", name: "Office 1", monthly: 249,  blurb: "Office compliance, up to 50 listings a year." },
   { plan: "office_2", name: "Office 2", monthly: 349,  blurb: "Office compliance, 51 to 150 listings a year." },
   { plan: "office_3", name: "Office 3", monthly: 549,  blurb: "Office compliance, 151 to 250 listings a year." },
@@ -220,7 +222,7 @@ async function main() {
   }
 
   console.table(rows);
-  console.log(`Done. Six plans, twelve prices, all in ${MODE} mode.`);
+  console.log(`Done. ${PLANS.length} plans, ${PLANS.length * 2} prices, all in ${MODE} mode.`);
   console.log("Nothing here charges anybody — these are just the price tags.\n");
 }
 

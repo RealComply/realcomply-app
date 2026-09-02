@@ -20,15 +20,42 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // here is so the app can say so in advance, in English, rather than letting
 // someone fill in a form and meet a Postgres exception.
 
-export type Plan = "agent" | "office_1" | "office_2" | "office_3" | "office_4" | "office_5";
+export type Plan =
+  | "agent_1"
+  | "agent_2"
+  | "agent_3"
+  | "office_1"
+  | "office_2"
+  | "office_3"
+  | "office_4"
+  | "office_5";
 export type BillingStatus = "trialing" | "active" | "past_due" | "canceled" | "comped";
+
+// Two ladders, not one.
+//
+// Adam, 2 Sep 2026: "an agent doing 100 sales or more can afford to pay more
+// than 99." The agent plan was a single uncapped $99, so the agent writing
+// twelve listings a year and the one writing a hundred paid the same — the
+// largest mispricing in the ladder, and it grew with exactly the customers
+// worth keeping.
+//
+// The two ladders stay SEPARATE and nothing crosses between them
+// automatically. An agent passing the top agent band stays on agent_3 rather
+// than being moved onto an office plan: office plans carry office-level
+// compliance and more than one user, so moving someone onto one is a
+// conversation and a sale, not a charge that appears on their card.
+export type PlanFamily = "agent" | "office";
+
+export function planFamily(plan: Plan): PlanFamily {
+  return plan.startsWith("agent") ? "agent" : "office";
+}
 
 export type PlanSpec = {
   plan: Plan;
   name: string;
   /** GST-inclusive monthly price in whole dollars, as advertised. */
   price: number;
-  /** Listings a year this tier covers. Null for the agent plan, which is one person. */
+  /** Listings a year this tier covers. Null at the top of a ladder, which is uncapped. */
   maxListings: number | null;
   /** Agency-level compliance: registers, trust accounts, SG manual, training, team. */
   officeCompliance: boolean;
@@ -38,20 +65,20 @@ export type PlanSpec = {
 // The ladder, in one place. Prices are GST inclusive per the pricing doc —
 // quoting anything else to an Australian small business is the wrong number.
 //
-// KEEP IN SYNC with office_tier_for() in migration 0036 and with the two
-// pricing cards on the public landing page (search "Straightforward pricing").
-// Three copies is two too many; the database one is authoritative for deciding
-// a tier, this one is for showing it, and the landing page shows entry prices
-// only.
+// KEEP IN SYNC with agent_tier_for() and office_tier_for() in migration 0040,
+// with PLANS in scripts/stripe-setup.mjs, and with the two pricing cards on the
+// public landing page (search "Straightforward pricing"). The database one is
+// authoritative for deciding a tier, this one is for showing it, the script
+// sets the price tags in Stripe, and the landing page shows entry prices only.
+//
+// Agent 3 lands on $249, the same as Office 1, and that is deliberate. At the
+// point where an agent is writing enough business to pay office money, the
+// office plan should be the obvious next step rather than something they are
+// pushed away from by a price that undercuts it.
 export const PLANS: Record<Plan, PlanSpec> = {
-  agent: {
-    plan: "agent",
-    name: "Agent",
-    price: 99,
-    maxListings: null,
-    officeCompliance: false,
-    blurb: "One agent, their own listings.",
-  },
+  agent_1: { plan: "agent_1", name: "Agent 1", price: 99, maxListings: 25, officeCompliance: false, blurb: "One agent, up to 25 listings a year." },
+  agent_2: { plan: "agent_2", name: "Agent 2", price: 169, maxListings: 60, officeCompliance: false, blurb: "One agent, 26 to 60 listings a year." },
+  agent_3: { plan: "agent_3", name: "Agent 3", price: 249, maxListings: null, officeCompliance: false, blurb: "One agent, more than 60 listings a year." },
   office_1: { plan: "office_1", name: "Office 1", price: 249, maxListings: 50, officeCompliance: true, blurb: "Up to 50 listings a year." },
   office_2: { plan: "office_2", name: "Office 2", price: 349, maxListings: 150, officeCompliance: true, blurb: "51 to 150 listings a year." },
   office_3: { plan: "office_3", name: "Office 3", price: 549, maxListings: 250, officeCompliance: true, blurb: "151 to 250 listings a year." },
@@ -77,7 +104,7 @@ export type Entitlement = {
   trialEndsAt: string | null;
   /** Listings in the last rolling 365 days, excluding test-mode ones. */
   listingCount: number;
-  /** The tier that listing count implies, which may be above the current plan. */
+  /** The tier that listing count implies, which may be above the current plan. Same ladder, always. */
   impliedTier: Plan;
   /** True once they are within striking distance of the next tier. */
   approachingLimit: boolean;
@@ -130,14 +157,27 @@ export async function entitlementFor(
     officeCompliance: spec.officeCompliance,
     trialEndsAt: agency.trial_ends_at ?? null,
     listingCount,
-    impliedTier: impliedTierFor(listingCount),
+    impliedTier: impliedTierFor(listingCount, planFamily(plan)),
     approachingLimit: cap != null && listingCount >= Math.floor(cap * WARN_AT) && listingCount <= cap,
     overLimit: cap != null && listingCount > cap,
   };
 }
 
-/** Mirrors office_tier_for() in 0036. The database decides; this shows. */
-export function impliedTierFor(listings: number): Plan {
+/**
+ * Mirrors agent_tier_for() and office_tier_for() in 0040. The database decides;
+ * this shows.
+ *
+ * The family is passed in rather than worked out from the count, because the
+ * count alone cannot tell the two ladders apart — 40 listings is Agent 2 for a
+ * single agent and Office 1 for an office, and they are different prices for
+ * different products.
+ */
+export function impliedTierFor(listings: number, family: PlanFamily): Plan {
+  if (family === "agent") {
+    if (listings <= 25) return "agent_1";
+    if (listings <= 60) return "agent_2";
+    return "agent_3";
+  }
   if (listings <= 50) return "office_1";
   if (listings <= 150) return "office_2";
   if (listings <= 250) return "office_3";

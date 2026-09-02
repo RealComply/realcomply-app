@@ -422,7 +422,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               <p className="mt-3 text-4xl font-extrabold tracking-tight text-rc-ink">
                 From $99<span className="text-lg font-semibold text-rc-muted">/month</span>
               </p>
-              <p className="mt-2 text-sm leading-relaxed text-rc-muted">One agent, your own listings.</p>
+              <p className="mt-2 text-sm leading-relaxed text-rc-muted">One agent, your own listings.*</p>
             </div>
             <div className="rounded-card border border-rc-border bg-white p-7 text-left shadow-card">
               <p className="text-xs font-extrabold uppercase tracking-[0.09em] text-rc-green-deep">Office</p>
@@ -440,9 +440,17 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               office pays more. Coverage is unbounded, the headline price
               isn't, and this is the line that keeps "every listing" honest.
               Keep the $249 / 50 figures in sync with
-              RealComply-pricing-and-billing-model.md if the tiers change. */}
+              RealComply-pricing-and-billing-model.md if the tiers change.
+
+              The agent half gained the same caveat on 2 Sep 2026, when the
+              flat $99 agent plan became three bands. Both cards already said
+              "From", but "from" without a number is the kind of vague that
+              reads as a surprise later — and a busy agent finding out at the
+              boundary that their price moves is exactly the conversation
+              worth avoiding. Say the band on the page. */}
           <p className="mt-2 text-xs text-rc-faint">
-            * $249 covers offices with up to 50 listings a year. Larger offices scale up from there.
+            * $99 covers a single agent with up to 25 listings a year, and $249 covers offices with up to 50.
+            Busier agents and larger offices scale up from there.
           </p>
         </div>
       </section>
