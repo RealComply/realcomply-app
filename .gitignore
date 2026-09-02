@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python leaves these beside scripts/stripe-setup.py when it runs.
+__pycache__/
+*.pyc
