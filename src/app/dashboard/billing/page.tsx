@@ -127,10 +127,14 @@ export default async function BillingPage({
           {entitlement.listingCount} in the last 12 months
           {cap !== null && <span className="font-semibold text-rc-muted"> of {cap}</span>}
         </p>
-        <p className="mt-1 text-sm text-rc-muted">
-          A rolling 365 days, counted per listing whether it sold or not — an unsold listing still needs an
-          estimated selling price, price checks, material facts and sign-off.
-        </p>
+        {/* Was three lines explaining WHY an unsold listing still counts —
+            estimated selling price, price checks, material facts, sign-off.
+            All true, and all an argument nobody on a billing screen is having.
+            Adam, 3 Sep 2026: "too wordy... can we sharpen it up". The two
+            facts that change what someone owes are the window and the rule;
+            the justification belongs in a support answer, if it is ever
+            asked for at all. */}
+        <p className="mt-1 text-sm text-rc-muted">A rolling 365 days. Every listing counts, sold or not.</p>
 
         {usedPercent !== null && (
           <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-rc-bg-alt">

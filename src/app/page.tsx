@@ -449,7 +449,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               boundary that their price moves is exactly the conversation
               worth avoiding. Say the band on the page. */}
           <p className="mt-2 text-xs text-rc-faint">
-            * $99 covers a single agent with up to 25 listings a year, and $249 covers offices with up to 50.
+            * $99 covers a single agent with up to 25 listings per year, and $249 covers offices with up to 50.
             Busier agents and larger offices scale up from there.
           </p>
         </div>

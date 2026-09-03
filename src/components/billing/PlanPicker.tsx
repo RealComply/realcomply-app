@@ -26,9 +26,9 @@ function bandLabel(plan: Plan): string {
   const index = ladder.indexOf(plan);
   const previousCap = index > 0 ? PLANS[ladder[index - 1]].maxListings : 0;
 
-  if (cap === null) return `More than ${previousCap} listings a year`;
-  if (index === 0) return `Up to ${cap} listings a year`;
-  return `${(previousCap ?? 0) + 1} to ${cap} listings a year`;
+  if (cap === null) return `More than ${previousCap} listings per year`;
+  if (index === 0) return `Up to ${cap} listings per year`;
+  return `${(previousCap ?? 0) + 1} to ${cap} listings per year`;
 }
 
 export function PlanPicker({

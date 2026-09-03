@@ -76,14 +76,14 @@ export type PlanSpec = {
 // office plan should be the obvious next step rather than something they are
 // pushed away from by a price that undercuts it.
 export const PLANS: Record<Plan, PlanSpec> = {
-  agent_1: { plan: "agent_1", name: "Agent 1", price: 99, maxListings: 25, officeCompliance: false, blurb: "One agent, up to 25 listings a year." },
-  agent_2: { plan: "agent_2", name: "Agent 2", price: 169, maxListings: 60, officeCompliance: false, blurb: "One agent, 26 to 60 listings a year." },
-  agent_3: { plan: "agent_3", name: "Agent 3", price: 249, maxListings: null, officeCompliance: false, blurb: "One agent, more than 60 listings a year." },
-  office_1: { plan: "office_1", name: "Office 1", price: 249, maxListings: 50, officeCompliance: true, blurb: "Up to 50 listings a year." },
-  office_2: { plan: "office_2", name: "Office 2", price: 349, maxListings: 150, officeCompliance: true, blurb: "51 to 150 listings a year." },
-  office_3: { plan: "office_3", name: "Office 3", price: 549, maxListings: 250, officeCompliance: true, blurb: "151 to 250 listings a year." },
-  office_4: { plan: "office_4", name: "Office 4", price: 749, maxListings: 400, officeCompliance: true, blurb: "251 to 400 listings a year." },
-  office_5: { plan: "office_5", name: "Office 5", price: 1049, maxListings: null, officeCompliance: true, blurb: "More than 400 listings a year." },
+  agent_1: { plan: "agent_1", name: "Agent 1", price: 99, maxListings: 25, officeCompliance: false, blurb: "One agent, up to 25 listings per year." },
+  agent_2: { plan: "agent_2", name: "Agent 2", price: 169, maxListings: 60, officeCompliance: false, blurb: "One agent, 26 to 60 listings per year." },
+  agent_3: { plan: "agent_3", name: "Agent 3", price: 249, maxListings: null, officeCompliance: false, blurb: "One agent, more than 60 listings per year." },
+  office_1: { plan: "office_1", name: "Office 1", price: 249, maxListings: 50, officeCompliance: true, blurb: "Up to 50 listings per year." },
+  office_2: { plan: "office_2", name: "Office 2", price: 349, maxListings: 150, officeCompliance: true, blurb: "51 to 150 listings per year." },
+  office_3: { plan: "office_3", name: "Office 3", price: 549, maxListings: 250, officeCompliance: true, blurb: "151 to 250 listings per year." },
+  office_4: { plan: "office_4", name: "Office 4", price: 749, maxListings: 400, officeCompliance: true, blurb: "251 to 400 listings per year." },
+  office_5: { plan: "office_5", name: "Office 5", price: 1049, maxListings: null, officeCompliance: true, blurb: "More than 400 listings per year." },
 };
 
 /** Two months free — the annual price, in whole dollars. */
