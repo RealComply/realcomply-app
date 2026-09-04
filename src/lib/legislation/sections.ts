@@ -59,7 +59,36 @@ const DOT_LEADER = /\.{4,}/;
 // tokens, and it is perfectly regular, so it goes.
 const PAGE_NOISE = /^(Current version for|Historical version|Status Information|Page \d+ of \d+|.{0,80}\[NSW\]\s*$)/i;
 
-const STRUCTURE = /^(Chapter|Part|Division|Subdivision|Schedule)\s+\S/i;
+// WHERE AM I — two slots, not one, and this matters for citations.
+//
+// Schedules 2, 3 and 4 of the Regulation carry their own Parts and Divisions
+// inside them. With a single slot, the first "Division 1 Application" inside
+// Schedule 2 overwrote "Schedule 2", and every rule under it was then cited
+// as "PSA Reg s 1" instead of "PSA Reg Sch 2 r 1". Schedule 2 vanished from
+// the index entirely, and Schedule 2 is the rules specific to real estate
+// agents — the ones this product cites most.
+//
+// A wrong citation is worse than no answer. Someone looks up "s 1" of the
+// Regulation, finds the commencement clause, and concludes the tool is
+// making things up — or worse, does not check.
+//
+// Both patterns require a space and then a LETTER after the number, which is
+// what separates a real heading from a cross-reference in running text:
+// "Schedule 5, section 9, and" and "Part 8, Division 1A," were both being
+// read as headings and were both wrong.
+// The em dash in DIVISION is not decoration. The two NSW instruments write
+// "Part 1 Sales"; the Commonwealth ACL writes "Chapter 1—Introduction" and
+// "Part 3-1—Unfair practices". Requiring a space alone stopped matching every
+// ACL heading, so nothing ever cleared the schedule slot and all 495 ACL
+// sections were cited as "ACL Sch 2 r 18" instead of "ACL s 18".
+//
+// SCHEDULE deliberately still requires a space, which is what keeps the ACL's
+// own title line — "Schedule 2—The Australian Consumer Law" — from being read
+// as a schedule to nest everything under. The ACL is Schedule 2 of the
+// Competition and Consumer Act, but "ACL" already says that, and a licensee
+// looking up "ACL Sch 2 r 18" would find nothing.
+const SCHEDULE = /^Schedule\s+\d+[A-Z]?\s+[A-Za-z]/i;
+const DIVISION = /^(Chapter|Part|Division|Subdivision)\s+[\d-]+[A-Z]?(?:\s+|—|–)[A-Za-z]/i;
 
 /** Sections shorter than this are contents stubs, not law. */
 const MIN_BODY = 80;
@@ -69,11 +98,65 @@ function citationFor(short: string, context: string, number: string): string {
   return schedule ? `${short} Sch ${schedule[1]} r ${number}` : `${short} s ${number}`;
 }
 
+/**
+ * The line at which the contents list ends.
+ *
+ * The contents name every Schedule before the body does, so without this the
+ * chunker enters the real text believing it is inside Schedule 14 — and every
+ * Part of the Regulation proper was being labelled as sitting under
+ * "Schedule 12 Terms specific to agency agreement for management of".
+ *
+ * Leader dots are the giveaway, and in all three texts that use them the last
+ * one falls 5–7% in. The quarter-way guard is there so that a stray row of
+ * dots deep inside a form template could never swallow half an Act.
+ * Texts with no leader dots return 0 and lose nothing: their contents carry
+ * no Schedule headings to be confused by.
+ */
+/**
+ * Lines that repeat so often they must be page furniture, not headings.
+ *
+ * The ACL PDF prints "Schedule 2 The Australian Consumer Law" as a running
+ * header on every page — 140 times — and it reads exactly like a schedule
+ * heading, so every ACL section ended up cited as "ACL Sch 2 r 18".
+ *
+ * The general rule is better than another entry in PAGE_NOISE: a real heading
+ * appears once, or twice counting the contents. Anything appearing nine times
+ * or more is printed furniture, whatever it says, in this document or the next
+ * one somebody adds.
+ *
+ * Used ONLY to suppress structure detection, never to drop body text. Real
+ * legislative phrases do repeat — "Penalty: 100 penalty units" appears
+ * constantly — and losing those from the sections would be a worse fault than
+ * the one being fixed.
+ */
+function repeatedLines(lines: string[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const line of lines) {
+    const key = line.trim();
+    if (key.length < 15) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const repeated = new Set<string>();
+  for (const [line, n] of counts) if (n > 8) repeated.add(line);
+  return repeated;
+}
+
+function contentsEnd(lines: string[]): number {
+  let last = -1;
+  lines.forEach((line, i) => {
+    if (DOT_LEADER.test(line)) last = i;
+  });
+  return last > 0 && last < lines.length * 0.25 ? last : 0;
+}
+
 function chunk(source: string, short: string, text: string): LegislationSection[] {
   const out: LegislationSection[] = [];
   let current: Omit<LegislationSection, "body" | "citation"> | null = null;
-  let context = "";
+  let schedule = "";
+  let division = "";
   let buffer: string[] = [];
+
+  const where = () => [schedule, division].filter(Boolean).join(" — ");
 
   const flush = () => {
     if (current) {
@@ -86,17 +169,31 @@ function chunk(source: string, short: string, text: string): LegislationSection[
     buffer = [];
   };
 
-  for (const raw of text.split(/\r?\n/)) {
+  const lines = text.split(/\r?\n/);
+  const bodyStarts = contentsEnd(lines);
+  const furniture = repeatedLines(lines);
+
+  for (const [index, raw] of lines.entries()) {
     const line = raw.replace(/\s+$/, "");
     if (DOT_LEADER.test(line) || PAGE_NOISE.test(line.trim())) continue;
+    if (index <= bodyStarts) continue;
 
     const trimmed = line.trim();
-    if (STRUCTURE.test(trimmed)) context = trimmed;
+    // A new Schedule resets the Part/Division within it; a Part or Division
+    // never clears the Schedule it sits inside.
+    if (!furniture.has(trimmed)) {
+      if (SCHEDULE.test(trimmed)) {
+        schedule = trimmed;
+        division = "";
+      } else if (DIVISION.test(trimmed)) {
+        division = trimmed;
+      }
+    }
 
     const match = HEADING.exec(trimmed);
     if (match) {
       flush();
-      current = { source, short, number: match[1], heading: match[2].trim(), context };
+      current = { source, short, number: match[1], heading: match[2].trim(), context: where() };
       continue;
     }
     if (current) buffer.push(line);
@@ -186,6 +283,15 @@ const SYNONYMS: Record<string, string[]> = {
   bond: ["bond", "rental", "security"],
   eviction: ["termination", "notice", "vacant", "possession"],
   evict: ["termination", "notice", "vacant", "possession"],
+  // "How much notice to TERMINATE a tenancy" found sections about notice of
+  // sale, because the Act says "termination" and the search matched the word
+  // literally. Stemming would not have helped — "terminate" and "termination"
+  // do not share a suffix rule — which is exactly why this list exists.
+  terminate: ["termination", "terminating", "notice", "grounds"],
+  terminating: ["termination", "notice", "grounds"],
+  termination: ["termination", "notice", "grounds"],
+  lease: ["tenancy", "agreement", "residential"],
+  vacate: ["vacant", "possession", "termination"],
   contract: ["contract", "sale", "land", "prescribed", "documents"],
   vendor: ["vendor", "seller", "principal"],
   buyer: ["purchaser", "buyer"],
