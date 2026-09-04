@@ -22,24 +22,27 @@
 // extraction.ts): this is a lookup/confirmation aid for the licensee, not
 // legal advice, and the system prompt says so on every turn.
 //
-// All six texts together run to a genuinely large prompt (low hundreds of
-// thousands of tokens) — every turn resends the full set (the Anthropic API
-// has no server-side "session" concept), so a single cache_control
-// breakpoint is placed on the LAST static block only. That's sufficient: a
-// breakpoint caches everything from the start of the request up to and
-// including that block, so one breakpoint after all six documents caches the
-// whole static prefix as one unit. Repeated turns in the same conversation —
-// and other agents' conversations within the cache TTL — hit that cache
-// instead of paying full input-token price again.
+// RETRIEVAL, since 4 Sep 2026. Only the sections that bear on the question
+// are sent.
+//
+// Until then all six texts went up on every turn — about 1.5 million
+// characters, cached against a single breakpoint so repeat turns were at
+// least cheap. It still meant every question, however narrow, carried the
+// whole statute book, and made the model find one line in a phone book.
+// Typical question now sends two to nine thousand characters instead.
+//
+// THE CONSEQUENCE THAT MATTERS, and the reason the instructions below were
+// rewritten rather than left alone: with the full text loaded, "the Act does
+// not say that" was a conclusion the model could legitimately reach. With
+// selected sections it is not. Absence from an excerpt is not absence from
+// the Act, and in a compliance tool the difference between "there is no such
+// obligation" and "I could not find it" is the difference between a licensee
+// who checks and one who does not. See lib/legislation/sections.ts, which
+// also flags when nothing matched well enough to answer from at all.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuthContext } from "@/lib/actions/compliance";
-import { PSA_ACT_2002_TEXT } from "@/lib/legislation/psa-act-2002";
-import { PSA_REGULATION_2022_TEXT } from "@/lib/legislation/psa-regulation-2022";
-import { CONVEYANCING_ACT_1919_TEXT } from "@/lib/legislation/conveyancing-act-1919";
-import { CONVEYANCING_SALE_OF_LAND_REGULATION_2022_TEXT } from "@/lib/legislation/conveyancing-sale-of-land-regulation-2022";
-import { RESIDENTIAL_TENANCIES_ACT_2010_TEXT } from "@/lib/legislation/residential-tenancies-act-2010";
-import { AUSTRALIAN_CONSUMER_LAW_TEXT } from "@/lib/legislation/australian-consumer-law";
+import { findSections, isWeak, renderSections } from "@/lib/legislation/sections";
 
 export type ChatMessage = {
   role: "user" | "assistant";
@@ -60,15 +63,22 @@ const INSTRUCTIONS =
   "section, not a substitute for the licensee's own judgement or a solicitor. Say so naturally when it's " +
   "relevant (for example when the answer is genuinely unclear, contested, or high-stakes), but do not repeat a " +
   "disclaimer in every single reply — that gets ignored and stops being useful.\n\n" +
-  "You have the complete current text of six sources below: the Property and Stock Agents Act 2002 (NSW), the " +
-  "Property and Stock Agents Regulation 2022 (NSW), the Conveyancing Act 1919 (NSW), the Conveyancing (Sale of " +
-  "Land) Regulation 2022 (NSW), the Residential Tenancies Act 2010 (NSW), and the Australian Consumer Law " +
-  "(Schedule 2 to the Competition and Consumer Act 2010 (Cth)). Answer only from this text. Quote or closely " +
-  "paraphrase the actual provision when you can, and always name which source and section you're drawing from " +
-  "(e.g. 's49 of the Property and Stock Agents Act' or 's18 of the Australian Consumer Law') so the person can " +
-  "go read it themselves. If more than one source is relevant, say so and cite each.\n\n" +
+  "Six sources are searched: the Property and Stock Agents Act 2002 (NSW), the Property and Stock Agents " +
+  "Regulation 2022 (NSW), the Conveyancing Act 1919 (NSW), the Conveyancing (Sale of Land) Regulation 2022 " +
+  "(NSW), the Residential Tenancies Act 2010 (NSW), and the Australian Consumer Law (Schedule 2 to the " +
+  "Competition and Consumer Act 2010 (Cth)).\n\n" +
+  "IMPORTANT — YOU ARE SEEING SELECTED SECTIONS, NOT THE FULL TEXT. Below are the sections that matched this " +
+  "question, retrieved from those six sources. They are not everything those sources contain. So you must never " +
+  "say that an Act does not contain something, does not require something, or is silent on a point — you " +
+  "cannot know that from an excerpt. When you cannot answer from what is in front of you, say that you could " +
+  "not find it in the sections that matched, suggest how they might rephrase, and say they should check the " +
+  "instrument itself or their adviser. 'There is no such obligation' and 'I could not find it' are completely " +
+  "different statements to a licensee deciding what to do, and only the second one is ever available to you.\n\n" +
+  "Answer only from the sections below. Quote or closely paraphrase the actual provision, and always name the " +
+  "source and section you're drawing from (e.g. 's49 of the Property and Stock Agents Act' or 's18 of the " +
+  "Australian Consumer Law') so the person can go read it themselves. If more than one is relevant, cite each.\n\n" +
   "Be direct, not roundabout. Lead with the actual answer in your first sentence — either the rule itself and " +
-  "its citation, or, if none of the six sources cover it, a plain statement that it isn't covered as the very " +
+  "its citation, or, if the sections below don't answer it, a plain statement of that as the very " +
   "first thing you say. Don't walk the reader through a tour of near-miss or loosely-related provisions on the " +
   "way to that conclusion — if a provision isn't a real, direct answer to what was asked, leave it out rather " +
   "than listing it as 'related.' A short list of tangential provisions is worse than no list: it reads as if " +
@@ -76,8 +86,8 @@ const INSTRUCTIONS =
   "Only mention an adjacent provision, briefly, when it is genuinely the closest thing to an answer available " +
   "and you say so explicitly (e.g. 'none of these cover X directly, but s52 of the Act comes closest " +
   "because...').\n\n" +
-  "You do NOT have the AML/CTF Act, the Property and Stock Agents Regulation's every last schedule of forms, or " +
-  "anything beyond the six sources above loaded. If a question is really about something else (AML/CTF program " +
+  "You do NOT have the AML/CTF Act or anything beyond the six sources above. If a question is really about " +
+  "something else (AML/CTF program " +
   "obligations, a different state's law, a specific agency's own policy), lead with that — say plainly and " +
   "immediately that it's outside what you have access to and that they should check the relevant instrument or " +
   "their adviser directly — do not answer it from general knowledge, and do not pad the reply with citations " +
@@ -85,34 +95,65 @@ const INSTRUCTIONS =
   "Keep answers concise and direct — a couple of short paragraphs at most, not an essay. This is a quick " +
   "lookup tool used mid-task, not a legal memo.";
 
-// Each source as its own block (clearly labelled so the model can cite which
-// one it's drawing from) — only the LAST block carries the cache_control
-// breakpoint; see the file header comment for why one breakpoint suffices.
-function buildSystemBlocks(): Anthropic.Messages.TextBlockParam[] {
-  const sources: Array<{ label: string; text: string }> = [
-    { label: "Property and Stock Agents Act 2002 (NSW) — full text", text: PSA_ACT_2002_TEXT },
-    { label: "Property and Stock Agents Regulation 2022 (NSW) — full text", text: PSA_REGULATION_2022_TEXT },
-    { label: "Conveyancing Act 1919 (NSW) — full text", text: CONVEYANCING_ACT_1919_TEXT },
-    {
-      label: "Conveyancing (Sale of Land) Regulation 2022 (NSW) — full text",
-      text: CONVEYANCING_SALE_OF_LAND_REGULATION_2022_TEXT,
-    },
-    { label: "Residential Tenancies Act 2010 (NSW) — full text", text: RESIDENTIAL_TENANCIES_ACT_2010_TEXT },
-    {
-      label: "Australian Consumer Law — Schedule 2 to the Competition and Consumer Act 2010 (Cth) — full text",
-      text: AUSTRALIAN_CONSUMER_LAW_TEXT,
-    },
+/**
+ * What to search on.
+ *
+ * The last question, plus the one before it. Follow-ups are the norm in this
+ * chat — "and what's the penalty?", "does that apply to rural land too?" —
+ * and on their own they retrieve nothing useful, because the subject is in
+ * the previous turn rather than this one. Two turns is enough to carry the
+ * subject forward without letting an unrelated earlier question drag the
+ * search off course.
+ */
+function retrievalQuery(history: ChatMessage[]): string {
+  const questions = history.filter((m) => m.role === "user").map((m) => m.content);
+  return questions.slice(-2).reverse().join(" ");
+}
+
+/**
+ * Instructions, then the sections that matched.
+ *
+ * The cache_control breakpoint sits on the INSTRUCTIONS block now, not after
+ * the legislation. That is the whole point of the change: the instructions
+ * are the only part that repeats between questions, so they are the only part
+ * worth caching. The sections differ every time and never would have.
+ */
+function buildSystemBlocks(query: string): Anthropic.Messages.TextBlockParam[] {
+  const hits = findSections(query);
+
+  const blocks: Anthropic.Messages.TextBlockParam[] = [
+    { type: "text", text: INSTRUCTIONS, cache_control: { type: "ephemeral" as const } },
   ];
 
-  const blocks: Anthropic.Messages.TextBlockParam[] = [{ type: "text", text: INSTRUCTIONS }];
-  sources.forEach((source, i) => {
-    const isLast = i === sources.length - 1;
+  if (isWeak(hits)) {
+    // Deliberately sent with NO sections attached, even though a handful
+    // scored something. Handing over weak matches is what produces a
+    // confident answer built out of near-misses — the exact failure the
+    // instructions above spend a paragraph forbidding. Nothing to quote is a
+    // far better prompt for "I could not find it" than four tangential
+    // provisions and a request not to use them.
     blocks.push({
       type: "text",
-      text: `=== ${source.label} ===\n\n${source.text}`,
-      ...(isLast ? { cache_control: { type: "ephemeral" as const } } : {}),
+      text:
+        "=== Matching sections ===\n\n" +
+        "None. The search found nothing in the six sources that answers this question.\n\n" +
+        "Say so as the first thing in your reply. Do not answer from general knowledge. Suggest they try " +
+        "different words if the topic really is one of the six sources, and otherwise say plainly that it is " +
+        "outside what you can check and point them to the instrument itself or their adviser.",
     });
+    return blocks;
+  }
+
+  blocks.push({
+    type: "text",
+    text:
+      `=== Matching sections (${hits.length}, most relevant first) ===\n\n` +
+      renderSections(hits) +
+      "\n\n=== End of matching sections ===\n\n" +
+      "These are the sections that matched, not the complete Acts. If the answer is not here, say you could " +
+      "not find it — never that the legislation does not contain it.",
   });
+
   return blocks;
 }
 
@@ -144,7 +185,7 @@ export async function askLegislationQuestion(history: ChatMessage[]): Promise<Ch
       // their own Act.
       model: "claude-sonnet-5",
       max_tokens: 4096,
-      system: buildSystemBlocks(),
+      system: buildSystemBlocks(retrievalQuery(trimmed)),
       messages: trimmed.map((m) => ({ role: m.role, content: m.content })),
     });
 
