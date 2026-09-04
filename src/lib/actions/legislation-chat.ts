@@ -135,19 +135,60 @@ export async function askLegislationQuestion(history: ChatMessage[]): Promise<Ch
 
   try {
     const response = await anthropic.messages.create({
+      // Raised from 1024 on 4 Sep 2026. A legislation answer that quotes the
+      // section it is citing — which is the entire point of this feature —
+      // does not reliably fit in 1024 tokens, and anything the model spends
+      // before writing the answer comes out of the same budget. A ceiling
+      // that truncates a correct answer is worse here than one that is
+      // occasionally generous: nobody is billed by the token for reading
+      // their own Act.
       model: "claude-sonnet-5",
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: buildSystemBlocks(),
       messages: trimmed.map((m) => ({ role: m.role, content: m.content })),
     });
 
-    const textBlock = response.content.find((block): block is Anthropic.Messages.TextBlock => block.type === "text");
-    if (!textBlock?.text) {
-      return { error: "Didn't get a usable answer back — try rephrasing the question." };
+    // Every text block, joined — not just the first one found.
+    //
+    // The old code took `content.find(type === "text")` and gave up if that
+    // one block was missing or empty. A reply is a LIST of blocks and the
+    // text can arrive as several of them, or after a block of another kind
+    // entirely. Reading only the first meant a perfectly good answer could
+    // be discarded, and the user told to "try rephrasing the question" —
+    // advice that could not possibly have helped, because rephrasing was
+    // never the problem.
+    const reply = response.content
+      .filter((block): block is Anthropic.Messages.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("\n\n")
+      .trim();
+
+    if (!reply) {
+      // The one fact needed to diagnose this was being thrown away. If a
+      // reply genuinely arrives with no text in it, record WHY — the stop
+      // reason says whether it ran out of room, refused, or stopped for some
+      // reason we have not seen yet, and the block types say what came back
+      // instead. Without this line the next occurrence is another guess.
+      console.error(
+        "Ask the Act: reply had no text.",
+        "stop_reason:", response.stop_reason,
+        "blocks:", response.content.map((b) => b.type).join(",") || "(none)",
+        "usage:", JSON.stringify(response.usage),
+      );
+      return {
+        error:
+          response.stop_reason === "max_tokens"
+            ? "That answer was too long to finish. Try asking about one section at a time."
+            : "Didn't get an answer back that time. Try again, and tell Adam if it keeps happening.",
+      };
     }
 
-    return { error: null, reply: textBlock.text };
-  } catch {
+    return { error: null, reply };
+  } catch (e) {
+    // Also silent until now. A blank catch meant an expired key, a rate
+    // limit and a prompt the model refused all looked identical from the
+    // outside, and none of them left a trace to look at afterwards.
+    console.error("Ask the Act failed:", e instanceof Error ? e.message : e);
     return { error: "Couldn't reach the legislation assistant just now — try again in a moment." };
   }
 }
