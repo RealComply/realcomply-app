@@ -50,3 +50,30 @@ export function formatAuDate(iso: string | null | undefined): string {
   if (!monthName) return iso;
   return `${Number(day)} ${monthName} ${year}`;
 }
+
+/**
+ * A timestamp — an actual instant, not a calendar date — as the day it
+ * happened in Sydney. "2026-09-04T23:10:00Z" → "5 September 2026".
+ *
+ * NOT formatAuDate. That function reads the leading YYYY-MM-DD off the string
+ * and stops, which is exactly right for a calendar fact stored as a date and
+ * exactly wrong for a timestamptz: Postgres hands those back in UTC, so
+ * anything a NSW user did before 10am this morning carries yesterday's date on
+ * the front of the string. A sign-off signed at 9am on the 5th would be shown,
+ * in the record of when it was signed, as the 4th.
+ *
+ * The timezone is named rather than left to the runtime because this renders
+ * on a server whose clock is not in Sydney.
+ */
+export function formatAuTimestamp(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Sydney",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(d);
+  return parts;
+}

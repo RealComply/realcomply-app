@@ -13,6 +13,7 @@ import {
 } from "@/lib/rules/aml-precommencement";
 import { FileDropZone } from "@/components/FileDropZone";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
+import type { SignoffLink } from "@/lib/data/signoff-links";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -907,12 +908,6 @@ function ChecklistItem({
             </p>
           </div>
         )}
-
-        {/* Sign-off by link, for a licensee in charge who does not use
-            RealComply. Sits on send_licensee rather than sign_licensee
-            because sign_licensee is licenseeOnly and an agent cannot touch
-            it — which is the whole problem this solves. */}
-        {item.key === "send_licensee" && <SignoffLinkPanel propertyId={propertyId} />}
 
         {item.showFindings ? (
           <div>
@@ -2320,8 +2315,37 @@ function SignItem({ item, propertyId, current, profile }: { item: ComplianceItem
   );
 }
 
-function SendItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+// Send to licensee — and, for a licensee in charge who does not use
+// RealComply, the sign-off link itself.
+//
+// THE BUG THIS FIXES (5 Sep 2026). The link panel was written into
+// ChecklistItem, guarded by `item.key === "send_licensee"`. send_licensee is
+// kind "send", so it is rendered by this component and never by ChecklistItem
+// — the guard could not be true, and the panel had never once appeared on
+// screen. The whole feature was reachable only by typing a /signoff/ URL that
+// nothing could issue.
+//
+// It went unnoticed because of the other half of the design: this card is
+// hidden entirely where the agent IS the licensee (showIf in nsw-sales.ts),
+// which is every listing at Cass. The one person testing could not have seen
+// the missing button on his own files.
+//
+// The panel sits here rather than on sign_licensee because sign_licensee is
+// licenseeOnly and an agent cannot touch it — which is the whole problem this
+// solves.
+function SendItem({
+  item,
+  propertyId,
+  current,
+  signoffLinks,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  signoffLinks: SignoffLink[];
+}) {
   const action = sendToLicensee.bind(null, propertyId);
+  const isSignLicensee = item.key === "send_licensee";
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       {current?.status === "done" ? (
@@ -2336,6 +2360,7 @@ function SendItem({ item, propertyId, current }: { item: ComplianceItem; propert
           </button>
         </form>
       )}
+      {isSignLicensee && <SignoffLinkPanel propertyId={propertyId} links={signoffLinks} />}
     </ItemShell>
   );
 }
@@ -2853,6 +2878,7 @@ export function ItemCard({
   profile,
   allItems,
   amlPreCommencementEnabled = false,
+  signoffLinks = [],
 }: {
   item: ComplianceItem;
   propertyId: string;
@@ -2862,6 +2888,9 @@ export function ItemCard({
   // The agency's standing position. Passed in rather than fetched here so the
   // page does one agency lookup for the whole list instead of one per card.
   amlPreCommencementEnabled?: boolean;
+  // Sign-off links issued for this file, read once by the page. Only the
+  // send_licensee card uses them.
+  signoffLinks?: SignoffLink[];
 }) {
   switch (item.kind) {
     case "offers":
@@ -2877,7 +2906,7 @@ export function ItemCard({
     case "sign":
       return <SignItem item={item} propertyId={propertyId} current={current} profile={profile} />;
     case "send":
-      return <SendItem item={item} propertyId={propertyId} current={current} />;
+      return <SendItem item={item} propertyId={propertyId} current={current} signoffLinks={signoffLinks} />;
     case "export":
       return (
         <ExportItem

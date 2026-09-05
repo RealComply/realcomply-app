@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { buildSignoffStatement } from "@/lib/signoff/statement";
 import { effectiveEsp } from "@/lib/data/effective-esp";
+import { liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
 import type { PropertyItem } from "@/lib/types";
 
 // Issuing and revoking licensee sign-off links. See
@@ -35,6 +36,20 @@ export type IssueResult = {
 export async function issueSignoffLink(propertyId: string): Promise<IssueResult> {
   const { supabase, profile } = await requireAuthContext();
 
+  // An outstanding link is handed back rather than replaced.
+  //
+  // The button that calls this is the only way an agent can retrieve a link
+  // they have already sent, so pressing it twice is the normal thing to do,
+  // not a mistake. Minting a second token each time would leave several live
+  // links for one file, all valid, and a licensee signing the older one after
+  // the agent has chased them with a newer one — two versions of the same
+  // request, both real. One outstanding link per property is the rule; to
+  // change where it goes, withdraw it and issue another.
+  const outstanding = liveLink(await signoffLinksFor(supabase, propertyId));
+  if (outstanding) {
+    return { error: null, token: outstanding.token, sentTo: outstanding.sentTo };
+  }
+
   const { data: property } = await supabase
     .from("properties")
     .select("id, address, agency_id")
@@ -60,16 +75,17 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
   }
 
   // The two facts the statement ties to, read from the file rather than
-  // retyped: a3 carries the agency agreement's signing date, a4 the ESP.
+  // retyped. a3 carries the agency agreement's signing date; the ESP comes
+  // from effectiveEsp below rather than from a4, because a4 holds the figure
+  // set at listing and a file whose price was formally revised has moved on.
   const { data: rows } = await supabase
     .from("property_items")
     .select("*")
     .eq("property_id", propertyId)
-    .in("item_key", ["a3", "a4"]);
+    .eq("item_key", "a3");
 
   const items = (rows ?? []) as PropertyItem[];
   const a3 = items.find((i) => i.item_key === "a3");
-  const a4 = items.find((i) => i.item_key === "a4");
   // The ESP a licensee is asked to sign against has to be the one currently
   // on foot. Showing the figure from listing set-up on a file where the price
   // was formally revised puts a superseded number above a signature.
@@ -106,17 +122,30 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
   return { error: null, token: (inserted as { token: string }).token, sentTo: licenseeEmail };
 }
 
-/** Kills a link that was sent to the wrong place, or is simply stale. */
+/**
+ * Kills a link that was sent to the wrong place, or is simply stale.
+ *
+ * Refuses to touch one that has already been signed. Revoking a signature
+ * would not undo it — submit_signoff has already completed the file's
+ * sign_licensee item — it would only produce a record that reads as though the
+ * request was withdrawn before it was signed, which is a false account of what
+ * a licensee did. A signature stands; a pending request can be withdrawn.
+ */
 export async function revokeSignoffLink(requestId: string, propertyId: string): Promise<{ error: string | null }> {
   const { supabase } = await requireAuthContext();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("property_signoff_requests")
     .update({ revoked_at: new Date().toISOString() })
-    .eq("id", requestId);
+    .eq("id", requestId)
+    .is("signed_at", null)
+    .select("id");
 
   if (error) {
-    return { error: "Couldn't revoke that link." };
+    return { error: "Couldn't withdraw that link." };
+  }
+  if (!data || data.length === 0) {
+    return { error: "That link has already been signed, so it can't be withdrawn." };
   }
 
   revalidatePath(`/dashboard/${propertyId}`);

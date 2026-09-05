@@ -10,6 +10,7 @@ import { TransferListingSection } from "@/components/compliance/TransferListingS
 import { HandToAgent } from "@/components/compliance/HandToAgent";
 import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
+import { signoffLinksFor } from "@/lib/data/signoff-links";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
 function auctionDateLabel(date: string): string {
@@ -58,7 +59,7 @@ export default async function PropertyPage({
 
   const p = property as Property;
 
-  const [{ data: propertyItemRows }, { data: agencyRow }, { data: peopleRows }] = await Promise.all([
+  const [{ data: propertyItemRows }, { data: agencyRow }, { data: peopleRows }, signoffLinks] = await Promise.all([
     supabase.from("property_items").select("*").eq("property_id", id),
     // One lookup for the page, passed down to every card, rather than each
     // card asking. Only amv ever uses it.
@@ -73,6 +74,10 @@ export default async function PropertyPage({
     // cannot sign one, so a listing sitting on their name could never be
     // completed by anybody.
     supabase.from("profiles").select("id, full_name, email, is_assistant"),
+    // Licensee sign-off links for this file. Read here rather than in the card
+    // so the send_licensee card knows on first paint whether a link is already
+    // out and whether it has been signed — see lib/data/signoff-links.ts.
+    signoffLinksFor(supabase, id),
   ]);
 
   const allItems = Object.fromEntries(
@@ -261,6 +266,7 @@ export default async function PropertyPage({
                   profile={profile}
                   allItems={allItems}
                   amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
+                  signoffLinks={signoffLinks}
                 />
               ))}
             </div>
@@ -277,6 +283,7 @@ export default async function PropertyPage({
               profile={profile}
               allItems={allItems}
               amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
+              signoffLinks={signoffLinks}
               />
           ))}
         </div>
