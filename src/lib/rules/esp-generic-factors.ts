@@ -34,10 +34,18 @@
 // cannot put a pool in the back yard, which is a price argument. Same fact,
 // two different questions, and answering both is not double entry.
 //
-// What IS worth avoiding is an agent recording flood history here and nowhere
-// else, because the disclosure duty sits on the material facts card
-// (cl 60(1)(a), for s52(1)(b)) and a note in a reasoning box does not satisfy
-// it. Hence the pointer rendered under the panel — see ReasoningAssist.
+// A warning line about that was added under the panel and then removed the
+// same day. Adam: "the agent would have to physically tick the box saying it's
+// flood... we're still leaving it up to them when it comes to the generic
+// topics for consideration."
+//
+// He is right twice over. Structurally, "Material facts identified" is
+// requiredForStageCompletion, so a file cannot leave Listing set-up without
+// the agent actioning that card — the failure I was guarding against cannot
+// happen quietly. And in principle, a compliance warning printed under a list
+// of thinking prompts makes the prompts look like rules, which is the exact
+// thing this file's header says not to do. These are topics to consider. What
+// the agent does with them is theirs.
 
 export const ESP_GENERIC_FACTORS: string[] = [
   "Zoning and what it allows",

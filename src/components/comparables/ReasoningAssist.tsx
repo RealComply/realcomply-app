@@ -148,14 +148,6 @@ export function ReasoningAssist({
               </button>
             ))}
           </div>
-          {/* One line, because three of these are also obligations recorded
-              elsewhere in the file. Noting flood history here is a price
-              argument; it is not the disclosure, and an agent who writes it
-              only here has a weaker file than they think. */}
-          <p className="mt-2 text-[11px] leading-relaxed text-rc-faint">
-            Flood, bushfire and easements have their own places in this file too. Noting them here is about
-            price — it doesn&rsquo;t replace disclosing them.
-          </p>
         </div>
       )}
 
