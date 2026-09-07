@@ -52,6 +52,9 @@ import {
 import { isAiReadItem } from "@/lib/documents/ai-read-items";
 import { DictatableTextarea } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
+import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
+import { ReasoningAssist } from "@/components/comparables/ReasoningAssist";
+import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
 const initialState: ActionState = { error: null };
 
@@ -469,10 +472,17 @@ function ChecklistItem({
   current,
   preCommencementOffer,
   noteSeed,
+  subject = null,
+  comparables = [],
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
+  // The listing's own attributes and its comparable sales. Read once by the
+  // page and passed down, like amlPreCommencementEnabled — only a4 and a4c
+  // use them, and neither should be asking the database on its own.
+  subject?: SubjectAttributes | null;
+  comparables?: Comparable[];
   // Present only on amv, and only where the agency has taken the position AND
   // this file's agreement predates commencement. Absent means the choice is
   // not on the table and the card looks exactly as it always has.
@@ -909,6 +919,18 @@ function ChecklistItem({
           </div>
         )}
 
+        {/* a4 only. The comparable sales, stacked against this listing.
+            Sits on the ESP card because that is where the report is attached
+            (the a4/a4b merge, 22 Aug 2026) — the sales and the evidence they
+            came from belong on one card, not two.
+
+            The facts in each row were read off that report. The three buttons
+            and the note are the only things here a person supplies, and they
+            are the only things here that are a judgement. */}
+        {item.key === "a4" && subject && (
+          <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
+        )}
+
         {item.showFindings ? (
           <div>
             <label className="block text-xs text-rc-muted">
@@ -954,6 +976,20 @@ function ChecklistItem({
                   whole point. Mocked up 22 Aug, approved, built 24 Aug after
                   Adam noticed it had never landed. */}
               {item.key === "a4c" && <EspPrompts noteId={`note-${item.key}`} />}
+              {/* a4c only, and only once there are sales to work from. Turns
+                  the weightings and one-liners the agent gave on the card
+                  above into a starting draft in their own words, and prompts
+                  them with the differences THIS file actually shows rather
+                  than the generic list. See ReasoningAssist for the line it
+                  must not cross. */}
+              {item.key === "a4c" && subject && (
+                <ReasoningAssist
+                  noteId={`note-${item.key}`}
+                  subject={subject}
+                  comparables={comparables}
+                  savedReasoning={String(data.note ?? "")}
+                />
+              )}
               {/* Only while it is still a suggestion. Same rule as a7's select
                   above: it has to be obvious which of the two answered this,
                   because the licensee is the one who carries the approval. */}
@@ -2879,6 +2915,8 @@ export function ItemCard({
   allItems,
   amlPreCommencementEnabled = false,
   signoffLinks = [],
+  subject = null,
+  comparables = [],
 }: {
   item: ComplianceItem;
   propertyId: string;
@@ -2891,6 +2929,10 @@ export function ItemCard({
   // Sign-off links issued for this file, read once by the page. Only the
   // send_licensee card uses them.
   signoffLinks?: SignoffLink[];
+  // The listing's own attributes and its comparable sales. Only the ESP card
+  // and the ESP reasoning card use them.
+  subject?: SubjectAttributes | null;
+  comparables?: Comparable[];
 }) {
   switch (item.kind) {
     case "offers":
@@ -2997,6 +3039,8 @@ export function ItemCard({
                   ?.offerPrice
               : undefined
           }
+          subject={subject}
+          comparables={comparables}
         />
       );
   }

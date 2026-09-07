@@ -164,6 +164,45 @@ type DraftPatch = {
   saleMethod?: "private_treaty" | "auction";
   auctionDate?: string;
   auctionTime?: string;
+  /**
+   * a4c only, and only from the comparable-sales report — scrubbed off every
+   * other source in extractOneDocument.
+   *
+   * The sales the report lists, as rows. This is the factual half of the ESP
+   * justification and the half a model should do: transcription and
+   * arithmetic off a document the agent already has. The judgement half —
+   * which of these mattered and why — is the agent's and is never touched
+   * here. See RealComply-comparable-sales-AI-notes-design.md.
+   */
+  comparableSales?: ComparableSaleRead[];
+  /**
+   * a4c only, from the comparables report. The SUBJECT property's own
+   * attributes, which these reports almost always state on their first page.
+   * Held as suggestions on the property row and shown for confirmation; they
+   * never become the confirmed values without a person accepting them.
+   */
+  subjectProperty?: SubjectAttributesRead;
+};
+
+export type ComparableSaleRead = {
+  address: string;
+  salePrice?: number;
+  saleDate?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  carSpaces?: number;
+  landSizeSqm?: number;
+  internalAreaSqm?: number;
+  distanceM?: number;
+  propertyType?: string;
+};
+
+export type SubjectAttributesRead = {
+  bedrooms?: number;
+  bathrooms?: number;
+  carSpaces?: number;
+  landSizeSqm?: number;
+  internalAreaSqm?: number;
 };
 
 const EXTRACTION_TOOL: Anthropic.Tool = {
@@ -278,6 +317,42 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
               type: "boolean",
               description:
                 "Item b1 only. Set true if the file uploaded as the contract for sale is plainly a different kind of document (most commonly the agency agreement). When true, omit prescribedDocs entirely and put one short sentence in note naming what the document actually is.",
+            },
+            comparableSales: {
+              type: "array",
+              description:
+                "Item a4c only, and ONLY when reading a comparable-sales report. One entry for every sold property the report lists — all of them, in the order the report presents them. Record only what is printed: leave a field out rather than estimating, converting or inferring it. Do NOT include the subject property itself, do NOT include properties listed as currently for sale or under offer rather than sold, and do NOT rank, score or judge them — which sales matter is the agent's decision and recording an opinion here would put words in their mouth on the one figure they may be asked to substantiate under s74.",
+              items: {
+                type: "object",
+                properties: {
+                  address: {
+                    type: "string",
+                    description: "Street address as the report prints it, e.g. '14 Smith St, Mount Colah'. Required.",
+                  },
+                  salePrice: { type: "number", description: "Sale price in dollars, digits only. Omit if the report withholds it." },
+                  saleDate: { type: "string", description: "Date of sale, YYYY-MM-DD. Omit unless a specific date is printed — a month alone is not a date." },
+                  bedrooms: { type: "number" },
+                  bathrooms: { type: "number" },
+                  carSpaces: { type: "number", description: "Garage or carport spaces." },
+                  landSizeSqm: { type: "number", description: "Land size in square metres. Convert hectares only where the report itself gives both; otherwise omit." },
+                  internalAreaSqm: { type: "number", description: "Internal or building area in square metres, if stated separately from land." },
+                  distanceM: { type: "number", description: "Distance from the subject property in METRES, only if the report states a distance. Convert a printed kilometre figure to metres; do not calculate one from addresses." },
+                  propertyType: { type: "string", description: "e.g. house, townhouse, unit — only as the report describes it." },
+                },
+                required: ["address"],
+              },
+            },
+            subjectProperty: {
+              type: "object",
+              description:
+                "Item a4c only, and ONLY from a comparable-sales report. The attributes of the SUBJECT property — the one the report was prepared for, usually named on its first page — not of any comparable. Everything optional; omit anything not printed. These are shown to the agent for confirmation, never used as fact until they accept them.",
+              properties: {
+                bedrooms: { type: "number" },
+                bathrooms: { type: "number" },
+                carSpaces: { type: "number" },
+                landSizeSqm: { type: "number" },
+                internalAreaSqm: { type: "number" },
+              },
             },
           },
           required: ["itemKey"],
@@ -421,12 +496,22 @@ const AGENCY_AGREEMENT_PROMPT =
 // under s72A, and a provider's automated estimate is not the figure the agent
 // agreed. SOURCE_TARGETS enforces that in code; this is only the reminder.
 const COMPARABLES_PROMPT =
-  "a4c (the agent's own reasoning behind the ESP, ONLY if this report actually contains reasoning " +
-  "written by the agent rather than the provider's own automated commentary — paraphrase it as a " +
-  "short editable starting draft. If all you can see is the provider's generated text, leave a4c out). " +
+  "a4c, and on a4c please do THREE things.\n\n" +
+  "(1) comparableSales — every sold property this report lists, as one entry each, in the report's own " +
+  "order. This is the main job. Transcribe what is printed and nothing else: address, price, date of " +
+  "sale, beds, baths, car, land size, internal area, distance. Leave a field out rather than " +
+  "estimating it. Include every sale, even ones that look unlike the subject — deciding which sales " +
+  "count is the agent's job, and a sale you silently omitted is one they cannot consider.\n\n" +
+  "(2) subjectProperty — the attributes of the property the report was prepared FOR, which these " +
+  "reports normally state on the first page. Beds, baths, car, land, internal area. Omit anything not " +
+  "printed. Do not confuse it with the nearest comparable.\n\n" +
+  "(3) note — the agent's own reasoning behind the ESP, ONLY if this report actually contains " +
+  "reasoning written by the agent rather than the provider's automated commentary. If all you can see " +
+  "is generated text, leave note out entirely.\n\n" +
   "Return no other item. In particular, do not return an estimated selling price: any range printed " +
   "in this report is the provider's automated estimate, not the figure the agent recorded in the " +
-  "agency agreement, and it will be discarded.";
+  "agency agreement, and it will be discarded. And do not say which comparables are the good ones — " +
+  "record the sales, let the agent weigh them.";
 
 function promptForSource(source: SourceKey, prescribedDocs: PrescribedDoc[]): string {
   if (source === "b1") return prescribedDocsPrompt(prescribedDocs);
@@ -1156,7 +1241,13 @@ async function extractOneDocument(
     // materialFactDisclosed is the vendor's declaration in the agency
     // agreement. Nothing else may set it — a wrong "none disclosed" writes a
     // record the vendor never made and silently removes e2 later in the file.
-    .map((p) => (source === "a3" ? p : { ...p, materialFactDisclosed: undefined }));
+    .map((p) => (source === "a3" ? p : { ...p, materialFactDisclosed: undefined }))
+    // Comparables and the subject's own attributes come off the comparables
+    // report and nowhere else. The agency agreement also writes to a4c, so
+    // without this an agreement that happened to mention a nearby sale could
+    // put a row in the comparison table — a sale that is not in the report the
+    // file holds as evidence, appearing in the record as though it were.
+    .map((p) => (source === "a4" ? p : { ...p, comparableSales: undefined, subjectProperty: undefined }));
 }
 
 
@@ -1461,6 +1552,84 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
     }
   }
 
+  // The comparable sales, and the subject's own attributes.
+  //
+  // Same shape as the sale-method pass above and for the same reason: this
+  // writes outside property_items, so it needs its own rules rather than the
+  // generic patch loop's.
+  //
+  // Two of those rules matter more than the rest:
+  //
+  //   1. THE AGENT'S WORK IS NEVER OVERWRITTEN. A row they have weighted or
+  //      written a note on survives a re-read untouched, and a row they typed
+  //      themselves is never replaced by one the model read. Someone who
+  //      re-attaches a corrected report should not lose an afternoon's
+  //      judgement to it.
+  //   2. SUBJECT ATTRIBUTES ARE ONLY EVER SUGGESTIONS HERE. They land in
+  //      attribute_suggestions and stay there until a person confirms them.
+  //      A figure a model read off a PDF and a figure the agent stands behind
+  //      are different things, and the record has to be able to tell them
+  //      apart.
+  const comparablesPatch = patches.find(
+    (p) => p.itemKey === "a4c" && ((p.comparableSales?.length ?? 0) > 0 || p.subjectProperty),
+  );
+  if (comparablesPatch) {
+    const { data: agencyIdRow } = await supabase
+      .from("properties")
+      .select("agency_id, bedrooms, bathrooms, car_spaces, land_size_sqm, internal_area_sqm, attributes_confirmed_at")
+      .eq("id", propertyId)
+      .maybeSingle();
+    const propertyRowNow = agencyIdRow as Record<string, unknown> | null;
+    const agencyId = propertyRowNow?.agency_id as string | undefined;
+
+    if (agencyId && comparablesPatch.subjectProperty) {
+      // Offered, not applied. And not offered at all once the agent has
+      // confirmed the details themselves — re-reading a report should not
+      // reopen a question they have already answered.
+      if (!propertyRowNow?.attributes_confirmed_at) {
+        await supabase
+          .from("properties")
+          .update({ attribute_suggestions: comparablesPatch.subjectProperty })
+          .eq("id", propertyId);
+      }
+    }
+
+    if (agencyId && comparablesPatch.comparableSales?.length) {
+      const { data: existingRows } = await supabase
+        .from("property_comparables")
+        .select("id, address")
+        .eq("property_id", propertyId);
+
+      const seen = new Set(
+        ((existingRows ?? []) as Array<{ address: string }>).map((r) => normaliseAddress(r.address)),
+      );
+
+      const fresh = comparablesPatch.comparableSales
+        .filter((c) => c.address?.trim())
+        .filter((c) => !seen.has(normaliseAddress(c.address)))
+        .map((c, index) => ({
+          agency_id: agencyId,
+          property_id: propertyId,
+          address: c.address.trim(),
+          sale_price: c.salePrice ?? null,
+          sale_date: c.saleDate ?? null,
+          bedrooms: c.bedrooms ?? null,
+          bathrooms: c.bathrooms ?? null,
+          car_spaces: c.carSpaces ?? null,
+          land_size_sqm: c.landSizeSqm ?? null,
+          internal_area_sqm: c.internalAreaSqm ?? null,
+          distance_m: c.distanceM ?? null,
+          property_type: c.propertyType ?? null,
+          source: "report",
+          position: seen.size + index,
+        }));
+
+      if (fresh.length > 0) {
+        await supabase.from("property_comparables").insert(fresh);
+      }
+    }
+  }
+
   for (const patch of patches) {
     const { data: existingRow } = await supabase
       .from("property_items")
@@ -1730,4 +1899,22 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
   }
 
   return failures.length > 0 ? { error: `Extracted what it could, but hit an issue: ${failures.join("; ")}` } : ok;
+}
+
+// Address matching for the re-read guard above.
+//
+// Deliberately crude: lowercase, collapse whitespace and punctuation, and drop
+// the common street-type abbreviations so "14 Smith St" and "14 Smith Street"
+// are one property rather than two. It does not need to be clever — the only
+// job is stopping a second read of the same report from doubling every row,
+// and a false miss shows up as a visible duplicate the agent can remove, while
+// a false match would silently hide a genuinely different sale. Erring towards
+// the visible failure is the right way round.
+function normaliseAddress(address: string): string {
+  return address
+    .toLowerCase()
+    .replace(/[.,]/g, " ")
+    .replace(/\b(street|st|road|rd|avenue|ave|drive|dr|place|pl|court|ct|crescent|cres|parade|pde|lane|ln|way|close|cl|terrace|tce)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

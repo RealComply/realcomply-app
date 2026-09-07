@@ -200,6 +200,20 @@ export type ComplianceRecordInput = {
    * nothing at all.
    */
   espReasoning: string | null;
+  /**
+   * The sales the agent weighed, and how they weighed them.
+   *
+   * Belongs in the pack for the same reason the reasoning does, and arguably
+   * more so: "relied on these three, ruled that one out because it was
+   * renovated" IS the methodology, and a reader asking under s74 how the
+   * estimate was reached is asking exactly this. Stage 2 of the underquoting
+   * reforms is expected to make a methodology record a statutory obligation.
+   *
+   * Sales the agent never marked are deliberately still listed. They were in
+   * the report the file holds as evidence, and quietly printing only the
+   * flattering ones would misrepresent what was in front of the agent.
+   */
+  comparables: ComparableForRecord[];
   /** Typed-name attestations, reproduced with the date each was given. */
   signatures: {
     agent: { typedName: string; signedAt: string | null } | null;
@@ -219,6 +233,20 @@ export type ComplianceRecordInput = {
   generatedAt: Date;
 };
 
+export type ComparableForRecord = {
+  address: string;
+  salePrice: number | null;
+  saleDate: string | null;
+  weighting: "relied" | "considered" | "not_comparable" | null;
+  agentNote: string | null;
+};
+
+const WEIGHTING_LABEL: Record<string, string> = {
+  relied: "Relied on",
+  considered: "Considered",
+  not_comparable: "Not comparable",
+};
+
 export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Promise<Uint8Array> {
   const {
     property,
@@ -228,6 +256,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     items,
     byKey,
     espReasoning,
+    comparables,
     signatures,
     attachments,
     rulesetVersion,
@@ -345,6 +374,39 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   // reasonable and s74 lets the Secretary demand it be substantiated, so a line
   // reading "ESP reasoning recorded - done" with the reasoning left out proves
   // nothing. If it runs to a page, it runs to a page.
+  // The sales, and what the agent made of each one.
+  //
+  // Printed before the reasoning because that is the order the work happened
+  // in: these are the facts the agent weighed, and the paragraph below is what
+  // they concluded from them.
+  if (comparables.length > 0) {
+    c.rule(6, 10);
+    c.text("Comparable sales considered", { size: 11, bold: true, gap: 4 });
+    for (const comp of comparables) {
+      c.need(30);
+      const facts = [
+        comp.salePrice !== null ? `$${Math.round(comp.salePrice).toLocaleString("en-AU")}` : null,
+        comp.saleDate ? formatAuDate(comp.saleDate.slice(0, 10)) : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      c.text(ascii(comp.address), { size: 9.5, bold: true });
+      if (facts) c.text(facts, { size: 8.5, color: MUTED, indent: 12 });
+      c.text(
+        comp.weighting ? WEIGHTING_LABEL[comp.weighting] : "Not marked by the agent",
+        { size: 8.5, color: comp.weighting ? MUTED : FAINT, indent: 12 },
+      );
+      if (comp.agentNote?.trim()) {
+        c.text(ascii(comp.agentNote.trim()), { size: 8.5, color: MUTED, indent: 12 });
+      }
+      c.y -= 4;
+    }
+    c.text(
+      "How the agent treated each sale, in their own words. Sales shown as not marked appeared in the comparable-sales report held on this file.",
+      { size: 8, color: FAINT },
+    );
+  }
+
   if (espReasoning && espReasoning.trim()) {
     c.rule(6, 10);
     c.text("How the estimated selling price was formed", { size: 11, bold: true, gap: 4 });

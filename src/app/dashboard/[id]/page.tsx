@@ -11,6 +11,7 @@ import { HandToAgent } from "@/components/compliance/HandToAgent";
 import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { signoffLinksFor } from "@/lib/data/signoff-links";
+import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
 function auctionDateLabel(date: string): string {
@@ -59,7 +60,7 @@ export default async function PropertyPage({
 
   const p = property as Property;
 
-  const [{ data: propertyItemRows }, { data: agencyRow }, { data: peopleRows }, signoffLinks] = await Promise.all([
+  const [{ data: propertyItemRows }, { data: agencyRow }, { data: peopleRows }, signoffLinks, comparables] = await Promise.all([
     supabase.from("property_items").select("*").eq("property_id", id),
     // One lookup for the page, passed down to every card, rather than each
     // card asking. Only amv ever uses it.
@@ -78,7 +79,14 @@ export default async function PropertyPage({
     // so the send_licensee card knows on first paint whether a link is already
     // out and whether it has been signed — see lib/data/signoff-links.ts.
     signoffLinksFor(supabase, id),
+    // The comparable sales on this listing. Read here so the ESP card and the
+    // ESP reasoning card directly below it both work from one query.
+    comparablesFor(supabase, id),
   ]);
+
+  // The listing's own attributes — the other half of every comparison, and
+  // read off the property row the page already has rather than fetched again.
+  const subject = subjectAttributesFrom(property as Record<string, unknown>);
 
   const allItems = Object.fromEntries(
     ((propertyItemRows ?? []) as PropertyItem[]).map((item) => [item.item_key, item]),
@@ -267,6 +275,8 @@ export default async function PropertyPage({
                   allItems={allItems}
                   amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
                   signoffLinks={signoffLinks}
+                  subject={subject}
+                  comparables={comparables}
                 />
               ))}
             </div>
@@ -284,6 +294,8 @@ export default async function PropertyPage({
               allItems={allItems}
               amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
               signoffLinks={signoffLinks}
+              subject={subject}
+              comparables={comparables}
               />
           ))}
         </div>

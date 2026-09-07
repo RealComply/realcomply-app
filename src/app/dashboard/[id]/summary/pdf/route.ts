@@ -4,6 +4,7 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { buildComplianceRecordPdf, complianceRecordFilename, type Attachment } from "@/lib/pdf/compliance-record";
+import { comparablesFor } from "@/lib/data/comparables";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem } from "@/lib/types";
@@ -138,6 +139,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     items,
     byKey,
     espReasoning: noteOf("a4c"),
+    // The sales the agent weighed. Part of the methodology record, not a
+    // nicety — see the field note on ComplianceRecordInput.
+    comparables: (await comparablesFor(supabase, id)).map((c) => ({
+      address: c.address,
+      salePrice: c.salePrice,
+      saleDate: c.saleDate,
+      weighting: c.weighting,
+      agentNote: c.agentNote,
+    })),
     signatures: { agent: signatureOf("sign_agent"), licensee: signatureOf("sign_licensee") },
     attachments,
     rulesetVersion: RULESET_VERSION,
