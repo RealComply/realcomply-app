@@ -46,6 +46,49 @@ function readSaleMethod(formData: FormData) {
   };
 }
 
+
+/**
+ * Beds, baths, car spaces and land size off a setup form.
+ *
+ * Every one is optional and every one may be blank: an agent opening a file on
+ * a property they have not measured yet should not be blocked, and a listing
+ * with no figures simply shows no comparison until they add them. A blank is
+ * stored as null rather than zero — "not answered" and "none" are different
+ * facts, and a zero would read as a house with no bedrooms.
+ *
+ * Also strips commas and units, because "600 m2" and "1,200" are both things
+ * people type into a box labelled square metres.
+ */
+function readPropertyFigures(
+  formData: FormData,
+  opts: { snake?: boolean } = {},
+): Record<string, number | null> {
+  const num = (name: string): number | null => {
+    const raw = String(formData.get(name) ?? "")
+      .replace(/[,\s]/g, "")
+      .replace(/m2|m²|sqm/gi, "");
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+
+  const values = {
+    bedrooms: num("bedrooms"),
+    bathrooms: num("bathrooms"),
+    carSpaces: num("carSpaces"),
+    landSizeSqm: num("landSizeSqm"),
+  };
+
+  return opts.snake
+    ? {
+        bedrooms: values.bedrooms,
+        bathrooms: values.bathrooms,
+        car_spaces: values.carSpaces,
+        land_size_sqm: values.landSizeSqm,
+      }
+    : values;
+}
+
 export async function createProperty(
   _prevState: ActionState,
   formData: FormData,
@@ -57,6 +100,22 @@ export async function createProperty(
   const hasPool = formData.get("hasPool") === "yes";
   const agentInterest = formData.get("agentInterest") === "yes";
   const { saleMethod, auctionDate, auctionTime, auctionVenue } = readSaleMethod(formData);
+
+  // Beds, baths, car and land, captured with the address.
+  //
+  // MOVED HERE 7 Sep 2026. They were being asked for on the Estimated selling
+  // price card, which was the wrong place twice over: it put a form in front
+  // of an agent halfway through a compliance item, and it meant the comparison
+  // against the comparable sales could not be drawn until they filled it in.
+  // Adam: "that needs to be moved into the initial listing setup page when we
+  // put the address in to open up the listing."
+  //
+  // Internal area is deliberately NOT among them. Adam: "get rid of internal
+  // square meters as an option because that's not something that may
+  // necessarily be known at that point in time." The column stays in the
+  // database — nothing is lost from files that already have it — but nothing
+  // asks for it any more.
+  const { bedrooms, bathrooms, carSpaces, landSizeSqm } = readPropertyFigures(formData);
 
   if (!address) {
     return { error: "Address is required." };
@@ -138,6 +197,10 @@ export async function createProperty(
       is_tenanted: isTenanted,
       has_pool: hasPool,
       agent_interest: agentInterest,
+      bedrooms,
+      bathrooms,
+      car_spaces: carSpaces,
+      land_size_sqm: landSizeSqm,
       sale_method: saleMethod,
       auction_date: auctionDate,
       auction_time: auctionTime,
@@ -370,6 +433,7 @@ export async function updatePropertyDetails(
       // address without a scheme is accepted — see lib/normalise-url.ts.
       listing_url: listingUrl.url || null,
       property_type: String(formData.get("propertyType") ?? "House"),
+      ...readPropertyFigures(formData, { snake: true }),
       is_strata: formData.get("isStrata") === "yes",
       is_tenanted: formData.get("isTenanted") === "yes",
       has_pool: formData.get("hasPool") === "yes",

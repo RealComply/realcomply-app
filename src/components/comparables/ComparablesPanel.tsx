@@ -110,97 +110,70 @@ export function ComparablesPanel({
 
 // ── The subject property ──────────────────────────────────────────────────
 //
-// Read off the report where it states them, and shown for confirmation rather
-// than applied. The act being recorded is a person saying "yes, that is my
-// property" — a figure a model read off a PDF and a figure the agent stands
-// behind are different things, and the compliance record has to tell them
-// apart.
+// READ-ONLY SINCE 7 Sep 2026. This used to be a form asking for beds, baths,
+// car, land, internal area and condition. Those are now captured with the
+// address at listing set-up (Adam: "that needs to be moved into the initial
+// listing setup page"), so asking again here would be exactly the double entry
+// this product exists to remove.
+//
+// What stays is the one thing that cannot happen at set-up: the comparables
+// report often states the subject's own figures, and where the agent left a
+// box empty the report can fill it — offered as a suggestion they accept, not
+// applied. A figure a model read off a PDF and a figure the agent stands
+// behind are still different things, and attributes_confirmed_at is what tells
+// them apart.
 
 function SubjectRow({ propertyId, subject }: { propertyId: string; subject: SubjectAttributes }) {
   const boundAction = confirmSubjectAttributes.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initial);
-  const [open, setOpen] = useState(false);
 
   const suggested = subject.suggestions;
-  const needsAnswer = !subject.confirmedAt && !hasSubjectDetail(subject);
-  const showForm = open || (needsAnswer && Boolean(suggested));
-
-  const value = (key: keyof SubjectAttributes) =>
-    (subject[key] as number | null) ?? (suggested?.[key as keyof typeof suggested] as number | null) ?? "";
-
-  if (!showForm) {
-    return (
-      <div className="rounded-md border border-rc-border bg-white px-2.5 py-2">
-        <p className="text-[11px] font-semibold text-rc-ink">
-          This property
-          {subject.confirmedAt && <span className="ml-1.5 font-normal text-rc-faint">confirmed</span>}
-        </p>
-        <p className="mt-0.5 text-[11px] text-rc-muted">
-          {hasSubjectDetail(subject) ? subjectSpec(subject) : "No details recorded yet."}
-          {subject.conditionNote ? ` · ${subject.conditionNote}` : ""}
-        </p>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="mt-1.5 text-[11px] font-semibold text-rc-green-deep underline-offset-2 hover:underline"
-        >
-          {hasSubjectDetail(subject) ? "Edit" : "Add the details"}
-        </button>
-      </div>
-    );
-  }
+  const missing = !hasSubjectDetail(subject);
+  const canSuggest = missing && Boolean(suggested);
 
   return (
-    <form action={formAction} className="rounded-md border border-rc-green-deep/30 bg-rc-green-soft/40 px-2.5 py-2">
+    <div className="rounded-md border border-rc-border bg-white px-2.5 py-2">
       <p className="text-[11px] font-semibold text-rc-ink">This property</p>
-      {suggested && !subject.confirmedAt && (
-        <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
-          Read from the comparables report. Check it and correct anything that&rsquo;s wrong — nothing is used
-          until you save it.
+      <p className="mt-0.5 text-[11px] text-rc-muted">
+        {hasSubjectDetail(subject) ? subjectSpec(subject) : "No details recorded yet."}
+      </p>
+
+      {missing && !canSuggest && (
+        <p className="mt-1 text-[11px] leading-relaxed text-rc-faint">
+          Add the beds, baths, car spaces and land size in <strong>Edit listing details</strong> at the top of
+          this page, and each sale below will be compared against them.
         </p>
       )}
 
-      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <Field name="bedrooms" label="Beds" defaultValue={value("bedrooms")} />
-        <Field name="bathrooms" label="Baths" defaultValue={value("bathrooms")} />
-        <Field name="carSpaces" label="Car" defaultValue={value("carSpaces")} />
-        <Field name="landSizeSqm" label="Land m²" defaultValue={value("landSizeSqm")} />
-        <Field name="internalAreaSqm" label="Internal m²" defaultValue={value("internalAreaSqm")} />
-      </div>
-
-      <label className="mt-2 block text-[11px] font-medium text-rc-muted">
-        Condition and anything unusual
-        <input
-          type="text"
-          name="conditionNote"
-          defaultValue={subject.conditionNote ?? ""}
-          placeholder="Renovated kitchen and bath, battle-axe block"
-          className="mt-1 w-full rounded-md border border-rc-border px-2 py-1.5 text-sm text-rc-ink"
-        />
-      </label>
-
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
-        >
-          {pending ? "Saving…" : "Save"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="text-[11px] font-semibold text-rc-muted hover:text-rc-ink"
-        >
-          Cancel
-        </button>
-      </div>
-      {state.error && (
-        <p role="alert" className="mt-1.5 text-[11px] font-medium text-rc-amber-deep">
-          {state.error}
-        </p>
+      {canSuggest && (
+        <form action={formAction} className="mt-1.5">
+          {/* Hidden, because the agent is accepting figures they can see in
+              the sentence above rather than filling in a form. Every value is
+              carried through so accepting cannot silently blank one. */}
+          <input type="hidden" name="bedrooms" value={suggested?.bedrooms ?? ""} />
+          <input type="hidden" name="bathrooms" value={suggested?.bathrooms ?? ""} />
+          <input type="hidden" name="carSpaces" value={suggested?.carSpaces ?? ""} />
+          <input type="hidden" name="landSizeSqm" value={suggested?.landSizeSqm ?? ""} />
+          <input type="hidden" name="internalAreaSqm" value={suggested?.internalAreaSqm ?? ""} />
+          <input type="hidden" name="conditionNote" value={subject.conditionNote ?? ""} />
+          <p className="text-[11px] leading-relaxed text-rc-muted">
+            The comparables report says {suggestedSpec(suggested)}. Nothing is used until you accept it.
+          </p>
+          <button
+            type="submit"
+            disabled={pending}
+            className="mt-1.5 rounded-full bg-rc-green-deep px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+          >
+            {pending ? "Saving…" : "Use these details"}
+          </button>
+          {state.error && (
+            <p role="alert" className="mt-1.5 text-[11px] font-medium text-rc-amber-deep">
+              {state.error}
+            </p>
+          )}
+        </form>
       )}
-    </form>
+    </div>
   );
 }
 
@@ -210,8 +183,19 @@ function subjectSpec(s: SubjectAttributes): string {
   if (s.bathrooms !== null) bits.push(`${s.bathrooms} bath`);
   if (s.carSpaces !== null) bits.push(`${s.carSpaces} car`);
   if (s.landSizeSqm !== null) bits.push(`${Math.round(s.landSizeSqm)}m² land`);
+  // Shown where a file already carries it, never asked for. See PropertyFigures.
   if (s.internalAreaSqm !== null) bits.push(`${Math.round(s.internalAreaSqm)}m² internal`);
-  return bits.join(" · ") || "No details recorded yet.";
+  const spec = bits.join(" · ");
+  return s.conditionNote ? `${spec}${spec ? " · " : ""}${s.conditionNote}` : spec || "No details recorded yet.";
+}
+
+function suggestedSpec(s: SubjectAttributes["suggestions"]): string {
+  const bits: string[] = [];
+  if (s?.bedrooms != null) bits.push(`${s.bedrooms} bed`);
+  if (s?.bathrooms != null) bits.push(`${s.bathrooms} bath`);
+  if (s?.carSpaces != null) bits.push(`${s.carSpaces} car`);
+  if (s?.landSizeSqm != null) bits.push(`${Math.round(s.landSizeSqm)}m² land`);
+  return bits.join(", ") || "nothing it could read";
 }
 
 function Field({

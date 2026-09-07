@@ -5,6 +5,7 @@ import { Settings2 } from "lucide-react";
 import { updatePropertyDetails } from "@/lib/actions/properties";
 import type { Property, PropertyType } from "@/lib/types";
 import { SaleMethodFields } from "@/components/property/SaleMethodFields";
+import { PropertyFigures } from "@/components/property/PropertyFigures";
 
 // Edit the setup answers on an existing listing.
 //
@@ -138,6 +139,17 @@ export function EditPropertyDetails({ property }: { property: Property }) {
               </option>
             ))}
           </select>
+
+          <div className="mt-4">
+            <PropertyFigures
+              values={{
+                bedrooms: property.bedrooms ?? null,
+                bathrooms: property.bathrooms ?? null,
+                carSpaces: property.car_spaces ?? null,
+                landSizeSqm: property.land_size_sqm ?? null,
+              }}
+            />
+          </div>
 
           {/* The page the weekly advertised-price check reads. Optional: a listing
               that is not advertised anywhere yet has no page to check, and the

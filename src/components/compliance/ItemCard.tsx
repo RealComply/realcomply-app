@@ -986,18 +986,6 @@ function ChecklistItem({
           </div>
         )}
 
-        {/* a4 only. The comparable sales, stacked against this listing.
-            Sits on the ESP card because that is where the report is attached
-            (the a4/a4b merge, 22 Aug 2026) — the sales and the evidence they
-            came from belong on one card, not two.
-
-            The facts in each row were read off that report. The three buttons
-            and the note are the only things here a person supplies, and they
-            are the only things here that are a judgement. */}
-        {item.key === "a4" && subject && (
-          <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
-        )}
-
         {item.showFindings ? (
           <div>
             <label className="block text-xs text-rc-muted">
@@ -1064,6 +1052,19 @@ function ChecklistItem({
                   them with the differences THIS file actually shows rather
                   than the generic list. See ReasoningAssist for the line it
                   must not cross. */}
+              {/* The sales, on the reasoning card rather than the ESP card.
+                  MOVED 7 Sep 2026. They were on a4 because that is where the
+                  report is attached, and Adam did not find them: "it needs to
+                  be moved to the ESP reasoning record."
+
+                  He is right, and the reason is stronger than where the file
+                  happens to hang. Weighing the sales IS the reasoning — the
+                  buttons and the notes are what the paragraph below is built
+                  from, so putting them two cards apart asked an agent to hold
+                  the comparison in their head while writing about it. */}
+              {item.key === "a4c" && subject && (
+                <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
+              )}
               {item.key === "a4c" && subject && (
                 <ReasoningAssist
                   noteId={`note-${item.key}`}

@@ -10,6 +10,7 @@ import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildStagingPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { FileDropZone } from "@/components/FileDropZone";
 import { SaleMethodFields } from "@/components/property/SaleMethodFields";
+import { PropertyFigures } from "@/components/property/PropertyFigures";
 import type { Profile } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
@@ -347,6 +348,11 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
             <option value="Land">Land</option>
           </select>
         </div>
+
+        {/* Directly under the type, because "House, 4 bed, 2 bath, 600m²" is
+            one thought. Above the sale method, which is about the campaign
+            rather than the property. */}
+        <PropertyFigures />
 
         <SaleMethodFields />
 

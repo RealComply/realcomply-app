@@ -477,6 +477,14 @@ export type Property = {
   is_strata: boolean | null;
   is_tenanted: boolean | null;
   has_pool: boolean | null;
+  // Captured at listing set-up (0041). Every one optional — a file opened
+  // before anyone has measured the block is a normal file, it just has less to
+  // compare against. Internal area exists as a column for files that already
+  // carry it, but nothing asks for it any more (Adam, 7 Sep 2026).
+  bedrooms: number | null;
+  bathrooms: number | null;
+  car_spaces: number | null;
+  land_size_sqm: number | null;
   agent_interest: boolean | null;
   // Public URL of the agency's own listing page, read by the weekly
   // advertised-price check. See 0016_listing_url.sql.
