@@ -20,6 +20,24 @@
 // Kept deliberately short. The REINSW list is thirty-four; this is ten, and
 // each one is something an agent in NSW actually says out loud when explaining
 // a price.
+//
+// THREE OF THEM APPEAR ELSEWHERE IN THE FILE AS OBLIGATIONS, and I proposed
+// cutting two of them on 7 Sep 2026 as duplication. Adam pushed back and was
+// right:
+//
+//   "School catchment is definitely a factor when valuing property... Easements
+//    could also be a factor because someone might want to put in a pool."
+//
+// The mistake in my reasoning was treating one fact as one record. A sewer
+// easement on the sales inspection report (Sch 2 r 3(2)(j)) is a disclosure of
+// an encumbrance known to the agent. The same easement here is why a buyer
+// cannot put a pool in the back yard, which is a price argument. Same fact,
+// two different questions, and answering both is not double entry.
+//
+// What IS worth avoiding is an agent recording flood history here and nowhere
+// else, because the disclosure duty sits on the material facts card
+// (cl 60(1)(a), for s52(1)(b)) and a note in a reasoning box does not satisfy
+// it. Hence the pointer rendered under the panel — see ReasoningAssist.
 
 export const ESP_GENERIC_FACTORS: string[] = [
   "Zoning and what it allows",
