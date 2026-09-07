@@ -53,13 +53,36 @@ import { isAiReadItem } from "@/lib/documents/ai-read-items";
 import { DictatableTextarea } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
+import { buildReasoningDraft, type EspFigures } from "@/lib/data/comparables";
 import { ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
 const initialState: ActionState = { error: null };
 
-function StatusPill({ status }: { status?: PropertyItem["status"] }) {
+function StatusPill({
+  status,
+  awaitingReview = false,
+}: {
+  status?: PropertyItem["status"];
+  /**
+   * Open, but with something in the box already waiting to be looked at.
+   *
+   * Adam, 7 Sep 2026, on the mock-up: "you've got ready to save in the top
+   * right corner, and then we've got draft written highlighted in orange.
+   * It's contradictory... I think it should say ready to review." He is right,
+   * and the word matters — "ready to save" tells an agent the work is finished
+   * when the whole point of the draft is that they have not read it yet.
+   */
+  awaitingReview?: boolean;
+}) {
   if (!status || status === "open") {
+    if (awaitingReview) {
+      return (
+        <span className="shrink-0 rounded-full bg-rc-amber/15 px-2.5 py-0.5 text-xs font-semibold text-rc-amber-deep">
+          Ready to review
+        </span>
+      );
+    }
     return (
       <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-rc-muted">
         Open
@@ -97,12 +120,15 @@ function ItemShell({
   status,
   propertyId,
   current,
+  awaitingReview = false,
   children,
 }: {
   item: ComplianceItem;
   status?: PropertyItem["status"];
   propertyId: string;
   current?: PropertyItem;
+  /** Passed through to the pill — see StatusPill. */
+  awaitingReview?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -122,7 +148,7 @@ function ItemShell({
             <p className="mt-1 text-xs text-rc-faint">{item.legalBasis}</p>
           )}
         </div>
-        <StatusPill status={status} />
+        <StatusPill status={status} awaitingReview={awaitingReview} />
       </div>
       <div className="mt-3">{children}</div>
       {/* An attached file always keeps its control, whatever the rule says.
@@ -474,6 +500,7 @@ function ChecklistItem({
   noteSeed,
   subject = null,
   comparables = [],
+  allEsp,
 }: {
   item: ComplianceItem;
   propertyId: string;
@@ -483,6 +510,8 @@ function ChecklistItem({
   // use them, and neither should be asking the database on its own.
   subject?: SubjectAttributes | null;
   comparables?: Comparable[];
+  /** a4's recorded ESP figures, quoted by the draft on a4c. Never computed. */
+  allEsp?: { espLow?: number; espHigh?: number };
   // Present only on amv, and only where the agency has taken the position AND
   // this file's agreement predates commencement. Absent means the choice is
   // not on the table and the card looks exactly as it always has.
@@ -542,6 +571,38 @@ function ChecklistItem({
         draft.materialFactDisclosed !== undefined),
   );
 
+  // ── The ESP reasoning draft ──────────────────────────────────────────────
+  //
+  // Built from the sales the agent has weighed and the notes they wrote, plus
+  // the ESP they already recorded in the agency agreement. It is offered as
+  // the box's starting content and ONLY when nothing is saved — an agent's own
+  // recorded reasoning is never replaced by a generated one, whatever they
+  // change afterwards.
+  //
+  // Deliberately not folded into the remount key. The textarea is
+  // uncontrolled, so a remount after they had started typing would throw their
+  // words away; changing a weighting mid-sentence must not cost them a
+  // paragraph. Rebuilding is an explicit button in ReasoningAssist instead.
+  const esp: EspFigures =
+    item.key === "a4c"
+      ? {
+          low: (allEsp?.espLow as number | undefined) ?? null,
+          high: (allEsp?.espHigh as number | undefined) ?? null,
+        }
+      : { low: null, high: null };
+
+  const reasoningDraft =
+    item.key === "a4c" && subject && comparables.length > 0
+      ? buildReasoningDraft(subject, comparables, esp) || null
+      : null;
+
+  // Shown while the card is open and there is something in the box that has
+  // not been confirmed. Not tied to whether the text was generated: unsaved is
+  // unsaved, and calling only the machine's half a draft would imply the
+  // agent's half was already recorded when it is not.
+  const showsDraft =
+    item.key === "a4c" && !isDone && Boolean(data.note ?? reasoningDraft);
+
   // a7. The agent's saved answer if there is one, otherwise what the agreement
   // said, otherwise nothing — see the select below.
   const answeredMaterialFact = data.materialFactDisclosed ?? draft?.materialFactDisclosed;
@@ -576,7 +637,13 @@ function ChecklistItem({
   const spreadMarginal = spreadOver && spreadPct !== null && spreadPct.toFixed(1) === "10.0";
 
   return (
-    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+    <ItemShell
+      item={item}
+      status={current?.status}
+      propertyId={propertyId}
+      current={current}
+      awaitingReview={showsDraft}
+    >
       {/* Outside the form below, because its own Add button is a form and
           forms cannot nest. */}
       {item.key === "f4" && <BuyerListItem propertyId={propertyId} current={current} />}
@@ -960,16 +1027,31 @@ function ChecklistItem({
                     a bad way to learn the rule. */}
                 {item.requiresNote && <span className="text-rc-amber-deep"> — required</span>}
               </label>
+              {/* DRAFT, until the agent finishes and marks the card done.
+                  Adam, 7 Sep 2026: "lets just call it DRAFT until the agent
+                  finishes and confirms done."
+
+                  It stays on through their editing, which is the honest
+                  reading — text sitting in a box that has not been saved is a
+                  draft whoever typed it. It comes off when the item is done,
+                  and only then. */}
+              {showsDraft && (
+                <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-rc-amber px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-rc-ink">
+                  Draft
+                </span>
+              )}
               <DictatableTextarea
                 // Stable id so the ESP prompts panel below can insert a heading
                 // into this box, the same way the dictate button already writes
                 // into it.
                 id={`note-${item.key}`}
                 name="note"
-                defaultValue={data.note ?? draft?.note ?? noteSeed ?? ""}
-                rows={item.key === "a4c" ? 5 : 2}
+                defaultValue={data.note ?? reasoningDraft ?? draft?.note ?? noteSeed ?? ""}
+                rows={item.key === "a4c" ? 9 : 2}
                 placeholder={item.notePlaceholder}
-                className="mt-1 w-full rounded-md border border-rc-border px-2 py-1 text-sm"
+                className={`mt-1 w-full rounded-md border px-2 py-1 text-sm ${
+                  showsDraft ? "border-l-4 border-rc-amber bg-rc-amber/5" : "border-rc-border"
+                }`}
               />
               {/* a4c only. The REINSW factors as prompts, never tick boxes —
                   see lib/rules/esp-prompts.ts for why that distinction is the
@@ -987,7 +1069,9 @@ function ChecklistItem({
                   noteId={`note-${item.key}`}
                   subject={subject}
                   comparables={comparables}
+                  esp={esp}
                   savedReasoning={String(data.note ?? "")}
+                  isDone={isDone}
                 />
               )}
               {/* Only while it is still a suggestion. Same rule as a7's select
@@ -3041,6 +3125,11 @@ export function ItemCard({
           }
           subject={subject}
           comparables={comparables}
+          // a4 holds the ESP the agent recorded off the agency agreement. The
+          // draft on a4c quotes it back; it never computes one.
+          allEsp={
+            (allItems["a4"]?.data as { espLow?: number; espHigh?: number } | undefined) ?? undefined
+          }
         />
       );
   }

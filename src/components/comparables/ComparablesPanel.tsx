@@ -12,8 +12,9 @@ import {
   type ComparableActionState,
 } from "@/lib/actions/comparables";
 import {
-  differenceLine,
+  differencesFrom,
   hasSubjectDetail,
+  similaritiesFrom,
   type Comparable,
   type SubjectAttributes,
   type Weighting,
@@ -252,7 +253,9 @@ function ComparableRow({
   const [savedNote, setSavedNote] = useState(comparable.agentNote ?? "");
   const [error, setError] = useState<string | null>(null);
 
-  const differences = differenceLine(subject, comparable);
+  const similar = similaritiesFrom(subject, comparable);
+  const different = differencesFrom(subject, comparable);
+  const canCompare = similar.length > 0 || different.length > 0;
   const dimmed = comparable.weighting === "not_comparable";
 
   function weigh(value: Weighting) {
@@ -301,13 +304,6 @@ function ComparableRow({
             {spec(comparable) ? ` · ${spec(comparable)}` : ""}
             {comparable.distanceM !== null ? ` · ${formatDistance(comparable.distanceM)}` : ""}
           </p>
-          {/* Arithmetic, not opinion. "120m² less land" cannot be wrong;
-              "broadly comparable" would be a judgement this must never make. */}
-          {differences && (
-            <p className="mt-0.5 text-[11px] font-medium text-rc-ink">
-              Against yours: {differences}
-            </p>
-          )}
           {comparable.source === "agent" && (
             <p className="mt-0.5 text-[11px] text-rc-faint">Added by you, not from the report.</p>
           )}
@@ -323,6 +319,53 @@ function ComparableRow({
           <X size={13} aria-hidden="true" />
         </button>
       </div>
+
+      {/* Adam's two columns, 7 Sep 2026. Both sides are the same arithmetic —
+          "about the same land" is a measurement within a tolerance and
+          "1 bedroom fewer" is subtraction. Neither is a judgement, and neither
+          says whether the sale is a good comparable: that is the row of
+          buttons underneath, and it belongs to the agent. */}
+      {canCompare ? (
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <div className="rounded-md border border-rc-border bg-white px-2 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-rc-green-deep">Similar</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {similar.length > 0 ? (
+                similar.map((t) => (
+                  <span key={t} className="rounded-full bg-rc-green-soft px-2 py-0.5 text-[11px] text-rc-green-deep">
+                    {t}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[11px] italic text-rc-faint">Nothing matches</span>
+              )}
+            </div>
+          </div>
+          <div className="rounded-md border border-rc-border bg-white px-2 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-rc-amber-deep">Different</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {different.length > 0 ? (
+                different.map((t) => (
+                  <span key={t} className="rounded-full bg-rc-amber/15 px-2 py-0.5 text-[11px] text-rc-amber-deep">
+                    {t}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[11px] italic text-rc-faint">Nothing differs</span>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        // Said plainly rather than shown as two empty columns. A blank
+        // comparison reads as "these are identical", which is the opposite of
+        // what a missing figure means.
+        <p className="mt-2 rounded-md border border-rc-border bg-white px-2 py-1.5 text-[11px] italic text-rc-faint">
+          {hasSubjectDetail(subject)
+            ? "The report gave no bed, bath or land figures for this one — nothing to compare until you fill them in."
+            : "Add this listing's own details above and each sale will be compared against them."}
+        </p>
+      )}
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {WEIGHTINGS.map((w) => (

@@ -1,58 +1,70 @@
 "use client";
 
-import { Info, Wand2 } from "lucide-react";
+import { Info, RotateCcw, Eraser } from "lucide-react";
+import { ESP_GENERIC_FACTORS } from "@/lib/rules/esp-generic-factors";
 import {
-  assembleReasoning,
+  buildReasoningDraft,
   fileSpecificPrompts,
   reasoningNudge,
   type Comparable,
+  type EspFigures,
   type SubjectAttributes,
 } from "@/lib/data/comparables";
 
-// The ESP reasoning card's helper: turn what the agent already marked into a
-// starting draft, and prompt them with the differences THIS file actually has.
+// The ESP reasoning card's helper.
 //
-// THE LINE, restated here because this is the component most likely to be
-// misread as the software writing the reasoning:
+// The draft itself is NOT written by this component — it arrives as the
+// textarea's default value from ItemCard, so the box has the draft in it on
+// first paint rather than after a click. Adam, 7 Sep 2026: "can we add some
+// text in the ESP reasoning recorded card, just as a draft that the agent can
+// either accept or edit?"
 //
-//   Every clause this inserts came from the agent. They chose which sales they
-//   relied on and which they rejected, and they wrote the note on each. All
-//   this does is put those fragments in an order and join them up. The box
-//   stays fully editable and nothing is saved until they save it.
+// What lives here is everything around that box: rebuilding the draft after
+// the agent changes their marks, clearing it, the file-specific prompts, the
+// generic factors, and the nudge.
 //
-// It must never add a fact, an adjective or a conclusion, and above all never a
-// price. The estimate is the agent's own opinion under s72A; a sentence that
-// reached it for them is the one thing this feature is not allowed to do.
+// THE LINE, restated because this is the component most likely to be misread
+// as the software writing the reasoning. Every clause in the draft is a figure
+// off the report, arithmetic against the listing, or something the agent
+// pressed or typed. It states no price of its own — the only estimate in it is
+// the one already recorded in the agency agreement — and it never says the
+// estimate is reasonable. That sentence is the agent's.
 //
-// The insert mechanism is deliberately identical to EspPrompts and the dictate
-// button — set the textarea's value, dispatch an input event, move the caret.
-// One mechanism for "something outside the textarea wrote into it" rather than
-// three.
+// The insert mechanism is identical to EspPrompts and the dictate button: set
+// the textarea's value, dispatch an input event, move the caret. One mechanism
+// for "something outside the textarea wrote into it" rather than three.
 
 export function ReasoningAssist({
   noteId,
   subject,
   comparables,
+  esp,
   savedReasoning,
+  isDone,
 }: {
   noteId: string;
   subject: SubjectAttributes;
   comparables: Comparable[];
+  esp: EspFigures;
   /** What is already recorded on this item. Drives the nudge, not the draft. */
   savedReasoning: string;
+  /** Once the agent has marked the card done, this is a record, not a draft. */
+  isDone: boolean;
 }) {
-  const draft = assembleReasoning(comparables);
+  const draft = buildReasoningDraft(subject, comparables, esp);
   const prompts = fileSpecificPrompts(subject, comparables);
   const nudge = reasoningNudge(savedReasoning, comparables);
+  const marked = comparables.filter((c) => c.weighting !== null).length;
 
-  if (!draft && prompts.length === 0 && !nudge) return null;
-
-  function writeInto(text: string, asHeading: boolean) {
+  function writeInto(text: string, mode: "heading" | "replace") {
     const el = document.getElementById(noteId) as HTMLTextAreaElement | null;
     if (!el) return;
-    const existing = el.value.trimEnd();
-    const addition = asHeading ? `${text}: ` : text;
-    el.value = existing.length > 0 ? `${existing}\n\n${addition}` : addition;
+    if (mode === "replace") {
+      el.value = text;
+    } else {
+      const existing = el.value.trimEnd();
+      el.value = existing.length > 0 ? `${existing}\n\n${text}: ` : `${text}: `;
+    }
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.focus();
     el.selectionStart = el.selectionEnd = el.value.length;
@@ -60,40 +72,79 @@ export function ReasoningAssist({
 
   return (
     <div className="mt-2 space-y-2">
-      {draft && (
-        <div className="rounded-lg border border-rc-green-deep/25 bg-rc-green-soft/40 px-3 py-2.5">
-          <p className="text-[11px] font-semibold text-rc-green-deep">Start from the sales you marked</p>
+      {/* Where the draft came from, and where it stops. Shown while the card
+          is still open, because that is when someone is deciding whether to
+          accept what is in the box. */}
+      {draft && !isDone && (
+        <div className="rounded-lg border border-rc-green-deep/25 bg-rc-green-soft/50 px-3 py-2.5">
+          <p className="text-[11px] font-semibold text-rc-green-deep">Where this draft came from</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
-            Your own words, put in order. Edit it into whatever actually reflects your thinking — it&rsquo;s
-            a starting point, not a finished answer, and nothing is saved until you save it.
+            Every line is a figure off the report, arithmetic against your listing, or something you
+            pressed or typed on the {marked === 1 ? "sale" : "sales"} above. It doesn&rsquo;t put a price of
+            its own on this property and doesn&rsquo;t say the estimate is reasonable —{" "}
+            <span className="font-semibold text-rc-ink">that part is yours to add.</span>
           </p>
-          <button
-            type="button"
-            onClick={() => writeInto(draft, false)}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600"
-          >
-            <Wand2 size={12} aria-hidden="true" />
-            Use as a starting point
-          </button>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => writeInto(draft, "replace")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-[11px] font-semibold text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
+            >
+              <RotateCcw size={11} aria-hidden="true" />
+              Rebuild from my marks
+            </button>
+            <button
+              type="button"
+              onClick={() => writeInto("", "replace")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-[11px] font-semibold text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
+            >
+              <Eraser size={11} aria-hidden="true" />
+              Clear and write my own
+            </button>
+          </div>
         </div>
       )}
 
-      {prompts.length > 0 && (
+      {prompts.length > 0 && !isDone && (
         <div className="rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
           <p className="text-[11px] font-semibold text-rc-ink">About this file</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
-            Differences the sales below actually show. Click one to drop it in as a heading — nothing is
-            recorded either way.
+            Differences the sales actually show. Click one to drop it in as a heading — nothing is recorded
+            either way.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {prompts.map((p) => (
               <button
                 key={p}
                 type="button"
-                onClick={() => writeInto(p, true)}
+                onClick={() => writeInto(p, "heading")}
                 className="rounded-full border border-rc-border bg-white px-2.5 py-1 text-[11px] font-medium text-rc-muted transition hover:border-rc-green-deep/40 hover:text-rc-ink"
               >
                 {p}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* The generic half of Adam's two-part idea: things that bear on the
+          price but belong to no single sale, so they cannot sit on a row. */}
+      {!isDone && (
+        <div className="rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
+          <p className="text-[11px] font-semibold text-rc-ink">Not about any one sale</p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
+            Things that affect the price but don&rsquo;t belong on a single comparable. Tap any that
+            mattered — nothing is recorded either way.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {ESP_GENERIC_FACTORS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => writeInto(f, "heading")}
+                className="rounded-full border border-rc-border bg-white px-2.5 py-1 text-[11px] font-medium text-rc-muted transition hover:border-rc-green-deep/40 hover:text-rc-ink"
+              >
+                {f}
               </button>
             ))}
           </div>

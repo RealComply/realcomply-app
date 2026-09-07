@@ -42,6 +42,8 @@ export type SubjectAttributes = {
   landSizeSqm: number | null;
   internalAreaSqm: number | null;
   conditionNote: string | null;
+  /** Suburb, off the listing's address. Not a column — see suburbOf(). */
+  addressSuburb: string | null;
   /** What extraction read, awaiting confirmation. Null once confirmed or if never read. */
   suggestions: Partial<Omit<SubjectAttributes, "suggestions" | "confirmedAt">> | null;
   confirmedAt: string | null;
@@ -93,6 +95,7 @@ export function subjectAttributesFrom(row: Record<string, unknown> | null): Subj
     landSizeSqm: numeric(row?.land_size_sqm),
     internalAreaSqm: numeric(row?.internal_area_sqm),
     conditionNote: (row?.condition_note as string) ?? null,
+    addressSuburb: suburbOf(String(row?.address ?? "")),
     suggestions,
     confirmedAt: (row?.attributes_confirmed_at as string) ?? null,
   };
@@ -157,6 +160,110 @@ export function differenceLine(subject: SubjectAttributes, c: Comparable): strin
   return parts.join(", ");
 }
 
+/**
+ * What this sale has IN COMMON with the listing.
+ *
+ * Adam, 7 Sep 2026, on the mock-up: two columns, similarities and
+ * differences. The similarities turned out to be the more useful half — "4
+ * bedrooms, 2 bathrooms, about the same land, same suburb" is the sentence an
+ * agent writes by hand today, and it is the half that explains why a sale was
+ * relied on at all.
+ *
+ * Same rule as the differences: arithmetic only. "Same land" is a measurement
+ * within a tolerance; "comparable" would be a judgement and is not ours.
+ */
+export function similaritiesFrom(subject: SubjectAttributes, c: Comparable): string[] {
+  const out: string[] = [];
+
+  const count = (mine: number | null, theirs: number | null, singular: string, plural: string) => {
+    if (mine === null || theirs === null || mine !== theirs) return;
+    out.push(`${mine} ${mine === 1 ? singular : plural}`);
+  };
+  count(subject.bedrooms, c.bedrooms, "bedroom", "bedrooms");
+  count(subject.bathrooms, c.bathrooms, "bathroom", "bathrooms");
+  count(subject.carSpaces, c.carSpaces, "car space", "car spaces");
+
+  const area = (mine: number | null, theirs: number | null, label: string) => {
+    if (mine === null || theirs === null) return;
+    if (Math.abs(Math.round(theirs - mine)) >= AREA_NOISE_SQM) return;
+    out.push(`about the same ${label}`);
+  };
+  area(subject.landSizeSqm, c.landSizeSqm, "land");
+  area(subject.internalAreaSqm, c.internalAreaSqm, "internal area");
+
+  if (sameSuburb(subject, c)) out.push("same suburb");
+
+  return out;
+}
+
+/**
+ * Suburb match, off the address text.
+ *
+ * The subject's suburb is not stored as its own column — the address is one
+ * string — so this compares the last comma-separated part of each. Crude, and
+ * deliberately so: a miss shows as one fewer chip, which is a smaller harm
+ * than a wrong claim that two properties are in the same suburb.
+ */
+function sameSuburb(subject: SubjectAttributes, c: Comparable): boolean {
+  const theirs = suburbOf(c.address);
+  const mine = subject.addressSuburb;
+  return Boolean(mine && theirs && mine === theirs);
+}
+
+export function suburbOf(address: string): string | null {
+  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  return parts[parts.length - 1].toLowerCase().replace(/\s+(nsw|qld|vic|wa|sa|tas|act|nt)\b.*$/i, "").trim() || null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// The same arithmetic, worded to sit inside a sentence
+// ─────────────────────────────────────────────────────────────────────────
+//
+// "also a house" is a fine chip and a terrible clause. The chips and the
+// draft are built by separate functions rather than one reusing the other's
+// strings, because a phrase that reads well standing alone in a coloured pill
+// usually reads badly halfway through a sentence, and the draft is the half
+// that ends up in a compliance record.
+
+export function proseComparison(
+  subject: SubjectAttributes,
+  c: Comparable,
+): { same: string[]; diff: string[] } {
+  const same: string[] = [];
+  const diff: string[] = [];
+
+  const count = (mine: number | null, theirs: number | null, singular: string, plural: string) => {
+    if (mine === null || theirs === null) return;
+    if (mine === theirs) {
+      same.push(plural);
+      return;
+    }
+    const d = theirs - mine;
+    const n = Math.abs(d);
+    diff.push(`${n} ${n === 1 ? singular : plural} ${d > 0 ? "more" : "fewer"}`);
+  };
+  count(subject.bedrooms, c.bedrooms, "bedroom", "bedrooms");
+  count(subject.bathrooms, c.bathrooms, "bathroom", "bathrooms");
+  count(subject.carSpaces, c.carSpaces, "car space", "car spaces");
+
+  const area = (mine: number | null, theirs: number | null, label: string) => {
+    if (mine === null || theirs === null) return;
+    const d = Math.round(theirs - mine);
+    if (Math.abs(d) < AREA_NOISE_SQM) {
+      same.push(label);
+      return;
+    }
+    diff.push(`${Math.abs(d)}m² ${d > 0 ? "more" : "less"} ${label}`);
+  };
+  area(subject.landSizeSqm, c.landSizeSqm, "land");
+  area(subject.internalAreaSqm, c.internalAreaSqm, "internal area");
+
+  if (!sameSuburb(subject, c) && suburbOf(c.address)) diff.push("a different suburb");
+
+  return { same, diff };
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // The prompts the agent actually sees
 // ─────────────────────────────────────────────────────────────────────────
@@ -217,48 +324,113 @@ function monthsAgo(iso: string): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Assembling the agent's own fragments
+// The draft
 // ─────────────────────────────────────────────────────────────────────────
 //
-// THE LINE THIS FUNCTION SITS ON, and the reason it is this dull:
+// Adam chose this shape on 7 Sep 2026 from two mocked-up options: a factual
+// paragraph the agent can accept as written, rather than one that stops
+// mid-sentence to force them to finish it. His reasoning: "the agent can still
+// add that they want."
 //
-// Every clause it produces came from the agent — which sales they relied on,
-// which they rejected, and the words they wrote about each. All this does is
-// put those fragments in an order and join them with "and". The software
-// supplies arrangement; the person supplies content and can edit every word of
-// the result before it is saved.
+// THE LINE IT SITS ON, and the reason it is this dull. Every clause is one of
+// three things:
 //
-// It must never add a fact, an adjective, or a conclusion. In particular it
-// must never mention a price the agent did not write — the estimate is theirs
-// under s72A and a sentence that reaches it for them is the one thing this
-// whole feature is not allowed to do.
+//   1. a figure printed in the comparable-sales report,
+//   2. arithmetic between that report and the listing's own attributes, or
+//   3. something the agent pressed or typed.
+//
+// It adds no fact, no adjective of quality and no conclusion. The only price
+// it states other than the sale prices is the ESP the agent already recorded
+// in the agency agreement — quoting their own figure back is not the software
+// forming a view. It never says the estimate is reasonable. That sentence is
+// the agent's to write, and the card says so.
+//
+// checkComparables asserts the ABSENCE of those things, because a change that
+// made this function "helpful" would read as an improvement in review.
 
-export function assembleReasoning(comparables: Comparable[]): string {
+export type EspFigures = { low: number | null; high: number | null };
+
+export function buildReasoningDraft(
+  subject: SubjectAttributes,
+  comparables: Comparable[],
+  esp: EspFigures,
+): string {
   const relied = comparables.filter((c) => c.weighting === "relied");
+  const considered = comparables.filter((c) => c.weighting === "considered");
   const rejected = comparables.filter((c) => c.weighting === "not_comparable");
-  if (relied.length === 0 && rejected.length === 0) return "";
+  if (relied.length === 0 && considered.length === 0 && rejected.length === 0) return "";
 
   const lines: string[] = [];
 
+  if (esp.low !== null && esp.high !== null) {
+    lines.push(
+      esp.low === esp.high
+        ? `Estimated selling price recorded in the agency agreement: ${money(esp.low)}.`
+        : `Estimated selling price recorded in the agency agreement: ${money(esp.low)} to ${money(esp.high)}.`,
+    );
+    lines.push("");
+  }
+
   if (relied.length > 0) {
-    lines.push(`Relied on ${list(relied.map(shortAddress))}.`);
+    const prices = relied
+      .map((c) => c.salePrice)
+      .filter((p): p is number => p !== null)
+      .sort((a, b) => a - b);
+
+    let opening = `Relied on ${list(relied.map(shortAddress))}`;
+    if (prices.length > 1) {
+      opening += `, which sold between ${money(prices[0])} and ${money(prices[prices.length - 1])}`;
+    } else if (prices.length === 1) {
+      opening += `, which sold for ${money(prices[0])}`;
+    }
+    lines.push(`${opening}.`);
+
     for (const c of relied) {
-      if (c.agentNote?.trim()) lines.push(`${shortAddress(c)} — ${c.agentNote.trim()}`);
+      const { same, diff } = proseComparison(subject, c);
+      const parts: string[] = [];
+      if (same.length > 0) parts.push(`same ${list(same)}`);
+      if (diff.length > 0) parts.push(list(diff));
+      const note = sentence(c.agentNote);
+      lines.push(
+        `${shortAddress(c)} — ${parts.join("; ") || "nothing recorded to compare"}.` +
+          (note ? ` ${note}` : ""),
+      );
+    }
+  }
+
+  if (considered.length > 0) {
+    lines.push("");
+    lines.push(
+      `Also looked at ${list(considered.map(shortAddress))} without treating ` +
+        `${considered.length > 1 ? "them" : "it"} as decisive.`,
+    );
+    for (const c of considered) {
+      const note = sentence(c.agentNote);
+      if (note) lines.push(`${shortAddress(c)} — ${note}`);
     }
   }
 
   if (rejected.length > 0) {
     lines.push("");
     for (const c of rejected) {
+      const note = c.agentNote?.trim();
       lines.push(
-        c.agentNote?.trim()
-          ? `Did not treat ${shortAddress(c)} as comparable — ${c.agentNote.trim()}`
+        note
+          ? `Did not treat ${shortAddress(c)} as comparable — ${note}.`
           : `Did not treat ${shortAddress(c)} as comparable.`,
       );
     }
   }
 
   return lines.join("\n");
+}
+
+/** Capitalised and closed, so the agent's fragment reads as a sentence. */
+function sentence(text: string | null): string {
+  const t = (text ?? "").trim();
+  if (!t) return "";
+  const body = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?]$/.test(body) ? body : `${body}.`;
 }
 
 function shortAddress(c: Comparable): string {
