@@ -13,10 +13,23 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 // the register's own knowledge does not travel with the file, and the file is
 // what gets sent.
 //
-// cl 27(5)(b) requires the statement to be prepared, and the licensee in
-// charge is who stands behind it. A signature that exists only in our database
-// is evidence we hold; a signature on the page is evidence the agency holds.
-// They should not be different things.
+// A signature that exists only in our database is evidence WE hold; a
+// signature on the page is evidence the AGENCY holds. They should not be
+// different things.
+//
+// WHAT THIS SIGNATURE IS, AND IS NOT (Adam asked, 8 Sep 2026, and the answer
+// changed the wording on the page). Nothing in the trust provisions requires a
+// reconciliation statement to be signed. cl 27(5)(b) says the licensee must
+// "prepare a statement reconciling" — prepare, not sign. cl 30(2)(a) asks the
+// trial balance to specify its month and date of preparation and is silent on
+// signatures. The only signature the trust provisions require is on a cheque,
+// cl 25(3)(d).
+//
+// So this page is not evidence of a signing obligation. It is evidence of
+// REVIEW, which is what s32(3)(b) and (c) ask of a licensee in charge —
+// establish procedures and monitor that they are followed — and what an
+// auditor under s111 actually looks for. The page says that in terms, and
+// deliberately does not claim cl 27 required it.
 //
 // THE ORIGINAL IS NEVER MODIFIED. This writes a NEW file and the upload stays
 // exactly as it arrived, byte for byte. Two reasons, and the second is the
@@ -154,10 +167,13 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
   line(stamp.agencyName, { size: 11, color: MUTED, gap: 6 });
   rule(4, 14);
 
-  line("Document signed", { size: 8.5, font: bold, color: FAINT });
+  line("Document reviewed and signed", { size: 8.5, font: bold, color: FAINT });
   line(stamp.title, { size: 13, font: bold, gap: 4 });
   line(`File: ${stamp.documentFileName}`, { size: 9, color: MUTED, gap: 2 });
-  if (stamp.legalBasis) line(stamp.legalBasis, { size: 9, color: FAINT, gap: 0 });
+  // The clause the DOCUMENT answers, labelled as such. Nothing in the trust
+  // provisions requires this statement to be signed — see the note above
+  // SIGNED_BASIS in signoffs.ts — so the page must not imply that it does.
+  if (stamp.legalBasis) line(`Record required by ${stamp.legalBasis}`, { size: 9, color: FAINT, gap: 0 });
 
   rule(16, 20);
 
@@ -190,6 +206,10 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
 
   line(
     "This name was typed and adopted as a signature in RealComply by the person named above, from their own authenticated account. Under section 9 of the Electronic Transactions Act 2000 (NSW), a method of signature that identifies the person and indicates their approval of the document satisfies a requirement for a signature where that method is as reliable as appropriate for the purpose.",
+    { size: 8.5, color: MUTED, gap: 8 },
+  );
+  line(
+    "This sign-off records the licensee's review of the document. It is kept as evidence of proper supervision under section 32 of the Property and Stock Agents Act 2002 (NSW).",
     { size: 8.5, color: MUTED, gap: 8 },
   );
   line(

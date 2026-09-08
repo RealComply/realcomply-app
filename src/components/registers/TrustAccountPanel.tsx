@@ -97,7 +97,8 @@ export function TrustAccountPanel({
             <h3 className="text-sm font-bold text-rc-ink">Monthly reconciliation — {accountName}</h3>
             <p className="mt-1 text-xs text-rc-muted">
               A statement reconciling the trust account against the cash book, prepared at the end of each
-              month and signed by the licensee in charge.
+              month. The Regulation requires it to be prepared and kept — the sign-off below is your record
+              that the licensee in charge reviewed it.
             </p>
           </div>
           {overdueCount > 0 && (

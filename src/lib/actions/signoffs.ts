@@ -175,7 +175,28 @@ export async function signDocument(documentId: string, _prev: ActionState, formD
   return ok;
 }
 
-/** The legal line printed on the signature page, per category. */
+// The line printed on the signature page naming the obligation the DOCUMENT
+// answers — not the signature.
+//
+// The distinction is deliberate and Adam asked the question that produced it
+// (8 Sep 2026): does anything actually require the reconciliation to be
+// signed? Checked against the text, and no. cl 27(5)(b) says the licensee must
+// "prepare a statement reconciling" — prepare, not sign. cl 30(2)(a) wants the
+// trial balance to specify its month and date of preparation, and says nothing
+// about a signature. cl 31 requires the records be kept and producible on
+// demand. The only signature the trust provisions require anywhere near this
+// is cl 25(3)(d): a trust account CHEQUE must be signed by the licensee in
+// charge.
+//
+// So the sign-off is our control, not the Act's, and it earns its place under
+// s32 instead — the licensee must properly supervise, which s32(3)(b) and (c)
+// spell out as establishing procedures and monitoring that they are followed.
+// A dated record that the licensee in charge reviewed each month's
+// reconciliation is exactly that evidence, and it is what an auditor under
+// s111 asks to see.
+//
+// Which is why the page labels this clause as the record's basis and never
+// claims the signature is required by it.
 const SIGNED_BASIS: Record<string, string> = {
   trust_reconciliation:
     "cl 27(5)(b) and cl 30(1), Property and Stock Agents Regulation 2022 (NSW)",
