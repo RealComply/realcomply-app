@@ -133,7 +133,15 @@ function SubjectRow({ propertyId, subject }: { propertyId: string; subject: Subj
 
   return (
     <div className="rounded-md border border-rc-border bg-white px-2.5 py-2">
-      <p className="text-[11px] font-semibold text-rc-ink">This property</p>
+      {/* The address, not "This property" (Adam, 8 Sep 2026).
+          Every sale below is named by its address, so a row headed "This
+          property" was the one line on the panel the agent had to translate.
+          It also matters on a strata listing, where the subject and the sales
+          share a street and the unit number is the whole distinction —
+          18/4-10 Pound Road above 3/4-10 Pound Road says something a generic
+          label cannot. Falls back to the old wording only if a listing somehow
+          has no address. */}
+      <p className="text-[11px] font-semibold text-rc-ink">{subject.address?.trim() || "This property"}</p>
       <p className="mt-0.5 text-[11px] text-rc-muted">
         {hasSubjectDetail(subject) ? subjectSpec(subject) : "No details recorded yet."}
       </p>
