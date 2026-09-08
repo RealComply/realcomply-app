@@ -181,7 +181,7 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
   // signature rather than another line of the form. It is a typed name adopted
   // as a signature and the page says exactly that underneath — dressing it up
   // as handwriting would misrepresent what happened.
-  line("Signed by", { size: 8.5, font: bold, color: FAINT, gap: 4 });
+  line("Reviewed and signed off by", { size: 8.5, font: bold, color: FAINT, gap: 4 });
   const sigSize = 26;
   page.drawText(ascii(stamp.typedName), {
     x: MARGIN,
@@ -205,7 +205,7 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
   rule(20, 14);
 
   line(
-    "This name was typed and adopted as a signature in RealComply by the person named above, from their own authenticated account. Under section 9 of the Electronic Transactions Act 2000 (NSW), a method of signature that identifies the person and indicates their approval of the document satisfies a requirement for a signature where that method is as reliable as appropriate for the purpose.",
+    "The person named above confirmed in RealComply, from their own authenticated account, that they had reviewed this document. Their name is taken from that account and the time was recorded by the system. Under section 9 of the Electronic Transactions Act 2000 (NSW), a method that identifies the person and indicates their approval of a document satisfies a requirement for a signature where the method is as reliable as appropriate for the purpose.",
     { size: 8.5, color: MUTED, gap: 8 },
   );
   line(

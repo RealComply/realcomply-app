@@ -54,7 +54,7 @@ export function TrustMonthCard({
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [typedName, setTypedName] = useState(signerName);
+  const [reviewed, setReviewed] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const [replacement, setReplacement] = useState<File | null>(null);
 
@@ -403,24 +403,43 @@ export function TrustMonthCard({
         </p>
       )}
 
-      {/* Uploaded, unsigned, and this person is the licensee. */}
+      {/* Uploaded, not yet signed off, and this person is the licensee.
+
+          A TICK, not a signature line. Adam, 8 Sep 2026: "we can just add a
+          tick box stating that the licensee has reviewed the document and only
+          the licensee can tick that box." Nothing in the trust provisions
+          requires this statement to be signed, so what the licensee is really
+          attesting is that they reviewed it — and the box says exactly that
+          rather than borrowing the language of a signature the Act never asked
+          for. The record underneath is unchanged: their name, off their
+          authenticated profile, and the moment they ticked it.
+
+          The label carries the attestation, not a heading above it. A tick
+          whose meaning lives in a separate line of text is a tick people press
+          without reading the meaning. */}
       {month.documentId && month.status !== "signed" && canSign && (
-        <form action={submitSign} className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="flex-1 text-xs font-medium text-rc-muted">
-            Type your name to sign
+        <form action={submitSign} className="mt-3 rounded-lg border border-rc-green-deep/30 bg-rc-green-soft/40 p-3">
+          <label className="flex cursor-pointer items-start gap-2.5 text-sm text-rc-ink">
             <input
-              name="typedName"
-              value={typedName}
-              onChange={(e) => setTypedName(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm text-rc-ink outline-none focus:border-rc-green-deep"
+              type="checkbox"
+              checked={reviewed}
+              onChange={(e) => setReviewed(e.target.checked)}
+              className="mt-0.5 accent-rc-green-deep"
             />
+            <span>
+              I have reviewed this reconciliation and I&rsquo;m signing it off.
+              <span className="mt-0.5 block text-xs text-rc-muted">
+                Recorded against your name, {signerName || "your account"}, with today&rsquo;s date, and added
+                to the document as a signature page.
+              </span>
+            </span>
           </label>
           <button
             type="submit"
-            disabled={signing}
-            className="rounded-full bg-rc-green-deep px-4 py-2 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+            disabled={signing || !reviewed}
+            className="mt-2.5 rounded-full bg-rc-green-deep px-4 py-2 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-50"
           >
-            {signing ? "Signing…" : "Sign"}
+            {signing ? "Signing off…" : "Sign off"}
           </button>
         </form>
       )}

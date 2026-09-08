@@ -113,21 +113,52 @@ export async function createSignoffDocument(params: {
 // sign_agent/sign_licensee on a compliance file. Upsert rather than a plain
 // update so this still works even if a signer's row didn't exist yet (e.g.
 // someone added to the agency after the document was published).
-export async function signDocument(documentId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+// A TICK, NOT A TYPED NAME (Adam, 8 Sep 2026): "we can just add a tick box
+// stating that the licensee has reviewed the document and only the licensee
+// can tick that box."
+//
+// Right, and it follows from the previous finding. Nothing requires a
+// reconciliation to be SIGNED — see the note above SIGNED_BASIS — so a typed
+// signature was dressing a review up as something the Act had asked for. What
+// the licensee is actually attesting is that they looked at it, which is what
+// s32(3)(c) wants evidence of, and a tick says that without pretending
+// otherwise.
+//
+// IT IS NO WEAKER AS EVIDENCE. Electronic Transactions Act 2000 (NSW) s9 asks
+// that the method identify the person and indicate their approval, and be as
+// reliable as appropriate. A tick from an authenticated licensee-only account,
+// timestamped, with the name taken from the profile rather than retyped, does
+// all three — and the profile name is harder to get wrong than a string
+// somebody types into a box.
+//
+// WHO MAY TICK IT is now checked here rather than left to RLS. The signature
+// row's own policy stopped one person signing on another's behalf, but nothing
+// stopped an assistant signing their OWN row on a licensee-only document. It
+// has never been reachable from the interface, which is exactly why it was
+// worth closing before somebody found a route to it: on this item the whole
+// evidentiary value is that the licensee, and only the licensee, said yes.
+export async function signDocument(documentId: string, _prev: ActionState, _formData: FormData): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
-
-  const typedName = String(formData.get("typedName") ?? "").trim();
-  if (!typedName) {
-    return { error: "Type your full name to adopt it as your signature." };
-  }
 
   const { data: doc } = await supabase
     .from("signoff_documents")
-    .select("id, title, file_path, file_name, category, period_label, signed_file_path")
+    .select("id, title, file_path, file_name, category, period_label, signer_scope, signed_file_path")
     .eq("id", documentId)
     .maybeSingle();
   if (!doc) {
     return { error: "That document couldn't be found." };
+  }
+
+  const scope = (doc as { signer_scope?: string }).signer_scope;
+  if (scope === "licensee_only" && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can sign this off." };
+  }
+
+  // The authenticated name, not a typed one. Falls back only so a profile
+  // with no name recorded cannot block a sign-off.
+  const typedName = String(profile.full_name ?? profile.email ?? "").trim();
+  if (!typedName) {
+    return { error: "Add your name in Settings before signing this off." };
   }
 
   const signedAt = new Date().toISOString();
