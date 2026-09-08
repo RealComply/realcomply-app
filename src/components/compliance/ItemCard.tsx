@@ -152,7 +152,16 @@ function ItemShell({
   // amber flags, and anything specific to this property. Those are the things
   // that differ card to card and file to file, which is exactly what the extra
   // room is for.
+  //
+  // AND ONE CARD OPTS OUT ENTIRELY — see alwaysShowExplainer in nsw-sales.ts.
+  // Adam raised it on liability grounds the same day, and the distinction is
+  // right: an explainer that says what a card IS can hide, but one that
+  // changes what the agent WRITES cannot, because a defence rests on it. Where
+  // it is set, the icon disappears too — an icon that toggles nothing is worse
+  // than no icon.
   const [explainerOpen, setExplainerOpen] = useState(false);
+  const explainerPinned = item.alwaysShowExplainer === true;
+  const showExplainer = explainerPinned || explainerOpen;
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
@@ -160,28 +169,30 @@ function ItemShell({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-rc-ink">{item.label}</h3>
-            <button
-              type="button"
-              onClick={() => setExplainerOpen((o) => !o)}
-              aria-expanded={explainerOpen}
-              aria-label={
-                explainerOpen ? `Hide what ${item.label} is for` : `What is ${item.label} for?`
-              }
-              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition ${
-                explainerOpen
-                  ? "bg-rc-green-soft text-rc-green-deep"
-                  : "text-rc-faint hover:bg-rc-bg-alt hover:text-rc-muted"
-              }`}
-            >
-              <Info size={13} aria-hidden="true" />
-            </button>
+            {!explainerPinned && (
+              <button
+                type="button"
+                onClick={() => setExplainerOpen((o) => !o)}
+                aria-expanded={explainerOpen}
+                aria-label={
+                  explainerOpen ? `Hide what ${item.label} is for` : `What is ${item.label} for?`
+                }
+                className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition ${
+                  explainerOpen
+                    ? "bg-rc-green-soft text-rc-green-deep"
+                    : "text-rc-faint hover:bg-rc-bg-alt hover:text-rc-muted"
+                }`}
+              >
+                <Info size={13} aria-hidden="true" />
+              </button>
+            )}
             {item.licenseeOnly && (
               <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rc-muted">
                 Licensee
               </span>
             )}
           </div>
-          {explainerOpen && (
+          {showExplainer && (
             <>
               <p className="mt-1 text-sm text-rc-muted">{item.description}</p>
               {item.legalBasis && <p className="mt-1 text-xs text-rc-faint">{item.legalBasis}</p>}

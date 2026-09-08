@@ -83,6 +83,23 @@ export type ComplianceItem = {
   label: string;
   description: string;
   legalBasis?: string;
+  /**
+   * Keeps this card's description on the card face instead of folding it
+   * behind the information icon (see ItemShell).
+   *
+   * The icon exists because a dozen cards of standing explanation makes the
+   * page unreadable — but that argument only holds for cards whose explainer
+   * says what the card IS. On a card whose explainer changes what the agent
+   * WRITES, hiding it by default means most agents never see it.
+   *
+   * Adam, 8 Sep 2026, on the ESP reasoning card: "I think it may be
+   * beneficial to leave it as is on the ESP reasoning card, both for my sake
+   * and also the agent's."
+   *
+   * Use it sparingly. If most cards end up setting this, the icon has failed
+   * and the answer is a different design, not more exceptions.
+   */
+  alwaysShowExplainer?: boolean;
   licenseeOnly?: boolean;
   requiresDate?: boolean;
   /**
@@ -361,6 +378,13 @@ const items: ComplianceItem[] = [
     description:
       "In your own words, note how this property sits against the comparables and how you arrived at the ESP. This is your record of how the estimate was formed, not a black-letter requirement to justify every difference.",
     legalBasis: "s72A (evidence of how the estimate was formed)",
+    // Not folded behind the icon. This description is the only place the
+    // product tells the agent, in terms, that the words must be theirs and
+    // that the estimate is their opinion — which is the same sentence the
+    // agency's defence rests on if s74 ever asks them to substantiate it.
+    // Hiding it by default would leave a card that drafts text for them with
+    // no visible statement of whose text it becomes.
+    alwaysShowExplainer: true,
     // No attachment here. The evidence for the ESP reasoning is the
     // comparable-sales report, which is already attached to a4 directly
     // above — asking for a second upload on the reasoning itself invites the
