@@ -42,6 +42,8 @@ export type SubjectAttributes = {
   landSizeSqm: number | null;
   internalAreaSqm: number | null;
   conditionNote: string | null;
+  /** The listing's address as typed, so a sale in the same block can be spotted. */
+  address: string | null;
   /** Suburb, off the listing's address. Not a column — see suburbOf(). */
   addressSuburb: string | null;
   /** What extraction read, awaiting confirmation. Null once confirmed or if never read. */
@@ -95,6 +97,7 @@ export function subjectAttributesFrom(row: Record<string, unknown> | null): Subj
     landSizeSqm: numeric(row?.land_size_sqm),
     internalAreaSqm: numeric(row?.internal_area_sqm),
     conditionNote: (row?.condition_note as string) ?? null,
+    address: (row?.address as string) ?? null,
     addressSuburb: suburbOf(String(row?.address ?? "")),
     suggestions,
     confirmedAt: (row?.attributes_confirmed_at as string) ?? null,
@@ -191,29 +194,103 @@ export function similaritiesFrom(subject: SubjectAttributes, c: Comparable): str
   area(subject.landSizeSqm, c.landSizeSqm, "land");
   area(subject.internalAreaSqm, c.internalAreaSqm, "internal area");
 
-  if (sameSuburb(subject, c)) out.push("same suburb");
+  // Building before suburb: on a strata sale the stronger fact is the
+  // stronger one to say, and "same building, same suburb" reads as padding.
+  if (sameBuilding(subject.address, c.address)) out.push("same building");
+  else if (sameSuburb(subject, c)) out.push("same suburb");
 
   return out;
 }
 
 /**
- * Suburb match, off the address text.
+ * Suburb comparison, off the address text.
  *
- * The subject's suburb is not stored as its own column — the address is one
- * string — so this compares the last comma-separated part of each. Crude, and
- * deliberately so: a miss shows as one fewer chip, which is a smaller harm
- * than a wrong claim that two properties are in the same suburb.
+ * Returns TRUE (same), FALSE (genuinely different), or NULL — meaning one of
+ * the two addresses does not carry a suburb we could read, so there is
+ * nothing to say either way.
+ *
+ * THE NULL IS THE WHOLE POINT, AND ITS ABSENCE WAS A REAL BUG. Adam, 8 Sep
+ * 2026, on 18/4-10 Pound Road, Hornsby: four sales in the same building were
+ * each written up as "a different suburb". The old code returned a plain
+ * boolean, so a suburb we simply could not parse came back false and was
+ * printed as a positive claim of difference in a compliance record.
+ *
+ * The comment that used to sit here said a miss "shows as one fewer chip,
+ * which is a smaller harm than a wrong claim". That was true of the
+ * similarities, which only ever add on a match — and false of the draft,
+ * which asserted a difference from a failure to match. Failing safe in one
+ * direction and unsafe in the other, from one shared helper, is precisely
+ * the shape of bug worth writing down: the safety of a comparison depends on
+ * what the caller does with "no", so "no" and "don't know" cannot be the
+ * same value.
  */
-function sameSuburb(subject: SubjectAttributes, c: Comparable): boolean {
+function suburbComparison(subject: SubjectAttributes, c: Comparable): boolean | null {
   const theirs = suburbOf(c.address);
   const mine = subject.addressSuburb;
-  return Boolean(mine && theirs && mine === theirs);
+  if (!mine || !theirs) return null;
+  return mine === theirs;
 }
 
+function sameSuburb(subject: SubjectAttributes, c: Comparable): boolean {
+  return suburbComparison(subject, c) === true;
+}
+
+/** Two addresses at the same street number — a unit in the same block. */
+function sameBuilding(a: string | null, b: string): boolean {
+  const x = streetAddressOf(a ?? "");
+  const y = streetAddressOf(b);
+  return Boolean(x && y && x === y);
+}
+
+/**
+ * The street address with any unit or level prefix removed, so 18/4-10 Pound
+ * Road and 3/4-10 Pound Road both reduce to "4-10 pound road".
+ *
+ * Worth having because it is the strongest comparable signal there is and the
+ * old code could not see it: two flats in one block share a lift, an aspect,
+ * a strata levy and a market, and an agent writing this up by hand would lead
+ * with it. Returns null on anything it cannot reduce confidently, and callers
+ * treat null as "say nothing" rather than "not the same building".
+ */
+export function streetAddressOf(address: string): string | null {
+  const first = address.split(",")[0]?.trim();
+  if (!first) return null;
+  // "18/4-10 Pound Road" → "4-10 Pound Road". Only a leading unit/number
+  // before a slash; a street name containing a slash is not a thing here.
+  const withoutUnit = first.replace(/^[^/]+\//, "").trim();
+  const normalised = withoutUnit.toLowerCase().replace(/\s+/g, " ");
+  // A bare number is not an address. Require a street name too, otherwise
+  // "12" and "12" would read as the same building.
+  return /[a-z]/.test(normalised) ? normalised || null : null;
+}
+
+const STATES = "nsw|qld|vic|wa|sa|tas|act|nt";
+
+/**
+ * The suburb, off the address text. Null when it cannot be read.
+ *
+ * Handles the three shapes a comparables report actually produces:
+ *   "3 Smith St, Hornsby"            → hornsby
+ *   "3 Smith St, Hornsby NSW 2077"   → hornsby
+ *   "3 Smith St, Hornsby, NSW 2077"  → hornsby   ← this one used to fail,
+ * returning "nsw 2077" as if it were a suburb name, which is how four flats
+ * in one building came to be described as being somewhere else.
+ */
 export function suburbOf(address: string): string | null {
-  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
+  const parts = address
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    // A trailing part that is only a state and/or a postcode is not a suburb.
+    .filter((p) => !new RegExp(`^(${STATES})\\b[\\s,]*\\d{0,4}$`, "i").test(p) && !/^\d{4}$/.test(p));
   if (parts.length < 2) return null;
-  return parts[parts.length - 1].toLowerCase().replace(/\s+(nsw|qld|vic|wa|sa|tas|act|nt)\b.*$/i, "").trim() || null;
+  const last = parts[parts.length - 1]
+    .toLowerCase()
+    .replace(new RegExp(`\\s+(${STATES})\\b.*$`, "i"), "")
+    .replace(/\s+\d{4}$/, "")
+    .trim();
+  // Whatever is left must look like a place name, not a leftover number.
+  return last && /[a-z]/.test(last) ? last : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -229,7 +306,7 @@ export function suburbOf(address: string): string | null {
 export function proseComparison(
   subject: SubjectAttributes,
   c: Comparable,
-): { same: string[]; diff: string[] } {
+): { same: string[]; diff: string[]; place: string | null } {
   const same: string[] = [];
   const diff: string[] = [];
 
@@ -259,9 +336,24 @@ export function proseComparison(
   area(subject.landSizeSqm, c.landSizeSqm, "land");
   area(subject.internalAreaSqm, c.internalAreaSqm, "internal area");
 
-  if (!sameSuburb(subject, c) && suburbOf(c.address)) diff.push("a different suburb");
+  // WHERE IT IS gets its own clause rather than joining the same/diff lists.
+  // Those two are read as "same <list>" and a list of measured differences,
+  // and a place does not fit either grammar — "same the same suburb" is what
+  // came out of trying. It also belongs at the front of the sentence: an
+  // agent explaining a sale says where it is before what is in it.
+  //
+  // Only ever asserted from a KNOWN answer. suburbComparison returns null
+  // when either address carries no readable suburb, and null says nothing —
+  // see the note on that function for the bug this replaced.
+  const place = sameBuilding(subject.address, c.address)
+    ? "in the same building"
+    : suburbComparison(subject, c) === true
+      ? "in the same suburb"
+      : suburbComparison(subject, c) === false
+        ? "in a different suburb"
+        : null;
 
-  return { same, diff };
+  return { same, diff, place };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -386,8 +478,9 @@ export function buildReasoningDraft(
     lines.push(`${opening}.`);
 
     for (const c of relied) {
-      const { same, diff } = proseComparison(subject, c);
+      const { same, diff, place } = proseComparison(subject, c);
       const parts: string[] = [];
+      if (place) parts.push(place);
       if (same.length > 0) parts.push(`same ${list(same)}`);
       if (diff.length > 0) parts.push(list(diff));
       const note = sentence(c.agentNote);

@@ -25,8 +25,10 @@ import {
   differenceLine,
   fileSpecificPrompts,
   hasSubjectDetail,
+  proseComparison,
   reasoningNudge,
   similaritiesFrom,
+  streetAddressOf,
   suburbOf,
   type Comparable,
   type SubjectAttributes,
@@ -55,6 +57,7 @@ const subject: SubjectAttributes = {
   landSizeSqm: 600,
   internalAreaSqm: 210,
   conditionNote: "Renovated kitchen and bathrooms",
+  address: "42 Landra Ave, Mount Colah",
   addressSuburb: "mount colah",
   suggestions: null,
   confirmedAt: "2026-09-07T00:00:00Z",
@@ -67,6 +70,7 @@ const blank: SubjectAttributes = {
   landSizeSqm: null,
   internalAreaSqm: null,
   conditionNote: null,
+  address: null,
   addressSuburb: null,
   suggestions: null,
   confirmedAt: null,
@@ -143,6 +147,63 @@ check("suburb is read off the address", suburbOf("14 Smith St, Mount Colah"), "m
 check("a state suffix does not break it", suburbOf("14 Smith St, Mount Colah NSW 2079"), "mount colah");
 check("an address with no suburb says so", suburbOf("14 Smith St"), null);
 
+// THE 18/4-10 POUND ROAD CASE (Adam, 8 Sep 2026). Four sales in the same
+// building were each written up as "a different suburb", because the suburb
+// sat in its own comma part ahead of the state and the last part — "NSW 2077"
+// — was taken for a place name. The draft then asserted a difference from
+// what was really a parse failure.
+check("the suburb survives its own comma", suburbOf("3/4-10 Pound Road, Hornsby, NSW 2077"), "hornsby");
+check("a trailing postcode alone is not a suburb", suburbOf("3/4-10 Pound Road, Hornsby, 2077"), "hornsby");
+check("a state on its own is not a suburb", suburbOf("3/4-10 Pound Road, NSW"), null);
+
+check(
+  "a unit number is not part of the building",
+  streetAddressOf("18/4-10 Pound Road, Hornsby"),
+  "4-10 pound road",
+);
+check("a house has a street address too", streetAddressOf("14 Smith St, Mount Colah"), "14 smith st");
+check("a bare number is not an address", streetAddressOf("12"), null);
+
+// Same block, and it must be SAID rather than merely not denied.
+const poundSubject: SubjectAttributes = {
+  ...blank,
+  bedrooms: 2,
+  bathrooms: 1,
+  carSpaces: 1,
+  address: "18/4-10 Pound Road, Hornsby, NSW 2077",
+  addressSuburb: suburbOf("18/4-10 Pound Road, Hornsby, NSW 2077"),
+};
+const poundNeighbour = comparable({
+  address: "3/4-10 Pound Road, Hornsby, NSW 2077",
+  bedrooms: 2,
+  bathrooms: 1,
+  carSpaces: 1,
+  landSizeSqm: null,
+  internalAreaSqm: null,
+});
+
+check(
+  "a flat in the same block reads as the same building",
+  similaritiesFrom(poundSubject, poundNeighbour),
+  ["2 bedrooms", "1 bathroom", "1 car space", "same building"],
+);
+
+const poundProse = proseComparison(poundSubject, poundNeighbour);
+if (poundProse.place === "in a different suburb") {
+  fail("the 18/4-10 Pound Road bug is back — same building called a different suburb");
+} else ok("a flat in the same block is not called a different suburb");
+check("the draft says they are in the same building", poundProse.place, "in the same building");
+
+// And the other half of the same rule: an unknown suburb says NOTHING. It
+// must not fall through to a claim of difference.
+const unknownSuburb = proseComparison(poundSubject, comparable({ address: "7 Nowhere Lane" }));
+check("an unreadable suburb is left unsaid", unknownSuburb.place, null);
+
+// A genuinely different suburb still gets said, or the fix would have gone
+// too far the other way.
+const realDifference = proseComparison(subject, comparable({ address: "22 High St, Asquith" }));
+check("a known different suburb is still stated", realDifference.place, "in a different suburb");
+
 // ── The draft: the agent's words, arranged ────────────────────────────────
 
 const marked: Comparable[] = [
@@ -165,7 +226,7 @@ for (const expected of [
   "Estimated selling price recorded in the agency agreement: $1,300,000 to $1,400,000.",
   "Relied on 14 Smith St and 8 Jones Ave, which sold between $1,220,000 and $1,385,000.",
   "Closest on land and presentation.",
-  "8 Jones Ave — same bedrooms, bathrooms, car spaces, land and internal area.",
+  "8 Jones Ave — in the same suburb; same bedrooms, bathrooms, car spaces, land and internal area.",
   "Also looked at 5 Rose Pl without treating it as decisive.",
   "Did not treat 22 High St as comparable — renovated throughout.",
 ]) {
