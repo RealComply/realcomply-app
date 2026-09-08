@@ -32,6 +32,7 @@ export function TrustMonthCard({
   canUpload,
   canSign,
   signerName,
+  embedded = false,
 }: {
   month: ReconciliationMonth;
   agencyId: string;
@@ -41,6 +42,14 @@ export function TrustMonthCard({
   canSign: boolean;
   /** Pre-fills the signature field with the licensee's own name. */
   signerName: string;
+  /**
+   * Rendered inside TrustMonthDialog, which already shows the month heading
+   * and the document. Drops the card's own chrome so the dialog is not two
+   * copies of the same three facts, and keeps everything that DOES something —
+   * upload, sign, replace — because that is why the dialog carries the card at
+   * all rather than a read-only preview.
+   */
+  embedded?: boolean;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -176,10 +185,15 @@ export function TrustMonthCard({
 
   return (
     <div
-      className={`rounded-card border bg-white p-4 shadow-card ${
-        late ? "border-rc-red/40" : "border-rc-border"
-      }`}
+      className={
+        embedded
+          ? ""
+          : `rounded-card border bg-white p-4 shadow-card ${
+              late ? "border-rc-red/40" : "border-rc-border"
+            }`
+      }
     >
+      {!embedded && (
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           {/* The month name opens the report too, because that is the thing
@@ -229,6 +243,7 @@ export function TrustMonthCard({
                 : "Not uploaded"}
         </span>
       </div>
+      )}
 
       {/* The document itself: name, open, save.
           Adam, 8 Sep 2026, on a month he had already signed: "I want to be
@@ -244,7 +259,7 @@ export function TrustMonthCard({
           Both controls stay put while their URLs are being minted, disabled
           rather than absent — a button that appears a moment later is a button
           the eye has already skipped past. */}
-      {month.fileName && (
+      {month.fileName && !embedded && (
         <div className="mt-3 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2">
           <p className="flex items-center gap-2 text-xs text-rc-ink">
             <FileText size={13} aria-hidden="true" className="shrink-0 text-rc-muted" />
@@ -300,7 +315,7 @@ export function TrustMonthCard({
         <button
           type="button"
           onClick={() => setReplacing(true)}
-          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
+          className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
         >
           <RefreshCw size={12} aria-hidden="true" />
           {month.status === "signed" ? "Replace this report" : "Replace the file"}

@@ -1,4 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import { TrustMonthCard } from "@/components/registers/TrustMonthCard";
+import { TrustMonthDialog } from "@/components/registers/TrustMonthDialog";
 import { TrustAuditForm } from "@/components/registers/TrustAuditForm";
 import { formatAuDate } from "@/lib/format-date";
 import { MONTH_STATUS_LABELS, type ReconciliationMonth } from "@/lib/trust-account";
@@ -70,6 +74,20 @@ export function TrustAccountPanel({
 
   const overdueCount = months.filter((m) => m.status === "overdue").length;
 
+  // Which month the dialog is showing, if any.
+  //
+  // THE TILES ARE THE NAVIGATION, and until 8 Sep 2026 they were decoration.
+  // The card list below only ever renders outstanding months plus the single
+  // most recent signed one, so a month signed earlier in the audit year had no
+  // route to it from anywhere — Adam: "I want to be able to click on these
+  // cards, even past ones."
+  //
+  // A month that has not ended stays inert. There is nothing to show and
+  // nothing to do, and a tile that opens an empty window teaches people the
+  // tiles are not worth clicking.
+  const [open, setOpen] = useState<string | null>(null);
+  const openMonth = months.find((m) => m.month === open) ?? null;
+
   return (
     <div className="space-y-6">
       {/* ── Monthly ── */}
@@ -98,16 +116,35 @@ export function TrustAccountPanel({
           {auditYearLabel}
         </p>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-          {months.map((m) => (
-            <div
-              key={m.month}
-              className={`rounded-xl border px-3 py-2.5 ${CHIP[m.status]}`}
-              title={m.dueOn ? `Due ${formatAuDate(m.dueOn)}` : "Not due yet"}
-            >
-              <p className="text-[13px] font-bold">{m.label}</p>
-              <p className="mt-0.5 text-[11px] font-semibold">{MONTH_STATUS_LABELS[m.status]}</p>
-            </div>
-          ))}
+          {months.map((m) =>
+            m.status === "future" ? (
+              <div
+                key={m.month}
+                className={`rounded-xl border px-3 py-2.5 ${CHIP[m.status]}`}
+                title="Not due yet"
+              >
+                <p className="text-[13px] font-bold">{m.label}</p>
+                <p className="mt-0.5 text-[11px] font-semibold">{MONTH_STATUS_LABELS[m.status]}</p>
+              </div>
+            ) : (
+              <button
+                key={m.month}
+                type="button"
+                onClick={() => setOpen(m.month)}
+                className={`rounded-xl border px-3 py-2.5 text-left transition hover:brightness-[0.97] focus:outline-none focus:ring-2 focus:ring-rc-green-soft ${CHIP[m.status]}`}
+                title={
+                  m.fileName
+                    ? `Open the ${m.label} report`
+                    : m.dueOn
+                      ? `Due ${formatAuDate(m.dueOn)} — not uploaded yet`
+                      : "Not due yet"
+                }
+              >
+                <p className="text-[13px] font-bold">{m.label}</p>
+                <p className="mt-0.5 text-[11px] font-semibold">{MONTH_STATUS_LABELS[m.status]}</p>
+              </button>
+            ),
+          )}
         </div>
 
         {cards.length > 0 && (
@@ -127,6 +164,19 @@ export function TrustAccountPanel({
           </div>
         )}
       </section>
+
+      {openMonth && (
+        <TrustMonthDialog
+          month={openMonth}
+          agencyId={agencyId}
+          trustAccountId={trustAccountId}
+          accountName={accountName}
+          canUpload={canUpload}
+          canSign={canSign}
+          signerName={signerName}
+          onClose={() => setOpen(null)}
+        />
+      )}
 
       {/* ── Annual ── */}
       <TrustAuditForm
