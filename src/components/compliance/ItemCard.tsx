@@ -132,21 +132,60 @@ function ItemShell({
   awaitingReview?: boolean;
   children: ReactNode;
 }) {
+  // BEHIND AN ICON, NOT UNDER THE TITLE (Adam, 8 Sep 2026): "when we have
+  // those little explainers under each title — I think it looks too busy. Can
+  // we replace with a little I (information icon) and then have the explainer
+  // display once clicked?"
+  //
+  // He is describing a real cost. A file at Listing set-up shows a dozen of
+  // these cards at once, each carrying two lines of standing explanation that
+  // never change and that an agent stops reading after their second listing.
+  // Twelve cards of permanent prose buries the one line on the page that is
+  // actually about this file.
+  //
+  // THE LEGAL BASIS HIDES WITH IT. The section reference is the least glanceable
+  // thing on the card and the most likely to read as clutter, and it is still
+  // one click away — and still printed in full on the compliance record, which
+  // is where an auditor looks. Nothing here is being removed, only folded.
+  //
+  // What deliberately does NOT hide: the card title, the status pill, the
+  // amber flags, and anything specific to this property. Those are the things
+  // that differ card to card and file to file, which is exactly what the extra
+  // room is for.
+  const [explainerOpen, setExplainerOpen] = useState(false);
+
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-rc-ink">{item.label}</h3>
+            <button
+              type="button"
+              onClick={() => setExplainerOpen((o) => !o)}
+              aria-expanded={explainerOpen}
+              aria-label={
+                explainerOpen ? `Hide what ${item.label} is for` : `What is ${item.label} for?`
+              }
+              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition ${
+                explainerOpen
+                  ? "bg-rc-green-soft text-rc-green-deep"
+                  : "text-rc-faint hover:bg-rc-bg-alt hover:text-rc-muted"
+              }`}
+            >
+              <Info size={13} aria-hidden="true" />
+            </button>
             {item.licenseeOnly && (
               <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rc-muted">
                 Licensee
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-rc-muted">{item.description}</p>
-          {item.legalBasis && (
-            <p className="mt-1 text-xs text-rc-faint">{item.legalBasis}</p>
+          {explainerOpen && (
+            <>
+              <p className="mt-1 text-sm text-rc-muted">{item.description}</p>
+              {item.legalBasis && <p className="mt-1 text-xs text-rc-faint">{item.legalBasis}</p>}
+            </>
           )}
         </div>
         <StatusPill status={status} awaitingReview={awaitingReview} />
