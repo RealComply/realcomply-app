@@ -78,12 +78,9 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
           </Link>{" "}
           and we&rsquo;ll be in touch.
         </p>
-        <p className="text-sm text-rc-muted">
-          Already set up?{" "}
-          <Link href="/login" className="font-medium text-rc-green-deep hover:underline">
-            Sign in
-          </Link>
-        </p>
+        {/* No "Already set up? Sign in" here — the card this sits inside
+            carries that line on every state, and duplicating it showed the
+            same sentence twice on the closed-signup page (Adam, 8 Sep 2026). */}
       </div>
     );
   }
