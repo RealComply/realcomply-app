@@ -866,9 +866,38 @@ export async function setReportDisclosureLoggedElsewhere(
   return setLoggedElsewhere(propertyId, "f4", formData);
 }
 
+/**
+ * The ESP reasoning, where the agent already wrote it somewhere else.
+ *
+ * Adam, 8 Sep 2026: "an agent may have already included notes and reasoning in
+ * the comparable files they upload / in CRM / other location, so let's create
+ * a box they can tick for that with the option to upload it."
+ *
+ * The third of these, and the one with the most law behind it. s72A(5)
+ * requires the agent to hold evidence that the estimate is reasonable and s74
+ * lets the Secretary demand it be substantiated — but neither says the
+ * evidence must live in any particular system. An agent who wrote their
+ * reasoning onto the comparables report itself, or into a CRM note at the
+ * appraisal, already holds it. Making them retype it into RealComply would
+ * produce a second version of the same opinion, and two differing accounts of
+ * how one price was formed is worse evidence than one.
+ *
+ * WHERE IS REQUIRED, the upload is not — Adam's choice, 8 Sep 2026. A file
+ * that says the reasoning exists without saying where is close to useless to
+ * whoever has to produce it, so the shared helper's "say where" rule earns its
+ * keep most on this item.
+ */
+export async function setEspReasoningRecordedElsewhere(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  return setLoggedElsewhere(propertyId, "a4c", formData);
+}
+
 async function setLoggedElsewhere(
   propertyId: string,
-  itemKey: "d2" | "f4",
+  itemKey: "d2" | "f4" | "a4c",
   formData: FormData,
 ): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
@@ -877,7 +906,12 @@ async function setLoggedElsewhere(
   const where = String(formData.get("where") ?? "").trim().slice(0, 160);
 
   if (elsewhere && !where) {
-    return { error: "Say where they're logged, so the file points at something." };
+    return {
+      error:
+        itemKey === "a4c"
+          ? "Say where the reasoning is recorded, so the file points at something."
+          : "Say where they're logged, so the file points at something.",
+    };
   }
 
   const { data: row } = await supabase

@@ -1,10 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Info, RotateCcw, Eraser } from "lucide-react";
-import { ESP_GENERIC_FACTORS } from "@/lib/rules/esp-generic-factors";
 import {
   buildReasoningDraft,
-  fileSpecificPrompts,
   reasoningNudge,
   type Comparable,
   type EspFigures,
@@ -19,9 +18,17 @@ import {
 // text in the ESP reasoning recorded card, just as a draft that the agent can
 // either accept or edit?"
 //
-// What lives here is everything around that box: rebuilding the draft after
-// the agent changes their marks, clearing it, the file-specific prompts, the
-// generic factors, and the nudge.
+// What lives here is what belongs immediately under the box: the two buttons
+// that rewrite it, one line saying where its contents came from, and the
+// nudge.
+//
+// SLIMMED 8 Sep 2026. This component used to own three panels as well — the
+// file-specific prompts, the generic factors, and a paragraph explaining the
+// draft's provenance. Adam: "the whole thing is a bit busy and hard to follow.
+// You have to jump up and down through the whole ESP reasoning section." The
+// prompts moved into the single drawer in EspPrompts, and the paragraph became
+// one line with the full text behind a disclosure. Nothing was deleted; the
+// same words are one click away.
 //
 // THE LINE, restated because this is the component most likely to be misread
 // as the software writing the reasoning. Every clause in the draft is a figure
@@ -51,8 +58,8 @@ export function ReasoningAssist({
   /** Once the agent has marked the card done, this is a record, not a draft. */
   isDone: boolean;
 }) {
+  const [whyOpen, setWhyOpen] = useState(false);
   const draft = buildReasoningDraft(subject, comparables, esp);
-  const prompts = fileSpecificPrompts(subject, comparables);
   const nudge = reasoningNudge(savedReasoning, comparables);
   const marked = comparables.filter((c) => c.weighting !== null).length;
 
@@ -72,19 +79,13 @@ export function ReasoningAssist({
 
   return (
     <div className="mt-2 space-y-2">
-      {/* Where the draft came from, and where it stops. Shown while the card
-          is still open, because that is when someone is deciding whether to
-          accept what is in the box. */}
+      {/* Directly under the box these buttons rewrite, rather than in a panel
+          of their own further down. Adam had to scroll past the sales to find
+          them, which is the wrong way round for a control that acts on the
+          thing immediately above it. */}
       {draft && !isDone && (
-        <div className="rounded-lg border border-rc-green-deep/25 bg-rc-green-soft/50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold text-rc-green-deep">Where this draft came from</p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
-            Every line is a figure off the report, arithmetic against your listing, or something you
-            pressed or typed on the {marked === 1 ? "sale" : "sales"} above. It doesn&rsquo;t put a price of
-            its own on this property and doesn&rsquo;t say the estimate is reasonable —{" "}
-            <span className="font-semibold text-rc-ink">that part is yours to add.</span>
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => writeInto(draft, "replace")}
@@ -102,52 +103,41 @@ export function ReasoningAssist({
               Clear and write my own
             </button>
           </div>
-        </div>
-      )}
 
-      {prompts.length > 0 && !isDone && (
-        <div className="rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
-          <p className="text-[11px] font-semibold text-rc-ink">About this file</p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
-            Differences the sales actually show. Click one to drop it in as a heading — nothing is recorded
-            either way.
+          {/* ONE LINE ON THE FACE, the rest behind the icon — but the half
+              that carries the legal weight is the half that stays visible.
+              "The conclusion is yours" is the sentence the agency's position
+              rests on if s74 ever asks who formed this opinion, so it is not
+              the part that gets folded away. What folds is the explanation of
+              how the draft was assembled, which matters once and then never
+              again. */}
+          <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-rc-muted">
+            <span>
+              Built from your marks on the {marked === 1 ? "sale" : "sales"} above.{" "}
+              <span className="font-semibold text-rc-ink">The conclusion is yours to add.</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setWhyOpen((v) => !v)}
+              aria-expanded={whyOpen}
+              aria-label={whyOpen ? "Hide where this draft came from" : "Where did this draft come from?"}
+              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition ${
+                whyOpen
+                  ? "bg-rc-green-soft text-rc-green-deep"
+                  : "text-rc-faint hover:bg-rc-bg-alt hover:text-rc-muted"
+              }`}
+            >
+              <Info size={12} aria-hidden="true" />
+            </button>
           </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {prompts.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => writeInto(p, "heading")}
-                className="rounded-full border border-rc-border bg-white px-2.5 py-1 text-[11px] font-medium text-rc-muted transition hover:border-rc-green-deep/40 hover:text-rc-ink"
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* The generic half of Adam's two-part idea: things that bear on the
-          price but belong to no single sale, so they cannot sit on a row. */}
-      {!isDone && (
-        <div className="rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
-          <p className="text-[11px] font-semibold text-rc-ink">Not about any one sale</p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
-            Things that affect the price but don&rsquo;t belong on a single comparable. Tap any that
-            mattered — nothing is recorded either way.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {ESP_GENERIC_FACTORS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => writeInto(f, "heading")}
-                className="rounded-full border border-rc-border bg-white px-2.5 py-1 text-[11px] font-medium text-rc-muted transition hover:border-rc-green-deep/40 hover:text-rc-ink"
-              >
-                {f}
-              </button>
-            ))}
-          </div>
+          {whyOpen && (
+            <p className="mt-1.5 rounded-lg border border-rc-green-deep/25 bg-rc-green-soft/50 px-3 py-2 text-[11px] leading-relaxed text-rc-muted">
+              Every line is a figure off the report, arithmetic against your listing, or something you
+              pressed or typed on the {marked === 1 ? "sale" : "sales"} above. It doesn&rsquo;t put a price
+              of its own on this property and doesn&rsquo;t say the estimate is reasonable.
+            </p>
+          )}
         </div>
       )}
 

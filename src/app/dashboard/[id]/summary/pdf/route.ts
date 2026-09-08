@@ -139,6 +139,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     items,
     byKey,
     espReasoning: noteOf("a4c"),
+    // Where the agent said the reasoning lives, if they said it lives outside
+    // RealComply. Without this the section simply vanishes from the record,
+    // which reads as "no reasoning was recorded" — the worst thing a file can
+    // imply on the item s74 is most likely to ask about.
+    espReasoningElsewhere:
+      (byKey["a4c"]?.data as { loggedElsewhere?: boolean; loggedElsewhereWhere?: string | null } | undefined)
+        ?.loggedElsewhere === true
+        ? ((byKey["a4c"]?.data as { loggedElsewhereWhere?: string | null } | undefined)
+            ?.loggedElsewhereWhere ?? null)
+        : null,
     // The sales the agent weighed. Part of the methodology record, not a
     // nicety — see the field note on ComplianceRecordInput.
     comparables: (await comparablesFor(supabase, id)).map((c) => ({

@@ -19,6 +19,7 @@ import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } fr
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import {
+  setEspReasoningRecordedElsewhere,
   setReportDisclosureLoggedElsewhere,
   setItemStatus,
   addOfferEntry,
@@ -54,7 +55,7 @@ import { isAiReadItem } from "@/lib/documents/ai-read-items";
 import { DictatableTextarea } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
-import { buildReasoningDraft, type EspFigures } from "@/lib/data/comparables";
+import { buildReasoningDraft, fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
 import { ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
@@ -584,6 +585,9 @@ function ChecklistItem({
     espLow?: number;
     espHigh?: number;
     materialFactDisclosed?: boolean;
+    /** a4c: the agent recorded their reasoning in their CRM or on the report. */
+    loggedElsewhere?: boolean;
+    loggedElsewhereWhere?: string | null;
     preCommencement?: boolean;
     preCommencementAgreementDate?: string;
     preCommencementRevokedOn?: string;
@@ -651,8 +655,13 @@ function ChecklistItem({
   // not been confirmed. Not tied to whether the text was generated: unsaved is
   // unsaved, and calling only the machine's half a draft would imply the
   // agent's half was already recorded when it is not.
+  // Set by the "already recorded somewhere else" box. When it is on, this
+  // card is a pointer plus an optional attachment, so nothing that drafts or
+  // prompts for text should render — see the control itself for why.
+  const espElsewhere = item.key === "a4c" && data.loggedElsewhere === true;
+
   const showsDraft =
-    item.key === "a4c" && !isDone && Boolean(data.note ?? reasoningDraft);
+    item.key === "a4c" && !isDone && !espElsewhere && Boolean(data.note ?? reasoningDraft);
 
   // a7. The agent's saved answer if there is one, otherwise what the agreement
   // said, otherwise nothing — see the select below.
@@ -1058,6 +1067,66 @@ function ChecklistItem({
         ) : (
           !item.hideNote && (
             <div>
+              {/* THE SALES COME FIRST, above the box they fill.
+                  REORDERED 8 Sep 2026. Adam: "the whole thing is a bit busy
+                  and hard to follow. You have to jump up and down through the
+                  whole ESP reasoning section."
+
+                  The cause was an order that ran against the work. The writing
+                  box sat at the top and the weighting buttons that build its
+                  contents sat below it, so marking a sale meant scrolling back
+                  up to see what the marking did. Now the card reads downward
+                  once: mark the sales, read the draft they produced, open the
+                  prompts only if stuck.
+
+                  (The sales moved onto this card at all on 7 Sep — they were
+                  on the ESP card, where the report is attached, and Adam could
+                  not find them. Weighing the sales IS the reasoning, so they
+                  belong with it.) */}
+              {item.key === "a4c" && subject && !espElsewhere && (
+                <div className="mb-3">
+                  <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
+                </div>
+              )}
+
+              {/* "I already wrote this up somewhere else."
+                  Adam, 8 Sep 2026. The same control as the offer log and the
+                  report-disclosure card, on the item where it matters most:
+                  an agent who wrote their reasoning onto the comparables
+                  report at the appraisal, or into a CRM note, already holds
+                  the s72A(5) evidence. Retyping it here would create a second
+                  account of how one price was formed, and two differing
+                  accounts is worse evidence than one.
+
+                  When it is on, the drafting machinery goes away entirely —
+                  panel, draft box, prompts. Leaving a draft generator running
+                  underneath "this is recorded elsewhere" invites exactly the
+                  second version this control exists to prevent. An upload slot
+                  appears in its place (see a4c in nsw-sales.ts). */}
+              {item.key === "a4c" && (
+                <ElsewhereToggle
+                  propertyId={propertyId}
+                  elsewhere={espElsewhere}
+                  where={data.loggedElsewhereWhere ?? ""}
+                  action={setEspReasoningRecordedElsewhere}
+                  label="My reasoning is already recorded somewhere else"
+                  help="On the comparables report itself, in your CRM, or a file note. The record will point there instead — and you can attach a copy below."
+                  placeholder="Where? e.g. marked up on the Cotality report, LockedOn note"
+                  revertLabel="Save — write my reasoning here instead"
+                />
+              )}
+
+              {item.key === "a4c" && espElsewhere ? (
+                <p className="rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2 text-[11px] leading-relaxed text-rc-muted">
+                  The compliance record will show that your reasoning is recorded in{" "}
+                  <span className="font-semibold text-rc-ink">
+                    {data.loggedElsewhereWhere || "the place you named"}
+                  </span>
+                  . If you can export or scan it, attaching it below puts it on the file rather than only
+                  pointing at it — worth doing, not required.
+                </p>
+              ) : (
+                <>
               <label className="block text-xs text-rc-muted">
                 {item.noteLabel ?? "Note"}
                 {/* Marked required rather than silently rejected on save. The
@@ -1092,30 +1161,9 @@ function ChecklistItem({
                   showsDraft ? "border-l-4 border-rc-amber bg-rc-amber/5" : "border-rc-border"
                 }`}
               />
-              {/* a4c only. The REINSW factors as prompts, never tick boxes —
-                  see lib/rules/esp-prompts.ts for why that distinction is the
-                  whole point. Mocked up 22 Aug, approved, built 24 Aug after
-                  Adam noticed it had never landed. */}
-              {item.key === "a4c" && <EspPrompts noteId={`note-${item.key}`} />}
-              {/* a4c only, and only once there are sales to work from. Turns
-                  the weightings and one-liners the agent gave on the card
-                  above into a starting draft in their own words, and prompts
-                  them with the differences THIS file actually shows rather
-                  than the generic list. See ReasoningAssist for the line it
+              {/* a4c only. The buttons that rewrite the box, sitting directly
+                  under it, plus the nudge. See ReasoningAssist for the line it
                   must not cross. */}
-              {/* The sales, on the reasoning card rather than the ESP card.
-                  MOVED 7 Sep 2026. They were on a4 because that is where the
-                  report is attached, and Adam did not find them: "it needs to
-                  be moved to the ESP reasoning record."
-
-                  He is right, and the reason is stronger than where the file
-                  happens to hang. Weighing the sales IS the reasoning — the
-                  buttons and the notes are what the paragraph below is built
-                  from, so putting them two cards apart asked an agent to hold
-                  the comparison in their head while writing about it. */}
-              {item.key === "a4c" && subject && (
-                <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
-              )}
               {item.key === "a4c" && subject && (
                 <ReasoningAssist
                   noteId={`note-${item.key}`}
@@ -1124,6 +1172,18 @@ function ChecklistItem({
                   esp={esp}
                   savedReasoning={String(data.note ?? "")}
                   isDone={isDone}
+                />
+              )}
+              {/* a4c only. Every prompt on this card in one closed drawer —
+                  this file's own, the ones belonging to no single sale, and
+                  the REINSW list. Three panels until 8 Sep 2026; see
+                  EspPrompts for why they became one. Prompts, never tick
+                  boxes: lib/rules/esp-prompts.ts has why that is the whole
+                  point. */}
+              {item.key === "a4c" && (
+                <EspPrompts
+                  noteId={`note-${item.key}`}
+                  fileSpecific={subject ? fileSpecificPrompts(subject, comparables) : []}
                 />
               )}
               {/* Only while it is still a suggestion. Same rule as a7's select
@@ -1137,6 +1197,8 @@ function ChecklistItem({
                     advertised, edit it if it doesn&rsquo;t, and save. It isn&rsquo;t recorded until you do.
                   </span>
                 </p>
+              )}
+                </>
               )}
             </div>
           )

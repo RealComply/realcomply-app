@@ -200,6 +200,8 @@ export type ComplianceRecordInput = {
    * nothing at all.
    */
   espReasoning: string | null;
+  /** Where the agent said their reasoning is held, when it is not in RealComply. */
+  espReasoningElsewhere?: string | null;
   /**
    * The sales the agent weighed, and how they weighed them.
    *
@@ -256,6 +258,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     items,
     byKey,
     espReasoning,
+    espReasoningElsewhere = null,
     comparables,
     signatures,
     attachments,
@@ -407,7 +410,26 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     );
   }
 
-  if (espReasoning && espReasoning.trim()) {
+  // Where the agent said their reasoning lives outside RealComply, the record
+  // has to say so and say where. A record that simply omits this section
+  // reads as "no reasoning was recorded", which is both wrong and the worst
+  // possible thing for it to imply on the one item s74 is most likely to ask
+  // about. Naming the location turns a silence into a pointer somebody can
+  // follow. Where they also attached a copy, it is on the file already and
+  // listed with the other evidence.
+  if (espReasoningElsewhere) {
+    c.rule(6, 10);
+    c.text("How the estimated selling price was formed", { size: 11, bold: true, gap: 4 });
+    c.text(`Recorded by the agent in: ${ascii(espReasoningElsewhere)}`, {
+      size: 9.5,
+      color: MUTED,
+      gap: 2,
+    });
+    c.text(
+      "The agent recorded their reasoning outside this system and identified where it is held. s72A(5), Property and Stock Agents Act 2002 (NSW).",
+      { size: 8, color: FAINT },
+    );
+  } else if (espReasoning && espReasoning.trim()) {
     c.rule(6, 10);
     c.text("How the estimated selling price was formed", { size: 11, bold: true, gap: 4 });
     c.text(espReasoning.trim(), { size: 9.5, color: MUTED, gap: 2 });

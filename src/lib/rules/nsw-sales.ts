@@ -385,13 +385,30 @@ const items: ComplianceItem[] = [
     // Hiding it by default would leave a card that drafts text for them with
     // no visible statement of whose text it becomes.
     alwaysShowExplainer: true,
-    // No attachment here. The evidence for the ESP reasoning is the
-    // comparable-sales report, which is already attached to a4 directly
-    // above — asking for a second upload on the reasoning itself invites the
-    // same file twice and makes the card look incomplete when it is not
-    // (Adam, 15 Aug 2026). The same reasoning is why a4 above no longer has a
-    // slot of its own beyond the report: see the merge note there.
-    hideEvidence: true,
+    // NO ATTACHMENT SLOT BY DEFAULT, and one the moment the agent says the
+    // reasoning lives somewhere else.
+    //
+    // The default is unchanged and its reasoning still holds (Adam, 15 Aug
+    // 2026): the evidence for the ESP reasoning is the comparable-sales
+    // report, already attached to the card above, so an always-on slot here
+    // invites the same file twice and makes a finished card look unfinished.
+    //
+    // But Adam, 8 Sep 2026: "an agent may have already included notes and
+    // reasoning in the comparable files they upload / in CRM / other
+    // location". That is the common case, not an edge case — a working agent
+    // has often written this up before RealComply ever sees the file, and
+    // asking them to type it again is the double entry this product exists to
+    // remove. Where they say so, a slot appears so the marked-up report or
+    // the exported CRM note can sit on the file rather than only be pointed
+    // at. Optional by design: an agent whose CRM will not export should not
+    // be blocked, and the pointer alone still satisfies s72A(5), which
+    // requires the agent to HOLD evidence, not to hold it here.
+    //
+    // resolveItem also refuses to hide a slot that already has a file in it,
+    // so unticking the box later cannot strand an upload.
+    hideEvidenceWhen: (current) =>
+      (current?.data as { loggedElsewhere?: boolean } | undefined)?.loggedElsewhere !== true,
+    evidenceLabel: "Your reasoning, if you have it as a file",
     requiresDate: false,
     requiredForStageCompletion: true,
   },

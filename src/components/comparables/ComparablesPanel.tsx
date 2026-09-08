@@ -335,7 +335,24 @@ function ComparableRow({
                   </span>
                 ))
               ) : (
-                <span className="text-[11px] italic text-rc-faint">Nothing differs</span>
+                // NOT "nothing differs", and not "no significant differences"
+                // either. Adam raised the first as too blunt on 8 Sep 2026 and
+                // suggested the second; the second is worse for a reason worth
+                // keeping. "Significant" is a judgement, and the whole defence
+                // of this feature is that the software does the arithmetic
+                // while the agent forms the opinion — software grading a
+                // comparison is the sentence you would least want to explain
+                // under s74.
+                //
+                // "Nothing differs" was also just untrue. The comparison
+                // ignores area gaps under AREA_NOISE_SQM and skips any field
+                // the report left blank, so what it can honestly report is the
+                // absence of a difference IN WHAT IT MEASURED. Saying so also
+                // tells the agent that a difference they know of and the
+                // report missed is theirs to type in.
+                <span className="text-[11px] italic text-rc-faint">
+                  No differences on the details recorded
+                </span>
               )}
             </div>
           </div>
