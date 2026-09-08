@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { FileText, RefreshCw, X } from "lucide-react";
+import { Download, Eye, FileText, RefreshCw, X } from "lucide-react";
 import { FileDropZone } from "@/components/FileDropZone";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { uploadEvidenceObject, buildSignoffDocPath, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
@@ -60,21 +60,35 @@ export function TrustMonthCard({
   // to open what they signed — was the one thing the card could not do. That
   // matters beyond convenience: a signature is worth what the signer could
   // check, and a month he cannot reopen is a month he has to take on trust.
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  // TWO urls, not one. Viewing and saving are different jobs and the
+  // difference is a header: the plain signed URL opens the report in the
+  // browser's own viewer, and the same URL asked for with `download` comes
+  // back telling the browser to save it under the original file name instead.
+  // Without the second one, "download" means right-click, Save as, and a file
+  // called something like a UUID — Adam, 8 Sep 2026: "I want to be able to
+  // actually click on the monthly card and be able to view the signed document
+  // and download it if I need to."
+  const [viewUrl, setViewUrl] = useState<string | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!month.filePath) return;
     let cancelled = false;
     const supabase = createBrowserClient();
-    supabase.storage
-      .from(EVIDENCE_BUCKET)
-      .createSignedUrl(month.filePath, 3600)
+    const bucket = supabase.storage.from(EVIDENCE_BUCKET);
+
+    bucket.createSignedUrl(month.filePath, 3600).then(({ data }) => {
+      if (!cancelled) setViewUrl(data?.signedUrl ?? null);
+    });
+    bucket
+      .createSignedUrl(month.filePath, 3600, { download: month.fileName ?? true })
       .then(({ data }) => {
-        if (!cancelled) setSignedUrl(data?.signedUrl ?? null);
+        if (!cancelled) setDownloadUrl(data?.signedUrl ?? null);
       });
+
     return () => {
       cancelled = true;
     };
-  }, [month.filePath]);
+  }, [month.filePath, month.fileName]);
 
   // Swapping the wrong report for the right one.
   //
@@ -168,7 +182,24 @@ export function TrustMonthCard({
     >
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-rc-ink">{month.label}</p>
+          {/* The month name opens the report too, because that is the thing
+              the eye lands on first and Adam reached for it before he found
+              anything else. Not the whole card: it holds a Replace button, a
+              signature form and a file input, and a card-wide click target
+              that swallows a stray tap into a new tab is worse than one that
+              never offered. */}
+          {viewUrl ? (
+            <a
+              href={viewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-bold text-rc-ink transition hover:text-rc-green-deep hover:underline"
+            >
+              {month.label}
+            </a>
+          ) : (
+            <p className="text-sm font-bold text-rc-ink">{month.label}</p>
+          )}
           <p className="mt-0.5 text-xs text-rc-muted">
             {month.status === "signed" && month.signedAt
               ? `Signed ${formatAuDate(month.signedAt.slice(0, 10))}${
@@ -199,22 +230,55 @@ export function TrustMonthCard({
         </span>
       </div>
 
+      {/* The document itself: name, open, save.
+          Adam, 8 Sep 2026, on a month he had already signed: "I want to be
+          able to actually click on the monthly card and be able to view the
+          signed document and download it if I need to."
+
+          Given its own bordered row rather than left as a line of text,
+          because on a signed month this IS the card's purpose. Everything
+          else on a completed month is history; the one live action is to open
+          what was signed. A signature is worth what the signer could check,
+          and until this existed a signed month could not be reopened at all.
+
+          Both controls stay put while their URLs are being minted, disabled
+          rather than absent — a button that appears a moment later is a button
+          the eye has already skipped past. */}
       {month.fileName && (
-        <p className="mt-3 flex items-center gap-2 text-xs text-rc-muted">
-          <FileText size={13} aria-hidden="true" className="shrink-0" />
-          {signedUrl ? (
+        <div className="mt-3 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2">
+          <p className="flex items-center gap-2 text-xs text-rc-ink">
+            <FileText size={13} aria-hidden="true" className="shrink-0 text-rc-muted" />
+            <span className="truncate font-medium">{month.fileName}</span>
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
             <a
-              href={signedUrl}
+              href={viewUrl ?? undefined}
               target="_blank"
               rel="noopener noreferrer"
-              className="truncate text-rc-green-deep hover:underline"
+              aria-disabled={!viewUrl}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                viewUrl
+                  ? "bg-rc-green-deep text-white hover:bg-rc-green-deep-600"
+                  : "pointer-events-none bg-rc-green-deep/40 text-white"
+              }`}
             >
-              {month.fileName}
+              <Eye size={12} aria-hidden="true" />
+              {month.status === "signed" ? "View signed report" : "View report"}
             </a>
-          ) : (
-            <span className="truncate">{month.fileName}</span>
-          )}
-        </p>
+            <a
+              href={downloadUrl ?? undefined}
+              aria-disabled={!downloadUrl}
+              className={`inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold transition ${
+                downloadUrl
+                  ? "text-rc-muted hover:border-rc-ink/20 hover:text-rc-ink"
+                  : "pointer-events-none text-rc-faint"
+              }`}
+            >
+              <Download size={12} aria-hidden="true" />
+              Download
+            </a>
+          </div>
+        </div>
       )}
 
       {/* The amendment history, on the face of the card rather than buried.
