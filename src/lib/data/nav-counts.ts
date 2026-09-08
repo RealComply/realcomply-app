@@ -284,8 +284,12 @@ export const navCountsFor = cache(async function navCountsFor(
         documentId: doc.id,
         month: doc.period_month,
         fileName: null,
+        filePath: null,
         uploadedByName: null,
         signedAt: signatures.find((sig) => sig.document_id === doc.id && sig.signed_at)?.signed_at ?? null,
+        // Only the status matters here — this feeds the nav badge, not a card.
+        signedName: null,
+        notes: null,
       });
     }
     const months = buildMonths(auditPeriodEndFor(today), records, today);

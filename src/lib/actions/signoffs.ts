@@ -140,6 +140,93 @@ export async function signDocument(documentId: string, _prev: ActionState, formD
   return { error: error ? "Couldn't record that signature — try again." : null };
 }
 
+// ── Replacing a document that is already on file ────────────────────────
+//
+// Adam, 8 Sep 2026: "I accidentally put August's report in the July section
+// and signed it off. Now I can't see a way to go back and reopen it to amend
+// the document."
+//
+// A real gap, and the fix has to be shaped by what these records ARE. cl 27(5)
+// (b) of the Regulation requires the licensee to prepare a monthly statement
+// reconciling the trust account against the cash book, and it carries a
+// penalty. The signature on it is the licensee's assertion that they did that,
+// for that month, on that date.
+//
+// So the wrong fix is a silent file swap. That would leave a signature dated
+// 5 August attached to a document uploaded on 8 September, asserting something
+// about July that the licensee never actually reviewed on the date shown — a
+// record that is wrong in a way nobody can see, which is worse than the
+// original mistake, which at least announced itself.
+//
+// THREE RULES, and each is here for that reason:
+//
+//   1. Replacing a SIGNED document VOIDS the signature. The month drops back
+//      to "waiting on the licensee" and has to be signed again. The new
+//      signature then carries the date the licensee actually reviewed the
+//      right report.
+//   2. The replacement is RECORDED, in notes, with what was replaced, by whom
+//      and when. An amended record that shows it was amended is evidence; one
+//      that hides it is a liability.
+//   3. The old file is NOT deleted from storage. It is a trust record, s104
+//      keeps records for three years, and a wrong file in the wrong month is
+//      still a document that existed. Orphaning it costs a few kilobytes;
+//      destroying it costs the ability to explain what happened.
+//
+// Licensee only, like the signature itself.
+export async function replaceSignoffDocument(
+  documentId: string,
+  params: { filePath: string; fileName: string },
+): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+  if (!profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can replace a report that is already on file." };
+  }
+
+  const { data: doc } = await supabase
+    .from("signoff_documents")
+    .select("id, file_name, notes")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (!doc) return { error: "That document couldn't be found." };
+
+  const previous = (doc as { file_name: string | null }).file_name ?? "the previous file";
+  const existingNotes = (doc as { notes: string | null }).notes;
+  const when = new Date().toISOString().slice(0, 10);
+  const by = profile.full_name ?? profile.email ?? "the licensee in charge";
+  const line = `Replaced ${when} by ${by}. Previous file: ${previous}. Any signature on the previous file was voided and the report re-signed.`;
+
+  const { error } = await supabase
+    .from("signoff_documents")
+    .update({
+      file_path: params.filePath,
+      file_name: params.fileName,
+      notes: existingNotes ? `${existingNotes}\n${line}` : line,
+    })
+    .eq("id", documentId);
+
+  if (error) {
+    console.error("replaceSignoffDocument failed:", documentId, error.message);
+    return { error: "Couldn't replace that report — try again." };
+  }
+
+  // Rule 1. Cleared rather than deleted, so the signer row survives and the
+  // month reads as "waiting on the licensee" rather than "not uploaded".
+  const { error: sigError } = await supabase
+    .from("signoff_signatures")
+    .update({ signed_at: null, typed_name: null })
+    .eq("document_id", documentId);
+
+  if (sigError) {
+    console.error("voiding signature failed:", documentId, sigError.message);
+    return { error: "The file was replaced but the old signature could not be cleared. Tell support before signing again." };
+  }
+
+  revalidatePath("/dashboard/trust");
+  revalidatePath("/dashboard/document-signoffs");
+  revalidatePath("/dashboard/registers");
+  return ok;
+}
+
 export async function deleteSignoffDocument(documentId: string): Promise<void> {
   const { supabase, profile } = await requireAuthContext();
   if (!profile.is_licensee_in_charge) return;

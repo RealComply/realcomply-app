@@ -46,8 +46,14 @@ export type ReconciliationMonth = {
   status: MonthStatus;
   documentId: string | null;
   fileName: string | null;
+  /** Storage path, so the card can offer a link to the actual document. */
+  filePath: string | null;
   uploadedByName: string | null;
   signedAt: string | null;
+  /** The name the licensee typed when they signed it. */
+  signedName: string | null;
+  /** Amendment history, appended by replaceSignoffDocument. */
+  notes: string | null;
 };
 
 // ── Date helpers ──────────────────────────────────────────────────────────
@@ -144,8 +150,11 @@ export type ReconciliationRecord = {
   documentId: string;
   month: string;
   fileName: string | null;
+  filePath: string | null;
   uploadedByName: string | null;
   signedAt: string | null;
+  signedName: string | null;
+  notes: string | null;
 };
 
 export function statusFor(
@@ -174,8 +183,11 @@ export function buildMonths(
       status: statusFor(month, record, today),
       documentId: record?.documentId ?? null,
       fileName: record?.fileName ?? null,
+      filePath: record?.filePath ?? null,
       uploadedByName: record?.uploadedByName ?? null,
       signedAt: record?.signedAt ?? null,
+      signedName: record?.signedName ?? null,
+      notes: record?.notes ?? null,
     };
   });
 }
