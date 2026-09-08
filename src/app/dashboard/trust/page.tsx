@@ -76,6 +76,8 @@ export default async function TrustAccountsPage({
         month: doc.period_month,
         fileName: doc.file_name,
         filePath: doc.file_path,
+        signedFilePath: doc.signed_file_path,
+        signedFileName: doc.signed_file_name,
         uploadedByName: nameOf(doc.uploaded_by),
         signedAt: sigs.find((s) => s.document_id === doc.id && s.signed_at)?.signed_at ?? null,
         signedName: sigs.find((s) => s.document_id === doc.id && s.signed_at)?.typed_name ?? null,

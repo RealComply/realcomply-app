@@ -285,6 +285,8 @@ export const navCountsFor = cache(async function navCountsFor(
         month: doc.period_month,
         fileName: null,
         filePath: null,
+        signedFilePath: null,
+        signedFileName: null,
         uploadedByName: null,
         signedAt: signatures.find((sig) => sig.document_id === doc.id && sig.signed_at)?.signed_at ?? null,
         // Only the status matters here — this feeds the nav badge, not a card.

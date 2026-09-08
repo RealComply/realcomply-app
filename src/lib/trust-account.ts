@@ -46,8 +46,11 @@ export type ReconciliationMonth = {
   status: MonthStatus;
   documentId: string | null;
   fileName: string | null;
-  /** Storage path, so the card can offer a link to the actual document. */
+  /** Storage path of the document as uploaded. */
   filePath: string | null;
+  /** The signed copy — the upload plus a signature page. Null until signed. */
+  signedFilePath: string | null;
+  signedFileName: string | null;
   uploadedByName: string | null;
   signedAt: string | null;
   /** The name the licensee typed when they signed it. */
@@ -151,6 +154,8 @@ export type ReconciliationRecord = {
   month: string;
   fileName: string | null;
   filePath: string | null;
+  signedFilePath: string | null;
+  signedFileName: string | null;
   uploadedByName: string | null;
   signedAt: string | null;
   signedName: string | null;
@@ -184,6 +189,8 @@ export function buildMonths(
       documentId: record?.documentId ?? null,
       fileName: record?.fileName ?? null,
       filePath: record?.filePath ?? null,
+      signedFilePath: record?.signedFilePath ?? null,
+      signedFileName: record?.signedFileName ?? null,
       uploadedByName: record?.uploadedByName ?? null,
       signedAt: record?.signedAt ?? null,
       signedName: record?.signedName ?? null,

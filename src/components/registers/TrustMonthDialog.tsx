@@ -57,6 +57,7 @@ export function TrustMonthDialog({
 }) {
   const [viewUrl, setViewUrl] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null);
 
   // Escape closes it, and the page behind stops scrolling while it is open —
   // a modal you can scroll the page under reads as broken.
@@ -73,31 +74,48 @@ export function TrustMonthDialog({
     };
   }, [onClose]);
 
+  // THE SIGNED COPY IS WHAT OPENS, once there is one.
+  //
+  // Adam, 8 Sep 2026: "there's no signature on these documents. We have a
+  // button that says sign. It labels the document as being signed. And then
+  // when you open it, there's no signature." Signing now appends a signature
+  // page to the report (see lib/pdf/sign-stamp.ts) and this shows that version
+  // — otherwise the fix would exist in storage and not on his screen.
+  //
+  // The upload stays reachable underneath, because "the document as uploaded"
+  // and "the document as signed" are two records and an auditor may want both.
+  const showPath = month.signedFilePath ?? month.filePath;
+  const showName = month.signedFileName ?? month.fileName;
+
   useEffect(() => {
-    if (!month.filePath) return;
+    if (!showPath) return;
     let cancelled = false;
     const bucket = createBrowserClient().storage.from(EVIDENCE_BUCKET);
 
-    bucket.createSignedUrl(month.filePath, 3600).then(({ data }) => {
+    bucket.createSignedUrl(showPath, 3600).then(({ data }) => {
       if (!cancelled) setViewUrl(data?.signedUrl ?? null);
     });
-    bucket
-      .createSignedUrl(month.filePath, 3600, { download: month.fileName ?? true })
-      .then(({ data }) => {
-        if (!cancelled) setDownloadUrl(data?.signedUrl ?? null);
+    bucket.createSignedUrl(showPath, 3600, { download: showName ?? true }).then(({ data }) => {
+      if (!cancelled) setDownloadUrl(data?.signedUrl ?? null);
+    });
+    if (month.signedFilePath && month.filePath) {
+      bucket.createSignedUrl(month.filePath, 3600).then(({ data }) => {
+        if (!cancelled) setOriginalUrl(data?.signedUrl ?? null);
       });
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [month.filePath, month.fileName]);
+  }, [showPath, showName, month.signedFilePath, month.filePath]);
 
   // Only ever rendered once a tile has been clicked, so on the server there
   // is nothing to portal into and nothing to draw.
   if (typeof document === "undefined") return null;
 
-  const isImage = /\.(png|jpe?g|gif|webp)$/i.test(month.fileName ?? "");
-  const isPdf = /\.pdf$/i.test(month.fileName ?? "");
+  const isImage = /\.(png|jpe?g|gif|webp)$/i.test(showName ?? "");
+  // The signed copy is always a PDF, whatever was uploaded.
+  const isPdf = Boolean(month.signedFilePath) || /\.pdf$/i.test(showName ?? "");
 
   // Portalled to the body. Nested inside the register it would inherit the
   // card's stacking context and end up behind the sticky header.
@@ -141,7 +159,7 @@ export function TrustMonthDialog({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {month.filePath && (
+          {showPath && (
             <div className="border-b border-rc-border bg-rc-bg-alt">
               {/* The document itself. A PDF renders in the browser's own
                   viewer, which already has page controls, zoom and search —
@@ -171,7 +189,7 @@ export function TrustMonthDialog({
                   // plainly, with the two things that do work, rather than
                   // rendered as an empty box the agent reads as a failure.
                   <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-                    <p className="text-sm font-semibold text-rc-ink">{month.fileName}</p>
+                    <p className="text-sm font-semibold text-rc-ink">{showName}</p>
                     <p className="text-xs text-rc-muted">
                       This file type can&rsquo;t be previewed here. Download it, or open it in a new tab.
                     </p>
@@ -204,7 +222,21 @@ export function TrustMonthDialog({
                   <ExternalLink size={12} aria-hidden="true" />
                   Open in a new tab
                 </a>
-                <span className="ml-auto truncate text-[11px] text-rc-faint">{month.fileName}</span>
+                {/* The upload as it arrived, when a signed copy is what is on
+                    screen. Quiet, because it is the rarer need, but present:
+                    the two files differ only by the page we added and an
+                    auditor is entitled to check that. */}
+                {originalUrl && (
+                  <a
+                    href={originalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-medium text-rc-muted underline decoration-rc-border underline-offset-2 transition hover:text-rc-ink"
+                  >
+                    View the unsigned original
+                  </a>
+                )}
+                <span className="ml-auto truncate text-[11px] text-rc-faint">{showName}</span>
               </div>
             </div>
           )}

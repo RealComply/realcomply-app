@@ -277,6 +277,14 @@ export type SignoffDocument = {
   trust_account_id: string | null;
   file_path: string;
   file_name: string;
+  /**
+   * The uploaded document with a signature page appended, written when the
+   * licensee signs. Null until then, and null where the upload could not be
+   * opened as a PDF — in that case the signature is a standalone certificate
+   * at this same path. Either way, the original at file_path is untouched.
+   */
+  signed_file_path: string | null;
+  signed_file_name: string | null;
   notes: string | null;
   signer_scope: SignerScope;
   uploaded_by: string | null;

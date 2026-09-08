@@ -79,25 +79,28 @@ export function TrustMonthCard({
   // and download it if I need to."
   const [viewUrl, setViewUrl] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  // The signed copy where there is one — the report with its signature page —
+  // and the upload otherwise. Same rule as the dialog; see the note there.
+  const showPath = month.signedFilePath ?? month.filePath;
+  const showName = month.signedFileName ?? month.fileName;
+
   useEffect(() => {
-    if (!month.filePath) return;
+    if (!showPath) return;
     let cancelled = false;
     const supabase = createBrowserClient();
     const bucket = supabase.storage.from(EVIDENCE_BUCKET);
 
-    bucket.createSignedUrl(month.filePath, 3600).then(({ data }) => {
+    bucket.createSignedUrl(showPath, 3600).then(({ data }) => {
       if (!cancelled) setViewUrl(data?.signedUrl ?? null);
     });
-    bucket
-      .createSignedUrl(month.filePath, 3600, { download: month.fileName ?? true })
-      .then(({ data }) => {
-        if (!cancelled) setDownloadUrl(data?.signedUrl ?? null);
-      });
+    bucket.createSignedUrl(showPath, 3600, { download: showName ?? true }).then(({ data }) => {
+      if (!cancelled) setDownloadUrl(data?.signedUrl ?? null);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [month.filePath, month.fileName]);
+  }, [showPath, showName]);
 
   // Swapping the wrong report for the right one.
   //
@@ -263,7 +266,7 @@ export function TrustMonthCard({
         <div className="mt-3 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2">
           <p className="flex items-center gap-2 text-xs text-rc-ink">
             <FileText size={13} aria-hidden="true" className="shrink-0 text-rc-muted" />
-            <span className="truncate font-medium">{month.fileName}</span>
+            <span className="truncate font-medium">{showName}</span>
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <a

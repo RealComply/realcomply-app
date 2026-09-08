@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
+import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { appendSignaturePage, buildSignatureCertificate } from "@/lib/pdf/sign-stamp";
 import type { SignoffCategory, SignerScope } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -119,10 +121,16 @@ export async function signDocument(documentId: string, _prev: ActionState, formD
     return { error: "Type your full name to adopt it as your signature." };
   }
 
-  const { data: doc } = await supabase.from("signoff_documents").select("id").eq("id", documentId).maybeSingle();
+  const { data: doc } = await supabase
+    .from("signoff_documents")
+    .select("id, title, file_path, file_name, category, period_label, signed_file_path")
+    .eq("id", documentId)
+    .maybeSingle();
   if (!doc) {
     return { error: "That document couldn't be found." };
   }
+
+  const signedAt = new Date().toISOString();
 
   const { error } = await supabase.from("signoff_signatures").upsert(
     {
@@ -130,15 +138,135 @@ export async function signDocument(documentId: string, _prev: ActionState, formD
       agency_id: profile.agency_id,
       signer_id: profile.id,
       typed_name: typedName,
-      signed_at: new Date().toISOString(),
+      signed_at: signedAt,
     },
     { onConflict: "document_id,signer_id" },
   );
 
+  if (error) {
+    return { error: "Couldn't record that signature — try again." };
+  }
+
+  // THEN PUT IT ON THE DOCUMENT.
+  //
+  // Deliberately after the signature row and deliberately not fatal. The row
+  // is the signature; this is the signature made portable. If stamping fails —
+  // a PDF we cannot open, storage having a bad minute — the licensee has still
+  // signed and must not be told otherwise, so the failure is logged and the
+  // action still succeeds. What must never happen is the reverse: a stamped
+  // file with no row behind it.
+  await stampSignedCopy(supabase, {
+    documentId,
+    agencyId: profile.agency_id,
+    title: (doc as { title: string }).title,
+    filePath: (doc as { file_path: string }).file_path,
+    fileName: (doc as { file_name: string }).file_name,
+    category: (doc as { category: string }).category,
+    typedName,
+    signedAt,
+    signerName: profile.full_name ?? typedName,
+    isLicensee: profile.is_licensee_in_charge === true,
+  });
+
+  revalidatePath("/dashboard/trust");
   revalidatePath("/dashboard/document-signoffs");
   revalidatePath("/dashboard/sg-manual");
-  return { error: error ? "Couldn't record that signature — try again." : null };
+  revalidatePath("/dashboard/registers");
+  return ok;
 }
+
+/** The legal line printed on the signature page, per category. */
+const SIGNED_BASIS: Record<string, string> = {
+  trust_reconciliation:
+    "cl 27(5)(b) and cl 30(1), Property and Stock Agents Regulation 2022 (NSW)",
+  sg_manual: "s32, Property and Stock Agents Act 2002 (NSW) — supervision guidelines",
+};
+
+async function stampSignedCopy(
+  supabase: Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
+  p: {
+    documentId: string;
+    agencyId: string;
+    title: string;
+    filePath: string;
+    fileName: string;
+    category: string;
+    typedName: string;
+    signedAt: string;
+    signerName: string;
+    isLicensee: boolean;
+  },
+): Promise<void> {
+  try {
+    // The agency's own name, off the agency row rather than the profile —
+    // profiles do not carry it. This is the agency's record and the page says
+    // so at the top; falling back to a generic label would produce a signature
+    // page that could belong to anybody.
+    const { data: agency } = await supabase
+      .from("agencies")
+      .select("name")
+      .eq("id", p.agencyId)
+      .maybeSingle();
+
+    const stamp = {
+      title: p.title,
+      agencyName: (agency as { name?: string } | null)?.name ?? "This agency",
+      typedName: p.typedName,
+      role: p.isLicensee ? "Licensee in charge" : "Signed by",
+      signedAt: p.signedAt,
+      documentFileName: p.fileName,
+      legalBasis: SIGNED_BASIS[p.category],
+    };
+
+    const { data: blob, error: dlError } = await supabase.storage
+      .from(EVIDENCE_BUCKET)
+      .download(p.filePath);
+
+    let bytes: Uint8Array | null = null;
+    let suffix = "signed.pdf";
+
+    if (blob && !dlError) {
+      const original = new Uint8Array(await blob.arrayBuffer());
+      bytes = await appendSignaturePage(original, stamp);
+      if (bytes) {
+        // "Report July 2026.pdf" -> "Report July 2026 (signed).pdf"
+        suffix = `${p.fileName.replace(/\.pdf$/i, "")} (signed).pdf`;
+      }
+    } else if (dlError) {
+      console.error("stampSignedCopy download failed:", p.filePath, dlError.message);
+    }
+
+    if (!bytes) {
+      // Not a PDF we could open, or the original could not be read. A
+      // standalone certificate still gives the agency a signature they can
+      // file and send.
+      bytes = await buildSignatureCertificate(stamp);
+      suffix = `${p.fileName.replace(/\.[^.]+$/, "")} — signature.pdf`;
+    }
+
+    const path = `${p.agencyId}/_signoffs/signed/${Date.now()}-${suffix.replace(/[^A-Za-z0-9._ ()-]/g, "_")}`;
+    const { error: upError } = await supabase.storage
+      .from(EVIDENCE_BUCKET)
+      .upload(path, bytes, { contentType: "application/pdf", upsert: false });
+
+    if (upError) {
+      console.error("stampSignedCopy upload failed:", path, upError.message);
+      return;
+    }
+
+    const { error: saveError } = await supabase
+      .from("signoff_documents")
+      .update({ signed_file_path: path, signed_file_name: suffix })
+      .eq("id", p.documentId);
+
+    if (saveError) {
+      console.error("stampSignedCopy save failed:", p.documentId, saveError.message);
+    }
+  } catch (e) {
+    console.error("stampSignedCopy threw:", e instanceof Error ? e.message : e);
+  }
+}
+
 
 // ── Replacing a document that is already on file ────────────────────────
 //
@@ -200,6 +328,11 @@ export async function replaceSignoffDocument(
     .update({
       file_path: params.filePath,
       file_name: params.fileName,
+      // The old signed copy is cleared with the signature it carried. Leaving
+      // it would be the worst of both: a month showing "waiting on the
+      // licensee" that opens a document with a signature page on it.
+      signed_file_path: null,
+      signed_file_name: null,
       notes: existingNotes ? `${existingNotes}\n${line}` : line,
     })
     .eq("id", documentId);
