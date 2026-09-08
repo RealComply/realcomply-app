@@ -11,6 +11,7 @@ import { buildStagingPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { FileDropZone } from "@/components/FileDropZone";
 import { SaleMethodFields } from "@/components/property/SaleMethodFields";
 import { PropertyFigures } from "@/components/property/PropertyFigures";
+import { ExtractionProgress } from "@/components/property/ExtractionProgress";
 import type { Profile } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
@@ -409,12 +410,16 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
               that says "Creating…" for ninety seconds looks stuck. */}
           {uploading ? "Uploading documents…" : pending ? "Reading your documents…" : "Create listing"}
         </button>
-        {pending && (
-          <p className="mt-2 text-center text-xs leading-relaxed text-rc-muted">
-            Reading the agency agreement, the contract and the comparables report so your file is already
-            filled in. This can take a minute.
-          </p>
-        )}
+
+        {/* Adam, 8 Sep 2026: "a little box display telling the user that the
+            documents are being read... so they can see what's going on."
+
+            An overlay rather than a line under the button, deliberately. The
+            wait is around a minute, the page it covers is a form there is no
+            longer any point editing, and the one thing that actually costs the
+            agent something is navigating away and losing the redirect. A modal
+            says "wait here" in a way a caption does not. */}
+        {pending && <ExtractionProgress />}
       </form>
     </main>
   );
