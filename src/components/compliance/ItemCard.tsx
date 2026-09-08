@@ -19,6 +19,7 @@ import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } fr
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import {
+  setReportDisclosureLoggedElsewhere,
   setItemStatus,
   addOfferEntry,
   updateOfferEntry,
@@ -1280,12 +1281,23 @@ function ElsewhereToggle({
   propertyId,
   elsewhere,
   where,
+  action: bindAction = setOffersLoggedElsewhere,
+  label = "Offers are logged somewhere else",
+  help = "Your CRM, for example. The file will point there instead.",
+  placeholder = "Where? e.g. LockedOn, Rex, VaultRE",
+  revertLabel = "Save — log offers here instead",
 }: {
   propertyId: string;
   elsewhere: boolean;
   where: string;
+  /** Which item this writes to. Defaults to the offers log it was built for. */
+  action?: typeof setOffersLoggedElsewhere;
+  label?: string;
+  help?: string;
+  placeholder?: string;
+  revertLabel?: string;
 }) {
-  const action = setOffersLoggedElsewhere.bind(null, propertyId);
+  const action = bindAction.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(action, initialState);
   const [checked, setChecked] = useState(elsewhere);
 
@@ -1300,10 +1312,8 @@ function ElsewhereToggle({
           className="mt-0.5 accent-rc-green-deep"
         />
         <span>
-          Offers are logged somewhere else
-          <span className="block text-xs text-rc-faint">
-            Your CRM, for example. The file will point there instead.
-          </span>
+          {label}
+          <span className="block text-xs text-rc-faint">{help}</span>
         </span>
       </label>
 
@@ -1313,7 +1323,7 @@ function ElsewhereToggle({
             name="where"
             defaultValue={where}
             maxLength={160}
-            placeholder="Where? e.g. LockedOn, Rex, VaultRE"
+            placeholder={placeholder}
             className="min-w-0 flex-1 rounded-md border border-rc-border px-2 py-1 text-sm focus:border-rc-green-deep focus:outline-none"
           />
           <button
@@ -1332,7 +1342,7 @@ function ElsewhereToggle({
           disabled={pending}
           className="mt-2 text-xs font-medium text-rc-muted hover:text-rc-ink"
         >
-          {pending ? "Saving…" : "Save — log offers here instead"}
+          {pending ? "Saving…" : revertLabel}
         </button>
       )}
 
@@ -2505,7 +2515,11 @@ function BuyerListItem({
 }) {
   const boundAction = addBuyerEntry.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
-  const data = (current?.data ?? {}) as { entries?: Array<{ name?: string; recordedAt?: string }> };
+  const data = (current?.data ?? {}) as {
+    entries?: Array<{ name?: string; recordedAt?: string }>;
+    loggedElsewhere?: boolean;
+    loggedElsewhereWhere?: string | null;
+  };
   const entries = data.entries ?? [];
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -2518,6 +2532,26 @@ function BuyerListItem({
 
   return (
     <div>
+      {/* Same control as the offers log (Adam, 7 Sep 2026). The card's own copy
+          already offered this — "add each buyer who asked, or point at the
+          record your CRM already keeps" — and nothing did the second half.
+
+          cl 37(2) asks the licensee to disclose the register to a person
+          requesting the contract. It does not say where the list of those
+          people has to live, so a file pointing accurately at the CRM that
+          already holds it satisfies the duty, and re-typing every enquiry into
+          a second place is the double entry this product exists to remove. */}
+      <ElsewhereToggle
+        propertyId={propertyId}
+        elsewhere={Boolean(data.loggedElsewhere)}
+        where={data.loggedElsewhereWhere ?? ""}
+        action={setReportDisclosureLoggedElsewhere}
+        label="These enquiries are recorded somewhere else"
+        help="Your CRM, for example. The file will point there instead of listing each person here."
+        placeholder="Where? e.g. LockedOn, Rex, VaultRE"
+        revertLabel="Save — list them here instead"
+      />
+
       {entries.length > 0 && (
         <ul className="mb-3 divide-y divide-rc-border overflow-hidden rounded-lg border border-rc-border">
           {entries.map((entry, i) => (

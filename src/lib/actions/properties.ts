@@ -230,6 +230,40 @@ export async function createProperty(
     });
   }
 
+  // READ THE THREE DOCUMENTS BEFORE THE AGENT EVER SEES THE FILE.
+  //
+  // Adam, 7 Sep 2026: "hitting Create listing should double as document
+  // extraction function so that by the time you get to listing set up, the
+  // information has already been populated in the relevant cards."
+  //
+  // Until now the read happened per document on attach, which is right when a
+  // file is added later and wrong here: at set-up all three arrive at once,
+  // seconds before the agent lands on a page full of empty cards. They then
+  // had to notice a button at the top and press it. The work was always going
+  // to happen; the only question was whether the agent had to ask for it.
+  //
+  // AWAITED, NOT FIRED AND FORGOTTEN. A serverless function that has already
+  // returned may be frozen mid-call, so "kick it off and redirect" would read
+  // documents on some listings and not others, with nothing to show for the
+  // difference. Waiting is honest: the button says what it is doing, and the
+  // page it lands on is finished.
+  //
+  // FAILURE NEVER BLOCKS THE LISTING. It is created and its documents are
+  // attached before this line; if the read fails or times out, the agent gets
+  // their file with the cards empty and the "Extract from uploaded documents"
+  // button still there — exactly where they were before this change. So this
+  // swallows everything rather than returning an error, which would strand a
+  // listing that in fact exists.
+  try {
+    const { extractFromDocuments } = await import("@/lib/actions/extraction");
+    const extraction = await extractFromDocuments(property.id);
+    if (extraction.error) {
+      console.error("setup extraction failed:", property.id, extraction.error);
+    }
+  } catch (e) {
+    console.error("setup extraction threw:", property.id, e instanceof Error ? e.message : e);
+  }
+
   redirect(`/dashboard/${property.id}`);
 }
 

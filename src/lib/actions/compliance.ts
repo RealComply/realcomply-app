@@ -839,6 +839,38 @@ export async function setOffersLoggedElsewhere(
   _prevState: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  return setLoggedElsewhere(propertyId, "d2", formData);
+}
+
+/**
+ * The same thing for f4 — property reports disclosed to contract requests.
+ *
+ * Adam, 7 Sep 2026: "the offer log 'logged somewhere else' function should be
+ * repeated in the Property reports disclosed to contract requests card."
+ *
+ * The card's own copy already promised it — "add each buyer who asked, or
+ * point at the record your CRM already keeps" — and there was no control that
+ * did the second half. Both items are the same shape of problem: a register
+ * the Regulation requires the agent to be able to produce, which most agencies
+ * already keep in a CRM. cl 37(2) asks the licensee to disclose the records to
+ * a person requesting the contract; it does not ask them to keep the list in
+ * any particular system, so a file that points accurately at where the list
+ * lives satisfies it. Re-typing every enquiry into a second place would be the
+ * double entry this product exists to remove.
+ */
+export async function setReportDisclosureLoggedElsewhere(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  return setLoggedElsewhere(propertyId, "f4", formData);
+}
+
+async function setLoggedElsewhere(
+  propertyId: string,
+  itemKey: "d2" | "f4",
+  formData: FormData,
+): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
 
   const elsewhere = String(formData.get("elsewhere") ?? "") === "on";
@@ -852,7 +884,7 @@ export async function setOffersLoggedElsewhere(
     .from("property_items")
     .select("*")
     .eq("property_id", propertyId)
-    .eq("item_key", "d2")
+    .eq("item_key", itemKey)
     .maybeSingle();
 
   const existing = ((row as PropertyItem | null)?.data ?? {}) as Record<string, unknown>;
@@ -861,7 +893,7 @@ export async function setOffersLoggedElsewhere(
     {
       agency_id: profile.agency_id,
       property_id: propertyId,
-      item_key: "d2",
+      item_key: itemKey,
       status: elsewhere ? "done" : (row as PropertyItem | null)?.status ?? "open",
       updated_by: user.id,
       data: {
@@ -874,7 +906,7 @@ export async function setOffersLoggedElsewhere(
   );
 
   if (error) {
-    console.error("setOffersLoggedElsewhere failed:", error.message);
+    console.error("setLoggedElsewhere failed:", itemKey, error.message);
     return { error: "Couldn't save that. Try again." };
   }
 

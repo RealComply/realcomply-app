@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { NewPropertyForm } from "@/components/property/NewPropertyForm";
 import type { Profile } from "@/lib/types";
 
+// Creating a listing now reads all three documents before it redirects (see
+// createProperty), so this route needs room to do it. Three document reads on
+// a long contract can take a minute or more, and Vercel's default ceiling
+// would cut the request off mid-read — leaving a created listing whose cards
+// are empty for no visible reason.
+export const maxDuration = 300;
+
 // Server component so the browser has the agency_id it needs to upload
 // setup documents straight to Storage (see NewPropertyForm.tsx) without an
 // extra client-side round trip before the form is usable.

@@ -402,8 +402,19 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
           disabled={pending || uploading}
           className="w-full rounded-full bg-rc-green-deep px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
-          {uploading ? "Uploading documents…" : pending ? "Creating…" : "Create listing"}
+          {/* "Reading your documents" rather than "Creating", because since
+              7 Sep 2026 that is what the wait actually is: the listing itself
+              takes a moment, and the rest is the three documents being read so
+              the cards are filled in by the time the agent arrives. A button
+              that says "Creating…" for ninety seconds looks stuck. */}
+          {uploading ? "Uploading documents…" : pending ? "Reading your documents…" : "Create listing"}
         </button>
+        {pending && (
+          <p className="mt-2 text-center text-xs leading-relaxed text-rc-muted">
+            Reading the agency agreement, the contract and the comparables report so your file is already
+            filled in. This can take a minute.
+          </p>
+        )}
       </form>
     </main>
   );
