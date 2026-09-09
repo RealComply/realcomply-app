@@ -26,6 +26,8 @@ type SignupMetadata = {
   full_name?: string;
   agency_name?: string;
   invite_token?: string;
+  /** Permission to create a NEW agency while signups are closed — 0045. */
+  founder_token?: string | null;
   licensee_email?: string | null;
   licensee_name?: string | null;
   website_url?: string | null;
@@ -76,15 +78,23 @@ export async function completeSignup(supabase: SupabaseClient, user: User): Prom
   const agencyName = meta.agency_name ?? "My agency";
   const fullName = meta.full_name ?? "";
 
-  // bootstrap_agency_v2, so the licensee answer given at signup survives the
+  // bootstrap_agency_v3, so the licensee answer given at signup survives the
   // confirmation round trip. Defaults to false rather than true if the metadata
   // is somehow absent: recording someone as the licensee in charge when nobody
   // said so is the bug migration 0029 fixed, and an agency with no licensee is
   // visible and fixable in Team settings where a wrongly-appointed one is not.
-  const { error: bootstrapError } = await supabase.rpc("bootstrap_agency_v2", {
+  //
+  // THIS is where a founder invite is actually spent, not on the signup form.
+  // With email confirmation on there is no session during signup, so the agency
+  // does not exist until the person comes back from their inbox — and the token
+  // has been sitting in user metadata since. Miss it here and a founder signup
+  // gets as far as a confirmed email address and then bounces off a closed
+  // door, having used a link that was never claimed.
+  const { error: bootstrapError } = await supabase.rpc("bootstrap_agency_v3", {
     p_agency_name: agencyName,
     p_full_name: fullName,
     p_is_licensee: meta.is_licensee === true,
+    p_founder_token: meta.founder_token ?? null,
   });
 
   if (bootstrapError) return;

@@ -3,7 +3,13 @@
 import { Suspense, useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { signup, getInvitePreview, type ActionState, type InvitePreview } from "@/lib/actions/auth";
+import {
+  signup,
+  getInvitePreview,
+  checkFounderInvite,
+  type ActionState,
+  type InvitePreview,
+} from "@/lib/actions/auth";
 import { Logo } from "@/components/Logo";
 
 const initialState: ActionState = { error: null };
@@ -14,6 +20,15 @@ const initialState: ActionState = { error: null };
 function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("invite");
+  // A FOUNDER invite — permission to set up an agency of their own while public
+  // signups stay shut (0045). Not to be confused with ?invite= above, which
+  // joins an agency that already exists. Adam, 9 Sep 2026, wanting friends at
+  // other offices on free accounts: putting them in HIS agency would have shown
+  // them Cass's listings and trust records, and opening signups would have let
+  // in everybody else too.
+  const founderToken = searchParams.get("founder");
+  const [founderOk, setFounderOk] = useState(false);
+  const [checkedFounder, setCheckedFounder] = useState(!founderToken);
   const [invite, setInvite] = useState<InvitePreview>(null);
   const [checkedInvite, setCheckedInvite] = useState(!inviteToken);
   // Whether the person signing up is the licensee in charge. Null until they
@@ -37,8 +52,36 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
     };
   }, [inviteToken]);
 
-  if (inviteToken && !checkedInvite) {
+  useEffect(() => {
+    if (!founderToken) return;
+    let cancelled = false;
+    checkFounderInvite(founderToken).then((ok) => {
+      if (!cancelled) {
+        setFounderOk(ok);
+        setCheckedFounder(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [founderToken]);
+
+  if ((inviteToken && !checkedInvite) || (founderToken && !checkedFounder)) {
     return <p className="mt-8 text-sm text-rc-muted">Checking your invite…</p>;
+  }
+
+  // A founder link that has been used, expired, or mistyped. Said plainly, and
+  // without offering "start a new agency instead" — that route is shut, and
+  // sending them at a door that will refuse them is worse than saying so here.
+  if (founderToken && checkedFounder && !founderOk) {
+    return (
+      <div className="mt-8 space-y-4">
+        <p className="rounded-2xl border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2 text-sm text-rc-amber-deep">
+          This invite link isn&rsquo;t valid — each one works once, and this one has either been used already
+          or expired. Ask for a fresh link.
+        </p>
+      </div>
+    );
   }
 
   if (inviteToken && checkedInvite && !invite) {
@@ -64,7 +107,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
   // Rendered after the invite lookup, never before: an invited person must not
   // be told the door is shut when it is being held open specifically for them.
   // The server refuses independently — see signup() in lib/actions/auth.ts.
-  if (!invite && !signupsOpen) {
+  if (!invite && !founderOk && !signupsOpen) {
     return (
       <div className="mt-8 space-y-4">
         <p className="rounded-2xl border border-rc-border bg-rc-bg-alt px-4 py-3 text-sm leading-relaxed text-rc-muted">
@@ -88,6 +131,13 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
   return (
     <form action={formAction} className="mt-8 space-y-4">
       {invite && <input type="hidden" name="inviteToken" value={inviteToken ?? ""} />}
+      {founderOk && <input type="hidden" name="founderToken" value={founderToken ?? ""} />}
+      {founderOk && (
+        <p className="rounded-2xl border border-rc-green-deep/30 bg-rc-green-soft px-3 py-2 text-sm text-rc-green-deep">
+          You&rsquo;ve been invited to set up your own agency on RealComply. It&rsquo;s a{" "}
+          <span className="font-semibold">free account</span> — no card needed.
+        </p>
+      )}
       {invite && (
         <p className="rounded-2xl border border-rc-green-deep/30 bg-rc-green-soft px-3 py-2 text-sm text-rc-green-deep">
           You&rsquo;ve been invited to join <span className="font-semibold">{invite.agencyName}</span> as{" "}

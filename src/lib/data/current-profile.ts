@@ -43,12 +43,32 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     licensee_email?: string | null;
     licensee_name?: string | null;
     website_url?: string | null;
+    is_licensee?: boolean;
+    /** Permission to create a NEW agency while signups are closed — 0045. */
+    founder_token?: string | null;
   };
 
   if (meta.invite_token || meta.agency_name) {
+    // v3, not v1. Two things were wrong with calling bootstrap_agency here.
+    //
+    // It could not carry a founder token, so somebody invited to start their
+    // own agency (0045) whose confirmation redirect missed /auth/callback would
+    // land on this path and be refused — signups are closed, and v1 knows
+    // nothing about invites that open the door for one person.
+    //
+    // And v1 records EVERY founder as the licensee in charge, which is the bug
+    // migration 0029 fixed at the other two call sites and left standing at
+    // this one. Defaulting to false is the safe direction: an agency with no
+    // licensee is visible and fixable in Team settings, a wrongly appointed one
+    // is not.
     const { error: joinError } = meta.invite_token
       ? await supabase.rpc("accept_invite", { p_token: meta.invite_token, p_full_name: meta.full_name ?? "" })
-      : await supabase.rpc("bootstrap_agency", { p_agency_name: meta.agency_name!, p_full_name: meta.full_name ?? "" });
+      : await supabase.rpc("bootstrap_agency_v3", {
+          p_agency_name: meta.agency_name!,
+          p_full_name: meta.full_name ?? "",
+          p_is_licensee: meta.is_licensee === true,
+          p_founder_token: meta.founder_token ?? null,
+        });
 
     // Same sign-off address write as the other two bootstrap call sites. This
     // is the last of the three, for a confirmation redirect that missed

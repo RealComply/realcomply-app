@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { currentLegalVersions } from "@/lib/legal/documents";
-import { openSignupsAllowed } from "@/lib/signups";
+import { founderInviteValid, openSignupsAllowed } from "@/lib/signups";
 
 // Resolves the origin the request actually came in on (e.g. the exact
 // Vercel domain the user is visiting), so the email confirmation link
@@ -52,6 +52,12 @@ export async function signup(
   // src/lib/actions/team.ts / 0006_agency_invites.sql) — joins the existing
   // agency the invite was issued for instead of bootstrapping a new one.
   const inviteToken = String(formData.get("inviteToken") ?? "").trim() || null;
+  // A FOUNDER invite: permission to create a brand-new agency of their own
+  // while public signups stay closed (0045). Different from inviteToken above
+  // in the one way that matters — that one joins an agency that already exists,
+  // this one creates a new one. Adam, 9 Sep 2026, wanting friends at other
+  // offices testing on free accounts without opening the door to everybody.
+  const founderToken = String(formData.get("founderToken") ?? "").trim() || null;
   // Where licensee sign-off links get sent. Optional, and never taken from an
   // invite signup — see the field's comment in src/app/signup/page.tsx.
   const licenseeEmail = String(formData.get("licenseeEmail") ?? "").trim();
@@ -83,10 +89,21 @@ export async function signup(
   // which is precisely the arrangement that made running with email
   // confirmation switched off acceptable. Closing public signup restores that
   // arrangement rather than adding a new restriction.
-  if (!inviteToken && !(await openSignupsAllowed())) {
+  // A founder invite is exempt for the same reason an agency invite is: a
+  // named person has been vouched for, one link at a time, revocably. It is not
+  // trusted from the form — the token is checked here, and then claimed inside
+  // bootstrap_agency_v3, which is the only check that finally decides.
+  if (!inviteToken && !founderToken && !(await openSignupsAllowed())) {
     return {
       error:
         "RealComply is invite-only at the moment. If your licensee has sent you a link, open that link to join their office.",
+    };
+  }
+
+  if (founderToken && !(await founderInviteValid(founderToken))) {
+    return {
+      error:
+        "That invite link isn't valid — it may have already been used or expired. Ask for a fresh one.",
     };
   }
 
@@ -141,6 +158,11 @@ export async function signup(
         full_name: fullName,
         agency_name: agencyName,
         invite_token: inviteToken,
+        // Rides along for the same reason as invite_token and agency_name:
+        // with email confirmation on there is no session here, so the agency
+        // is not created until they come back from their inbox. The metadata
+        // is the only copy of the token by then.
+        founder_token: founderToken,
         licensee_email: licenseeEmail || null,
         licensee_name: licenseeName || null,
         is_licensee: isLicensee,
@@ -205,12 +227,16 @@ export async function signup(
     p_privacy_version: legalVersions.privacy,
   });
 
+  // v3 always, for the brand-new-agency path. With no founder token it behaves
+  // exactly as v2 did — signups_open() decides — so there is one call site
+  // rather than a branch that has to be kept in step in three files.
   const { error: joinError } = inviteToken
     ? await supabase.rpc("accept_invite", { p_token: inviteToken, p_full_name: fullName })
-    : await supabase.rpc("bootstrap_agency_v2", {
+    : await supabase.rpc("bootstrap_agency_v3", {
         p_agency_name: agencyName,
         p_full_name: fullName,
         p_is_licensee: isLicensee,
+        p_founder_token: founderToken,
       });
 
   if (joinError) {
@@ -397,4 +423,16 @@ export async function getInvitePreview(token: string): Promise<InvitePreview> {
 
   if (error || !row) return null;
   return { agencyName: row.agency_name, email: row.email, isLicenseeInCharge: row.is_licensee_in_charge };
+}
+
+// Whether a founder invite link is still good, for the signup form to check
+// before drawing itself — see migration 0045 and lib/signups.ts.
+//
+// A Server Action rather than a direct call because the signup form is a client
+// component, and the same reason getInvitePreview above is one. It answers only
+// yes or no: the invite's label is Adam's note to himself about who he sent it
+// to, and handing that to whoever tried the link would be a small leak for no
+// benefit.
+export async function checkFounderInvite(token: string): Promise<boolean> {
+  return founderInviteValid(token);
 }

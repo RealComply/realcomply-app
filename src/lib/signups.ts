@@ -31,6 +31,33 @@ import { createClient } from "@/lib/supabase/server";
 //
 // Wrapped in React's cache() so a page and the action behind it share one
 // lookup per request.
+// Whether a founder invite link is still good — see migration 0045.
+//
+// A founder invite is the third door, and the one that fits "let a few friends
+// try it" (Adam, 9 Sep 2026). The agency invite of 0006 puts somebody INTO an
+// existing agency, which is wrong for a friend at another office and would show
+// them Cass's listings. Opening signups is one global switch that lets in the
+// friends and everybody else too. This is a single-use token that permits
+// creating exactly one new agency, with signups still shut.
+//
+// Answering false on any failure, like openSignupsAllowed above and for the
+// same reason. This is a convenience check anyway: the decision that counts is
+// the atomic claim inside bootstrap_agency_v3, where the token is consumed by
+// the same statement that validates it. This exists so somebody with a spent
+// link is told so before they fill in a whole form.
+export async function founderInviteValid(token: string): Promise<boolean> {
+  const trimmed = token.trim();
+  if (!trimmed) return false;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("founder_invite_valid", { p_token: trimmed });
+    if (error) return false;
+    return data === true;
+  } catch {
+    return false;
+  }
+}
+
 export const openSignupsAllowed = cache(async function openSignupsAllowed(): Promise<boolean> {
   try {
     const supabase = await createClient();
