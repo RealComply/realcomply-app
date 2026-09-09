@@ -26,7 +26,12 @@ export default async function DocumentSignoffsPage() {
   const staff = (staffRows ?? []) as Profile[];
 
   const signedUrls = await Promise.all(
-    documents.map((d) => supabase.storage.from(EVIDENCE_BUCKET).createSignedUrl(d.file_path, 3600)),
+    // The signed copy where there is one — the document plus its signature
+    // page — and the upload otherwise. Same rule as the trust reconciliation
+    // dialog: what people want to open is what was signed.
+    documents.map((d) =>
+      supabase.storage.from(EVIDENCE_BUCKET).createSignedUrl(d.signed_file_path ?? d.file_path, 3600),
+    ),
   );
 
   const outstandingForMe = documents.filter((d) =>

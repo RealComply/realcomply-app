@@ -1,4 +1,5 @@
 import { AssistantChat } from "@/components/chat/AssistantChat";
+import { StrayDropGuard } from "@/components/StrayDropGuard";
 import { Sidebar } from "@/components/Sidebar";
 import { UserBar } from "@/components/UserBar";
 import { createClient } from "@/lib/supabase/server";
@@ -29,6 +30,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // when you collapse or expand it. Declared with a fallback so the first
     // server-rendered paint is correct even before any client code runs.
     <div className="rc-app-shell min-h-screen bg-rc-bg-alt transition-[grid-template-columns] duration-200 md:grid md:grid-cols-[var(--rc-sidebar-w,236px)_1fr]">
+      {/* Renders nothing. Stops a file dropped outside an upload control from
+          navigating the browser to it and taking the page — and anything
+          unsaved on it — with it. See lib/use-file-drop.ts. */}
+      <StrayDropGuard />
       <Sidebar isAssistant={Boolean(profile.is_assistant)} counts={counts} />
       <div className="flex min-h-screen flex-col">
         <UserBar profile={profile} />

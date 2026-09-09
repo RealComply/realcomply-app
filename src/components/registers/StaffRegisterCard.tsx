@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState, type ChangeEvent } from "react";
 import { updateLicence, finalizeLicenceDocument, removeLicenceDocument, type ActionState } from "@/lib/actions/registers";
+import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
@@ -236,11 +237,16 @@ function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: bool
     };
   }, [profile.licence_document_path]);
 
-  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+  // One path for a picked file and a dropped one — see useFileDrop.
+  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: uploading });
+
+  function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
+    if (file) void upload(file);
+  }
 
+  async function upload(file: File) {
     setError(null);
     setUploading(true);
     const supabase = createBrowserClient();
@@ -280,14 +286,27 @@ function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: bool
           )}
         </>
       ) : canEdit ? (
-        <label className="cursor-pointer text-rc-green-deep hover:underline">
+        // Drag as well as click (Adam, 9 Sep 2026). A one-line link is a small
+        // drop target, so it grows a dashed outline while a file is over it —
+        // otherwise there is nothing to aim at.
+        <label
+          {...drop.dragProps}
+          className={`cursor-pointer rounded-md px-1.5 py-0.5 transition ${
+            drop.isOver
+              ? "bg-rc-green-soft text-rc-green-deep outline-dashed outline-1 outline-rc-green-deep"
+              : "text-rc-green-deep hover:underline"
+          }`}
+          title={`Drag a file here, or click, to upload ${uploadLabel}`}
+        >
           {uploading ? "Uploading…" : `Upload ${uploadLabel}`}
           <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
         </label>
       ) : (
         <span className="text-rc-faint">No {uploadLabel} on file.</span>
       )}
-      {error && <span className="text-rc-amber-deep">{error}</span>}
+      {(error ?? drop.dropError) && (
+        <span className="text-rc-amber-deep">{error ?? drop.dropError}</span>
+      )}
     </div>
   );
 }

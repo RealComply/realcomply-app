@@ -42,6 +42,10 @@ export function DocumentSignoffCard({
             {document.period_label ? ` · ${document.period_label}` : ""}
           </span>
           <p className="mt-1.5 text-sm font-semibold text-rc-ink">{document.title}</p>
+          {/* Opens the signed copy once anybody has signed — the document with
+              its signature page — and the upload before that. The label says
+              which, because "the file" and "the file as signed" are two
+              records and a reader is entitled to know which one they opened. */}
           {fileUrl ? (
             <a
               href={fileUrl}
@@ -49,7 +53,11 @@ export function DocumentSignoffCard({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-xs text-rc-green-deep hover:underline"
             >
-              <Paperclip size={11} /> {document.file_name}
+              <Paperclip size={11} />
+              {document.signed_file_name ?? document.file_name}
+              {document.signed_file_path && (
+                <span className="text-rc-faint">· signed copy</span>
+              )}
             </a>
           ) : (
             <p className="text-xs text-rc-muted">{document.file_name}</p>

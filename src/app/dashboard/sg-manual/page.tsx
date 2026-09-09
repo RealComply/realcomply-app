@@ -41,7 +41,15 @@ export default async function SgManualPage() {
   const signoffDocs = (signoffDocRows ?? []) as SignoffDocument[];
   const signoffSigs = (signoffSigRows ?? []) as SignoffSignature[];
   const currentSignoff = current ? signoffDocs.find((d) => d.file_path === current.file_path) : undefined;
-  const currentSignoffUrl = currentSignoff ? signedUrls[versions.findIndex((v) => v.file_path === currentSignoff.file_path)]?.data?.signedUrl ?? null : null;
+  // The signed copy where there is one, so opening the current version from
+  // this page shows the signature page rather than the bare upload. The
+  // version list below still links each original.
+  const currentSignoffUrl = currentSignoff
+    ? currentSignoff.signed_file_path
+      ? (await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrl(currentSignoff.signed_file_path, 3600))
+          .data?.signedUrl ?? null
+      : signedUrls[versions.findIndex((v) => v.file_path === currentSignoff.file_path)]?.data?.signedUrl ?? null
+    : null;
 
   return (
     <>

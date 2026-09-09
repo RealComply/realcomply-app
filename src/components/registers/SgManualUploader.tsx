@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent } from "react";
-import { FileText } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { FileDropZone } from "@/components/FileDropZone";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { uploadEvidenceObject, buildSgManualPath } from "@/lib/storage/evidence";
 import { addSgManualVersion } from "@/lib/actions/registers";
@@ -13,10 +13,6 @@ export function SgManualUploader({ profile, isFirstUpload }: { profile: Profile;
   const [notes, setNotes] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  function handleFile(e: ChangeEvent<HTMLInputElement>) {
-    setFile(e.target.files?.[0] ?? null);
-  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -52,15 +48,18 @@ export function SgManualUploader({ profile, isFirstUpload }: { profile: Profile;
       </h3>
       <p className="text-xs text-rc-muted">PDF or Word document — this becomes the current version on file.</p>
 
-      <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-rc-border bg-white px-4 py-6 text-center transition hover:border-rc-green-deep hover:bg-rc-green-soft">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rc-green-soft text-rc-green-deep">
-          <FileText size={20} />
-        </span>
-        <span className="text-sm font-medium text-rc-green-deep">
-          {file ? file.name : "Click to choose a file"}
-        </span>
-        <input type="file" onChange={handleFile} className="hidden" />
-      </label>
+      {/* The real drop zone, not a look-alike.
+          Adam, 9 Sep 2026: "I can't drag my SG to be uploaded in RC." This was
+          a hidden file input behind a label — click only — inside a dashed
+          border that reads as an invitation to drop. Worse, with no drop zone
+          mounted anywhere on this page, a dropped file navigated the browser
+          away and took the half-filled version label and notes with it. */}
+      <FileDropZone
+        file={file}
+        onFile={setFile}
+        disabled={uploading}
+        label="Drag your Supervision Guidelines here, or click to browse"
+      />
 
       <div className="flex flex-wrap gap-2">
         <input

@@ -9,6 +9,7 @@ import {
   updateCpdRecord,
   type ActionState,
 } from "@/lib/actions/registers";
+import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildCpdDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
@@ -51,11 +52,16 @@ export function CpdPersonCard({
   const [error, setError] = useState<string | null>(null);
   const [ticking, setTicking] = useState(false);
 
-  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+  // One path for a picked file and a dropped one — see useFileDrop.
+  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: uploading });
+
+  function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
+    if (file) void upload(file);
+  }
 
+  async function upload(file: File) {
     setError(null);
     setUploading(true);
     const supabase = createBrowserClient();
@@ -107,20 +113,39 @@ export function CpdPersonCard({
         <CertificateRow key={r.id} record={r} canEdit={canEdit} />
       ))}
 
+      {/* Drag as well as click (Adam, 9 Sep 2026). The dashed border already
+          said "drop a file here" and nothing listened; a drop navigated the
+          browser to the certificate instead. Uploads on drop, because this
+          control already uploads the moment a file is picked — the two-step
+          attach used elsewhere would be a different behaviour on the same
+          card. */}
       {canEdit && (
         <label
-          className={`mt-3 block cursor-pointer rounded-xl border border-dashed border-rc-border bg-white px-4 py-4 text-center transition hover:border-rc-green-deep hover:bg-rc-green-soft ${
-            uploading ? "opacity-60" : ""
-          }`}
+          {...drop.dragProps}
+          className={`mt-3 block cursor-pointer rounded-xl border border-dashed px-4 py-4 text-center transition ${
+            drop.isOver
+              ? "border-rc-green-deep bg-rc-green-soft"
+              : "border-rc-border bg-white hover:border-rc-green-deep hover:bg-rc-green-soft"
+          } ${uploading ? "opacity-60" : ""}`}
         >
           <span className="text-sm font-semibold text-rc-green-deep">
             {uploading ? "Reading certificate…" : "+ Attach certificate"}
           </span>
           <span className="mt-1 block text-[11px] text-rc-faint">
-            PDF or photo. RealComply reads the provider, topic, hours and date off it.
+            PDF or photo — drag it here or click. RealComply reads the provider, topic, hours and date off it.
           </span>
           <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
         </label>
+      )}
+      {drop.dropError && (
+        <p role="alert" className="mt-1.5 text-[11px] font-medium text-rc-amber-deep">
+          {drop.dropError}
+        </p>
+      )}
+      {drop.tookFirstOnly && (
+        <p className="mt-1.5 text-[11px] text-rc-muted">
+          More than one file was dropped, so the first one was used. Attach the others one at a time.
+        </p>
       )}
 
       <div className="mt-4 flex items-start gap-2.5 border-t border-rc-border pt-3">

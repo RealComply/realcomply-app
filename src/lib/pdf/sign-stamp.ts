@@ -59,17 +59,33 @@ const BORDER = rgb(0.894, 0.914, 0.902);
 const A4 = { w: 595.28, h: 841.89 };
 const MARGIN = 56;
 
+export type Signatory = {
+  /** The signer's name, off their authenticated profile. */
+  name: string;
+  /** Their role, e.g. "Licensee in charge". */
+  role: string;
+  /** ISO timestamp of the signature. */
+  signedAt: string;
+};
+
 export type SignatureStamp = {
   /** What was signed, e.g. "PM Trust Account reconciliation — July 2026". */
   title: string;
   /** The agency's own name. This is their record. */
   agencyName: string;
-  /** The name the signer typed and adopted. */
-  typedName: string;
-  /** Their role, e.g. "Licensee in charge". */
-  role: string;
-  /** ISO timestamp of the signature. */
-  signedAt: string;
+  /**
+   * EVERYONE who has signed so far, not just the person who signed last.
+   *
+   * The single-signer version of this was a bug waiting for the Supervision
+   * Guidelines. A reconciliation is signed by the licensee alone, so one name
+   * was enough; an SG version is published for all staff, and each signature
+   * rebuilt the copy naming only that person — so after three people signed,
+   * the document showed the third and the first two were nowhere on it. That
+   * is the exact fault Adam reported on 8 Sep, re-created one document type
+   * over. The copy is now rebuilt from the untouched original on every
+   * signature, listing everyone recorded to date.
+   */
+  signatories: Signatory[];
   /** The uploaded file this signature applies to. */
   documentFileName: string;
   /** The legal basis line for the underlying obligation. */
@@ -163,7 +179,9 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
     y -= gapBelow;
   };
 
-  line("Signature", { size: 20, font: bold, gap: 2 });
+  const many = stamp.signatories.length > 1;
+
+  line(many ? "Signatures" : "Signature", { size: 20, font: bold, gap: 2 });
   line(stamp.agencyName, { size: 11, color: MUTED, gap: 6 });
   rule(4, 14);
 
@@ -177,39 +195,45 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
 
   rule(16, 20);
 
-  // The signature itself, drawn large and in the italic face so it reads as a
-  // signature rather than another line of the form. It is a typed name adopted
-  // as a signature and the page says exactly that underneath — dressing it up
-  // as handwriting would misrepresent what happened.
-  line("Reviewed and signed off by", { size: 8.5, font: bold, color: FAINT, gap: 4 });
-  const sigSize = 26;
-  page.drawText(ascii(stamp.typedName), {
-    x: MARGIN,
-    y: y - sigSize,
-    size: sigSize,
-    font: italic,
-    color: INK,
+  // Each signature drawn large and in the italic face so it reads as a
+  // signature rather than another line of the form. It is a name adopted as a
+  // signature and the page says exactly that underneath — dressing it up as
+  // handwriting would misrepresent what happened.
+  line(many ? "Reviewed and signed off by" : "Reviewed and signed off by", {
+    size: 8.5,
+    font: bold,
+    color: FAINT,
+    gap: 4,
   });
-  y -= sigSize * 1.3;
-  page.drawLine({
-    start: { x: MARGIN, y },
-    end: { x: MARGIN + Math.min(contentW, 300), y },
-    thickness: 1,
-    color: GREEN,
-  });
-  y -= 14;
 
-  line(stamp.role, { size: 10, font: bold, gap: 1 });
-  line(`Signed ${formatSignedAt(stamp.signedAt)} (Sydney time)`, { size: 9.5, color: MUTED, gap: 0 });
+  // A name per signature, smaller where there are several, so a document
+  // signed by eight people does not run to four pages of signature blocks.
+  const sigSize = many ? 18 : 26;
+  for (const s of stamp.signatories) {
+    page.drawText(ascii(s.name), { x: MARGIN, y: y - sigSize, size: sigSize, font: italic, color: INK });
+    y -= sigSize * 1.3;
+    page.drawLine({
+      start: { x: MARGIN, y },
+      end: { x: MARGIN + Math.min(contentW, many ? 220 : 300), y },
+      thickness: 1,
+      color: GREEN,
+    });
+    y -= 12;
+    line(s.role, { size: 9.5, font: bold, gap: 1 });
+    line(`Signed ${formatSignedAt(s.signedAt)} (Sydney time)`, { size: 9, color: MUTED, gap: many ? 12 : 0 });
+  }
 
   rule(20, 14);
 
   line(
-    "The person named above confirmed in RealComply, from their own authenticated account, that they had reviewed this document. Their name is taken from that account and the time was recorded by the system. Under section 9 of the Electronic Transactions Act 2000 (NSW), a method that identifies the person and indicates their approval of a document satisfies a requirement for a signature where the method is as reliable as appropriate for the purpose.",
+    (many
+      ? "Each person named above confirmed in RealComply, from their own authenticated account, that they had reviewed this document. Their names are taken from those accounts and each time was recorded by the system. "
+      : "The person named above confirmed in RealComply, from their own authenticated account, that they had reviewed this document. Their name is taken from that account and the time was recorded by the system. ") +
+      "Under section 9 of the Electronic Transactions Act 2000 (NSW), a method that identifies the person and indicates their approval of a document satisfies a requirement for a signature where the method is as reliable as appropriate for the purpose.",
     { size: 8.5, color: MUTED, gap: 8 },
   );
   line(
-    "This sign-off records the licensee's review of the document. It is kept as evidence of proper supervision under section 32 of the Property and Stock Agents Act 2002 (NSW).",
+    "This sign-off records the review of the document by the people named. It is kept as evidence of proper supervision under section 32 of the Property and Stock Agents Act 2002 (NSW).",
     { size: 8.5, color: MUTED, gap: 8 },
   );
   line(

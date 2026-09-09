@@ -193,10 +193,6 @@ export async function signDocument(documentId: string, _prev: ActionState, _form
     filePath: (doc as { file_path: string }).file_path,
     fileName: (doc as { file_name: string }).file_name,
     category: (doc as { category: string }).category,
-    typedName,
-    signedAt,
-    signerName: profile.full_name ?? typedName,
-    isLicensee: profile.is_licensee_in_charge === true,
   });
 
   revalidatePath("/dashboard/trust");
@@ -243,10 +239,6 @@ async function stampSignedCopy(
     filePath: string;
     fileName: string;
     category: string;
-    typedName: string;
-    signedAt: string;
-    signerName: string;
-    isLicensee: boolean;
   },
 ): Promise<void> {
   try {
@@ -260,12 +252,57 @@ async function stampSignedCopy(
       .eq("id", p.agencyId)
       .maybeSingle();
 
+    // EVERY signature on this document, oldest first — not just the one that
+    // triggered this call. An SG version is signed by all staff, and rebuilding
+    // the copy from the last signature alone would drop everyone before them.
+    // Reading them back also makes the whole thing idempotent: the copy is
+    // always the original plus a page describing the current state of the
+    // signature table, whatever order people signed in.
+    const { data: sigRows } = await supabase
+      .from("signoff_signatures")
+      .select("signer_id, typed_name, signed_at")
+      .eq("document_id", p.documentId)
+      .not("signed_at", "is", null)
+      .order("signed_at", { ascending: true });
+
+    const signed = (sigRows ?? []) as Array<{
+      signer_id: string;
+      typed_name: string | null;
+      signed_at: string;
+    }>;
+    if (signed.length === 0) return;
+
+    const { data: people } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, is_licensee_in_charge")
+      .in(
+        "id",
+        signed.map((r) => r.signer_id),
+      );
+
+    const profileById = new Map(
+      ((people ?? []) as Array<{
+        id: string;
+        full_name: string | null;
+        email: string | null;
+        is_licensee_in_charge: boolean | null;
+      }>).map((r) => [r.id, r]),
+    );
+
     const stamp = {
       title: p.title,
       agencyName: (agency as { name?: string } | null)?.name ?? "This agency",
-      typedName: p.typedName,
-      role: p.isLicensee ? "Licensee in charge" : "Signed by",
-      signedAt: p.signedAt,
+      signatories: signed.map((r) => {
+        const who = profileById.get(r.signer_id);
+        return {
+          // The profile name is authoritative; typed_name is what the older
+          // typed-signature flow recorded and is the fallback for rows written
+          // before the tick box replaced it on 8 Sep 2026.
+          name: who?.full_name ?? r.typed_name ?? who?.email ?? "Unknown",
+          role: who?.is_licensee_in_charge ? "Licensee in charge" : "Staff member",
+          signedAt: r.signed_at,
+        };
+      }),
       documentFileName: p.fileName,
       legalBasis: SIGNED_BASIS[p.category],
     };

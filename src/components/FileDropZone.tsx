@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type DragEvent } from "react";
+import { useId, useRef, useState, type DragEvent } from "react";
 import { AlertTriangle, Paperclip, Upload, X } from "lucide-react";
+import { useStrayDropGuard } from "@/lib/use-file-drop";
 import { MAX_EVIDENCE_BYTES } from "@/lib/storage/evidence";
 
 // A file picker you can also drop a file onto.
@@ -78,19 +79,15 @@ export function FileDropZone({
 
   // A file dropped a few pixels outside the zone would otherwise be opened by
   // the browser, replacing the page — and with it any unsaved note, ESP figure
-  // or half-finished form on the listing. A near-miss should do nothing at
-  // all, so the whole document swallows stray drops while this zone exists.
-  useEffect(() => {
-    const swallow = (e: globalThis.DragEvent) => {
-      if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
-    };
-    window.addEventListener("dragover", swallow);
-    window.addEventListener("drop", swallow);
-    return () => {
-      window.removeEventListener("dragover", swallow);
-      window.removeEventListener("drop", swallow);
-    };
-  }, []);
+  // or half-finished form on the listing. A near-miss should do nothing at all.
+  //
+  // MOVED TO THE LAYOUT, 9 Sep 2026, and kept here too. The dashboard now
+  // mounts StrayDropGuard for every page, because this only ever protected
+  // pages that happened to contain a drop zone — and the SG Manual page, which
+  // did not, threw the page away when Adam dropped his Supervision Guidelines
+  // on it. This call is harmless duplication and keeps the component correct
+  // anywhere it is used outside that layout.
+  useStrayDropGuard();
 
   function take(list: FileList | null) {
     const dropped = Array.from(list ?? []);
