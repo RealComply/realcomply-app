@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { entitlementFor, PLANS, annualPrice } from "@/lib/billing/entitlement";
 import { isTestMode, stripeConfigured } from "@/lib/billing/stripe";
+import { MasterSwitch } from "@/components/billing/MasterSwitch";
 import { formatAuDate } from "@/lib/format-date";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { ManageBillingButton } from "@/components/billing/ManageBillingButton";
@@ -202,7 +203,14 @@ export default async function BillingPage({
           </p>
         )
       )}
-    </main>
+          {/* Last, and only for RealComply staff. See MasterSwitch — this is what
+          replaced the two SQL scripts that flipped Cass between free and
+          trialing to test checkout. */}
+      {profile.is_platform_admin === true && (
+        <MasterSwitch currentPlan={entitlement.plan} currentStatus={entitlement.status} />
+      )}
+
+</main>
   );
 }
 

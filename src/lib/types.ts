@@ -33,6 +33,11 @@ export type Profile = {
   email: string;
   is_agent: boolean;
   is_licensee_in_charge: boolean;
+  /**
+   * RealComply staff, not agency staff. Cross-agency: may set an agency's plan
+   * and status and comp an account. Granted in SQL only — see migration 0044.
+   */
+  is_platform_admin?: boolean;
   // An assistant prepares files for one or more agents and cannot sign them
   // (Adam, 20 Aug 2026). Deliberately a separate flag rather than a value of
   // some role enum: someone can be a licensee AND an agent already, and the

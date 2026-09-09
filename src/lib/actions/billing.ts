@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { PLANS, type Plan } from "@/lib/billing/entitlement";
@@ -192,4 +193,89 @@ async function createCustomer(
   await supabase.from("agencies").update({ stripe_customer_id: customer.id }).eq("id", agency.id);
 
   return customer.id;
+}
+
+// ── The RealComply master switch ────────────────────────────────────────
+//
+// Adam, 9 Sep 2026: "Am I going to have to do this every time I want to test
+// it? Is there a way we can make it accessible from my account only? Let's
+// call my account the RealComply Master account."
+//
+// Putting an agency on a trial to test checkout, and back to free afterwards,
+// was two SQL scripts pasted into the database console. Fine once, wrong as a
+// routine — and the same manual dance would be how a real design partner got
+// comped later, on a live account, at the point where a mistake costs money.
+//
+// PLATFORM ADMIN, NOT LICENSEE. Setting a plan or comping an account is not an
+// agency-level act, and the check here is the whole reason the flag exists.
+// Migration 0044 also puts a trigger on the table, so this is enforced in the
+// database as well as here: a licensee who found their way to the Supabase
+// client directly still cannot write these columns.
+//
+// The flag is granted in SQL and deliberately has no interface. A screen that
+// can promote someone to platform admin is a screen that can be tricked into
+// promoting someone to platform admin.
+export async function setAgencyBillingAsMaster(
+  _prev: BillingActionState,
+  formData: FormData,
+): Promise<BillingActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (profile.is_platform_admin !== true) {
+    return { error: "Only a RealComply master account can change a plan here." };
+  }
+
+  const mode = String(formData.get("mode") ?? "");
+  const plan = String(formData.get("plan") ?? "office_1");
+
+  if (!(plan in PLANS)) {
+    return { error: "That isn't a plan." };
+  }
+
+  // Whichever agency the master is signed in to. Cross-agency comping needs an
+  // agency picker and there is exactly one agency today; building the picker
+  // now would be designing against an imagined second customer.
+  const agencyId = profile.agency_id;
+
+  if (mode === "trial") {
+    const { error } = await supabase
+      .from("agencies")
+      .update({
+        status: "trialing",
+        plan,
+        trial_ends_at: new Date(Date.now() + TRIAL_DAYS * 86_400_000).toISOString(),
+      })
+      .eq("id", agencyId);
+    if (error) {
+      console.error("setAgencyBillingAsMaster trial failed:", error.message);
+      return { error: "Couldn't put this agency on a trial." };
+    }
+  } else if (mode === "free") {
+    // Clearing the Stripe ids is the half that gets forgotten by hand. A
+    // sandbox customer id left on a row points at nothing once the account is
+    // live, and it is the first thing anyone will read and believe when
+    // billing misbehaves.
+    const { error } = await supabase
+      .from("agencies")
+      .update({
+        status: "comped",
+        plan,
+        trial_ends_at: null,
+        stripe_customer_id: null,
+        stripe_subscription_id: null,
+        comped_by: profile.id,
+        comped_reason: String(formData.get("reason") ?? "").trim() || "Design partner",
+        comped_until: null,
+      })
+      .eq("id", agencyId);
+    if (error) {
+      console.error("setAgencyBillingAsMaster free failed:", error.message);
+      return { error: "Couldn't put this agency back to a free account." };
+    }
+  } else {
+    return { error: "Choose what to set it to." };
+  }
+
+  revalidatePath("/dashboard/billing");
+  return { error: null };
 }
