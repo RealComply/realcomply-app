@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { entitlementFor, PLANS, annualPrice } from "@/lib/billing/entitlement";
-import { isTestMode } from "@/lib/billing/stripe";
+import { isTestMode, stripeConfigured } from "@/lib/billing/stripe";
 import { formatAuDate } from "@/lib/format-date";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { ManageBillingButton } from "@/components/billing/ManageBillingButton";
@@ -64,11 +64,26 @@ export default async function BillingPage({
 
       {/* Said plainly and near the top, because a test-mode subscription looks
           identical to a real one on this page. Someone who believes they have
-          paid, and has not, finds out at the worst possible moment. */}
-      {isTestMode() && (
-        <p className="mt-5 rounded-xl border border-rc-amber/40 bg-rc-amber/10 px-4 py-3 text-sm font-semibold text-rc-ink">
-          Test mode. Nothing here charges a real card, and any subscription started is not a real one.
+          paid, and has not, finds out at the worst possible moment.
+
+          THREE STATES, NOT TWO (9 Sep 2026). This used to be one banner driven
+          by isTestMode(), which was true whenever the key was not a live one —
+          including when there was no key at all. So an unconfigured billing
+          page displayed a confident "Test mode" notice and then failed at
+          checkout with a generic error, which is the least helpful pairing
+          available. Not configured is now its own message and says what to do. */}
+      {!stripeConfigured() ? (
+        <p className="mt-5 rounded-xl border border-rc-red/40 bg-rc-red-soft px-4 py-3 text-sm text-rc-ink">
+          <span className="font-semibold">Billing isn&rsquo;t connected.</span> STRIPE_SECRET_KEY isn&rsquo;t set
+          on this deployment, so checkout can&rsquo;t start. Set it in the hosting environment and redeploy —
+          an environment variable only reaches a build made after it was saved.
         </p>
+      ) : (
+        isTestMode() && (
+          <p className="mt-5 rounded-xl border border-rc-amber/40 bg-rc-amber/10 px-4 py-3 text-sm font-semibold text-rc-ink">
+            Test mode. Nothing here charges a real card, and any subscription started is not a real one.
+          </p>
+        )
       )}
 
       {started && (

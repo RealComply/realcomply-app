@@ -29,7 +29,23 @@ export function secretKey(): string {
   return key;
 }
 
-/** True when we are pointed at a sandbox. Used to label the billing screen. */
+/**
+ * Is Stripe configured at all?
+ *
+ * Split out from isTestMode on 9 Sep 2026, because isTestMode returned TRUE
+ * when the key was missing entirely — an empty string does not start with
+ * sk_live_ — so a billing page with no Stripe key at all showed a confident
+ * amber "Test mode" banner. The written test procedure even said the banner's
+ * ABSENCE meant the key had not taken, which is exactly backwards: absence
+ * means a live key, and presence means a test key or no key. Adam hit
+ * "Couldn't start checkout" on 9 Sep with the banner showing, which is the
+ * state this could not describe.
+ */
+export function stripeConfigured(): boolean {
+  return Boolean(process.env.STRIPE_SECRET_KEY);
+}
+
+/** True when we are pointed at a sandbox. Only meaningful if configured. */
 export function isTestMode(): boolean {
   return !(process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_live_");
 }
