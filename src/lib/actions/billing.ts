@@ -107,6 +107,33 @@ export async function startCheckout(
       // whatever is enabled in the dashboard — so the day BECS Direct Debit is
       // switched on there, it appears here with no deploy. Naming the methods
       // in code would mean checkout breaking today, because BECS is not on yet.
+      //
+      // MANAGED PAYMENTS, EXPLICITLY OFF. 9 Sep 2026, and it is the one place
+      // this integration overrides an account-level default on purpose.
+      //
+      // Managed Payments is Stripe's merchant-of-record product: Stripe becomes
+      // the seller to the customer, calculates and remits that customer's local
+      // sales tax, and charges more for doing it. Stripe turns it on by DEFAULT
+      // for new accounts, and it refuses any line item whose product carries no
+      // tax_code — which is what broke checkout with "the product tax code is
+      // missing" and cost an afternoon.
+      //
+      // We do not want it. Adam, 9 Sep 2026: "GST is the same across every
+      // client." An Australian company selling to Australian agencies, prices
+      // already tax_behavior: inclusive, GST handled by the business. What
+      // merchant-of-record sells is cross-border tax handling we have no use
+      // for. There is also an unanswered question about whether it supports
+      // BECS Direct Debit, and BECS with its $3.50 fee cap is a large part of
+      // why Stripe was chosen for the office tiers.
+      //
+      // WHY IN CODE RATHER THAN THE DASHBOARD SWITCH. The dashboard was the
+      // first plan and the setting reads "not set up" on an account that has
+      // never accepted the Managed Payments terms — so there is nothing to
+      // turn off, while the default still applies to the session. Setting it
+      // here is unambiguous, and it is also the only version that survives the
+      // move to live: the live account carries the same default, and the first
+      // real customer's checkout would have failed exactly as ours did.
+      "managed_payments[enabled]": "false",
       allow_promotion_codes: "true",
       success_url: `${siteUrl()}/dashboard/billing?started=1`,
       cancel_url: `${siteUrl()}/dashboard/billing?cancelled=1`,
