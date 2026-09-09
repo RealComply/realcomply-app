@@ -1,13 +1,14 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Download, Eye, FileText, RefreshCw, X } from "lucide-react";
+import { Download, Eye, FileText, PenLine, RefreshCw, X } from "lucide-react";
 import { FileDropZone } from "@/components/FileDropZone";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { uploadEvidenceObject, buildSignoffDocPath, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import {
   createSignoffDocument,
   replaceSignoffDocument,
+  restampSignedDocument,
   signDocument,
   type ActionState,
 } from "@/lib/actions/signoffs";
@@ -57,6 +58,7 @@ export function TrustMonthCard({
   const [reviewed, setReviewed] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const [replacement, setReplacement] = useState<File | null>(null);
+  const [restamping, setRestamping] = useState(false);
 
   const signAction = signDocument.bind(null, month.documentId ?? "");
   const [signState, submitSign, signing] = useActionState(signAction, initial);
@@ -140,6 +142,20 @@ export function TrustMonthCard({
     }
     setReplacement(null);
     setReplacing(false);
+  }
+
+  // Adding the signature page to a month signed before the page existed.
+  //
+  // Not "sign it again" — see restampSignedDocument. The signature and its
+  // date are untouched; this only builds the file that should have been built
+  // at the time, and the page it produces carries the original date.
+  async function handleRestamp() {
+    if (!month.documentId) return;
+    setError(null);
+    setRestamping(true);
+    const { error: stampError } = await restampSignedDocument(month.documentId);
+    setRestamping(false);
+    if (stampError) setError(stampError);
   }
 
   async function handleUpload() {
@@ -307,6 +323,36 @@ export function TrustMonthCard({
         <p className="mt-2 whitespace-pre-line rounded-lg border border-rc-border bg-rc-bg-alt px-2.5 py-1.5 text-[11px] leading-relaxed text-rc-muted">
           {month.notes}
         </p>
+      )}
+
+      {/* Signed, but the file has no signature page on it.
+          Only ever true of months signed before 8 September 2026, when the
+          signature page shipped. Offered as its own amber row rather than a
+          quiet button because until it is pressed, this month's report leaves
+          the building looking unsigned — and the register says otherwise.
+
+          Deliberately NOT "replace and re-sign", which is the other button on
+          this card and would destroy the date the licensee actually reviewed
+          it. See restampSignedDocument. */}
+      {month.documentId && month.status === "signed" && !month.signedFilePath && canSign && (
+        <div className="mt-3 rounded-lg border border-rc-amber/40 bg-rc-amber/5 p-3">
+          <p className="text-xs font-bold text-rc-ink">This one has no signature page yet</p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
+            You signed it off before RealComply started adding the signature page to the document
+            itself, so the file still opens as an unsigned report. Adding it now doesn&rsquo;t change
+            your sign-off or its date
+            {month.signedAt ? ` — the page will read ${formatAuDate(month.signedAt.slice(0, 10))}` : ""}.
+          </p>
+          <button
+            type="button"
+            onClick={handleRestamp}
+            disabled={restamping}
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-rc-green-deep px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+          >
+            <PenLine size={12} aria-hidden="true" />
+            {restamping ? "Adding it…" : "Add the signature page"}
+          </button>
+        </div>
       )}
 
       {/* Replace — the wrong month's report, a superseded export, a bad scan.

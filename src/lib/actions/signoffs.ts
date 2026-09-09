@@ -202,6 +202,100 @@ export async function signDocument(documentId: string, _prev: ActionState, _form
   return ok;
 }
 
+// ── Adding the signature page to a document signed before it existed ─────
+//
+// Adam, 9 Sep 2026: "the sign pages on the trust account reconciliation
+// reports aren't showing, something's dropped off."
+//
+// Nothing had dropped off. The signature page shipped on 8 September; three
+// reconciliations were signed on the 4th and the 7th, and signing does not
+// reach back in time. Those months are signed in the register and open as an
+// unsigned report, which is the same defect Adam reported on 8 Sep wearing
+// different clothes — the file that leaves the building does not carry the
+// signature.
+//
+// WHY THIS EXISTS AND NOT "REPLACE AND RE-SIGN", which is what I first told
+// him to do and was wrong. Replacing voids the signature and writes a new one
+// dated today. The licensee reviewed the SALES account's July reconciliation
+// on 7 September; that is a true fact about a trust record, it is the fact
+// s32(3)(c) wants evidence of, and re-signing would overwrite it with 9
+// September and note an amendment that never happened. Trading the real date
+// of review for a cosmetic signature page is a bad trade on a record an
+// auditor reads under s111 — the page is supposed to describe the signature,
+// not replace it.
+//
+// So this changes NOTHING except producing the file that should have been
+// produced at the time. No new signature, no new date, no amendment note. The
+// page it generates reads "Signed 7 September 2026", because that is when it
+// was signed. stampSignedCopy was already built to rebuild from the untouched
+// original plus whatever signatures exist, so it needs no argument about when
+// it is being called.
+//
+// Refuses when there is nothing to fix — no signature yet, or a signed copy
+// already on file — rather than silently rebuilding a good document.
+export async function restampSignedDocument(documentId: string): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const { data: doc } = await supabase
+    .from("signoff_documents")
+    .select("id, title, file_path, file_name, category, signer_scope, signed_file_path")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (!doc) return { error: "That document couldn't be found." };
+
+  // Same gate as signing it. The page carries the licensee's name and the
+  // basis on which it stands as their signature; who may (re)generate it is
+  // not a smaller question than who may sign it.
+  const scope = (doc as { signer_scope?: string }).signer_scope;
+  if (scope === "licensee_only" && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can add the signature page to this document." };
+  }
+
+  if ((doc as { signed_file_path: string | null }).signed_file_path) {
+    return { error: "This document already has its signature page." };
+  }
+
+  const { data: sig } = await supabase
+    .from("signoff_signatures")
+    .select("id")
+    .eq("document_id", documentId)
+    .not("signed_at", "is", null)
+    .limit(1)
+    .maybeSingle();
+  if (!sig) {
+    return { error: "This document hasn't been signed off yet, so there's no signature to add." };
+  }
+
+  await stampSignedCopy(supabase, {
+    documentId,
+    agencyId: profile.agency_id,
+    title: (doc as { title: string }).title,
+    filePath: (doc as { file_path: string }).file_path,
+    fileName: (doc as { file_name: string }).file_name,
+    category: (doc as { category: string }).category,
+  });
+
+  // stampSignedCopy swallows its own failures by design — a signature must
+  // never fail because a PDF would not open. Here that is the whole job, so
+  // read back whether it landed and say so plainly rather than returning a
+  // success that changes nothing on screen.
+  const { data: after } = await supabase
+    .from("signoff_documents")
+    .select("signed_file_path")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (!(after as { signed_file_path: string | null } | null)?.signed_file_path) {
+    return { error: "Couldn't build the signature page for this one. Tell support — the signature itself is unaffected." };
+  }
+
+  revalidatePath("/dashboard/trust");
+  revalidatePath("/dashboard/document-signoffs");
+  revalidatePath("/dashboard/sg-manual");
+  revalidatePath("/dashboard/registers");
+  return ok;
+}
+
 // The line printed on the signature page naming the obligation the DOCUMENT
 // answers — not the signature.
 //
