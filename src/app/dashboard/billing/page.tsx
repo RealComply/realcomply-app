@@ -149,7 +149,13 @@ export default async function BillingPage({
             facts that change what someone owes are the window and the rule;
             the justification belongs in a support answer, if it is ever
             asked for at all. */}
-        <p className="mt-1 text-sm text-rc-muted">A rolling 365 days. Every listing counts, sold or not.</p>
+        {/* "A rolling 365 days" is precise and reads like a contract term.
+            Adam, 9 Sep 2026. The window and the rule are the two facts that
+            change what someone owes, so they stay — in words a person would
+            use out loud. */}
+        <p className="mt-1 text-sm text-rc-muted">
+          Counts every listing added in the last 12 months, whether it sold or not.
+        </p>
 
         {usedPercent !== null && (
           <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-rc-bg-alt">
@@ -216,8 +222,14 @@ function statusLine(
     case "canceled":
       return "This subscription has ended.";
     case "comped": {
+      // The reason is free text somebody typed into a SQL editor, so it can
+      // arrive with its own full stop, or repeating the words this line has
+      // already said. On 9 Sep 2026 that produced "Free account — Design
+      // partner — free account, no Stripe records.." on screen. Trimmed and
+      // de-duplicated here rather than relying on whoever writes the next one.
       const until = agency?.comped_until ? ` until ${formatAuDate(agency.comped_until)}` : "";
-      const why = agency?.comped_reason ? ` — ${agency.comped_reason}` : "";
+      const reason = (agency?.comped_reason ?? "").trim().replace(/[.\s]+$/, "");
+      const why = reason && !/^free account/i.test(reason) ? ` — ${reason}` : "";
       return `Free account${until}${why}.`;
     }
   }
