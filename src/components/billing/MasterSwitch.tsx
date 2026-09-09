@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { KeyRound } from "lucide-react";
 import { setAgencyBillingAsMaster, type BillingActionState } from "@/lib/actions/billing";
 import { PLANS, type Plan } from "@/lib/billing/entitlement";
@@ -50,6 +51,16 @@ export function MasterSwitch({
       <p className="mt-1.5 text-sm text-rc-muted">
         Only you can see this. It sets this agency&rsquo;s plan and status directly, without going through
         Stripe.
+      </p>
+
+      {/* The way in to the staff page. Put here rather than in the sidebar
+          because the sidebar is the agency's own navigation and this is not
+          part of the product — and because this red box is the one place Adam
+          already knows to look for RealComply-only controls. */}
+      <p className="mt-2 text-sm">
+        <Link href="/dashboard/admin" className="font-semibold text-rc-red hover:underline">
+          See everyone who has signed up →
+        </Link>
       </p>
 
       <form action={formAction} className="mt-4 space-y-3">
