@@ -33,6 +33,17 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   const allItems = Object.fromEntries(((rows ?? []) as PropertyItem[]).map((i) => [i.item_key, i]));
   const items = allItemsFor(p, allItems, await ruleContextFor(supabase, p));
 
+  // Signed off, or not. Same test as the PDF route and the PDF itself — see the
+  // note in lib/pdf/compliance-record.ts for why an unsigned pack has to say so
+  // on its own face rather than relying on somebody noticing a missing section.
+  const signedName = (key: string) =>
+    (allItems[key]?.data as { typedName?: string } | undefined)?.typedName ?? null;
+  const missingSignatures = [
+    signedName("sign_agent") ? null : "the agent",
+    signedName("sign_licensee") ? null : "the licensee in charge",
+  ].filter((s): s is string => s !== null);
+  const isDraft = missingSignatures.length > 0;
+
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 print:px-0">
       <div className="flex items-center justify-between print:hidden">
@@ -56,9 +67,25 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
       </div>
 
       <h1 className="mt-6 text-2xl font-bold text-rc-ink">
-        Real<span className="text-rc-green-deep">Comply</span> — Finalised compliance record
+        Real<span className="text-rc-green-deep">Comply</span> —{" "}
+        {isDraft ? "Compliance record (draft)" : "Finalised compliance record"}
       </h1>
       <p className="mt-1 text-sm text-rc-muted">{p.address}</p>
+
+      {/* Said on screen as well as in the PDF, because this page prints — the
+          comment at the top of this file says as much — and a printed page with
+          no draft notice is the exact document this change exists to prevent.
+          Adam, 9 Sep 2026: "I feel like we're missing the step where the audit
+          pack actually gets signed off." */}
+      {isDraft && (
+        <div className="mt-3 rounded-card border border-rc-amber/40 bg-rc-amber/5 px-4 py-3">
+          <p className="text-sm font-bold text-rc-amber-deep">This is a draft, not the finalised record</p>
+          <p className="mt-1 text-sm leading-relaxed text-rc-muted">
+            Still to sign: {missingSignatures.join(" and ")}. Until then the file isn&rsquo;t closed out, and
+            this copy shouldn&rsquo;t be handed over as the completed compliance record.
+          </p>
+        </div>
+      )}
       <p className="mt-1 text-xs text-rc-faint">
         Generated {new Date().toLocaleString("en-AU")} · {RULESET_VERSION} · diligence support — verify with your
         adviser; the licensee decides.

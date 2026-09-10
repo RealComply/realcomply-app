@@ -86,6 +86,20 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return d?.typedName ? { typedName: d.typedName, signedAt: d.signedAt ?? null } : null;
   };
 
+  // Whether this pack is a draft, decided here as well as inside the PDF —
+  // because the FILENAME has to know too, and the filename is set out here.
+  //
+  // Adam, 9 Sep 2026, on being able to download the pack at any point: "I feel
+  // like we're missing the step where the audit pack actually gets signed off."
+  // The step existed; what was missing is that an unsigned pack looked exactly
+  // like a signed one, right down to a heading reading "Finalised compliance
+  // record". Both halves of that are now fixed, and the filename matters most
+  // of the two — a file attached to an email is judged by its name long before
+  // anybody opens page one.
+  const agentSignature = signatureOf("sign_agent");
+  const licenseeSignature = signatureOf("sign_licensee");
+  const isDraft = !agentSignature || !licenseeSignature;
+
   // Deliberately NOT the contract for sale. Adam named the DATE it was
   // received, not the document, and appending a contract would routinely add a
   // hundred pages to a record that has to stay emailable.
@@ -158,14 +172,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       weighting: c.weighting,
       agentNote: c.agentNote,
     })),
-    signatures: { agent: signatureOf("sign_agent"), licensee: signatureOf("sign_licensee") },
+    signatures: { agent: agentSignature, licensee: licenseeSignature },
     attachments,
     rulesetVersion: RULESET_VERSION,
     preparedFor: profile.full_name ?? profile.email,
     generatedAt,
   });
 
-  const filename = complianceRecordFilename(p, agencyName, generatedAt);
+  const filename = complianceRecordFilename(p, agencyName, generatedAt, isDraft);
 
   return new Response(pdf as BodyInit, {
     headers: {

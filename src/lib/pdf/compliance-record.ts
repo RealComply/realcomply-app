@@ -87,6 +87,22 @@ class Cursor {
   page: PDFPage;
   y: number;
   pageNo = 1;
+  /**
+   * Marks EVERY page when the file has not been signed off.
+   *
+   * Adam, 9 Sep 2026: "you can download the audit pack at any point in time in
+   * the listing. I feel like we're missing the step where the audit pack
+   * actually gets signed off." The sign-off step existed — what was missing is
+   * that an unsigned pack said nothing about being unsigned, while its heading
+   * read "Finalised compliance record".
+   *
+   * On every page rather than only the first, because pages get separated.
+   * Somebody prints the pack, it sits in a folder, half of it is photocopied
+   * for a solicitor — and any page that leaves on its own has to be able to say
+   * what it is. Same reasoning as the signature page on a trust reconciliation:
+   * the document has to carry its own status once it has left this system.
+   */
+  draftMark: string | null = null;
 
   constructor(doc: PDFDocument, fonts: Fonts) {
     this.doc = doc;
@@ -119,6 +135,15 @@ class Cursor {
       font: this.fonts.regular,
       color: FAINT,
     });
+    if (this.draftMark) {
+      this.page.drawText(ascii(this.draftMark), {
+        x: MARGIN,
+        y: BOTTOM - 26,
+        size: 8,
+        font: this.fonts.bold,
+        color: AMBER,
+      });
+    }
   }
 
   text(
@@ -267,8 +292,30 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     generatedAt,
   } = input;
 
+  // SIGNED, OR NOT. Everything below turns on this one question.
+  //
+  // The pack can be produced at any point in a listing, and that is deliberate
+  // — an agent checking their own work mid-campaign is a good thing. What was
+  // wrong is that an unsigned pack was indistinguishable from a finished one:
+  // same heading, same filename, and the signature block simply absent rather
+  // than shown as outstanding. A missing section reads as "nothing to say
+  // here", which on a compliance record is the wrong message entirely.
+  //
+  // Both signatures are required in every case. Where the agent IS the
+  // licensee, they give both — send_licensee is the only step that disappears
+  // in that arrangement (see nsw-sales.ts), not the signature.
+  const missingSignatures = [
+    signatures.agent ? null : "the agent",
+    signatures.licensee ? null : "the licensee in charge",
+  ].filter((s): s is string => s !== null);
+  const isDraft = missingSignatures.length > 0;
+
   const doc = await PDFDocument.create();
-  doc.setTitle(`${agencyName} - compliance record - ${property.address}`);
+  doc.setTitle(
+    isDraft
+      ? `DRAFT - ${agencyName} - compliance record - ${property.address}`
+      : `${agencyName} - compliance record - ${property.address}`,
+  );
   doc.setAuthor(agencyName);
   doc.setSubject(rulesetVersion);
   doc.setProducer("RealComply");
@@ -280,6 +327,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   };
 
   const c = new Cursor(doc, fonts);
+  if (isDraft) c.draftMark = "DRAFT - not yet signed off";
 
   // Masthead.
   //
@@ -309,7 +357,11 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   c.text(agencyName, { size: 17, bold: true });
   if (agentName) c.text(agentName, { size: 11, color: MUTED });
   c.y -= 4;
-  c.text("Finalised compliance record", { size: 12.5, bold: true });
+  c.text(isDraft ? "Compliance record - DRAFT" : "Finalised compliance record", {
+    size: 12.5,
+    bold: true,
+    color: isDraft ? AMBER : INK,
+  });
   c.text("Powered by RealComply", { size: 8.5, bold: true, color: GREEN, gap: 6 });
   c.text(property.address, { size: 11, bold: true });
   c.text(
@@ -321,6 +373,31 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     color: FAINT,
   });
   c.rule(10, 14);
+
+  // THE DRAFT NOTICE, above the open flags and above everything else.
+  //
+  // Stated positively — what this document IS and what is still outstanding —
+  // rather than as a warning not to use it. Interim copies are a legitimate
+  // thing to want: an agent checking their own file, a principal reviewing
+  // before signing. What must not happen is one of those being mistaken for the
+  // finished record, or handed to a regulator as one.
+  //
+  // Naming WHO has not signed rather than saying "unsigned", because that is
+  // the actionable half. "Waiting on the licensee in charge" tells the agent
+  // exactly what to chase; "not signed" leaves them to work it out.
+  if (isDraft) {
+    c.text("This is a draft, not the finalised record", { size: 11, bold: true, color: AMBER, gap: 4 });
+    c.text(
+      `Still to sign: ${missingSignatures.join(" and ")}. Until then this file is not closed out, ` +
+        "and this copy should not be handed over as the completed compliance record.",
+      { size: 9.5, color: MUTED },
+    );
+    c.text(
+      "Everything below is accurate as at the date above. The finalised version carries both signatures.",
+      { size: 8.5, color: FAINT },
+    );
+    c.rule(10, 14);
+  }
 
   // Open flags first, because a document read back to front should still put
   // the outstanding items in front of whoever opened it. This is the only part
@@ -447,13 +524,25 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   // is: the two people who take responsibility for this file, named, on the
   // document handed over. A record that merely says "Licensee signature - done"
   // makes a reader go looking for who signed.
-  if (signatures.agent || signatures.licensee) {
+  // ALWAYS drawn, even when nobody has signed — which is the change of 9 Sep
+  // 2026. It used to be skipped entirely when both were absent, so an unsigned
+  // pack had no signature section at all. A missing section reads as "nothing
+  // to say here"; an outstanding one that names who is still to sign says what
+  // is actually true and what has to happen next.
+  {
     c.rule(10, 12);
-    c.text("Signed", { size: 11, bold: true, gap: 6 });
+    c.text(isDraft ? "Signatures" : "Signed", { size: 11, bold: true, gap: 6 });
 
     const block = (role: string, sig: { typedName: string; signedAt: string | null } | null) => {
-      if (!sig) return;
       c.need(46);
+      if (!sig) {
+        // Shown in the same shape as a real signature, so the space it will
+        // occupy is visible and its absence is obvious at a glance.
+        c.text("Not yet signed", { size: 12, bold: true, color: AMBER });
+        c.text(role, { size: 8.5, color: FAINT });
+        c.y -= 8;
+        return;
+      }
       c.text(sig.typedName, { size: 12, bold: true });
       c.text(role, { size: 8.5, color: FAINT });
       if (sig.signedAt) {
@@ -583,6 +672,17 @@ export function complianceRecordFilename(
   property: Property,
   agencyName: string,
   generatedAt: Date,
+  /**
+   * Puts DRAFT at the FRONT of the filename when the file is not signed off.
+   *
+   * The front, not the end, because that is the half that survives: a file
+   * listing truncates the middle, an email attachment shows the start, and a
+   * folder sorted by name puts every draft together. A pack that is a draft
+   * should be recognisable without opening it — which is the whole point, since
+   * the moment somebody attaches one to an email is the moment nobody is
+   * reading page one.
+   */
+  isDraft = false,
 ): string {
   const clean = (s: string) =>
     ascii(s)
@@ -592,5 +692,6 @@ export function complianceRecordFilename(
   const stamp = generatedAt.toISOString().slice(0, 10);
   // Agency first, so a regulator with several agencies' packs in one folder can
   // sort them into piles without opening any of them.
-  return `${clean(agencyName)} - compliance record - ${clean(property.address)} - ${stamp}.pdf`;
+  const base = `${clean(agencyName)} - compliance record - ${clean(property.address)} - ${stamp}.pdf`;
+  return isDraft ? `DRAFT - ${base}` : base;
 }
