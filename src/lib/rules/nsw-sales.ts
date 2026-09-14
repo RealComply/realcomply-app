@@ -554,19 +554,31 @@ const items: ComplianceItem[] = [
     description:
       "Contract available before marketing, with the s52A prescribed documents attached. Attach the contract and the documents are checked off one by one.",
     legalBasis: "s52A, Conveyancing Act 1919 (NSW); Conveyancing (Sale of Land) Regulation 2022, Sch 1",
-    // The date the contract came back from the vendor's solicitor (Adam,
-    // 24 Aug 2026), so it appears on the audit record.
+    // NO DATE HERE, and no findings box (Adam, 14 Sep 2026).
     //
-    // It is the date the agent became ABLE to comply with s63(2) — the section
-    // forbids offering the property for sale unless a copy of the contract is
-    // available for inspection at the registered office. The gap between this
-    // date and the first marketing is the thing a regulator would look at, and
-    // until now nothing recorded the first half of it.
-    requiresDate: true,
-    dateLabel: "Date the contract was received",
+    // THE DATE WAS ASKED TWICE. It was added here on 24 Aug so the date the
+    // contract came back from the solicitor would reach the audit record. b1a
+    // — "Date the contract was received" — then became its own card and asks
+    // exactly that, so the agent met the same question on two cards in the same
+    // stage and had to guess whether they were different questions.
+    //
+    // b1a is the one that keeps it, and it is the right one: the ordering
+    // safety check lives there (see compliance.ts, where b1a is compared
+    // against c0 and flags when the contract arrived AFTER the listing went
+    // live). Nothing reads a date from this card, so removing it loses no
+    // check and no record.
+    //
+    // THE FINDINGS BOX IS REDUNDANT ON THIS CARD SPECIFICALLY. Everything
+    // useful the AI has to say about a contract is already said better
+    // immediately above it, as the prescribed-documents checklist — each of the
+    // Sch 1 documents listed and marked found or not found. A paragraph of
+    // prose restating that is a second, vaguer version of a precise answer, and
+    // two accounts of the same reading is how they end up disagreeing.
+    //
+    // The prescribed-documents list is untouched and is the point of the card.
+    requiresDate: false,
     requiredForStageCompletion: true,
     hideNote: true,
-    showFindings: true,
     evidenceReplaceOnly: true,
   },
   // ── Auction, before the day ───────────────────────────────────────────
@@ -765,6 +777,18 @@ const items: ComplianceItem[] = [
     requiresDate: true,
     requiredForStageCompletion: true,
     hideNote: true,
+    // NO EVIDENCE UPLOADER (Adam, 14 Sep 2026).
+    //
+    // There is no document. An agent walks through a property; nothing is
+    // produced by the walking. Sch 2 rr 2 and 3 require the inspection, not a
+    // record of it, and the date typed here IS the record.
+    //
+    // Offering an upload box invites the agent to go looking for something to
+    // put in it, and what they would find is the sales inspection report —
+    // which belongs to the agency agreement (Sch 6 cl 8) and is already on file
+    // there. Asking for it twice makes the file look like it holds two
+    // documents when it holds one.
+    hideEvidence: true,
   },
   {
     key: "b3",
