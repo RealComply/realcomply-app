@@ -4,6 +4,7 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { createServiceClient } from "@/lib/supabase/service";
 import { formatAuDate } from "@/lib/format-date";
 import { FounderInvites, type FounderInvite } from "@/components/admin/FounderInvites";
+import { storageBackupConfigured } from "@/lib/backup/storage-backup";
 
 // Who is on RealComply — the only screen that looks across every agency.
 //
@@ -80,6 +81,7 @@ export default async function AdminPage() {
     { data: inviteRows },
     { data: propertyRows },
     { data: expiredRows },
+    { data: backupRows },
   ] = await Promise.all([
       supabase
         .from("agencies")
@@ -100,6 +102,10 @@ export default async function AdminPage() {
       supabase.from("properties").select("id, agency_id, created_at"),
       // Expiry decided by the database's clock — see the note below.
       supabase.from("founder_invites").select("token").lt("expires_at", "now()"),
+      // Backup health. A backup nobody looks at is a backup that has already
+      // stopped and nobody knows — so the one number that matters (anything
+      // not yet copied) is on the screen we open anyway.
+      supabase.from("storage_backups").select("path, backed_up_at, last_error, attempts"),
     ]);
 
   const agencies = (agencyRows ?? []) as AgencyRow[];
@@ -132,6 +138,22 @@ export default async function AdminPage() {
   const unusedInvites = inviteList.filter((i) => !i.acceptedAt && !i.expired);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
 
+  const backups = (backupRows ?? []) as Array<{
+    path: string;
+    backed_up_at: string | null;
+    last_error: string | null;
+    attempts: number;
+  }>;
+  const backedUp = backups.filter((b) => b.backed_up_at);
+  const backupFailures = backups.filter((b) => !b.backed_up_at && b.last_error);
+  // The most recent successful copy. Silence here is the thing to notice: the
+  // job runs hourly, so a timestamp older than a few hours means it has stopped.
+  const lastBackupAt = backedUp
+    .map((b) => b.backed_up_at as string)
+    .sort()
+    .at(-1);
+  const backupConfigured = storageBackupConfigured();
+
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-8">
       <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-rc-red">
@@ -147,6 +169,48 @@ export default async function AdminPage() {
         <Stat icon={<Building2 size={14} />} label="Agencies" value={agencies.length} />
         <Stat icon={<Users size={14} />} label="People" value={profiles.length} />
         <Stat icon={<Ticket size={14} />} label="Invites left" value={unusedInvites.length} />
+      </div>
+
+      {/* DOCUMENT BACKUP.
+          Near the top because it is the thing that is silently fine until it
+          is silently not. Supabase's own database backups exclude Storage —
+          every uploaded agency agreement, contract and trust reconciliation —
+          so this copy is the only one there is. See 0046 and
+          lib/backup/storage-backup.ts. */}
+      <h2 className="mt-9 text-sm font-bold text-rc-ink">Document backup</h2>
+      <div
+        className={`mt-3 rounded-card border bg-white p-4 shadow-card ${
+          !backupConfigured || backupFailures.length > 0 ? "border-rc-red/40" : "border-rc-border"
+        }`}
+      >
+        {!backupConfigured ? (
+          <>
+            <p className="text-sm font-bold text-rc-red">Not set up — uploaded documents are not backed up</p>
+            <p className="mt-1 text-xs leading-relaxed text-rc-muted">
+              Supabase&rsquo;s database backups do not include uploaded files. Until this is configured, the
+              only copy of every agency agreement, contract and trust reconciliation is the live bucket. Add
+              the four <span className="font-mono">BACKUP_*</span> variables in Vercel.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-rc-ink">
+              <span className="font-bold">{backedUp.length}</span> document
+              {backedUp.length === 1 ? "" : "s"} copied to the backup bucket
+              {lastBackupAt ? ` · last ${formatAuDate(lastBackupAt.slice(0, 10))}` : ""}
+            </p>
+            {backupFailures.length > 0 ? (
+              <p className="mt-1 text-xs font-semibold text-rc-red">
+                {backupFailures.length} could not be copied — check the Vercel logs for
+                &ldquo;storage backup failed&rdquo;.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-rc-muted">
+                Runs hourly. Nothing outstanding. A date older than today means the job has stopped.
+              </p>
+            )}
+          </>
+        )}
       </div>
 
       {/* AGENCIES, oldest first — so Cass stays at the top and each new tester
