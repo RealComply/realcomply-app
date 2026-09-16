@@ -60,10 +60,16 @@ type StorageObject = {
 };
 
 function backupConfig() {
-  const bucket = process.env.BACKUP_S3_BUCKET;
-  const region = process.env.BACKUP_AWS_REGION;
-  const accessKeyId = process.env.BACKUP_AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.BACKUP_AWS_SECRET_ACCESS_KEY;
+  // Trimmed, every one of them. These four values are typed or pasted into a
+  // web form by a human, and on 16 Sep 2026 a trailing character on the bucket
+  // name cost an afternoon: S3 answered "The specified bucket is not valid"
+  // for all 50 objects in the batch, which reads like a permissions problem
+  // and is actually a stray keystroke. Nothing downstream can tell the
+  // difference, so the whitespace is stripped here where it arrives.
+  const bucket = process.env.BACKUP_S3_BUCKET?.trim();
+  const region = process.env.BACKUP_AWS_REGION?.trim();
+  const accessKeyId = process.env.BACKUP_AWS_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.BACKUP_AWS_SECRET_ACCESS_KEY?.trim();
   if (!bucket || !region || !accessKeyId || !secretAccessKey) return null;
   return { bucket, region, accessKeyId, secretAccessKey };
 }
@@ -212,13 +218,14 @@ export async function runStorageBackup({ limit = 50 }: { limit?: number } = {}):
 
   const { data: ledgerRows } = await supabase
     .from("storage_backups")
-    .select("path, source_updated_at, backed_up_at");
+    .select("path, source_updated_at, backed_up_at, attempts");
 
   const ledger = new Map(
     ((ledgerRows ?? []) as Array<{
       path: string;
       source_updated_at: string | null;
       backed_up_at: string | null;
+      attempts: number | null;
     }>).map((r) => [r.path, r]),
   );
 
@@ -291,7 +298,11 @@ export async function runStorageBackup({ limit = 50 }: { limit?: number } = {}):
           size_bytes: object.size,
           source_updated_at: object.updatedAt,
           backed_up_at: existing?.backed_up_at ?? null,
-          attempts: 1,
+          // Climbing, not stuck at 1. The comment below has always said that
+          // attempts rising against an empty backed_up_at is the signal that
+          // something is permanently broken — but the value was hardcoded, so
+          // a file failing every hour for a week still read as one attempt.
+          attempts: (existing?.attempts ?? 0) + 1,
           last_error: message.slice(0, 500),
           last_attempt_at: new Date().toISOString(),
         },
