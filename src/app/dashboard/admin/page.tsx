@@ -4,7 +4,7 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { createServiceClient } from "@/lib/supabase/service";
 import { formatAuDate } from "@/lib/format-date";
 import { FounderInvites, type FounderInvite } from "@/components/admin/FounderInvites";
-import { storageBackupConfigured } from "@/lib/backup/storage-backup";
+import { storageBackupConfigured, countEvidenceObjects } from "@/lib/backup/storage-backup";
 
 // Who is on RealComply — the only screen that looks across every agency.
 //
@@ -153,6 +153,12 @@ export default async function AdminPage() {
     .sort()
     .at(-1);
   const backupConfigured = storageBackupConfigured();
+  // The source side of the comparison. Counting copies alone cannot tell you
+  // the backup is complete — see countEvidenceObjects. null means the bucket
+  // could not be read at all, which is a failure, not a zero.
+  const sourceCount = backupConfigured ? await countEvidenceObjects() : null;
+  const backupIncomplete =
+    backupConfigured && (sourceCount === null || sourceCount > backedUp.length);
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-8">
@@ -180,7 +186,9 @@ export default async function AdminPage() {
       <h2 className="mt-9 text-sm font-bold text-rc-ink">Document backup</h2>
       <div
         className={`mt-3 rounded-card border bg-white p-4 shadow-card ${
-          !backupConfigured || backupFailures.length > 0 ? "border-rc-red/40" : "border-rc-border"
+          !backupConfigured || backupFailures.length > 0 || backupIncomplete
+            ? "border-rc-red/40"
+            : "border-rc-border"
         }`}
       >
         {!backupConfigured ? (
@@ -194,19 +202,44 @@ export default async function AdminPage() {
           </>
         ) : (
           <>
-            <p className="text-sm text-rc-ink">
-              <span className="font-bold">{backedUp.length}</span> document
-              {backedUp.length === 1 ? "" : "s"} copied to the backup bucket
-              {lastBackupAt ? ` · last ${formatAuDate(lastBackupAt.slice(0, 10))}` : ""}
-            </p>
-            {backupFailures.length > 0 ? (
+            {sourceCount === null ? (
+              <p className="text-sm font-bold text-rc-red">
+                Can&rsquo;t read the documents to be backed up
+              </p>
+            ) : (
+              <p className="text-sm text-rc-ink">
+                <span className="font-bold">
+                  {backedUp.length} of {sourceCount}
+                </span>{" "}
+                document{sourceCount === 1 ? "" : "s"} copied to the backup bucket
+                {lastBackupAt ? ` · last ${formatAuDate(lastBackupAt.slice(0, 10))}` : ""}
+              </p>
+            )}
+            {sourceCount === null ? (
+              <p className="mt-1 text-xs leading-relaxed text-rc-muted">
+                The job could not list the evidence bucket, so it has copied nothing. This is not an
+                empty bucket — check the Vercel logs for &ldquo;could not read the source
+                bucket&rdquo;.
+              </p>
+            ) : backupFailures.length > 0 ? (
               <p className="mt-1 text-xs font-semibold text-rc-red">
                 {backupFailures.length} could not be copied — check the Vercel logs for
                 &ldquo;storage backup failed&rdquo;.
               </p>
+            ) : sourceCount > backedUp.length ? (
+              <p className="mt-1 text-xs font-semibold text-rc-red">
+                {sourceCount - backedUp.length} not yet copied. The job runs hourly; if this number
+                doesn&rsquo;t fall, it has stopped.
+              </p>
+            ) : sourceCount === 0 ? (
+              <p className="mt-1 text-xs text-rc-muted">
+                Nothing uploaded yet, so there is nothing to back up. This will read 0 of 0 until an
+                agency uploads its first document.
+              </p>
             ) : (
               <p className="mt-1 text-xs text-rc-muted">
-                Runs hourly. Nothing outstanding. A date older than today means the job has stopped.
+                Runs hourly. Every document is copied. A date older than today means the job has
+                stopped.
               </p>
             )}
           </>

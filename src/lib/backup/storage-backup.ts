@@ -98,7 +98,21 @@ async function listAllObjects(
       .from(EVIDENCE_BUCKET)
       .list(prefix, { limit: PAGE, offset });
 
-    if (error || !data || data.length === 0) break;
+    // A failed listing is NOT an empty folder, and the original code treated
+    // them identically — it broke out of the loop and returned [], so the run
+    // reported "scanned 0, nothing outstanding" and the staff page went green
+    // on a backup that could not see a single file. 16 Sep 2026: the bucket
+    // held two agencies' documents and the panel said there was nothing to do.
+    //
+    // Throwing is right here. The caller turns it into a visible failure, and
+    // a backup that cannot read its source has to shout rather than shrug.
+    if (error) {
+      throw new Error(
+        `could not list "${prefix || "/"}" in ${EVIDENCE_BUCKET}: ${error.message}`,
+      );
+    }
+
+    if (!data || data.length === 0) break;
 
     for (const entry of data) {
       const path = prefix ? `${prefix}/${entry.name}` : entry.name;
@@ -122,6 +136,28 @@ async function listAllObjects(
   }
 
   return out;
+}
+
+/**
+ * How many documents are actually in the evidence bucket right now.
+ *
+ * The staff page needs this to say "N of M copied" rather than just "N copied".
+ * A bare count of copies cannot tell you whether the backup is complete — a
+ * job that silently sees nothing reports the same "0" as a genuinely empty
+ * bucket, which is precisely how this went wrong on 16 Sep 2026.
+ *
+ * Returns null when the bucket could not be read, which the page shows as a
+ * failure rather than as a zero.
+ */
+export async function countEvidenceObjects(): Promise<number | null> {
+  try {
+    const supabase = createServiceClient();
+    const objects = await listAllObjects(supabase);
+    return objects.length;
+  } catch (e) {
+    console.error("could not count evidence objects:", e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 /**
@@ -157,7 +193,22 @@ export async function runStorageBackup({ limit = 50 }: { limit?: number } = {}):
     },
   });
 
-  const objects = await listAllObjects(supabase);
+  let objects: StorageObject[];
+  try {
+    objects = await listAllObjects(supabase);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("storage backup could not read the source bucket:", message);
+    return {
+      ok: false,
+      scanned: 0,
+      copied: 0,
+      skipped: 0,
+      failed: 0,
+      remaining: null,
+      error: `Could not read the source bucket — nothing was backed up. ${message}`,
+    };
+  }
 
   const { data: ledgerRows } = await supabase
     .from("storage_backups")
