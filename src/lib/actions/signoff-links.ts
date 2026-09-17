@@ -147,7 +147,7 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
 
   const { data: agency } = await supabase
     .from("agencies")
-    .select("name, licensee_email")
+    .select("name, licensee_email, licensee_name")
     .eq("id", (property as { agency_id: string }).agency_id)
     .maybeSingle();
 
@@ -178,6 +178,7 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
 
   const statement = buildSignoffStatement({
     agencyName: (agency as { name?: string } | null)?.name ?? "the agency",
+    licenseeName: (agency as { licensee_name?: string | null } | null)?.licensee_name ?? null,
     propertyAddress: (property as { address: string }).address,
     agreementDate: a3?.event_date ?? null,
     espLow: esp.low,
@@ -324,6 +325,12 @@ export type PublicSignoffRequest = {
   ruleset_version: string | null;
   property_address: string;
   agency_name: string;
+  /**
+   * The agent who asked. Null on rows whose author has since left the agency,
+   * or on requests issued before 0048 — the page falls back to the agency name
+   * rather than showing a gap.
+   */
+  requested_by_name: string | null;
   expires_at: string;
 };
 
@@ -335,7 +342,10 @@ export type PublicSignoffRequest = {
  */
 export async function getSignoffRequest(token: string): Promise<PublicSignoffRequest | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_signoff_request", { p_token: token });
+  // v2 rather than the original: it returns the requesting agent's name, and a
+  // function's return type cannot be changed in place. See 0048 for why there
+  // is a v2 at all rather than a replaced v1.
+  const { data, error } = await supabase.rpc("get_signoff_request_v2", { p_token: token });
   if (error || !data || (Array.isArray(data) && data.length === 0)) return null;
   return (Array.isArray(data) ? data[0] : data) as PublicSignoffRequest;
 }

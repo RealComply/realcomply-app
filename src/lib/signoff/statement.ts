@@ -20,6 +20,18 @@
 
 export type StatementInput = {
   agencyName: string;
+  /**
+   * The licensee in charge this file is being put to, from agencies.licensee_name.
+   *
+   * Naming them in the statement does more than address the page. The signed
+   * record then carries both who was ASKED and who actually SIGNED (the typed
+   * name), and a later reader can see whether they were the same person. A
+   * statement that only records a typed name cannot answer the question an
+   * auditor would ask first.
+   *
+   * Null is stated as unrecorded rather than omitted, like every other fact here.
+   */
+  licenseeName: string | null;
   propertyAddress: string;
   /** Date the selling agency agreement was signed (item a3), ISO or null. */
   agreementDate: string | null;
@@ -61,6 +73,11 @@ export function buildSignoffStatement(input: StatementInput): string {
   lines.push(`Property: ${input.propertyAddress}`);
   lines.push(`Agency: ${input.agencyName}`);
   lines.push(
+    input.licenseeName
+      ? `Licensee in charge: ${input.licenseeName}`
+      : `Licensee in charge: not recorded in the file`,
+  );
+  lines.push(
     agreement
       ? `Selling agency agreement signed: ${agreement}`
       : `Selling agency agreement signed: not recorded in the file`,
@@ -77,10 +94,29 @@ export function buildSignoffStatement(input: StatementInput): string {
       "satisfied with it.",
   );
   lines.push("");
+  // The sentence that does the liability work, and the one to change most
+  // carefully. Two decisions in it:
+  //
+  // IT STAYS INSIDE THE SIGNED TEXT rather than sitting below the signature as
+  // context. An external licensee on the agent tier is not RealComply's
+  // customer — the terms of service do not bind them — so a sentence they have
+  // personally signed, saying the software certified nothing, is close to the
+  // only direct evidence of their understanding that would exist if this file
+  // were ever disputed. Moving it below the line would read better and lose
+  // exactly the thing worth having. Flagged for Natalie Melia within the DPA
+  // work, since it is her call more than ours.
+  //
+  // IT SAYS WHAT THE SOFTWARE DID, not what category it belongs to. "Diligence
+  // support" is the right phrase inside RealComply and opaque to a licensee
+  // reading it cold — it does not tell them what was actually done to this
+  // file, which is the thing they need in order to judge how much weight to
+  // put on it. "Organises the file and flags what is outstanding" is both
+  // plainer and more protective, because a licensee who knows precisely what
+  // they relied on cannot later say they thought it was more than that.
   lines.push(
-    "This sign-off is my own assessment. RealComply provides diligence support to the agency and " +
-      "does not certify compliance, give legal advice, or form any view on this file in my place. " +
-      "Responsibility for this decision remains mine.",
+    "This sign-off is my own assessment. RealComply organises the file and flags what is " +
+      "outstanding; it does not decide whether this file is compliant, does not give legal advice, " +
+      "and has formed no view in my place. Responsibility for this decision is mine.",
   );
   lines.push("");
   lines.push(`Ruleset: ${input.rulesetVersion}`);

@@ -56,9 +56,20 @@ export default async function SignoffPage({ params }: { params: Promise<{ token:
       <h1 className="mt-8 text-2xl font-extrabold tracking-tight text-rc-ink sm:text-3xl">
         Licensee sign-off
       </h1>
+      {/* The person, not the letterhead. A licensee in charge supervises
+          people, and on a page reached from an unexpected link the first
+          recognisable fact should be someone they know. The agency name is
+          named in the footer, so dropping it here loses nothing — Adam,
+          17 Sep 2026: "the licensee knows who works for them... otherwise it
+          feels a little too formal and third party-ish."
+
+          "Requested" and not "requires": the agency does not require anything
+          of its own licensee in charge, and a page telling someone they are
+          required to sign is software applying pressure to a decision that is
+          theirs alone. */}
       <p className="mt-2 text-sm leading-relaxed text-rc-muted">
-        {request.agency_name} has asked you to sign off on the compliance file for {request.property_address}.
-        Read the statement below before you sign.
+        {request.requested_by_name ?? request.agency_name} has requested your sign-off on the compliance file
+        for {request.property_address}. Please read the statement below before signing.
       </p>
 
       {/* The statement, exactly as it was when the link was issued.
