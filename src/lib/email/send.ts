@@ -37,6 +37,17 @@ export type SendEmailInput = {
   subject: string;
   text: string;
   html?: string;
+  /**
+   * Who a reply should reach, when that is not the sending address.
+   *
+   * Added 17 Sep 2026 for licensee sign-off links. That email goes to someone
+   * outside the agency who has never heard of RealComply, containing a link,
+   * asking them to type their name and sign something — which is phishing-
+   * shaped however carefully it is worded. The single most useful defence is
+   * that "is this real?" reaches the agent they actually know, rather than a
+   * noreply address that confirms their suspicion.
+   */
+  replyTo?: string;
 };
 
 // ── SES, over SMTP ─────────────────────────────────────────────────────────
@@ -74,6 +85,7 @@ async function sendViaSes(from: string, input: SendEmailInput): Promise<void> {
     subject: input.subject,
     text: input.text,
     html: input.html,
+    ...(input.replyTo ? { replyTo: input.replyTo } : {}),
   });
 }
 
@@ -103,6 +115,9 @@ async function sendViaResend(from: string, input: SendEmailInput): Promise<void>
       subject: input.subject,
       text: input.text,
       ...(input.html ? { html: input.html } : {}),
+      // Resend spells it reply_to; nodemailer spells it replyTo. The seam is
+      // here rather than at every call site.
+      ...(input.replyTo ? { reply_to: input.replyTo } : {}),
     }),
   });
 

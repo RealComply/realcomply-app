@@ -6,7 +6,12 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { buildSignoffStatement } from "@/lib/signoff/statement";
 import { effectiveEsp } from "@/lib/data/effective-esp";
 import { liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
+import { sendEmail } from "@/lib/email/send";
+import { buildSignoffRequestEmail } from "@/lib/email/signoff-request";
+import { formatAuDate } from "@/lib/format-date";
 import type { PropertyItem } from "@/lib/types";
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
 
 // Issuing and revoking licensee sign-off links. See
 // RealComply-licensee-signoff-link.md and 0014_licensee_signoff_links.sql.
@@ -20,18 +25,93 @@ export type IssueResult = {
   error: string | null;
   token?: string;
   sentTo?: string;
+  /** Whether the email actually went. False means the link exists, uncopied and undelivered. */
+  emailed?: boolean;
 };
 
 /**
- * Creates a sign-off link for a property.
+ * Sends the link, and records honestly whether it went.
  *
- * Deliberately does NOT send an email. SES is still sandboxed and rejects any
- * recipient not verified in the AWS console, which every external licensee is
- * — so an automatic send would fail silently for exactly the people this
- * feature exists for. The agent copies the link and sends it themselves, which
- * works today and arrives from someone the licensee actually knows. Wire the
- * automatic send alongside this once Resend is live; do not replace the copy
- * path with it.
+ * Separated from issuing so the resend path and the first send are the same
+ * code. Never throws: a delivery failure must leave a usable link behind, not
+ * lose the request.
+ */
+async function deliverSignoffEmail(
+  supabase: Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
+  args: {
+    requestId: string;
+    token: string;
+    sentTo: string;
+    agentName: string;
+    agentEmail: string | null;
+    agencyName: string;
+    propertyAddress: string;
+    expiresAt: string;
+    agreementDate: string | null;
+    espLow: number | null;
+    espHigh: number | null;
+    priorAttempts: number;
+  },
+): Promise<boolean> {
+  const { subject, text, html } = buildSignoffRequestEmail({
+    agentName: args.agentName,
+    agencyName: args.agencyName,
+    propertyAddress: args.propertyAddress,
+    url: `${SITE_URL}/signoff/${args.token}`,
+    expiresAt: formatAuDate(args.expiresAt.slice(0, 10)),
+    agreementDate: args.agreementDate ? formatAuDate(args.agreementDate.slice(0, 10)) : null,
+    espLow: args.espLow,
+    espHigh: args.espHigh,
+  });
+
+  // Reply-to is the agent, not the sending address. See the note in
+  // email/signoff-request.ts — this is the single most useful thing on a
+  // message that is, structurally, indistinguishable from a phishing attempt.
+  const ok = await sendEmail({
+    to: args.sentTo,
+    subject,
+    text,
+    html,
+    ...(args.agentEmail ? { replyTo: args.agentEmail } : {}),
+  });
+
+  await supabase
+    .from("property_signoff_requests")
+    .update({
+      email_attempts: args.priorAttempts + 1,
+      email_sent_at: ok ? new Date().toISOString() : null,
+      email_error: ok
+        ? null
+        : "The email could not be sent. The link is still valid — copy it and send it yourself.",
+    })
+    .eq("id", args.requestId);
+
+  return ok;
+}
+
+/**
+ * Creates a sign-off link for a property AND emails it to the licensee.
+ *
+ * IT USED TO DELIBERATELY NOT SEND, and the reason is worth keeping because it
+ * was right at the time and wrong by the time anyone re-read it: SES was in
+ * the sandbox and rejected any recipient not verified in the AWS console —
+ * which every external licensee is, by definition. An automatic send would
+ * have failed silently for exactly the people this feature exists for.
+ *
+ * **SES was granted production access on 26 August 2026.** The note recording
+ * the copy-only decision was written on 5 September and carried the dead
+ * constraint forward, so for three weeks the product asked agents to copy a
+ * link, open their email, paste it, and write an explanation — for no reason.
+ * Adam, 17 Sep 2026: "We should do all that for them."
+ *
+ * Worth generalising: a decision recorded with its reason has to be re-read
+ * against whether the reason still holds. This one outlived its cause by
+ * three weeks purely because the note was confidently written.
+ *
+ * The copy path stays, as a second option rather than the only one. Some
+ * agents will want to send it themselves with their own note, and a link that
+ * arrives from a person the licensee knows is likelier to be opened than one
+ * from software they have never heard of.
  */
 export async function issueSignoffLink(propertyId: string): Promise<IssueResult> {
   const { supabase, profile } = await requireAuthContext();
@@ -47,7 +127,12 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
   // change where it goes, withdraw it and issue another.
   const outstanding = liveLink(await signoffLinksFor(supabase, propertyId));
   if (outstanding) {
-    return { error: null, token: outstanding.token, sentTo: outstanding.sentTo };
+    return {
+      error: null,
+      token: outstanding.token,
+      sentTo: outstanding.sentTo,
+      emailed: outstanding.emailSentAt !== null,
+    };
   }
 
   const { data: property } = await supabase
@@ -111,15 +196,96 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
       ruleset_version: RULESET_VERSION,
       created_by: profile.id,
     })
-    .select("token")
+    .select("id, token, expires_at")
     .single();
 
   if (error || !inserted) {
     return { error: "Couldn't create the sign-off link. Try again." };
   }
 
+  const row = inserted as { id: string; token: string; expires_at: string };
+
+  const emailed = await deliverSignoffEmail(supabase, {
+    requestId: row.id,
+    token: row.token,
+    sentTo: licenseeEmail,
+    agentName: (profile as { full_name?: string | null }).full_name || "Your agent",
+    agentEmail: (profile as { email?: string | null }).email ?? null,
+    agencyName: (agency as { name?: string } | null)?.name ?? "the agency",
+    propertyAddress: (property as { address: string }).address,
+    expiresAt: row.expires_at,
+    agreementDate: a3?.event_date ?? null,
+    espLow: esp.low,
+    espHigh: esp.high,
+    priorAttempts: 0,
+  });
+
   revalidatePath(`/dashboard/${propertyId}`);
-  return { error: null, token: (inserted as { token: string }).token, sentTo: licenseeEmail };
+  return { error: null, token: row.token, sentTo: licenseeEmail, emailed };
+}
+
+/**
+ * Sends an existing link again — because the licensee deleted it, or it went
+ * to spam, or the agent chased them and wants a fresh copy in their inbox.
+ *
+ * Deliberately re-sends the SAME token rather than minting a new one. Two live
+ * links for one file means a licensee can sign the older one after the agent
+ * has chased them with a newer one, which produces two real requests for the
+ * same signature. To change where it goes, withdraw and issue again.
+ */
+export async function resendSignoffLink(propertyId: string): Promise<IssueResult> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const outstanding = liveLink(await signoffLinksFor(supabase, propertyId));
+  if (!outstanding) {
+    return { error: "There's no outstanding link to resend. Create one first." };
+  }
+
+  const { data: property } = await supabase
+    .from("properties")
+    .select("id, address, agency_id")
+    .eq("id", propertyId)
+    .maybeSingle();
+
+  if (!property) return { error: "Couldn't find that property." };
+
+  const { data: agency } = await supabase
+    .from("agencies")
+    .select("name")
+    .eq("id", (property as { agency_id: string }).agency_id)
+    .maybeSingle();
+
+  const { data: rows } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", "a3");
+
+  const a3 = ((rows ?? []) as PropertyItem[]).find((i) => i.item_key === "a3");
+  const esp = await effectiveEsp(supabase, propertyId);
+
+  const emailed = await deliverSignoffEmail(supabase, {
+    requestId: outstanding.id,
+    token: outstanding.token,
+    sentTo: outstanding.sentTo,
+    agentName: (profile as { full_name?: string | null }).full_name || "Your agent",
+    agentEmail: (profile as { email?: string | null }).email ?? null,
+    agencyName: (agency as { name?: string } | null)?.name ?? "the agency",
+    propertyAddress: (property as { address: string }).address,
+    expiresAt: outstanding.expiresAt,
+    agreementDate: a3?.event_date ?? null,
+    espLow: esp.low,
+    espHigh: esp.high,
+    priorAttempts: outstanding.emailAttempts,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return {
+    error: emailed ? null : "Couldn't send that email. The link is still valid — copy it and send it yourself.",
+    token: outstanding.token,
+    sentTo: outstanding.sentTo,
+    emailed,
+  };
 }
 
 /**

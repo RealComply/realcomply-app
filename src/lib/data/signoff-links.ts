@@ -22,6 +22,16 @@ export type SignoffLink = {
   expiresAt: string;
   signedAt: string | null;
   signedName: string | null;
+  /**
+   * Delivery, which is a different fact from creation — see 0047.
+   *
+   * `emailSentAt` null with `emailAttempts` above zero means the link exists
+   * and was never delivered. The panel must say that plainly rather than show
+   * a created date and let the agent infer a send.
+   */
+  emailSentAt: string | null;
+  emailAttempts: number;
+  emailError: string | null;
 };
 
 /** Every link issued for this property that has not been withdrawn, newest first. */
@@ -31,19 +41,24 @@ export async function signoffLinksFor(
 ): Promise<SignoffLink[]> {
   const { data } = await supabase
     .from("property_signoff_requests")
-    .select("id, token, sent_to, created_at, expires_at, signed_at, signed_name")
+    .select(
+      "id, token, sent_to, created_at, expires_at, signed_at, signed_name, email_sent_at, email_attempts, email_error",
+    )
     .eq("property_id", propertyId)
     .is("revoked_at", null)
     .order("created_at", { ascending: false });
 
-  return ((data ?? []) as Array<Record<string, string | null>>).map((row) => ({
+  return ((data ?? []) as Array<Record<string, string | number | null>>).map((row) => ({
     id: String(row.id),
     token: String(row.token),
     sentTo: String(row.sent_to ?? ""),
     createdAt: String(row.created_at),
     expiresAt: String(row.expires_at),
-    signedAt: row.signed_at ?? null,
-    signedName: row.signed_name ?? null,
+    signedAt: (row.signed_at as string | null) ?? null,
+    signedName: (row.signed_name as string | null) ?? null,
+    emailSentAt: (row.email_sent_at as string | null) ?? null,
+    emailAttempts: Number(row.email_attempts ?? 0),
+    emailError: (row.email_error as string | null) ?? null,
   }));
 }
 
