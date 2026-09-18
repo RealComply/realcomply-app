@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
-import { KeyRound, Users, Building2, Ticket } from "lucide-react";
+import { KeyRound, Users, Building2, Ticket, Inbox } from "lucide-react";
 import { requireProfile } from "@/lib/data/current-profile";
 import { createServiceClient } from "@/lib/supabase/service";
 import { formatAuDate } from "@/lib/format-date";
 import { FounderInvites, type FounderInvite } from "@/components/admin/FounderInvites";
+import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyAccessQueue";
 import { storageBackupConfigured, countEvidenceObjects } from "@/lib/backup/storage-backup";
 
 // Who is on RealComply — the only screen that looks across every agency.
@@ -82,6 +83,7 @@ export default async function AdminPage() {
     { data: propertyRows },
     { data: expiredRows },
     { data: backupRows },
+    { data: earlyAccessRows },
   ] = await Promise.all([
       supabase
         .from("agencies")
@@ -106,6 +108,16 @@ export default async function AdminPage() {
       // stopped and nobody knows — so the one number that matters (anything
       // not yet copied) is on the screen we open anyway.
       supabase.from("storage_backups").select("path, backed_up_at, last_error, attempts"),
+      // The early-access queue. Read with the service key because 0013 makes
+      // this table insert-only to a browser session — deliberately, so the
+      // anon key cannot read the list back.
+      supabase
+        .from("early_access")
+        .select(
+          "id, email, first_name, agency_name, source, created_at, invited_at, invited_token, declined_at, declined_note",
+        )
+        .is("unsubscribed_at", null)
+        .order("created_at", { ascending: false }),
     ]);
 
   const agencies = (agencyRows ?? []) as AgencyRow[];
@@ -137,6 +149,33 @@ export default async function AdminPage() {
 
   const unusedInvites = inviteList.filter((i) => !i.acceptedAt && !i.expired);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
+
+  // Whether an invited registrant has actually arrived. Read from the invite
+  // itself rather than by matching email addresses: bootstrap_agency_v3 stamps
+  // accepted_at on the token it consumed, so this is the authoritative record
+  // of arrival. Matching on email would be guesswork — people sign up with a
+  // different address from the one they registered with more often than not.
+  const acceptedTokens = new Set(
+    invites.filter((i) => i.accepted_at).map((i) => i.token),
+  );
+
+  const earlyAccess: EarlyAccessRow[] = (
+    (earlyAccessRows ?? []) as Array<Record<string, string | null>>
+  ).map((row) => ({
+    id: String(row.id),
+    email: String(row.email),
+    firstName: row.first_name ?? null,
+    agencyName: row.agency_name ?? null,
+    source: row.source ?? null,
+    createdAt: String(row.created_at),
+    invitedAt: row.invited_at ?? null,
+    invitedToken: row.invited_token ?? null,
+    declinedAt: row.declined_at ?? null,
+    declinedNote: row.declined_note ?? null,
+    signedUp: row.invited_token ? acceptedTokens.has(row.invited_token) : false,
+  }));
+
+  const waitingOnDecision = earlyAccess.filter((r) => !r.invitedAt && !r.declinedAt).length;
 
   const backups = (backupRows ?? []) as Array<{
     path: string;
@@ -171,10 +210,12 @@ export default async function AdminPage() {
         Every agency and every person, across the whole product. Only you can see this page.
       </p>
 
-      <div className="mt-6 grid grid-cols-3 gap-3">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat icon={<Building2 size={14} />} label="Agencies" value={agencies.length} />
         <Stat icon={<Users size={14} />} label="People" value={profiles.length} />
         <Stat icon={<Ticket size={14} />} label="Invites left" value={unusedInvites.length} />
+        {/* The one number on this page that is a to-do rather than a fact. */}
+        <Stat icon={<Inbox size={14} />} label="Awaiting a decision" value={waitingOnDecision} />
       </div>
 
       {/* DOCUMENT BACKUP.
@@ -297,6 +338,21 @@ export default async function AdminPage() {
             </section>
           );
         })}
+      </div>
+
+      {/* EARLY ACCESS. Above founder invites deliberately: this is the queue
+          with work in it, and the invites below are mostly its output. Adam,
+          18 Sep 2026 — "so I can either deny or accept anyone that's registered
+          for early access." */}
+      <h2 className="mt-9 text-sm font-bold text-rc-ink">Early access</h2>
+      <p className="mt-1 text-xs text-rc-muted">
+        People who registered on the landing page. Sending an invitation mints a founder link and emails it
+        to them. Declining sends nothing — it just records the decision so the same name is recognised if it
+        comes back.
+      </p>
+
+      <div className="mt-3">
+        <EarlyAccessQueue rows={earlyAccess} siteUrl={siteUrl} />
       </div>
 
       {/* INVITES. Making one lives here rather than in Team settings, which is
