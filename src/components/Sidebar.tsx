@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Check, ChevronRight, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { Check, ChevronRight, KeyRound, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { LogoMark } from "@/components/Logo";
 import { NAV_GROUPS } from "@/lib/nav";
 import { EMPTY_NAV_COUNTS, type NavCounts } from "@/lib/data/nav-counts";
@@ -87,9 +87,11 @@ function toggleListings(button: HTMLButtonElement) {
 
 export function Sidebar({
   isAssistant = false,
+  isPlatformAdmin = false,
   counts = EMPTY_NAV_COUNTS,
 }: {
   isAssistant?: boolean;
+  isPlatformAdmin?: boolean;
   counts?: NavCounts;
 }) {
   const pathname = usePathname();
@@ -341,6 +343,49 @@ export function Sidebar({
         </div>
       ))}
 
+      {/* RealComply staff, not agency staff — and the only row here that is not
+          part of the product. It is separated and sits last for that reason.
+
+          Adam, 20 Sep 2026: "I can't see how to navigate to that page. There's
+          no button anywhere." He had been typing /dashboard/admin by hand since
+          9 Sep, and on 16 Sep lost time hunting for a "staff page" that had no
+          entry point at all. This is the second time in the product: nav.ts
+          carries the same note about Listings from 18 Aug — "a list you can't
+          navigate to may as well not exist."
+
+          DELIBERATELY NOT IN NAV_GROUPS. That list is also the source for
+          global search, and a customer typing "staff" would get a row that
+          404s — which both looks broken and confirms the URL is real. The page
+          answers notFound() to everyone else precisely so it cannot be probed;
+          putting it in the shared list would undo that from the other side.
+
+          The flag only decides whether the LINK is drawn. The page re-checks
+          is_platform_admin server-side before it reads anything, which is the
+          check that actually matters — see the header comment on
+          dashboard/admin/page.tsx. */}
+      {isPlatformAdmin && (
+        <div className="mt-auto pt-3">
+          <div data-rail-divider className="mx-2 mb-2 border-t border-rc-ink-line" />
+          <Link
+            href="/dashboard/admin"
+            onClick={() => setOpen(false)}
+            title="RealComply staff"
+            aria-current={isActive(pathname, "/dashboard/admin") ? "page" : undefined}
+            data-rail-center
+            className={`flex items-center gap-2.5 rounded-[9px] px-3 py-2.5 text-sm transition ${
+              isActive(pathname, "/dashboard/admin")
+                ? "bg-rc-green-deep font-semibold text-white shadow-[0_1px_0_rgba(255,255,255,0.09)_inset]"
+                : "font-medium text-rc-ink-muted hover:bg-white/[0.06] hover:text-white"
+            }`}
+          >
+            <KeyRound size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+            <span data-rail-hide className="whitespace-nowrap">
+              RealComply staff
+            </span>
+          </Link>
+        </div>
+      )}
+
       {/* The standing liability line, settled with Adam on 15 Aug 2026 after
           working through a dozen drafts. It replaces "Diligence support — the
           licensee decides."
@@ -360,9 +405,14 @@ export function Sidebar({
 
           The second sentence is the liability framing, not decoration. It
           stays. */}
+      {/* mt-auto only when it is the last block. With the staff row rendered,
+          that row owns the auto margin — two of them in one flex column split
+          the free space between them and the pair drifts apart. */}
       <p
         data-rail-hide
-        className="mt-auto border-t border-rc-ink-line px-3 pt-3.5 text-[11px] leading-relaxed text-rc-nav-muted"
+        className={`border-t border-rc-ink-line px-3 pt-3.5 text-[11px] leading-relaxed text-rc-nav-muted ${
+          isPlatformAdmin ? "mt-3" : "mt-auto"
+        }`}
       >
         Supports the work. The licensee signs off.
       </p>

@@ -34,7 +34,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
           navigating the browser to it and taking the page — and anything
           unsaved on it — with it. See lib/use-file-drop.ts. */}
       <StrayDropGuard />
-      <Sidebar isAssistant={Boolean(profile.is_assistant)} counts={counts} />
+      <Sidebar
+        isAssistant={Boolean(profile.is_assistant)}
+        isPlatformAdmin={profile.is_platform_admin === true}
+        counts={counts}
+      />
       <div className="flex min-h-screen flex-col">
         <UserBar profile={profile} />
         {children}
