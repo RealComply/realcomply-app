@@ -99,7 +99,14 @@ def get_key():
 
     print("\nPaste your Stripe SECRET key and press Enter.")
     print("It is the one that starts sk_test_ (or sk_live_), not pk_.")
-    print("Nothing is shown back and nothing is saved.\n")
+    # It IS shown back — input() echoes. An earlier version of this line said
+    # "Nothing is shown back", which was false, and on 21 Sep 2026 it told Adam
+    # a live key would be hidden when it was sitting in plain view in Terminal.
+    # Kept visible deliberately rather than switched to getpass: a paste that
+    # shows nothing reads as broken to someone who has never seen a hidden
+    # prompt, and he would paste twice. Say what actually happens instead.
+    print("The key will appear on screen as you paste it. It is not saved anywhere,")
+    print("but close this Terminal window afterwards, and don't screenshot it.\n")
 
     try:
         typed = input("Key: ").strip()
