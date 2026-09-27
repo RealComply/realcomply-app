@@ -1188,18 +1188,30 @@ const items: ComplianceItem[] = [
   // money for no compliance gain. Blocking exchange costs nothing, because a
   // vendor who still won't complete KYC by exchange is itself the red flag.
   //
-  // requiresDate is true on both cleared items. "When did the check come back"
-  // is the fact an AUSTRAC reviewer asks for, and it is the one a tick alone
-  // cannot answer.
+  // CHANGED 27 Sep 2026 (Adam): requiresDate was true on both cleared items —
+  // see the superseded comment this replaces, kept in git history. Adam's
+  // instruction: the agent should only have to mark that the check is done;
+  // the actual date lives on the AML/KYC provider's own platform already, and
+  // asking the agent to retype it is exactly the friction this product exists
+  // to remove.
+  //
+  // This is consistent with annexure cl 3.2/3.3 (a digital trail in another
+  // system is the record; RealComply doesn't remake it) provided the file
+  // still says where that record is — which is why the description below now
+  // names the provider explicitly rather than dropping the reference
+  // entirely. Losing: the ability to record an event date that differs from
+  // the tick date (e.g. backfilling a check done last week). Not losing: who
+  // ticked it and when — `updated_at` on every property_items row captures
+  // that regardless of requiresDate.
   {
     key: "amvc",
     stage: 4,
     kind: "checklist",
     label: "Vendor AML/KYC check returned and cleared",
     description:
-      "The vendor's check has come back and is clear. Don't leave this to exchange week — chase it as soon as the campaign starts. Anything unusual goes to the licensee.",
+      "The vendor's check has come back and is clear. Don't leave this to exchange week — chase it as soon as the campaign starts. Anything unusual goes to the licensee. The date it cleared is on your AML/KYC provider's own record — no need to retype it here.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
-    requiresDate: true,
+    requiresDate: false,
     requiredForStageCompletion: true,
   },
   // REMOVED 22 Aug 2026 (Adam): "AML COMPLETE — licensee sign-off", which sat
@@ -1226,15 +1238,16 @@ const items: ComplianceItem[] = [
   // provider's result came back and was clear, and on what date. They do not
   // ask the licensee to attest to the agency's AML position per file.
 
+  // See the note above amvc, 27 Sep 2026 — same change, same reasoning.
   {
     key: "ampc",
     stage: 5,
     kind: "checklist",
     label: "Purchaser AML/KYC check returned and cleared",
     description:
-      "The purchaser's check has come back and is clear. This is the last point it can be done — chase it from exchange, not from settlement week. Anything unusual goes to the licensee.",
+      "The purchaser's check has come back and is clear. This is the last point it can be done — chase it from exchange, not from settlement week. Anything unusual goes to the licensee. The date it cleared is on your AML/KYC provider's own record — no need to retype it here.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
-    requiresDate: true,
+    requiresDate: false,
     requiredForStageCompletion: true,
   },
 
