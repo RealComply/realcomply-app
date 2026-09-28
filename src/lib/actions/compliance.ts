@@ -1235,6 +1235,50 @@ export async function markNoReports(propertyId: string): Promise<void> {
   revalidatePath(`/dashboard/${propertyId}`);
 }
 
+// f3 — remove a logged entry. Adam, 28 Sep 2026: "log entry needs to be
+// editable so we can remove any as i have added too many while testing" —
+// there was no way to take an entry back out once logged.
+//
+// Addressed by recordedAt rather than array position, same reasoning as the
+// offers log (see OfferEntry above): entries are unshifted onto the front of
+// the array, so a new entry shifts every existing index and a
+// position-addressed delete would risk removing the wrong one. recordedAt is
+// set once per entry at creation and never duplicated in practice (it's an
+// ISO timestamp), so it's a stable enough key without adding a migration to
+// backfill ids onto rows this register already has.
+//
+// Removing every entry drops the item back to "open" rather than leaving it
+// stuck on "done" with an empty register — the same unanswered state the
+// card shows before anything has ever been logged, so re-answering (Yes/No)
+// still works cleanly afterwards.
+export async function removeReportEntry(propertyId: string, recordedAt: string): Promise<void> {
+  const { supabase, profile } = await requireAuthContext();
+
+  const { data: existing } = await supabase
+    .from("property_items")
+    .select("data, completed_by")
+    .eq("property_id", propertyId)
+    .eq("item_key", "f3")
+    .maybeSingle();
+
+  const entries = ((existing?.data as { entries?: Array<{ recordedAt: string }> } | null)?.entries ?? []).filter(
+    (e) => e.recordedAt !== recordedAt,
+  );
+
+  await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "f3",
+    status: entries.length > 0 ? "done" : "open",
+    data: { entries },
+    // Keep whoever originally completed the item rather than clearing it —
+    // removing an entry is an edit to the register, not a fresh completion.
+    completedBy: entries.length > 0 ? ((existing as { completed_by?: string | null } | null)?.completed_by ?? null) : null,
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+}
+
 // b5 — verbal price-quote log. Logging an entry here IS the written record
 // the Price Reps checklist requires for a verbal price statement — there's
 // no separate "confirm it was written down" step because this is that step.

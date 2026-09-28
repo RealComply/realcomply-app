@@ -911,6 +911,10 @@ const items: ComplianceItem[] = [
     legalBasis: "s50, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
+    // Plain tick (Adam, 28 Sep 2026): "no note or evidence required." The ads
+    // themselves are the record and live wherever they were published.
+    hideNote: true,
+    hideEvidence: true,
   },
   {
     key: "c3",
@@ -922,6 +926,9 @@ const items: ComplianceItem[] = [
     legalBasis: "Australian Consumer Law s18/s30",
     requiresDate: false,
     requiredForStageCompletion: true,
+    // Plain tick (Adam, 28 Sep 2026): "no notes or evidence required."
+    hideNote: true,
+    hideEvidence: true,
   },
   {
     key: "c4",
@@ -1124,8 +1131,13 @@ const items: ComplianceItem[] = [
     description:
       "Serve a copy of the contract on each party (or their solicitor) within 2 business days of exchange.",
     legalBasis: "Sch 2 r17, Property and Stock Agents Regulation 2022 (NSW)",
+    // The date stays — it IS the obligation (2 business days), per the
+    // requiresDate note in setItemStatus. Only the note and upload go.
     requiresDate: true,
     requiredForStageCompletion: true,
+    // Adam, 28 Sep 2026: "no notes or evidence required."
+    hideNote: true,
+    hideEvidence: true,
   },
   {
     // Gap-analysis finding, 7 Aug 2026: a7 (Stage 0) only confirms the agent

@@ -25,6 +25,7 @@ import {
   addOfferEntry,
   updateOfferEntry,
   addReportEntry,
+  removeReportEntry,
   markEspRevised,
   markNoPriceRevision,
   confirmEspRevision,
@@ -2021,7 +2022,21 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
       {entries.length > 0 && (
         <ul className="mt-3 space-y-2 text-sm text-rc-muted">
           {entries.map((e, i) => (
-            <li key={i} className="border-t border-rc-border pt-2">
+            <li key={e.recordedAt ?? i} className="relative border-t border-rc-border pt-2 pr-7">
+              {/* Remove an entry (Adam, 28 Sep 2026). Same control as the f4
+                  buyer list, but addressed by recordedAt rather than index —
+                  f3 entries are unshifted (newest first), so an index would
+                  point at a different entry the moment a new one is logged. */}
+              <form action={removeReportEntry.bind(null, propertyId, e.recordedAt)} className="absolute right-0 top-1.5">
+                <button
+                  type="submit"
+                  aria-label="Remove this report entry"
+                  title="Remove"
+                  className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
+                >
+                  <X size={13} />
+                </button>
+              </form>
               <span className="font-medium text-rc-ink">
                 {[e.pestInspection && "Pest", e.buildingInspection && "Building", e.strata && "Strata"]
                   .filter(Boolean)
