@@ -1197,8 +1197,8 @@ const items: ComplianceItem[] = [
   //
   // This is consistent with annexure cl 3.2/3.3 (a digital trail in another
   // system is the record; RealComply doesn't remake it) provided the file
-  // still says where that record is — which is why the description below now
-  // names the provider explicitly rather than dropping the reference
+  // still says where that record is — which is why the description below
+  // points to the AML/KYC platform rather than dropping the reference
   // entirely. Losing: the ability to record an event date that differs from
   // the tick date (e.g. backfilling a check done last week). Not losing: who
   // ticked it and when — `updated_at` on every property_items row captures
@@ -1209,7 +1209,7 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "Vendor AML/KYC check returned and cleared",
     description:
-      "The vendor's check has come back and is clear. Don't leave this to exchange week — chase it as soon as the campaign starts. Anything unusual goes to the licensee. The date it cleared is on your AML/KYC provider's own record — no need to retype it here.",
+      "The vendor's check has come back and is clear. Don't leave this to exchange week — chase it as soon as the campaign starts. Anything unusual goes to the licensee. Refer to your AML/KYC platform for details.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -1245,7 +1245,7 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "Purchaser AML/KYC check returned and cleared",
     description:
-      "The purchaser's check has come back and is clear. This is the last point it can be done — chase it from exchange, not from settlement week. Anything unusual goes to the licensee. The date it cleared is on your AML/KYC provider's own record — no need to retype it here.",
+      "The purchaser's check has come back and is clear. This is the last point it can be done — chase it from exchange, not from settlement week. Anything unusual goes to the licensee. Refer to your AML/KYC platform for details.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
