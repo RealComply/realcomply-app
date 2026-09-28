@@ -802,33 +802,26 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: true,
     hideNote: true,
   },
-  {
-    // Gap-analysis finding, 7 Aug 2026: the Sales File Checklist requires
-    // AML red flags/EDD to be escalated to the licensee — amv (Stage 0)
-    // confirms CDD happened but never asked this specifically. Placed here
-    // at Pre-market rather than alongside amv/amp/amc at Stage 0/4, per
-    // Adam's call — gates before marketing goes live rather than back at
-    // initial listing set-up.
-    key: "amr",
-    stage: 1,
-    kind: "checklist",
-    label: "AML red flags escalated to the licensee",
-    description:
-      "Confirm nothing from the vendor check needs escalating, or that it already has been.",
-    legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
-    requiresDate: false,
-    requiredForStageCompletion: true,
-    // No evidence slot. Adam, 3 Sep 2026: "this should just be a yes or no.
-    // No evidence required as all offices will have AML systems that sit
-    // outside of RealComply and we dont want to double up on tasks."
-    //
-    // He is right, and it follows the product's own line: RealComply records
-    // that AML was dealt with and points at the system that did it. It is not
-    // the AML system. An upload slot here invites an agency to keep a second
-    // copy of something their provider already holds, which is more personal
-    // information in more places for no compliance gain.
-    hideEvidence: true,
-  },
+  // REMOVED 28 Sep 2026 (Adam): "amr" — "AML red flags escalated to the
+  // licensee" — sat here at Pre-market since the 7 Aug gap-analysis finding
+  // below (kept in git history for the reasoning that put it in).
+  //
+  // Adam's call: escalation itself already happens inside the AML/KYC
+  // provider's own platform — that's where a red flag would actually be
+  // raised and acted on — and the card's wording assumed one had been
+  // raised even on the ordinary file where nothing ever was. Same
+  // friction-reduction instinct as the amvc/ampc date-field change earlier
+  // today: don't ask the agent to confirm a negative inside RealComply about
+  // a process that runs, and is recorded, somewhere else entirely.
+  //
+  // Original comment, for context: "Gap-analysis finding, 7 Aug 2026: the
+  // Sales File Checklist requires AML red flags/EDD to be escalated to the
+  // licensee — amv (Stage 0) confirms CDD happened but never asked this
+  // specifically." That underlying checklist line still exists — worth
+  // raising with Stephen Borg (28 Sep) since it's exactly the kind of gap
+  // his review is for: whether pointing to the provider's own escalation
+  // process is enough, or whether the file still needs its own confirmation
+  // that nothing needed escalating.
   {
     // Gap-analysis finding, 7 Aug 2026: appeared independently in both the
     // Sales File Checklist and the Price Representations & Material Fact
