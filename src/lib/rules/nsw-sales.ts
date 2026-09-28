@@ -499,7 +499,7 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "AML/KYC check sent to vendor",
     description:
-      "Send each vendor through your AML provider. This confirms you've sent it — the result is recorded separately at Sold. RealComply doesn't do the check itself.",
+      "Send each vendor through your AML provider. This confirms you've sent it — the result is recorded separately at Pre-market, before the property goes to market. RealComply doesn't do the check itself.",
     legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -822,6 +822,35 @@ const items: ComplianceItem[] = [
   // his review is for: whether pointing to the provider's own escalation
   // process is enough, or whether the file still needs its own confirmation
   // that nothing needed escalating.
+
+  // MOVED FROM SOLD TO PRE-MARKET, 28 Sep 2026 (Adam), reversing the 27 Aug
+  // placement. In his words: "the vendor's AML check should have been cleared
+  // prior to the property being put to market... done and dusted by the time
+  // we get to sold. At that point, we just need to check off the purchaser's
+  // AML check."
+  //
+  // The old reasoning (kept in git history) was that blocking a listing from
+  // going live over a slow vendor costs money for no compliance gain, so the
+  // result was deferred to the last honest point, exchange. Adam's call as
+  // licensee is the stricter one: know your customer before you market their
+  // property. It also removes the look of a duplicate — Sold used to show a
+  // vendor "cleared" card beside a purchaser "sent" card, which read as the
+  // same thing twice.
+  //
+  // requiresDate false since 27 Sep 2026: the date lives on the AML/KYC
+  // provider's record, and the description points there (annexure cl 3.2/3.3).
+  // `updated_at` still captures who ticked it and when.
+  {
+    key: "amvc",
+    stage: 1,
+    kind: "checklist",
+    label: "Vendor AML/KYC check returned and cleared",
+    description:
+      "The vendor's check has come back and is clear. This needs to be done before the property goes to market. Anything unusual goes to the licensee. Refer to your AML/KYC platform for details.",
+    legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+  },
   {
     // Gap-analysis finding, 7 Aug 2026: appeared independently in both the
     // Sales File Checklist and the Price Representations & Material Fact
@@ -1183,42 +1212,10 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
   },
-  // The vendor result lands here rather than back at Listing set-up, because
-  // Sold is the last stage at which it can honestly be deferred. By exchange
-  // you are brokering a real transaction and you must know who your customer
-  // is; before that, a vendor who is merely slow shouldn't stop the campaign.
+  // amvc (vendor check cleared) used to sit here at Sold. MOVED to Pre-market,
+  // 28 Sep 2026 — see the note beside it there. Sold now carries only the
+  // purchaser side.
   //
-  // Placed here deliberately and not at On market: blocking a listing from
-  // going live because a vendor hasn't opened an email costs the agency real
-  // money for no compliance gain. Blocking exchange costs nothing, because a
-  // vendor who still won't complete KYC by exchange is itself the red flag.
-  //
-  // CHANGED 27 Sep 2026 (Adam): requiresDate was true on both cleared items —
-  // see the superseded comment this replaces, kept in git history. Adam's
-  // instruction: the agent should only have to mark that the check is done;
-  // the actual date lives on the AML/KYC provider's own platform already, and
-  // asking the agent to retype it is exactly the friction this product exists
-  // to remove.
-  //
-  // This is consistent with annexure cl 3.2/3.3 (a digital trail in another
-  // system is the record; RealComply doesn't remake it) provided the file
-  // still says where that record is — which is why the description below
-  // points to the AML/KYC platform rather than dropping the reference
-  // entirely. Losing: the ability to record an event date that differs from
-  // the tick date (e.g. backfilling a check done last week). Not losing: who
-  // ticked it and when — `updated_at` on every property_items row captures
-  // that regardless of requiresDate.
-  {
-    key: "amvc",
-    stage: 4,
-    kind: "checklist",
-    label: "Vendor AML/KYC check returned and cleared",
-    description:
-      "The vendor's check has come back and is clear. Don't leave this to exchange week — chase it as soon as the campaign starts. Anything unusual goes to the licensee. Refer to your AML/KYC platform for details.",
-    legalBasis: "AML/CTF Act 2006 (Cth), Tranche 2",
-    requiresDate: false,
-    requiredForStageCompletion: true,
-  },
   // REMOVED 22 Aug 2026 (Adam): "AML COMPLETE — licensee sign-off", which sat
   // here at Sold and asked the licensee in charge to attest that the AML
   // position was properly dealt with for both parties.
@@ -1230,8 +1227,8 @@ const items: ComplianceItem[] = [
   // Supervision Guidelines rather than per listing.
   //
   // Nothing about the actual AML record is lost. The vendor and purchaser
-  // provider checks (since 27 Aug 2026 split into sent + cleared: amv/amvc and amp/ampc)
-  // (Sold, directly above) are the items that carry the provider reference and
+  // provider checks (since 27 Aug 2026 split into sent + cleared: amv/amvc and amp/ampc;
+  // amvc at Pre-market since 28 Sep) are the items that carry the provider reference and
   // the pre-commencement position, and both stay.
   //
   // Do not re-add this on the reasoning that AML needs a human sign-off. The
