@@ -111,9 +111,12 @@ export async function addComparable(
 /**
  * Takes a row off the table.
  *
- * For a duplicate or a misread row, not for a sale the agent would rather not
- * have seen — that is what "not comparable" is for, and marking it is a better
- * record than making it disappear. The card's wording says so.
+ * For a duplicate, a misread row, or a sale that isn't comparable.
+ *
+ * CHANGED 29 Sep 2026 (Adam): "if it's not a comparable property, it shouldn't
+ * be there." Until then this was for duplicates only and a sale the agent had
+ * ruled out was meant to be MARKED "not comparable" rather than removed. That
+ * option has been retired; removing the row is now how a sale is ruled out.
  */
 export async function removeComparable(
   propertyId: string,

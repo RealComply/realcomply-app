@@ -12,6 +12,7 @@ import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { signoffLinksFor } from "@/lib/data/signoff-links";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
+import { marketListingsFor } from "@/lib/data/market-listings";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
 function auctionDateLabel(date: string): string {
@@ -60,7 +61,7 @@ export default async function PropertyPage({
 
   const p = property as Property;
 
-  const [{ data: propertyItemRows }, { data: agencyRow }, { data: peopleRows }, signoffLinks, comparables] = await Promise.all([
+  const [{ data: propertyItemRows }, { data: agencyRow }, { data: peopleRows }, signoffLinks, comparables, marketListings] = await Promise.all([
     supabase.from("property_items").select("*").eq("property_id", id),
     // One lookup for the page, passed down to every card, rather than each
     // card asking. Only amv ever uses it.
@@ -82,6 +83,9 @@ export default async function PropertyPage({
     // The comparable sales on this listing. Read here so the ESP card and the
     // ESP reasoning card directly below it both work from one query.
     comparablesFor(supabase, id),
+    // Properties on the market as at the agency agreement date — the ESP
+    // reasoning card shows them under the sales (29 Sep 2026).
+    marketListingsFor(supabase, id),
   ]);
 
   // The listing's own attributes — the other half of every comparison, and
@@ -277,6 +281,7 @@ export default async function PropertyPage({
                   signoffLinks={signoffLinks}
                   subject={subject}
                   comparables={comparables}
+                  marketListings={marketListings}
                 />
               ))}
             </div>
@@ -296,6 +301,7 @@ export default async function PropertyPage({
               signoffLinks={signoffLinks}
               subject={subject}
               comparables={comparables}
+              marketListings={marketListings}
               />
           ))}
         </div>

@@ -37,11 +37,25 @@ import {
 
 const initial: ComparableActionState = { error: null };
 
+// "NOT COMPARABLE" REMOVED, 29 Sep 2026 (Adam): "if it's not a comparable
+// property, it shouldn't be there." A sale that doesn't belong is now removed
+// with the X, not marked. The option was designed on 7 Sep on the argument that
+// a sale looked at and ruled out is evidence too; Adam weighed that and chose
+// the shorter list. Reversal recorded in RealComply-on-market-properties-design.md.
+//
+// Rows marked "not comparable" before the change still exist. They keep
+// showing the mark (see LEGACY_NOT_COMPARABLE) so the record is not silently
+// rewritten, and pressing it clears it the same way any mark is cleared.
 const WEIGHTINGS: Array<{ value: Weighting; label: string; help: string }> = [
   { value: "relied", label: "Relied on", help: "This sale informed your estimate" },
   { value: "considered", label: "Considered", help: "You looked at it; it was not decisive" },
-  { value: "not_comparable", label: "Not comparable", help: "You looked at it and ruled it out" },
 ];
+
+const LEGACY_NOT_COMPARABLE: { value: Weighting; label: string; help: string } = {
+  value: "not_comparable",
+  label: "Not comparable",
+  help: "Marked before this option was retired. Press to clear it, or remove the sale with the X.",
+};
 
 function money(n: number | null): string {
   return n === null ? "—" : `$${Math.round(n).toLocaleString("en-AU")}`;
@@ -305,7 +319,7 @@ function ComparableRow({
           onClick={remove}
           disabled={pending}
           aria-label={`Remove ${comparable.address}`}
-          title="Remove this row — for a duplicate or a misread. To record that you ruled a sale out, mark it Not comparable instead."
+          title="Remove this sale — a duplicate, a misread, or one that isn't comparable."
           className="shrink-0 rounded-full p-1 text-rc-faint transition hover:bg-rc-bg-alt hover:text-rc-ink disabled:opacity-50"
         >
           <X size={13} aria-hidden="true" />
@@ -377,7 +391,7 @@ function ComparableRow({
       )}
 
       <div className="mt-2 flex flex-wrap gap-1.5">
-        {WEIGHTINGS.map((w) => (
+        {(comparable.weighting === "not_comparable" ? [...WEIGHTINGS, LEGACY_NOT_COMPARABLE] : WEIGHTINGS).map((w) => (
           <button
             key={w.value}
             type="button"

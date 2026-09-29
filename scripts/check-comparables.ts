@@ -33,6 +33,7 @@ import {
   type Comparable,
   type SubjectAttributes,
 } from "../src/lib/data/comparables";
+import { daysOnMarket, onMarketHeading, type MarketListing } from "../src/lib/data/market-listings";
 
 const ESP = { low: 1_300_000, high: 1_400_000 };
 
@@ -320,6 +321,77 @@ if (
 )
   ok("unmarked sales are pointed out");
 else fail("unmarked sales were not pointed out");
+
+// ── On the market (29 Sep 2026) ────────────────────────────────────────────
+//
+// Same line as the sales, plus one of its own: an asking price is another
+// agent's advertised figure. The draft may quote it; it must never compare it
+// with the ESP or turn it into a number of its own.
+
+function listing(over: Partial<MarketListing>): MarketListing {
+  return {
+    id: "l",
+    address: "3 Oak St, Mount Colah",
+    askingPrice: null,
+    saleMethod: null,
+    listedDate: null,
+    bedrooms: null,
+    bathrooms: null,
+    carSpaces: null,
+    landSizeSqm: null,
+    internalAreaSqm: null,
+    distanceM: null,
+    propertyType: null,
+    source: "report",
+    weighting: null,
+    agentNote: null,
+    asAt: null,
+    position: 0,
+    ...over,
+  };
+}
+
+const onMarket = {
+  asAtLabel: "12 August 2026",
+  listings: [
+    listing({ id: "m1", address: "3 Oak St, Mount Colah", askingPrice: "$1.3m - $1.4m", weighting: "competition", agentNote: "same street, similar block" }),
+    listing({ id: "m2", address: "9 Elm Rd, Mount Colah", askingPrice: "Contact agent", weighting: "considered" }),
+    listing({ id: "m3", address: "1 Ash Cl, Mount Colah", askingPrice: "$2,100,000" }),
+  ],
+};
+
+check(
+  "unmarked listings alone draft nothing",
+  buildReasoningDraft(subject, [], ESP, { asAtLabel: "12 August 2026", listings: [listing({})] }),
+  "",
+);
+
+const withListings = buildReasoningDraft(subject, marked, ESP, onMarket);
+console.log("\n--- draft with listings ---\n" + withListings + "\n---\n");
+
+for (const expected of [
+  "On the market as at 12 August 2026, treated as direct competition: 3 Oak St (advertised: $1.3m - $1.4m).",
+  "3 Oak St — Same street, similar block.",
+  "Also on the market, considered: 9 Elm Rd (advertised: Contact agent).",
+]) {
+  if (withListings.includes(expected)) ok(`listing draft contains: ${expected.slice(0, 48)}…`);
+  else fail(`listing draft is missing: ${expected}`);
+}
+if (withListings.includes("1 Ash Cl")) fail("an unmarked listing was drafted as if the agent had weighed it");
+else ok("unmarked listings stay out of the draft");
+const listingOffending = [...forbidden, [/(below|above|under|over)\s+(the|our|this)\s+(estimate|esp|price)/i, "an asking price compared with the ESP"] as [RegExp, string]].filter(([re]) => re.test(withListings));
+if (listingOffending.length === 0) ok("listing draft adds no judgement and no ESP comparison");
+else fail(`listing draft contains ${listingOffending.map(([, why]) => why).join(", ")}`);
+
+check("days on market to the agreement date", daysOnMarket("2026-07-01", "2026-08-12"), 42);
+check("no days on market without a listed date", daysOnMarket(null, "2026-08-12"), null);
+check("no negative days on market", daysOnMarket("2026-09-01", "2026-08-12"), null);
+check("heading uses the agreement date", onMarketHeading("2026-08-12"), "On the market as at 12 August 2026");
+check(
+  "heading says so when the agreement date is missing",
+  onMarketHeading(null),
+  "On the market as at the agency agreement date (not yet recorded)",
+);
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

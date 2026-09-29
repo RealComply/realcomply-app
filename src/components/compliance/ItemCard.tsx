@@ -56,6 +56,8 @@ import { isAiReadItem } from "@/lib/documents/ai-read-items";
 import { DictatableTextarea } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
+import { MarketListingsPanel } from "@/components/comparables/MarketListingsPanel";
+import { longDate, type MarketListing } from "@/lib/data/market-listings";
 import { buildReasoningDraft, fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
 import { ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
@@ -553,6 +555,8 @@ function ChecklistItem({
   noteSeed,
   subject = null,
   comparables = [],
+  marketListings = [],
+  agreementDate = null,
   allEsp,
 }: {
   item: ComplianceItem;
@@ -563,6 +567,9 @@ function ChecklistItem({
   // use them, and neither should be asking the database on its own.
   subject?: SubjectAttributes | null;
   comparables?: Comparable[];
+  /** On-market listings for a4c, and the a3 agreement date they are as at. */
+  marketListings?: MarketListing[];
+  agreementDate?: string | null;
   /** a4's recorded ESP figures, quoted by the draft on a4c. Never computed. */
   allEsp?: { espLow?: number; espHigh?: number };
   // Present only on amv, and only where the agency has taken the position AND
@@ -647,9 +654,10 @@ function ChecklistItem({
         }
       : { low: null, high: null };
 
+  const onMarket = { listings: marketListings, asAtLabel: longDate(agreementDate) };
   const reasoningDraft =
-    item.key === "a4c" && subject && comparables.length > 0
-      ? buildReasoningDraft(subject, comparables, esp) || null
+    item.key === "a4c" && subject && (comparables.length > 0 || marketListings.length > 0)
+      ? buildReasoningDraft(subject, comparables, esp, onMarket) || null
       : null;
 
   // Shown while the card is open and there is something in the box that has
@@ -1087,6 +1095,14 @@ function ChecklistItem({
               {item.key === "a4c" && subject && !espElsewhere && (
                 <div className="mb-3">
                   <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
+                  {/* The competition, under the sales (Stephen Borg, 28 Sep
+                      2026; mockup v2 approved by Adam). */}
+                  <MarketListingsPanel
+                    propertyId={propertyId}
+                    subject={subject}
+                    listings={marketListings}
+                    agreementDate={agreementDate}
+                  />
                 </div>
               )}
 
@@ -1170,6 +1186,7 @@ function ChecklistItem({
                   noteId={`note-${item.key}`}
                   subject={subject}
                   comparables={comparables}
+                  onMarket={onMarket}
                   esp={esp}
                   savedReasoning={String(data.note ?? "")}
                   isDone={isDone}
@@ -3163,6 +3180,7 @@ export function ItemCard({
   signoffLinks = [],
   subject = null,
   comparables = [],
+  marketListings = [],
 }: {
   item: ComplianceItem;
   propertyId: string;
@@ -3179,6 +3197,9 @@ export function ItemCard({
   // and the ESP reasoning card use them.
   subject?: SubjectAttributes | null;
   comparables?: Comparable[];
+  // Properties on the market as at the agency agreement date (29 Sep 2026).
+  // Only the ESP reasoning card uses them.
+  marketListings?: MarketListing[];
 }) {
   switch (item.kind) {
     case "offers":
@@ -3287,6 +3308,10 @@ export function ItemCard({
           }
           subject={subject}
           comparables={comparables}
+          marketListings={marketListings}
+          // The on-market list is "as at" the agency agreement date — read
+          // off a3, the same card the ESP figures come from.
+          agreementDate={allItems["a3"]?.event_date ?? null}
           // a4 holds the ESP the agent recorded off the agency agreement. The
           // draft on a4c quotes it back; it never computes one.
           allEsp={

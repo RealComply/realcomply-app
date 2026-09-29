@@ -6,6 +6,7 @@ import {
   buildReasoningDraft,
   reasoningNudge,
   type Comparable,
+  type DraftListings,
   type EspFigures,
   type SubjectAttributes,
 } from "@/lib/data/comparables";
@@ -45,6 +46,7 @@ export function ReasoningAssist({
   noteId,
   subject,
   comparables,
+  onMarket,
   esp,
   savedReasoning,
   isDone,
@@ -52,6 +54,8 @@ export function ReasoningAssist({
   noteId: string;
   subject: SubjectAttributes;
   comparables: Comparable[];
+  /** On-market listings and their as-at date (29 Sep 2026). */
+  onMarket?: DraftListings;
   esp: EspFigures;
   /** What is already recorded on this item. Drives the nudge, not the draft. */
   savedReasoning: string;
@@ -59,7 +63,7 @@ export function ReasoningAssist({
   isDone: boolean;
 }) {
   const [whyOpen, setWhyOpen] = useState(false);
-  const draft = buildReasoningDraft(subject, comparables, esp);
+  const draft = buildReasoningDraft(subject, comparables, esp, onMarket);
   const nudge = reasoningNudge(savedReasoning, comparables);
   const marked = comparables.filter((c) => c.weighting !== null).length;
 

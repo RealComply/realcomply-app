@@ -182,6 +182,27 @@ type DraftPatch = {
    * never become the confirmed values without a person accepting them.
    */
   subjectProperty?: SubjectAttributesRead;
+  /**
+   * a4c only, from the comparables report. Properties the report lists as
+   * currently FOR SALE (29 Sep 2026, Stephen Borg's point that the ESP
+   * reasoning should consider the competition). Facts only; the agent marks
+   * which are direct competition. Written to property_market_listings.
+   */
+  marketListings?: MarketListingRead[];
+};
+
+export type MarketListingRead = {
+  address: string;
+  askingPrice?: string;
+  saleMethod?: string;
+  listedDate?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  carSpaces?: number;
+  landSizeSqm?: number;
+  internalAreaSqm?: number;
+  distanceM?: number;
+  propertyType?: string;
 };
 
 export type ComparableSaleRead = {
@@ -342,6 +363,28 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
                 required: ["address"],
               },
             },
+            marketListings: {
+              type: "array",
+              description:
+                "Item a4c only, and ONLY when reading a comparable-sales report. One entry for every property the report lists as CURRENTLY FOR SALE (on the market, listed, for sale, active listing) — not sold properties, which go in comparableSales, and not the subject property itself. In the report's own order. Record only what is printed. The advertised price is another agent's asking price or guide, copied exactly as printed (it may be a range, 'Contact agent', 'Auction', 'Offers over $X'); never convert it into a single number and never call it a sale price. Do NOT rank, score or judge them — which listings are real competition is the agent's decision.",
+              items: {
+                type: "object",
+                properties: {
+                  address: { type: "string", description: "Street address as the report prints it. Required." },
+                  askingPrice: { type: "string", description: "The advertised price or guide exactly as printed, e.g. '$1,200,000 - $1,300,000', 'Contact Agent'. Omit if none is shown." },
+                  saleMethod: { type: "string", description: "e.g. 'Auction', 'Private treaty', 'Expressions of interest', only as printed." },
+                  listedDate: { type: "string", description: "Date first listed, YYYY-MM-DD, only if a specific date is printed. Do not calculate it from a days-on-market figure." },
+                  bedrooms: { type: "number" },
+                  bathrooms: { type: "number" },
+                  carSpaces: { type: "number" },
+                  landSizeSqm: { type: "number", description: "Land size in square metres, only as printed." },
+                  internalAreaSqm: { type: "number" },
+                  distanceM: { type: "number", description: "Distance from the subject in METRES, only if printed. Convert a printed km figure; do not calculate one." },
+                  propertyType: { type: "string" },
+                },
+                required: ["address"],
+              },
+            },
             subjectProperty: {
               type: "object",
               description:
@@ -496,7 +539,7 @@ const AGENCY_AGREEMENT_PROMPT =
 // under s72A, and a provider's automated estimate is not the figure the agent
 // agreed. SOURCE_TARGETS enforces that in code; this is only the reminder.
 const COMPARABLES_PROMPT =
-  "a4c, and on a4c please do THREE things.\n\n" +
+  "a4c, and on a4c please do these things.\n\n" +
   "(1) comparableSales — every sold property this report lists, as one entry each, in the report's own " +
   "order. This is the main job. Transcribe what is printed and nothing else: address, price, date of " +
   "sale, beds, baths, car, land size, internal area, distance. Leave a field out rather than " +
@@ -505,6 +548,11 @@ const COMPARABLES_PROMPT =
   "(2) subjectProperty — the attributes of the property the report was prepared FOR, which these " +
   "reports normally state on the first page. Beds, baths, car, land, internal area. Omit anything not " +
   "printed. Do not confuse it with the nearest comparable.\n\n" +
+  "(2b) marketListings — every property the report shows as currently FOR SALE (not sold), as one " +
+  "entry each, in the report's order. Address, the advertised price or guide copied exactly as printed " +
+  "(it is another agent's asking price, not a sale price — never turn a range into one number), sale " +
+  "method, listed date if a date is printed, beds, baths, car, land, distance. Many reports have no " +
+  "for-sale section; if so, leave this out.\n\n" +
   "(3) note — the agent's own reasoning behind the ESP, ONLY if this report actually contains " +
   "reasoning written by the agent rather than the provider's automated commentary. If all you can see " +
   "is generated text, leave note out entirely.\n\n" +
@@ -1247,7 +1295,9 @@ async function extractOneDocument(
     // without this an agreement that happened to mention a nearby sale could
     // put a row in the comparison table — a sale that is not in the report the
     // file holds as evidence, appearing in the record as though it were.
-    .map((p) => (source === "a4" ? p : { ...p, comparableSales: undefined, subjectProperty: undefined }));
+    .map((p) =>
+      source === "a4" ? p : { ...p, comparableSales: undefined, subjectProperty: undefined, marketListings: undefined },
+    );
 }
 
 
@@ -1571,7 +1621,9 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
   //      are different things, and the record has to be able to tell them
   //      apart.
   const comparablesPatch = patches.find(
-    (p) => p.itemKey === "a4c" && ((p.comparableSales?.length ?? 0) > 0 || p.subjectProperty),
+    (p) =>
+      p.itemKey === "a4c" &&
+      ((p.comparableSales?.length ?? 0) > 0 || (p.marketListings?.length ?? 0) > 0 || p.subjectProperty),
   );
   if (comparablesPatch) {
     const { data: agencyIdRow } = await supabase
@@ -1626,6 +1678,51 @@ async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<
 
       if (fresh.length > 0) {
         await supabase.from("property_comparables").insert(fresh);
+      }
+    }
+
+    // ON THE MARKET (29 Sep 2026). Same two rules as the sales: a re-read
+    // only ever ADDS listings it has not seen (matched on the normalised
+    // address), and it never writes a weighting. Only the ORIGINAL list
+    // (as_at null) is checked for duplicates — a list recorded at an ESP
+    // revision is a different snapshot and may legitimately repeat an
+    // address. If migration 0050 has not been run the insert fails quietly
+    // and the sales above are unaffected.
+    if (agencyId && comparablesPatch.marketListings?.length) {
+      const { data: existingListings } = await supabase
+        .from("property_market_listings")
+        .select("id, address")
+        .eq("property_id", propertyId)
+        .is("as_at", null);
+
+      const seenListings = new Set(
+        ((existingListings ?? []) as Array<{ address: string }>).map((r) => normaliseAddress(r.address)),
+      );
+
+      const freshListings = comparablesPatch.marketListings
+        .filter((l) => l.address?.trim())
+        .filter((l) => !seenListings.has(normaliseAddress(l.address)))
+        .map((l, index) => ({
+          agency_id: agencyId,
+          property_id: propertyId,
+          address: l.address.trim(),
+          asking_price: l.askingPrice?.trim() || null,
+          sale_method: l.saleMethod?.trim() || null,
+          listed_date: /^\d{4}-\d{2}-\d{2}$/.test(l.listedDate ?? "") ? l.listedDate : null,
+          bedrooms: l.bedrooms ?? null,
+          bathrooms: l.bathrooms ?? null,
+          car_spaces: l.carSpaces ?? null,
+          land_size_sqm: l.landSizeSqm ?? null,
+          internal_area_sqm: l.internalAreaSqm ?? null,
+          distance_m: l.distanceM ?? null,
+          property_type: l.propertyType ?? null,
+          source: "report",
+          as_at: null,
+          position: seenListings.size + index,
+        }));
+
+      if (freshListings.length > 0) {
+        await supabase.from("property_market_listings").insert(freshListings);
       }
     }
   }

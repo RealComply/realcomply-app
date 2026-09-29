@@ -241,6 +241,15 @@ export type ComplianceRecordInput = {
    * flattering ones would misrepresent what was in front of the agent.
    */
   comparables: ComparableForRecord[];
+  /**
+   * Properties on the market as at the agency agreement date, and how the
+   * agent treated each (29 Sep 2026 — Stephen Borg's point that the ESP
+   * reasoning should consider the competition as well as the sales).
+   * Optional so older callers keep working; an empty list prints nothing.
+   */
+  marketListings?: MarketListingForRecord[];
+  /** The agency agreement date (a3), which the on-market list is "as at". */
+  agreementDate?: string | null;
   /** Typed-name attestations, reproduced with the date each was given. */
   signatures: {
     agent: { typedName: string; signedAt: string | null } | null;
@@ -268,6 +277,20 @@ export type ComparableForRecord = {
   agentNote: string | null;
 };
 
+export type MarketListingForRecord = {
+  address: string;
+  askingPrice: string | null;
+  saleMethod: string | null;
+  listedDate: string | null;
+  weighting: "competition" | "considered" | null;
+  agentNote: string | null;
+};
+
+const LISTING_WEIGHTING_LABEL: Record<string, string> = {
+  competition: "Direct competition",
+  considered: "Considered",
+};
+
 const WEIGHTING_LABEL: Record<string, string> = {
   relied: "Relied on",
   considered: "Considered",
@@ -285,6 +308,8 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     espReasoning,
     espReasoningElsewhere = null,
     comparables,
+    marketListings = [],
+    agreementDate = null,
     signatures,
     attachments,
     rulesetVersion,
@@ -483,6 +508,44 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     }
     c.text(
       "How the agent treated each sale, in their own words. Sales shown as not marked appeared in the comparable-sales report held on this file.",
+      { size: 8, color: FAINT },
+    );
+  }
+
+  // The competition, as at the agency agreement date (29 Sep 2026). Same
+  // shape as the sales above, with one difference stated on the page: these
+  // prices are other agents' advertised prices or guides, not sale prices,
+  // and nothing here treats them as if they were.
+  if (marketListings.length > 0) {
+    c.rule(6, 10);
+    const asAt = agreementDate ? formatAuDate(agreementDate.slice(0, 10)) : null;
+    c.text(
+      asAt ? `On the market as at ${asAt}` : "On the market as at the agency agreement date (not recorded)",
+      { size: 11, bold: true, gap: 4 },
+    );
+    for (const l of marketListings) {
+      c.need(30);
+      const facts = [
+        l.askingPrice?.trim() ? `Advertised: ${l.askingPrice.trim()}` : "No price advertised",
+        l.saleMethod?.trim() || null,
+        l.listedDate ? `listed ${formatAuDate(l.listedDate.slice(0, 10))}` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      c.text(ascii(l.address), { size: 9.5, bold: true });
+      c.text(ascii(facts), { size: 8.5, color: MUTED, indent: 12 });
+      c.text(l.weighting ? LISTING_WEIGHTING_LABEL[l.weighting] : "Not marked by the agent", {
+        size: 8.5,
+        color: l.weighting ? MUTED : FAINT,
+        indent: 12,
+      });
+      if (l.agentNote?.trim()) {
+        c.text(ascii(l.agentNote.trim()), { size: 8.5, color: MUTED, indent: 12 });
+      }
+      c.y -= 4;
+    }
+    c.text(
+      "Properties for sale at the time, as listed in the comparable-sales report or added by the agent. Prices are other agents' advertised prices or guides, not sale prices.",
       { size: 8, color: FAINT },
     );
   }

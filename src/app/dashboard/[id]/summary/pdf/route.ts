@@ -5,6 +5,7 @@ import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { buildComplianceRecordPdf, complianceRecordFilename, type Attachment } from "@/lib/pdf/compliance-record";
 import { comparablesFor } from "@/lib/data/comparables";
+import { marketListingsFor } from "@/lib/data/market-listings";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem } from "@/lib/types";
@@ -172,6 +173,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       weighting: c.weighting,
       agentNote: c.agentNote,
     })),
+    // The competition, as at the agency agreement date (29 Sep 2026).
+    marketListings: (await marketListingsFor(supabase, id)).map((l) => ({
+      address: l.address,
+      askingPrice: l.askingPrice,
+      saleMethod: l.saleMethod,
+      listedDate: l.listedDate,
+      weighting: l.weighting,
+      agentNote: l.agentNote,
+    })),
+    agreementDate: byKey["a3"]?.event_date ?? null,
     signatures: { agent: agentSignature, licensee: licenseeSignature },
     attachments,
     rulesetVersion: RULESET_VERSION,

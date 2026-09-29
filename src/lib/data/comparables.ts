@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { MarketListing } from "@/lib/data/market-listings";
 
 // Comparable sales, and the subject property they are compared against.
 //
@@ -14,6 +15,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 //
 // See RealComply-comparable-sales-AI-notes-design.md.
 
+// "not_comparable" is no longer OFFERED (Adam, 29 Sep 2026: "if it's not a
+// comparable property, it shouldn't be there" — the agent removes the row
+// instead). It stays in the type because rows marked that way before the
+// change still exist and must still read back, print and draft correctly.
+// The database constraint still allows it for the same reason.
 export type Weighting = "relied" | "considered" | "not_comparable";
 
 export type Comparable = {
@@ -33,6 +39,16 @@ export type Comparable = {
   agentNote: string | null;
   position: number;
 };
+
+/**
+ * The physical facts every comparison runs on. Shared by sales and by
+ * on-market listings (Stephen Borg, 28 Sep 2026), so "1 bedroom fewer" is the
+ * same arithmetic whichever list it appears in.
+ */
+export type ComparableFacts = Pick<
+  Comparable,
+  "address" | "bedrooms" | "bathrooms" | "carSpaces" | "landSizeSqm" | "internalAreaSqm"
+>;
 
 /** The subject property's own attributes, as confirmed by a person. */
 export type SubjectAttributes = {
@@ -129,7 +145,7 @@ export function hasSubjectDetail(s: SubjectAttributes): boolean {
 
 const AREA_NOISE_SQM = 15;
 
-export function differencesFrom(subject: SubjectAttributes, c: Comparable): string[] {
+export function differencesFrom(subject: SubjectAttributes, c: ComparableFacts): string[] {
   const out: string[] = [];
 
   const count = (mine: number | null, theirs: number | null, singular: string, plural: string) => {
@@ -157,7 +173,7 @@ export function differencesFrom(subject: SubjectAttributes, c: Comparable): stri
 }
 
 /** "1 bedroom fewer, 120m² less land" — or "" when we cannot say. */
-export function differenceLine(subject: SubjectAttributes, c: Comparable): string {
+export function differenceLine(subject: SubjectAttributes, c: ComparableFacts): string {
   const parts = differencesFrom(subject, c);
   if (parts.length === 0) return "";
   return parts.join(", ");
@@ -175,7 +191,7 @@ export function differenceLine(subject: SubjectAttributes, c: Comparable): strin
  * Same rule as the differences: arithmetic only. "Same land" is a measurement
  * within a tolerance; "comparable" would be a judgement and is not ours.
  */
-export function similaritiesFrom(subject: SubjectAttributes, c: Comparable): string[] {
+export function similaritiesFrom(subject: SubjectAttributes, c: ComparableFacts): string[] {
   const out: string[] = [];
 
   const count = (mine: number | null, theirs: number | null, singular: string, plural: string) => {
@@ -224,14 +240,14 @@ export function similaritiesFrom(subject: SubjectAttributes, c: Comparable): str
  * what the caller does with "no", so "no" and "don't know" cannot be the
  * same value.
  */
-function suburbComparison(subject: SubjectAttributes, c: Comparable): boolean | null {
+function suburbComparison(subject: SubjectAttributes, c: ComparableFacts): boolean | null {
   const theirs = suburbOf(c.address);
   const mine = subject.addressSuburb;
   if (!mine || !theirs) return null;
   return mine === theirs;
 }
 
-function sameSuburb(subject: SubjectAttributes, c: Comparable): boolean {
+function sameSuburb(subject: SubjectAttributes, c: ComparableFacts): boolean {
   return suburbComparison(subject, c) === true;
 }
 
@@ -305,7 +321,7 @@ export function suburbOf(address: string): string | null {
 
 export function proseComparison(
   subject: SubjectAttributes,
-  c: Comparable,
+  c: ComparableFacts,
 ): { same: string[]; diff: string[]; place: string | null } {
   const same: string[] = [];
   const diff: string[] = [];
@@ -442,15 +458,38 @@ function monthsAgo(iso: string): number {
 
 export type EspFigures = { low: number | null; high: number | null };
 
+/**
+ * The on-market listings the agent has marked, and the date the list is as at.
+ * Added 29 Sep 2026 (Stephen Borg's point: the reasoning should consider the
+ * competition as well as the sales). Optional so every existing caller keeps
+ * working unchanged.
+ */
+export type DraftListings = {
+  listings: MarketListing[];
+  /** e.g. "12 August 2026", or null when the agreement date is not recorded yet. */
+  asAtLabel: string | null;
+};
+
 export function buildReasoningDraft(
   subject: SubjectAttributes,
   comparables: Comparable[],
   esp: EspFigures,
+  onMarket?: DraftListings,
 ): string {
   const relied = comparables.filter((c) => c.weighting === "relied");
   const considered = comparables.filter((c) => c.weighting === "considered");
+  // Legacy only — see the note on Weighting. Not offered since 29 Sep 2026.
   const rejected = comparables.filter((c) => c.weighting === "not_comparable");
-  if (relied.length === 0 && considered.length === 0 && rejected.length === 0) return "";
+  const competition = (onMarket?.listings ?? []).filter((l) => l.weighting === "competition");
+  const alsoOnMarket = (onMarket?.listings ?? []).filter((l) => l.weighting === "considered");
+  if (
+    relied.length === 0 &&
+    considered.length === 0 &&
+    rejected.length === 0 &&
+    competition.length === 0 &&
+    alsoOnMarket.length === 0
+  )
+    return "";
 
   const lines: string[] = [];
 
@@ -515,7 +554,39 @@ export function buildReasoningDraft(
     }
   }
 
+  // ON THE MARKET. Same line as the sales: only what the report printed
+  // (address, the other agent's advertised price) and what the agent pressed
+  // or typed. The asking price is quoted as the other agent's figure and
+  // never compared with the ESP — that comparison is the agent's to make.
+  if (competition.length > 0 || alsoOnMarket.length > 0) {
+    lines.push("");
+    const when = onMarket?.asAtLabel ? ` as at ${onMarket.asAtLabel}` : "";
+    if (competition.length > 0) {
+      lines.push(`On the market${when}, treated as direct competition: ${list(competition.map(listingPhrase))}.`);
+      for (const l of competition) {
+        const note = sentence(l.agentNote);
+        if (note) lines.push(`${shortAddress(l)} — ${note}`);
+      }
+    }
+    if (alsoOnMarket.length > 0) {
+      lines.push(
+        `${competition.length > 0 ? "Also on the market" : `On the market${when}`}, considered: ` +
+          `${list(alsoOnMarket.map(listingPhrase))}.`,
+      );
+      for (const l of alsoOnMarket) {
+        const note = sentence(l.agentNote);
+        if (note) lines.push(`${shortAddress(l)} — ${note}`);
+      }
+    }
+  }
+
   return lines.join("\n");
+}
+
+/** "14 Smith St (advertised: $1.2m–$1.3m)" — the other agent's words, quoted. */
+function listingPhrase(l: MarketListing): string {
+  const price = l.askingPrice?.trim();
+  return price ? `${shortAddress(l)} (advertised: ${price})` : shortAddress(l);
 }
 
 /** Capitalised and closed, so the agent's fragment reads as a sentence. */
@@ -526,7 +597,7 @@ function sentence(text: string | null): string {
   return /[.!?]$/.test(body) ? body : `${body}.`;
 }
 
-function shortAddress(c: Comparable): string {
+function shortAddress(c: { address: string }): string {
   // Street and number only. The suburb repeats on every row and adds nothing
   // to a sentence about properties in one street's walk of each other.
   return c.address.split(",")[0].trim() || c.address;
