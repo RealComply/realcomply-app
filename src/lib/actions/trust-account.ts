@@ -81,7 +81,7 @@ export async function setTrustAccountArchived(
 // s111 puts the obligation on the licensee personally.
 //
 // ONE ROW PER ACCOUNT PER PERIOD (Adam, 25 Aug 2026: "annual audit is 1
-// per account"). Upserted rather than inserted, upserted rather than inserted, because this is a
+// per account"). Updated in place when it exists, because this is a
 // record that gets filled in over months — the auditor is engaged, the report
 // arrives weeks later, the confirmation comes last. Three separate saves
 // against the same period.
@@ -142,9 +142,14 @@ export async function saveTrustAudit(
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase
-    .from("trust_audits")
-    .upsert(row, { onConflict: "agency_id,trust_account_id,period_end" });
+  // Update-or-insert by hand rather than .upsert(): the unique index is on
+  // coalesce(trust_account_id, nil uuid) (migration 0032), and Postgres cannot
+  // match ON CONFLICT (agency_id, trust_account_id, period_end) to an
+  // expression index — every save failed with 42P10. The index still stops a
+  // second row for the same account and period.
+  const { error } = existing
+    ? await supabase.from("trust_audits").update(row).eq("id", existing.id)
+    : await supabase.from("trust_audits").insert(row);
 
   if (error) {
     return { error: "Couldn't save that — try again." };
