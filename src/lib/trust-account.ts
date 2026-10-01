@@ -162,16 +162,95 @@ export type ReconciliationRecord = {
   notes: string | null;
 };
 
+// The rows these are built from. Only the columns that decide the status are
+// required; the rest feed the register card and may be left out by callers
+// that only need the status (the nav badge, the reminder job).
+export type ReconciliationDocRow = {
+  id: string;
+  trust_account_id: string | null;
+  period_month: string | null;
+  created_at: string;
+  file_name?: string | null;
+  file_path?: string | null;
+  signed_file_path?: string | null;
+  signed_file_name?: string | null;
+  uploaded_by?: string | null;
+  notes?: string | null;
+};
+
+export type ReconciliationSignatureRow = {
+  document_id: string;
+  signed_at: string | null;
+  typed_name?: string | null;
+};
+
+/**
+ * One account's reconciliations, keyed by month.
+ *
+ * THE single definition of which document stands for a month and whether it
+ * is signed. The trust register, the nav badge and the reminder emails all go
+ * through here, so none of them can call a month done while another calls it
+ * outstanding.
+ *
+ * The newest upload for a month is the one that counts. A replaced
+ * reconciliation is a new document, and a signature on the version it
+ * replaced is not a signature on what is filed now.
+ *
+ * "Signed" means a signature row with signed_at on that document. Every trust
+ * reconciliation is written with signer_scope = licensee_only and signDocument
+ * refuses anyone else on that scope, so a signature here is the licensee in
+ * charge's.
+ */
+export function reconciliationRecordsFor(
+  accountId: string,
+  docs: ReconciliationDocRow[],
+  sigs: ReconciliationSignatureRow[],
+  nameOf: (profileId: string | null) => string | null = () => null,
+): Map<string, ReconciliationRecord> {
+  const newestFirst = docs
+    .filter((d) => d.trust_account_id === accountId && d.period_month)
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+
+  const records = new Map<string, ReconciliationRecord>();
+  for (const doc of newestFirst) {
+    const month = doc.period_month as string;
+    if (records.has(month)) continue;
+    const signature = sigs.find((s) => s.document_id === doc.id && s.signed_at);
+    records.set(month, {
+      documentId: doc.id,
+      month,
+      fileName: doc.file_name ?? null,
+      filePath: doc.file_path ?? null,
+      signedFilePath: doc.signed_file_path ?? null,
+      signedFileName: doc.signed_file_name ?? null,
+      uploadedByName: nameOf(doc.uploaded_by ?? null),
+      signedAt: signature?.signed_at ?? null,
+      signedName: signature?.typed_name ?? null,
+      notes: doc.notes ?? null,
+    });
+  }
+  return records;
+}
+
+/** Where the work on a month stands, ignoring dates. */
+export type ReconciliationProgress = "not_filed" | "filed_unsigned" | "signed";
+
+export function reconciliationProgress(record: ReconciliationRecord | undefined): ReconciliationProgress {
+  if (!record) return "not_filed";
+  return record.signedAt ? "signed" : "filed_unsigned";
+}
+
 export function statusFor(
   monthIso: string,
   record: ReconciliationRecord | undefined,
   today: Date = new Date(),
 ): MonthStatus {
   if (!monthHasEnded(monthIso, today)) return "future";
-  if (record?.signedAt) return "signed";
+  const progress = reconciliationProgress(record);
+  if (progress === "signed") return "signed";
   const late = daysUntil(reconciliationDueOn(monthIso), today) < 0;
   if (late) return "overdue";
-  return record ? "awaiting_signature" : "awaiting_upload";
+  return progress === "filed_unsigned" ? "awaiting_signature" : "awaiting_upload";
 }
 
 export function buildMonths(
@@ -214,10 +293,17 @@ export const MONTH_STATUS_LABELS: Record<MonthStatus, string> = {
 // that can still change the outcome, and without it the product goes quiet
 // exactly when it matters most.
 //
-// The 1st fires whether or not anything has been uploaded: it is the prompt to
-// start. The 7th and 18th only fire while the month is genuinely unsigned. A
-// reminder about something already done is how people learn to ignore the
-// sender.
+// Every stage looks at the month as it stands when the email is about to go,
+// through reconciliationProgress — the same answer the register shows:
+//
+//   signed          — nothing is sent. A reminder about something already done
+//                     is how people learn to ignore the sender. (The 1st used
+//                     to go regardless; on 1 Oct 2026 that told an agency to
+//                     prepare a September reconciliation it had signed that
+//                     afternoon.)
+//   filed_unsigned  — a short "ready for your sign-off" to the licensee only.
+//                     The upload is done, so nobody is told to do it.
+//   not_filed       — the full reminder.
 
 export type ReminderStage = "day1" | "day7" | "day18";
 
@@ -238,4 +324,13 @@ export function auditStageForMonth(monthIndexUtc: number): AuditReminderStage | 
   if (monthIndexUtc === 7) return "month2"; // August
   if (monthIndexUtc === 8) return "month3"; // September — due at the end of it
   return null;
+}
+
+export type ReconciliationReminderKind = "none" | "ready_for_signoff" | "full";
+
+/** What, if anything, a reconciliation reminder should say at any stage. */
+export function reconciliationReminderFor(progress: ReconciliationProgress): ReconciliationReminderKind {
+  if (progress === "signed") return "none";
+  if (progress === "filed_unsigned") return "ready_for_signoff";
+  return "full";
 }

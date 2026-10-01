@@ -10,7 +10,7 @@ import {
   buildMonths,
   daysUntil,
   previousAuditPeriodEnd,
-  type ReconciliationRecord,
+  reconciliationRecordsFor,
 } from "@/lib/trust-account";
 import type {
   Profile, SignoffDocument, SignoffSignature, TrustAccount, TrustAudit,
@@ -67,23 +67,8 @@ export default async function TrustAccountsPage({
   // (Adam, 25 Aug 2026: "annual audit is 1 per account").
   const monthsByAccount = new Map<string, ReturnType<typeof buildMonths>>();
   for (const acct of allAccounts) {
-    const records = new Map<string, ReconciliationRecord>();
-    for (const doc of docs) {
-      if (doc.trust_account_id !== acct.id || !doc.period_month) continue;
-      if (records.has(doc.period_month)) continue;
-      records.set(doc.period_month, {
-        documentId: doc.id,
-        month: doc.period_month,
-        fileName: doc.file_name,
-        filePath: doc.file_path,
-        signedFilePath: doc.signed_file_path,
-        signedFileName: doc.signed_file_name,
-        uploadedByName: nameOf(doc.uploaded_by),
-        signedAt: sigs.find((s) => s.document_id === doc.id && s.signed_at)?.signed_at ?? null,
-        signedName: sigs.find((s) => s.document_id === doc.id && s.signed_at)?.typed_name ?? null,
-        notes: doc.notes,
-      });
-    }
+    // Same helper the reminder emails use, so the email and this page agree.
+    const records = reconciliationRecordsFor(acct.id, docs, sigs, nameOf);
     monthsByAccount.set(acct.id, buildMonths(currentPeriod, records, today));
   }
 

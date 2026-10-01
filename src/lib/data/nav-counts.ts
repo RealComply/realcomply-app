@@ -8,7 +8,7 @@ import {
   daysUntil,
   previousAuditPeriodEnd,
   auditPeriodEndFor,
-  type ReconciliationRecord,
+  reconciliationRecordsFor,
 } from "@/lib/trust-account";
 import type {
   Agency, Breach, Profile, Property, PropertyItem, PropertyStage,
@@ -192,7 +192,7 @@ export const navCountsFor = cache(async function navCountsFor(
     supabase.from("trust_accounts").select("id, archived_at"),
     supabase
       .from("signoff_documents")
-      .select("id, period_month, trust_account_id")
+      .select("id, period_month, trust_account_id, created_at")
       .eq("category", "trust_reconciliation"),
     supabase.from("trust_audits").select("period_end, confirmed_at, trust_account_id"),
   ]);
@@ -266,7 +266,7 @@ export const navCountsFor = cache(async function navCountsFor(
   >[];
   const docs = (trustDocRows ?? []) as Pick<
     SignoffDocument,
-    "id" | "period_month" | "trust_account_id"
+    "id" | "period_month" | "trust_account_id" | "created_at"
   >[];
 
   let trustOverdue = 0;
@@ -276,24 +276,7 @@ export const navCountsFor = cache(async function navCountsFor(
     // owed on it, so it cannot be outstanding.
     if (acct.archived_at) continue;
 
-    const records = new Map<string, ReconciliationRecord>();
-    for (const doc of docs) {
-      if (doc.trust_account_id !== acct.id || !doc.period_month) continue;
-      if (records.has(doc.period_month)) continue;
-      records.set(doc.period_month, {
-        documentId: doc.id,
-        month: doc.period_month,
-        fileName: null,
-        filePath: null,
-        signedFilePath: null,
-        signedFileName: null,
-        uploadedByName: null,
-        signedAt: signatures.find((sig) => sig.document_id === doc.id && sig.signed_at)?.signed_at ?? null,
-        // Only the status matters here — this feeds the nav badge, not a card.
-        signedName: null,
-        notes: null,
-      });
-    }
+    const records = reconciliationRecordsFor(acct.id, docs, signatures);
     const months = buildMonths(auditPeriodEndFor(today), records, today);
     trustOverdue += months.filter((m) => m.status === "overdue").length;
     trustPending += months.filter(
