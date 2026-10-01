@@ -213,6 +213,10 @@ async function applySubscription(
  * confusingly, several times, in the subscriber's inbox.
  *
  * So: log loudly, return, and let the 200 stand.
+ *
+ * The one exception is the Stripe call that prices the first invoice. It runs
+ * before anything is sent, so a failure there cannot produce a duplicate —
+ * letting it throw gets a retry, which is what a transient Stripe error wants.
  */
 async function sendTrialReminder(subscription: StripeSubscription): Promise<void> {
   const lookupKey = subscription.items?.data?.[0]?.price?.lookup_key ?? null;
@@ -234,6 +238,38 @@ async function sendTrialReminder(subscription: StripeSubscription): Promise<void
     return;
   }
 
+  // Stripe also fires this event when a trial is ended early, and still fires
+  // it for a subscription already set to cancel. Neither will be charged on
+  // trial_end, so a reminder naming that date and amount would be false.
+  if (
+    subscription.status !== "trialing" ||
+    subscription.cancel_at_period_end ||
+    subscription.trial_end * 1000 <= Date.now()
+  ) {
+    console.log("Stripe webhook: trial_will_end for", subscription.id, "— not converting, no reminder.");
+    return;
+  }
+
+  // The amount as Stripe will actually raise it, not the list price: checkout
+  // allows promotion codes, so PLANS can be the wrong figure.
+  const preview = await stripeRequest<{ amount_due: number; currency: string }>(
+    "POST",
+    "/invoices/create_preview",
+    { subscription: subscription.id },
+  );
+
+  if (preview.currency !== "aud" || preview.amount_due <= 0) {
+    console.error(
+      "Stripe webhook: trial_will_end for",
+      subscription.id,
+      "previews",
+      preview.amount_due,
+      preview.currency,
+      "— no reminder sent.",
+    );
+    return;
+  }
+
   const supabase = createServiceClient();
   const agencyId =
     subscription.metadata?.agency_id ?? (await agencyIdForCustomer(supabase, subscription.customer));
@@ -248,6 +284,7 @@ async function sendTrialReminder(subscription: StripeSubscription): Promise<void
       agencyId,
       plan,
       interval,
+      amountCents: preview.amount_due,
       trialEnd: new Date(subscription.trial_end * 1000),
     });
     if (!sent) {

@@ -6,7 +6,7 @@ import {
   renderEmailText,
   type EmailDocument,
 } from "./layout";
-import { PLANS, annualPrice, type Plan } from "@/lib/billing/entitlement";
+import { PLANS, type Plan } from "@/lib/billing/entitlement";
 import type { Interval } from "@/lib/billing/stripe";
 
 // The trial-ending reminder.
@@ -42,14 +42,23 @@ export type TrialEndingInput = {
   /** From the subscription's price lookup key — never guessed. */
   plan: Plan;
   interval: Interval;
+  /**
+   * What Stripe will actually charge, in cents — from its preview of the first
+   * invoice, never from the price list. Checkout allows promotion codes, so
+   * the list price can be the wrong figure.
+   */
+  amountCents: number;
   /** subscription.trial_end, already converted from Stripe's epoch seconds. */
   trialEnd: Date;
 };
 
-/** "$249" or "$2,490" — whole dollars, GST inclusive, as advertised. */
-function amountFor(plan: Plan, interval: Interval): string {
-  const dollars = interval === "annual" ? annualPrice(plan) : PLANS[plan].price;
-  return `$${dollars.toLocaleString("en-AU")}`;
+/** "$249", "$2,490" or "$199.20" — cents shown only when there are some. */
+function formatAmount(cents: number): string {
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  }).format(cents / 100);
 }
 
 /**
@@ -103,7 +112,7 @@ export async function sendTrialEndingEmail(input: TrialEndingInput): Promise<boo
   }
 
   const spec = PLANS[input.plan];
-  const amount = amountFor(input.plan, input.interval);
+  const amount = formatAmount(input.amountCents);
   const date = chargeDate(input.trialEnd);
   const every = input.interval === "annual" ? "a year" : "a month";
 
