@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
   billingStatusFor,
+  intervalFromLookupKey,
   planFromLookupKey,
   stripeRequest,
   verifyStripeSignature,
 } from "@/lib/billing/stripe";
+import { sendTrialEndingEmail } from "@/lib/email/trial-ending";
 import type { Plan } from "@/lib/billing/entitlement";
 
 // Stripe's side of the conversation.
@@ -118,6 +120,15 @@ async function handle(event: StripeEvent): Promise<void> {
       return;
     }
 
+    // The trial reminder. Stripe fires this three days before the trial ends,
+    // which is exactly what Terms v.4 cl 2.10(b) promises the subscriber — so
+    // unlike the cases above, this one is a contractual obligation rather than
+    // a state update. See src/lib/email/trial-ending.ts.
+    case "customer.subscription.trial_will_end": {
+      await sendTrialReminder(event.data.object as StripeSubscription);
+      return;
+    }
+
     default:
       return;
   }
@@ -186,6 +197,101 @@ async function applySubscription(
   const { error } = await supabase.from("agencies").update(update).eq("id", agencyId);
   if (error) {
     throw new Error(`agencies update failed: ${error.message}`);
+  }
+}
+
+/**
+ * Terms v.4 cl 2.10(b): a reminder three days before the trial expires, naming
+ * the date the first payment will be taken and the amount of it.
+ *
+ * WHY THIS ONE MAY NOT THROW. Everything else in this route throws on failure
+ * so Stripe retries. Here that would be wrong in both directions: a retry
+ * storm on a transient mail failure sends the same subscriber the same
+ * reminder repeatedly, and a 500 on an event Stripe will not usefully replay
+ * teaches it the endpoint is unhealthy. A missing reminder is a promise
+ * broken once and visible in the logs; a duplicate is a promise broken
+ * confusingly, several times, in the subscriber's inbox.
+ *
+ * So: log loudly, return, and let the 200 stand.
+ *
+ * The one exception is the Stripe call that prices the first invoice. It runs
+ * before anything is sent, so a failure there cannot produce a duplicate —
+ * letting it throw gets a retry, which is what a transient Stripe error wants.
+ */
+async function sendTrialReminder(subscription: StripeSubscription): Promise<void> {
+  const lookupKey = subscription.items?.data?.[0]?.price?.lookup_key ?? null;
+  const plan = lookupKey ? planFromLookupKey(lookupKey) : null;
+  const interval = lookupKey ? intervalFromLookupKey(lookupKey) : null;
+
+  // No guessing the amount. An email that names the wrong figure is worse
+  // than one that never arrives, because the subscriber acts on it.
+  if (!plan || !interval || !subscription.trial_end) {
+    console.error(
+      "Stripe webhook: trial_will_end for",
+      subscription.id,
+      "could not be priced (lookup key",
+      lookupKey,
+      ", trial_end",
+      subscription.trial_end,
+      ") — no reminder sent.",
+    );
+    return;
+  }
+
+  // Stripe also fires this event when a trial is ended early, and still fires
+  // it for a subscription already set to cancel. Neither will be charged on
+  // trial_end, so a reminder naming that date and amount would be false.
+  if (
+    subscription.status !== "trialing" ||
+    subscription.cancel_at_period_end ||
+    subscription.trial_end * 1000 <= Date.now()
+  ) {
+    console.log("Stripe webhook: trial_will_end for", subscription.id, "— not converting, no reminder.");
+    return;
+  }
+
+  // The amount as Stripe will actually raise it, not the list price: checkout
+  // allows promotion codes, so PLANS can be the wrong figure.
+  const preview = await stripeRequest<{ amount_due: number; currency: string }>(
+    "POST",
+    "/invoices/create_preview",
+    { subscription: subscription.id },
+  );
+
+  if (preview.currency !== "aud" || preview.amount_due <= 0) {
+    console.error(
+      "Stripe webhook: trial_will_end for",
+      subscription.id,
+      "previews",
+      preview.amount_due,
+      preview.currency,
+      "— no reminder sent.",
+    );
+    return;
+  }
+
+  const supabase = createServiceClient();
+  const agencyId =
+    subscription.metadata?.agency_id ?? (await agencyIdForCustomer(supabase, subscription.customer));
+
+  if (!agencyId) {
+    console.error("Stripe webhook: trial_will_end — no agency matches", subscription.id);
+    return;
+  }
+
+  try {
+    const sent = await sendTrialEndingEmail({
+      agencyId,
+      plan,
+      interval,
+      amountCents: preview.amount_due,
+      trialEnd: new Date(subscription.trial_end * 1000),
+    });
+    if (!sent) {
+      console.error("Stripe webhook: trial reminder not sent for agency", agencyId);
+    }
+  } catch (e) {
+    console.error("Stripe webhook: trial reminder threw for agency", agencyId, e);
   }
 }
 
