@@ -1,13 +1,24 @@
 "use client";
 
 import { useActionState, useEffect, useState, type ChangeEvent } from "react";
-import { updateLicence, finalizeLicenceDocument, removeLicenceDocument, type ActionState } from "@/lib/actions/registers";
+import {
+  attachLicenceDocument,
+  readLicenceFromDocument,
+  removeLicenceDocument,
+  updateLicence,
+  type ActionState,
+  type LicenceReadResult,
+} from "@/lib/actions/licences";
 import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
 import { CPD_PRACTICE_CATEGORY_LABELS, cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import { ReminderLine, type ReminderInfo } from "@/components/registers/ReminderLine";
+import { LicenceReadNotice } from "@/components/registers/LicenceReadNotice";
+import { parseReadState } from "@/lib/licence-read";
+import { countableCpdHours } from "@/lib/cpd-hours";
+import { formatAuDate } from "@/lib/format-date";
 import Link from "next/link";
 import { Paperclip } from "lucide-react";
 import type { CpdRecord, Profile } from "@/lib/types";
@@ -26,12 +37,15 @@ export function StaffRegisterCard({
   viewerProfile,
   cpdYearLabel,
   reminderInfo = { next: null, last: null },
+  nameOf = {},
 }: {
   profile: Profile;
   cpdRecords: CpdRecord[];
   viewerProfile: Profile;
   cpdYearLabel: string;
   reminderInfo?: ReminderInfo;
+  /** Profile id to display name, for "typed by" lines. */
+  nameOf?: Record<string, string>;
 }) {
   const canEdit = viewerProfile.id === profile.id || viewerProfile.is_licensee_in_charge;
   const isAssistant = profile.licence_type === "certificate_of_registration";
@@ -43,12 +57,16 @@ export function StaffRegisterCard({
   // state a requirement — see rules/nsw-cpd.ts.
   const requirement = cpdRequirementFor(profile.licence_type, profile.cpd_practice_category);
   const target = requirement.units ?? requirement.coreHours;
-  const totalHours = cpdRecords.reduce((sum, r) => sum + Number(r.hours), 0);
+  // Approved-provider CPD only. See lib/cpd-hours.ts.
+  const totalHours = countableCpdHours(cpdRecords);
   const status = expiryStatus(profile.licence_expiry);
 
   const licenceAction = updateLicence.bind(null, profile.id);
   const [licenceState, licenceFormAction, licencePending] = useActionState(licenceAction, initialState);
   const [editingLicence, setEditingLicence] = useState(false);
+  const [readResult, setReadResult] = useState<LicenceReadResult | null>(null);
+  const readState = parseReadState(profile.licence_read);
+  const detailsMissing = !profile.licence_type || !profile.licence_number || !profile.licence_expiry;
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
@@ -77,7 +95,7 @@ export function StaffRegisterCard({
                 <>
                   <span className="font-medium text-rc-ink">{LICENCE_TYPE_LABELS[profile.licence_type]}</span>
                   {profile.licence_number && <> · {profile.licence_number}</>}
-                  {profile.licence_expiry && <> · expires {profile.licence_expiry}</>}
+                  {profile.licence_expiry && <> · expires {formatAuDate(profile.licence_expiry)}</>}
                 </>
               ) : (
                 "No licence or certificate details on file yet."
@@ -174,7 +192,17 @@ export function StaffRegisterCard({
             proves nothing to an auditor, and the person who typed it is the
             one who'd have to find the PDF again. Visible to everyone in the
             agency; only the holder and the licensee can change it. */}
-        <LicenceDocument profile={profile} canEdit={canEdit} />
+        <LicenceDocument profile={profile} canEdit={canEdit} onResult={setReadResult} />
+        <LicenceReadNotice
+          state={readState}
+          target={{ kind: "person", profileId: profile.id }}
+          holderLabel={profile.full_name ?? profile.email}
+          nameOf={nameOf}
+          canEdit={canEdit}
+          canReread={Boolean(viewerProfile.is_licensee_in_charge && profile.licence_document_path && detailsMissing)}
+          onReread={() => readLicenceFromDocument(profile.id)}
+          lastResult={readResult}
+        />
         <ReminderLine info={reminderInfo} hasExpiry={Boolean(profile.licence_expiry)} />
       </div>
 
@@ -187,12 +215,12 @@ export function StaffRegisterCard({
         <p className="text-xs text-rc-muted">
           {target === null ? (
             <>
-              CPD {cpdYearLabel} — {totalHours} {isAssistant ? "units" : "hrs"} logged,{" "}
+              CPD {cpdYearLabel}: {totalHours} {isAssistant ? "units" : "hrs"} logged,{" "}
               <span className="text-rc-amber-deep">requirement not established</span>
             </>
           ) : (
             <>
-              CPD {cpdYearLabel} —{" "}
+              CPD {cpdYearLabel}:{" "}
               <span className={totalHours >= target ? "text-rc-green-deep" : "text-rc-amber-deep"}>
                 {totalHours}/{target} {isAssistant ? "units" : "hrs"}
               </span>
@@ -200,7 +228,7 @@ export function StaffRegisterCard({
           )}
         </p>
         <Link href="/dashboard/cpd" className="shrink-0 text-xs font-medium text-rc-green-deep hover:underline">
-          Manage CPD →
+          Manage CPD
         </Link>
       </div>
     </div>
@@ -211,9 +239,17 @@ export function StaffRegisterCard({
 // registers mockup. Same client-side-upload-then-record-path pattern as
 // EvidenceUploader in ItemCard.tsx (a Server Action can't carry a real
 // document upload — see the comment on uploadEvidenceObject).
-function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: boolean }) {
+function LicenceDocument({
+  profile,
+  canEdit,
+  onResult,
+}: {
+  profile: Profile;
+  canEdit: boolean;
+  onResult: (result: LicenceReadResult) => void;
+}) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<false | "uploading" | "reading">(false);
   const [error, setError] = useState<string | null>(null);
 
   // "Upload certificate of registration" rather than "Upload licence
@@ -238,7 +274,7 @@ function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: bool
   }, [profile.licence_document_path]);
 
   // One path for a picked file and a dropped one — see useFileDrop.
-  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: uploading });
+  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: Boolean(uploading) });
 
   function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -248,7 +284,7 @@ function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: bool
 
   async function upload(file: File) {
     setError(null);
-    setUploading(true);
+    setUploading("uploading");
     const supabase = createBrowserClient();
     const path = buildLicenceDocPath(profile.agency_id, profile.id, file.name);
     const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
@@ -257,10 +293,45 @@ function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: bool
       setUploading(false);
       return;
     }
-    const { error: saveError } = await finalizeLicenceDocument(profile.id, path, stored.name);
+    // Upload, don't type: the document is read and what it says is saved
+    // straight to the record. See lib/licence-read.ts for what is and isn't.
+    setUploading("reading");
+    const result = await attachLicenceDocument(profile.id, path, stored.name);
     setUploading(false);
-    if (saveError) setError(saveError);
+    onResult(result);
   }
+
+  // One control for a first upload and for a renewal. A renewed licence is a
+  // new document: uploading it reads the new expiry date, which restarts the
+  // reminder schedule against it, and the old document stays in the history.
+  const uploadControl = canEdit ? (
+    // Drag as well as click (Adam, 9 Sep 2026). A one-line link is a small
+    // drop target, so it grows a dashed outline while a file is over it.
+    <label
+      {...drop.dragProps}
+      className={`cursor-pointer rounded-md px-1.5 py-0.5 transition ${
+        drop.isOver
+          ? "bg-rc-green-soft text-rc-green-deep outline-dashed outline-1 outline-rc-green-deep"
+          : "text-rc-green-deep hover:underline"
+      }`}
+      title={`Drag a file here, or click. A PDF or a phone photo is fine.`}
+    >
+      {uploading === "uploading"
+        ? "Uploading…"
+        : uploading === "reading"
+          ? "Reading the document…"
+          : profile.licence_document_path
+            ? "Upload renewed licence"
+            : `Upload ${uploadLabel}`}
+      <input
+        type="file"
+        accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+        onChange={handleFile}
+        disabled={Boolean(uploading)}
+        className="hidden"
+      />
+    </label>
+  ) : null;
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -275,6 +346,7 @@ function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: bool
               <Paperclip size={12} /> loading link…
             </span>
           )}
+          {uploadControl}
           {canEdit && (
             <button
               type="button"
@@ -286,21 +358,7 @@ function LicenceDocument({ profile, canEdit }: { profile: Profile; canEdit: bool
           )}
         </>
       ) : canEdit ? (
-        // Drag as well as click (Adam, 9 Sep 2026). A one-line link is a small
-        // drop target, so it grows a dashed outline while a file is over it —
-        // otherwise there is nothing to aim at.
-        <label
-          {...drop.dragProps}
-          className={`cursor-pointer rounded-md px-1.5 py-0.5 transition ${
-            drop.isOver
-              ? "bg-rc-green-soft text-rc-green-deep outline-dashed outline-1 outline-rc-green-deep"
-              : "text-rc-green-deep hover:underline"
-          }`}
-          title={`Drag a file here, or click, to upload ${uploadLabel}`}
-        >
-          {uploading ? "Uploading…" : `Upload ${uploadLabel}`}
-          <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
-        </label>
+        uploadControl
       ) : (
         <span className="text-rc-faint">No {uploadLabel} on file.</span>
       )}

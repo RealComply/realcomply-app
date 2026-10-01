@@ -43,6 +43,12 @@ export function buildLicenceDocPath(agencyId: string, profileId: string, fileNam
   return `${agencyId}/_licences/${profileId}/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// The agency's corporation licence (0051). Beside the people's licences, in a
+// folder of its own so it can never collide with a profile id.
+export function buildCorporationLicenceDocPath(agencyId: string, fileName: string): string {
+  return `${agencyId}/_licences/_corporation/${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 // The provider's record of completion for one CPD activity. Kept per person
 // rather than per agency folder, because retention is the individual's
 // obligation (3 years; 4 for an assistant agent's statement of attainment)

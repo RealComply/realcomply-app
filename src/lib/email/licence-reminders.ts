@@ -31,7 +31,7 @@ import type { Agency, LicenceReminder, Profile } from "@/lib/types";
 // the register ("last reminded" stays blank) and picked up by a human, the
 // first just trains people to ignore the emails.
 
-type Subject = {
+export type Subject = {
   kind: "profile" | "corporation";
   profileId: string | null;
   // Who the credential belongs to, as it should read in an email.
@@ -45,9 +45,9 @@ type Subject = {
 const REGISTERS_URL = "https://www.realcomply.com.au/dashboard/registers";
 
 const LICENCE_FOOTER = [
-  "RealComply provides diligence support to help you stay on top of compliance. Renewals are made " +
-    "with NSW Fair Trading. RealComply doesn't lodge them for you, and the licensee in charge " +
-    "remains responsible for making sure everyone in the office is properly licensed.",
+  "RealComply sends reminders. Renewals are made by the holder with NSW Fair Trading. RealComply " +
+    "doesn't lodge them for you, and the licensee in charge remains responsible for making sure " +
+    "everyone in the office is properly licensed.",
   `<a href="${REGISTERS_URL}" style="color:#8a9a93">See the register any time</a>`,
 ];
 
@@ -84,13 +84,15 @@ function subjectsForAgency(agency: Agency, profiles: Profile[]): Subject[] {
   return subjects;
 }
 
-function holderDocument(subject: Subject, days: number): EmailDocument {
+export function holderDocument(subject: Subject, days: number): EmailDocument {
   const expired = days < 0;
 
+  // Fourteen days joined the schedule in Oct 2026, and "no rush today" is not
+  // true a fortnight out, so the closer wording now starts at 14.
   const advice = expired
-    ? "Trading on an expired credential isn't something to leave sitting. Renew with NSW Fair Trading, then update the date in the register so your office can see it's sorted."
-    : days <= 7
-      ? "This one's close. If the renewal is already in with NSW Fair Trading, update the date in the register once it comes through and these reminders stop."
+    ? "Trading on an expired credential isn't something to leave sitting. Renew with NSW Fair Trading, then upload the renewed licence to the register."
+    : days <= 14
+      ? "This one's close. If the renewal is already in with NSW Fair Trading, upload the renewed licence to the register once it comes through. RealComply reads the new date and these reminders stop."
       : "No rush today, but it's worth starting. Renewals can take a few weeks, and a certificate of registration can't simply be renewed a second time, so if you're due to move up to a Class 2 licence you'll want the lead time.";
 
   return {
@@ -120,7 +122,7 @@ function holderDocument(subject: Subject, days: number): EmailDocument {
   };
 }
 
-function licenseeDocument(subject: Subject, days: number, agency: Agency): EmailDocument {
+export function licenseeDocument(subject: Subject, days: number, agency: Agency): EmailDocument {
   const expired = days < 0;
   const who =
     subject.kind === "corporation"
@@ -134,7 +136,7 @@ function licenseeDocument(subject: Subject, days: number, agency: Agency): Email
         : "The corporation licence is the agency's own, separate from anyone's personal licence. Worth putting the renewal in early."
       : expired
         ? "Supervising someone whose credential has lapsed is your exposure, not just theirs. They've had the same notice."
-        : "They've had the same notice. Nothing needed from you unless the date passes without the register being updated.";
+        : "They've had the same notice. Nothing needed from you unless the date passes without a renewed licence being uploaded.";
 
   return {
     preheader: expired ? `${who} has expired.` : `${who} expires on ${subject.expiry}.`,
@@ -166,10 +168,23 @@ function subjectLine(subject: Subject, days: number, forHolder: boolean): string
   return `${what} expires ${expiryPhrase(days)}`;
 }
 
+/** Swappable for tests. Production passes nothing and gets the real thing. */
+export type LicenceReminderDeps = {
+  supabase?: ReturnType<typeof createServiceClient>;
+  send?: typeof sendEmail;
+};
+
+// Every run reads the CURRENT expiry date off the profile or agency row. A
+// renewal that saves a later date therefore stops the old schedule the next
+// morning with nothing else to do: the old date is never looked at again, and
+// the dedupe key (which includes the expiry date) has no rows for the new one,
+// so its 90-day reminder fires when the time comes.
 export async function runLicenceReminders(
   today: Date = new Date(),
+  deps: LicenceReminderDeps = {},
 ): Promise<{ checked: number; sent: number; alreadySent: number; failed: number }> {
-  const supabase = createServiceClient();
+  const supabase = deps.supabase ?? createServiceClient();
+  const send = deps.send ?? sendEmail;
   let checked = 0;
   let sent = 0;
   let alreadySent = 0;
@@ -244,7 +259,7 @@ export async function runLicenceReminders(
         const doc = isHolder
           ? holderDocument(subject, days)
           : licenseeDocument(subject, days, agency);
-        const ok = await sendEmail({
+        const ok = await send({
           to,
           subject: subjectLine(subject, days, isHolder),
           text: renderEmailText(doc),
@@ -258,4 +273,71 @@ export async function runLicenceReminders(
   }
 
   return { checked, sent, alreadySent, failed };
+}
+
+// ── A test reminder, sent on request from the register ──────────────────────
+//
+// The same two emails the daily job sends, each clearly labelled as a test,
+// to one chosen team member (the holder's version) and to the licensee who
+// asked (the licensee's version). Writes nothing to licence_reminders, so the
+// real schedule is exactly as it was. Uses the member's real expiry date when
+// there is one, otherwise an example date 30 days out, and says so.
+const TEST_NOTE =
+  "This is a test from RealComply's licence register, sent because the licensee in charge asked for one. " +
+  "Nothing has changed and no action is needed. It shows what a real reminder looks like and that it reaches you.";
+
+export async function sendLicenceReminderTest(
+  params: { member: Profile; licensee: Profile; agency: Agency; today?: Date },
+  send: typeof sendEmail = sendEmail,
+): Promise<{ sentTo: string[]; failedTo: string[] }> {
+  const { member, licensee, agency } = params;
+  const today = params.today ?? new Date();
+
+  const example = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 30))
+    .toISOString()
+    .slice(0, 10);
+  const expiry = member.licence_expiry ?? example;
+  const subject: Subject = {
+    kind: "profile",
+    profileId: member.id,
+    holderName: member.full_name ?? member.email,
+    holderEmail: member.email,
+    credential: credentialLabel(member.licence_type),
+    licenceNumber: member.licence_number,
+    expiry,
+  };
+  const days = daysUntil(expiry, today);
+  const exampleNote = member.licence_expiry
+    ? null
+    : "There's no expiry date on file for this person yet, so this test uses an example date.";
+
+  const label = (doc: EmailDocument): EmailDocument => ({
+    ...doc,
+    preheader: `Test only. ${doc.preheader ?? ""}`.trim(),
+    sections: [
+      { kind: "note", text: TEST_NOTE },
+      ...(exampleNote ? [{ kind: "note" as const, text: exampleNote }] : []),
+      ...doc.sections,
+    ],
+  });
+
+  const messages: { to: string; subject: string; doc: EmailDocument }[] = [];
+  if (member.email) {
+    messages.push({ to: member.email, subject: `[Test] ${subjectLine(subject, days, true)}`, doc: label(holderDocument(subject, days)) });
+  }
+  if (licensee.email && licensee.email !== member.email) {
+    messages.push({
+      to: licensee.email,
+      subject: `[Test] ${subjectLine(subject, days, false)}`,
+      doc: label(licenseeDocument(subject, days, agency)),
+    });
+  }
+
+  const sentTo: string[] = [];
+  const failedTo: string[] = [];
+  for (const m of messages) {
+    const ok = await send({ to: m.to, subject: m.subject, text: renderEmailText(m.doc), html: renderEmailHtml(m.doc) });
+    (ok ? sentTo : failedTo).push(m.to);
+  }
+  return { sentTo, failedTo };
 }
