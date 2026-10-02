@@ -60,8 +60,8 @@ import { MarketListingsPanel } from "@/components/comparables/MarketListingsPane
 import type { MarketListing } from "@/lib/data/market-listings";
 import { fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
 import type { EspDraftInput } from "@/lib/data/esp-draft";
-import type { NoneOnMarketRecord, ReasoningDraftRecord } from "@/lib/rules/esp-reasoning-adoption";
-import { ReasoningAssist } from "@/components/comparables/ReasoningAssist";
+import type { NoneOnMarketRecord, ReasoningAdoptionRecord } from "@/lib/rules/esp-reasoning-adoption";
+import { Disclaimer, ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
 const initialState: ActionState = { error: null };
@@ -603,8 +603,8 @@ function ChecklistItem({
     loggedElsewhereWhere?: string | null;
     /** a4c: the agent confirmed nothing comparable was on the market at the agreement date. */
     noneOnMarket?: NoneOnMarketRecord | null;
-    /** a4c: RealComply's draft and the agent's adoption of it. */
-    reasoningDraft?: ReasoningDraftRecord;
+    /** a4c: how reasoning the agent did not type here was confirmed as theirs. */
+    reasoningAdoption?: ReasoningAdoptionRecord;
     preCommencement?: boolean;
     preCommencementAgreementDate?: string;
     preCommencementRevokedOn?: string;
@@ -659,6 +659,9 @@ function ChecklistItem({
           high: (allEsp?.espHigh as number | undefined) ?? null,
         }
       : { low: null, high: null };
+
+  // RealComply's draft is in the box: the disclaimer goes directly above it.
+  const [draftInBox, setDraftInBox] = useState(false);
 
   const draftInput: EspDraftInput | null =
     item.key === "a4c" && subject
@@ -1179,6 +1182,14 @@ function ChecklistItem({
                   Draft
                 </span>
               )}
+              {/* Directly above the draft, every time one is in the box. On
+                  screen only: it is not in the textarea, so it can never be
+                  saved as reasoning or reach the audit pack. */}
+              {item.key === "a4c" && draftInBox && (
+                <div className="mb-1.5">
+                  <Disclaimer />
+                </div>
+              )}
               <DictatableTextarea
                 // Stable id so the ESP prompts panel below can insert a heading
                 // into this box, the same way the dictate button already writes
@@ -1203,8 +1214,9 @@ function ChecklistItem({
                   savedReasoning={String(data.note ?? "")}
                   documentReasoning={String(draft?.note ?? "")}
                   reportRead={comparablesReportRead}
-                  adoption={data.reasoningDraft ?? null}
+                  adoption={data.reasoningAdoption ?? null}
                   isDone={isDone}
+                  onDraftInBox={setDraftInBox}
                 />
               )}
               {/* a4c only. Every prompt on this card in one closed drawer —

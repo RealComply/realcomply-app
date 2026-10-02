@@ -37,6 +37,7 @@ import {
 } from "../src/lib/data/comparables";
 import { daysOnMarket, onMarketHeading, type MarketListing } from "../src/lib/data/market-listings";
 import { draftEspReasoning, draftProblems, type EspDraft, type EspDraftInput } from "../src/lib/data/esp-draft";
+import { DISCLAIMER, editedInWording } from "../src/lib/rules/esp-reasoning-adoption";
 
 const ESP = { low: 1_300_000, high: 1_400_000 };
 
@@ -311,6 +312,15 @@ const all = [supported, above, below, tooFew, onMarketDraft].filter((d): d is Es
 const guarantee = all.filter((d) => /\b(compliant|correct|accurate)\b/i.test(d.text));
 if (guarantee.length === 0) ok("(e) no draft contains guarantee words");
 else fail("(e) a draft says the estimate is compliant, correct or accurate");
+
+// The disclaimer is on-screen only: never inside the draft text, which is what
+// the agent edits, confirms and the pack prints. And the draft cannot be
+// confirmed as it stands — a cosmetic change is not an edit.
+if (all.every((d) => !d.text.includes(DISCLAIMER))) ok("no draft carries the disclaimer in its text");
+else fail("a draft carries the disclaimer in its text");
+if (supported && !editedInWording(supported.text, supported.text.toUpperCase().replace(/\./g, ";"))) {
+  ok("capitals and punctuation alone do not count as editing the draft");
+} else fail("a cosmetic change counted as editing the draft");
 
 // (f) Marks are respected: only Relied on sales are relied on.
 if (supported) check("(f) only the sales marked Relied on are drawn on", supported.drawnOn, ["a", "b"]);

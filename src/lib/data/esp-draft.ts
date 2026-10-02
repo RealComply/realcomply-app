@@ -30,9 +30,12 @@ import { daysOnMarket, longDate, type MarketListing } from "./market-listings";
 //   (f) Where the agent has marked sales, only the ones marked Relied on are
 //       relied on.
 //
-// The draft is never the agent's reasoning until they say so. It is shown as
-// a draft, they edit freely, and the card cannot complete until they confirm
-// it in one click — see lib/rules/esp-reasoning-adoption.ts.
+// The draft is never the agent's reasoning until they make it so. It is shown
+// under an on-screen disclaimer (never part of this text), the agent must
+// change its wording before they can confirm it — spacing, punctuation and
+// capitals alone do not count — and then confirm it in one click. Both are
+// enforced on the server, and the card cannot complete before that. See
+// lib/rules/esp-reasoning-adoption.ts.
 
 export type EvidenceVerdict = "supports" | "mostly_above" | "mostly_below" | "too_few";
 

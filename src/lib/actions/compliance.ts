@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { a4cSave, draftFromForm } from "@/lib/rules/esp-reasoning-adoption";
+import { a4cSave, pendingFromForm } from "@/lib/rules/esp-reasoning-adoption";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
@@ -331,12 +331,13 @@ export async function setItemStatus(
     data.selfManaged = formData.get("selfManaged") === "yes";
   }
 
-  // a4c — the ESP reasoning. When the box was filled by "Draft my reasoning",
-  // the draft is not the agent's until they confirm it, so an unconfirmed
-  // draft is refused here whatever button was pressed: nothing saves as their
-  // reasoning and the card stays incomplete. A confirmed one is recorded with
-  // who, when, the original draft and whether it was edited. See
-  // lib/rules/esp-reasoning-adoption.ts.
+  // a4c — the ESP reasoning. Text the agent did not type here (RealComply's
+  // draft, or reasoning read from their document) is not theirs until they
+  // confirm it in one click, and a draft must be edited in its wording first.
+  // Both are enforced here whatever button sent the form, so an unedited or
+  // unconfirmed draft never saves and the card stays incomplete. A confirmed
+  // one is recorded with who, when, and the original beside the final text.
+  // See lib/rules/esp-reasoning-adoption.ts.
   if (itemKey === "a4c") {
     const { data: previousRow } = await supabase
       .from("property_items")
@@ -346,7 +347,7 @@ export async function setItemStatus(
       .maybeSingle();
     const saved = a4cSave({
       note,
-      draft: draftFromForm(formData),
+      pending: pendingFromForm(formData),
       confirmed: String(formData.get("adoptDraft") ?? "") === "yes",
       previous: ((previousRow as { data?: Record<string, unknown> } | null)?.data ?? null),
       user: { id: user.id, name: (profile.full_name as string | null) ?? null },
