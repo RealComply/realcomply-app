@@ -13,12 +13,8 @@ import { ruleContextFor } from "@/lib/data/rule-context";
 import { signoffLinksFor } from "@/lib/data/signoff-links";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
-import {
-  ESP_REASONING_KEY,
-  HELD_MESSAGE,
-  heldForEspReasoning,
-  withEffectiveEspStatus,
-} from "@/lib/rules/esp-reasoning-gate";
+import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
+import { stageHold } from "@/lib/rules/stage-hold";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
 function auctionDateLabel(date: string): string {
@@ -106,16 +102,23 @@ export default async function PropertyPage({
     { onMarketCount: marketListings.filter((l) => l.asAt === null).length },
   );
 
-  // Held at Listing set-up while the ESP reasoning card is incomplete (Adam,
-  // 3 Oct 2026). The later tabs lock and the page opens on Listing set-up; the
-  // stored stage is untouched, so finishing the card puts the file straight
-  // back where it was. See heldForEspReasoning.
-  const held = heldForEspReasoning({
-    stage: p.stage,
+  const ruleCtx = await ruleContextFor(supabase, p);
+
+  // Held at the first earlier stage with a required card not complete (Adam,
+  // 3 Oct 2026). Later tabs lock and the page opens on that stage; the stored
+  // stage and every later card are untouched, so completing the card puts the
+  // file straight back where it was. See lib/rules/stage-hold.ts.
+  const hold = stageHold({
+    storedStage: p.stage,
     testMode: p.test_mode,
-    espComplete: allItems[ESP_REASONING_KEY]?.status === "done",
+    signedOff: allItems["sign_licensee"]?.status === "done",
+    incompleteRequired: (s) =>
+      itemsForStage(s, p, allItems, ruleCtx)
+        .filter((i) => i.requiredForStageCompletion && allItems[i.key]?.status !== "done")
+        .map((i) => i.label),
   });
-  const currentStage = (held ? 0 : p.stage) as PropertyStage;
+  const held = hold.stage !== p.stage;
+  const currentStage = hold.stage;
 
   const maxViewable = p.test_mode ? 5 : currentStage;
   const requestedStage = stageParam ? (Number(stageParam) as PropertyStage) : currentStage;
@@ -125,7 +128,6 @@ export default async function PropertyPage({
       : currentStage
   ) as PropertyStage;
 
-  const ruleCtx = await ruleContextFor(supabase, p);
   const stageItems = itemsForStage(viewedStage, p, allItems, ruleCtx);
   const isCurrentStage = viewedStage === currentStage;
   const countdown = auctionCountdown(p.auction_date);
@@ -275,7 +277,9 @@ export default async function PropertyPage({
 
         {held && (
           <div className="mt-6 rounded-2xl border border-rc-amber/40 bg-rc-amber/10 px-4 py-2 text-xs text-rc-amber-deep">
-            This file is at {STAGE_LABELS[p.stage]}, but it is held at Listing set-up. {HELD_MESSAGE}
+            This file is at {STAGE_LABELS[p.stage]}, but it is held at {STAGE_LABELS[currentStage]} until{" "}
+            {hold.waitingOn.length === 1 ? "this card is" : "these cards are"} complete:{" "}
+            {hold.waitingOn.join(", ")}. Nothing in the later stages is lost.
           </div>
         )}
 
@@ -333,8 +337,8 @@ export default async function PropertyPage({
           ))}
         </div>
 
-        {/* Held: no Continue button. Finishing the ESP card is what releases
-            the file, back to its own stage, so there is nothing to continue. */}
+        {/* Held: no Continue button. Completing the held stage's cards is
+            what releases the file, back to its own stage. */}
         {isCurrentStage && !held && p.stage < 5 && <CompleteStageButton propertyId={p.id} stage={p.stage} />}
 
         {/* The way on from a stage you are looking back at (Adam, 3 Oct 2026):

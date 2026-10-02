@@ -7,7 +7,6 @@ import {
   espReasoningMissing,
   isRealReasoning,
   waitsForEspReasoning,
-  heldForEspReasoning,
   withEffectiveEspStatus,
 } from "./esp-reasoning-gate";
 import { editedInWording } from "./esp-reasoning-adoption";
@@ -104,18 +103,5 @@ describe("edit first, as the server checks it", () => {
     const draft = "My estimated selling price is $1,300,000 to $1,400,000.";
     assert.equal(editedInWording(draft, `  ${draft}\n`), false);
     assert.equal(editedInWording(draft, `${draft} I also weighed the larger block.`), true);
-  });
-});
-
-describe("heldForEspReasoning", () => {
-  it("holds a file past Listing set-up while the card is incomplete", () => {
-    assert.equal(heldForEspReasoning({ stage: 2, testMode: false, espComplete: false }), true);
-  });
-  it("releases it once the card is complete", () => {
-    assert.equal(heldForEspReasoning({ stage: 2, testMode: false, espComplete: true }), false);
-  });
-  it("never holds in test mode or at Listing set-up", () => {
-    assert.equal(heldForEspReasoning({ stage: 3, testMode: true, espComplete: false }), false);
-    assert.equal(heldForEspReasoning({ stage: 0, testMode: false, espComplete: false }), false);
   });
 });

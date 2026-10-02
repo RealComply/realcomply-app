@@ -5,8 +5,6 @@ import { a4cSave, EDIT_FIRST, editedInWording, pendingFromForm } from "@/lib/rul
 import {
   ESP_REASONING_KEY,
   STAGE_GATE_MESSAGE,
-  HELD_MESSAGE,
-  heldForEspReasoning,
   espReasoningComplete,
   espReasoningMissing,
   waitsForEspReasoning,
@@ -18,6 +16,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
+import { stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
@@ -30,6 +29,7 @@ import type {
   PropertyItemStatus,
   PropertyStage,
 } from "@/lib/types";
+import { STAGE_LABELS } from "@/lib/types";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -2129,23 +2129,34 @@ export async function completeStage(
     // without it, a licensee-agent would be blocked from completing the stage
     // by an item the page never showed them, with nothing on screen to explain
     // it. Whatever is on the card list is what is required, always.
-    const required = itemsForStage(
-      property.stage,
-      property,
-      allItems,
-      await ruleContextFor(supabase, property),
-    ).filter((i) => i.requiredForStageCompletion);
+    const ctx = await ruleContextFor(supabase, property);
+    const required = itemsForStage(property.stage, property, allItems, ctx).filter(
+      (i) => i.requiredForStageCompletion,
+    );
     // The ESP reasoning card counts by its rule, not only its stored status:
     // a card saved as done with no reasoning is not complete.
     const gate = await espGateFor(supabase, propertyId);
-    // A file held at Listing set-up cannot move on from its stored stage
-    // either. See heldForEspReasoning in lib/rules/esp-reasoning-gate.ts.
-    if (heldForEspReasoning({ stage: property.stage, testMode: false, espComplete: gate.complete })) {
-      return { error: HELD_MESSAGE };
+    const isComplete = (key: string) =>
+      key === ESP_REASONING_KEY ? gate.complete : byKey.get(key)?.status === "done";
+
+    // A file held at an earlier stage cannot move on from its stored stage.
+    // Same rule as the page: lib/rules/stage-hold.ts.
+    const hold = stageHold({
+      storedStage: property.stage,
+      testMode: false,
+      signedOff: byKey.get("sign_licensee")?.status === "done",
+      incompleteRequired: (s) =>
+        itemsForStage(s, property, allItems, ctx)
+          .filter((i) => i.requiredForStageCompletion && !isComplete(i.key))
+          .map((i) => i.label),
+    });
+    if (hold.stage !== property.stage) {
+      return {
+        error: `${STAGE_LABELS[hold.stage]} needs finishing first: ${hold.waitingOn.join(", ")}.`,
+      };
     }
-    const incomplete = required.filter((r) =>
-      r.key === ESP_REASONING_KEY ? !gate.complete : byKey.get(r.key)?.status !== "done",
-    );
+
+    const incomplete = required.filter((r) => !isComplete(r.key));
 
     if (incomplete.length > 0) {
       return {
