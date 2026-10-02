@@ -6,12 +6,12 @@
 // agent and for the principal or licensee so that they're aware of when
 // licences are going to expire."
 //
-// Thresholds are 90 / 30 / 7 / 0 days. Ninety days is the number Adam asked
-// for on 15 Aug ("reminders for three months prior to expiry"), and it is
-// also the practical one: NSW Fair Trading renewals want doing well before
+// Thresholds are 90 / 30 / 14 / 7 / 0 days. Ninety days is the number Adam
+// asked for on 15 Aug ("reminders for three months prior to expiry"), and it
+// is also the practical one: NSW Fair Trading renewals want doing well before
 // the day, and a Class 2 holder moving to Class 1 needs longer still. The
-// 30 and 7 day nudges exist because a single reminder three months out is a
-// reminder you forget, and the 0 entry catches the day itself.
+// 30, 14 and 7 day nudges exist because a single reminder three months out is
+// a reminder you forget, and the 0 entry catches the day itself.
 //
 // Deliberately NOT a renewal service. RealComply tells the holder the date is
 // coming; the holder renews with Fair Trading. Same posture as everywhere
@@ -19,7 +19,16 @@
 
 import type { LicenceType } from "@/lib/types";
 
-export const REMINDER_THRESHOLDS = [90, 30, 7, 0] as const;
+// REVERSAL, Oct 2026: the 18 Aug schedule was 90, 30, 7 and 0 days. Adam has
+// added a 14-day reminder, so it is now 90, 30, 14, 7 and 0. Only the most
+// urgent threshold already crossed is ever sent (see dueThreshold), so the new
+// step never means two reminders in one morning. The register header, the
+// "Next reminder" line and the reminder emails all read from this list or say
+// the same thing in words; change them together.
+export const REMINDER_THRESHOLDS = [90, 30, 14, 7, 0] as const;
+
+/** The schedule in words, for the register and anything else that states it. */
+export const REMINDER_SCHEDULE_WORDS = "90, 30, 14 and 7 days before it, and on the day";
 export type ReminderThreshold = (typeof REMINDER_THRESHOLDS)[number];
 
 export function daysUntil(dateStr: string, today: Date = new Date()): number {

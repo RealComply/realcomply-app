@@ -4,6 +4,9 @@ import { StaffRegisterCard } from "@/components/registers/StaffRegisterCard";
 import { CorporationLicenceCard } from "@/components/registers/CorporationLicenceCard";
 import { expiryStatus } from "@/lib/expiry-status";
 import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { countableCpdHours } from "@/lib/cpd-hours";
+import { REMINDER_SCHEDULE_WORDS } from "@/lib/licence-reminders";
+import { TestReminderControl } from "@/components/registers/TestReminderControl";
 import type { ReminderInfo } from "@/components/registers/ReminderLine";
 import type { Agency, CpdRecord, Profile } from "@/lib/types";
 
@@ -28,6 +31,7 @@ export function LicencePanel({
   reminderInfoByProfile?: Record<string, ReminderInfo>;
   corporationReminderInfo?: ReminderInfo;
 }) {
+  const nameOf: Record<string, string> = Object.fromEntries(staff.map((s) => [s.id, s.full_name ?? s.email]));
   const statuses = staff.map((s) => expiryStatus(s.licence_expiry));
   const current = statuses.filter((s) => s === "ok" || s === "soon").length;
   const expiringSoon = statuses.filter((s) => s === "urgent").length;
@@ -40,7 +44,7 @@ export function LicencePanel({
     const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
     const target = requirement.units ?? requirement.coreHours;
     if (target === null) return false;
-    const total = (cpdByProfile[s.id] ?? []).reduce((sum, r) => sum + Number(r.hours), 0);
+    const total = countableCpdHours(cpdByProfile[s.id] ?? []);
     return total < target;
   }).length;
 
@@ -60,9 +64,14 @@ export function LicencePanel({
           expiry dates anyway — which is the thing this register replaces. */}
       <div className="mt-3 rounded-card border border-rc-border bg-rc-green-soft px-4 py-3 text-xs text-rc-ink">
         <span className="font-semibold">Expiry reminders are on.</span> Everyone with a date on file is
-        emailed 90, 30 and 7 days before it, and on the day. The licensee in charge is copied on every
-        one. Renewals are made with NSW Fair Trading — update the date here once yours comes through and
-        the reminders stop.
+        emailed {REMINDER_SCHEDULE_WORDS}. The licensee in charge is copied on every one. RealComply
+        reminds; the holder renews with NSW Fair Trading. Upload the renewed licence here once it comes
+        through: RealComply reads the new date and the reminders for the old one stop.
+        {viewerProfile.is_licensee_in_charge && (
+          <TestReminderControl
+            members={staff.filter((s) => !s.archived_at).map((s) => ({ id: s.id, name: s.full_name ?? s.email }))}
+          />
+        )}
       </div>
 
       {/* The entity's own licence, above the people. The individuals' licences
@@ -70,12 +79,10 @@ export function LicencePanel({
       {agency && (
         <div className="mt-4">
           <CorporationLicenceCard
-            holder={agency.corporation_licence_holder ?? null}
-            licenceNumber={agency.corporation_licence_number ?? null}
-            expiry={agency.corporation_licence_expiry ?? null}
-            agencyName={agency.name}
+            agency={agency}
             canEdit={Boolean(viewerProfile.is_licensee_in_charge)}
             reminderInfo={corporationReminderInfo}
+            nameOf={nameOf}
           />
         </div>
       )}
@@ -89,6 +96,7 @@ export function LicencePanel({
             viewerProfile={viewerProfile}
             cpdYearLabel={cpdYearLabel}
             reminderInfo={reminderInfoByProfile[s.id] ?? { next: null, last: null }}
+            nameOf={nameOf}
           />
         ))}
       </div>

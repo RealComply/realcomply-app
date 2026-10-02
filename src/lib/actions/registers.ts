@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
-import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType, LicenceType } from "@/lib/types";
+import { validIsoDate } from "@/lib/licence-read";
+import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -15,44 +15,8 @@ function str(formData: FormData, key: string): string | null {
   return s.length > 0 ? s : null;
 }
 
-// ── Licence details (per-person, lives on profiles) ────────────────────────
-// Anyone can maintain their own licence record; the licensee can also fix a
-// colleague's — same self-or-licensee pattern used for licenseeOnly items,
-// just not gated to "licensee only" outright since a licence is the holder's
-// own credential, not something only the LIC attests to.
-export async function updateLicence(profileId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
-
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can update someone else's licence details." };
-  }
-
-  const licenceType = str(formData, "licenceType") as LicenceType | null;
-  const licenceNumber = str(formData, "licenceNumber");
-  const licenceExpiry = str(formData, "licenceExpiry");
-
-  // Category of practice is set here and only here (Adam, 18 Aug 2026) — it
-  // decides the CPD hours, changes about as often as a licence does, and was
-  // previously being asked on the CPD screen and the training plan as well.
-  // An assistant agent has no category: their requirement is units.
-  const cpdPracticeCategory =
-    licenceType === "certificate_of_registration" ? null : str(formData, "cpdPracticeCategory");
-
-  const { error } = await supabase
-    .from("profiles")
-    .update({
-      licence_type: licenceType,
-      licence_number: licenceNumber,
-      licence_expiry: licenceExpiry,
-      cpd_practice_category: cpdPracticeCategory,
-    })
-    .eq("id", profileId);
-
-  if (error) return { error: "Couldn't save licence details — try again." };
-
-  revalidatePath("/dashboard/registers");
-  return ok;
-}
+// Licence and certificate records (people's and the corporation licence) live
+// in actions/licences.ts, alongside the document read and their history.
 
 // ── Insurance register (agency-level policies — PI insurance is a condition
 // of every licence in the agency under s22 PSA Act; cyber and iCare workers
@@ -180,17 +144,24 @@ export async function addCpdFromCertificate(
   const { fields } = await extractCpdCertificate(path, fileName);
   const f = fields ?? {};
 
-  // Units and hours are stored in the same column — the convention set in
-  // 0004_registers.sql — with the category telling them apart.
+  // Units and hours are stored in the same column (the convention set in
+  // 0004_registers.sql), with the category telling them apart.
   const isUnit = typeof f.units === "number" && f.units > 0;
+  const hours = isUnit ? f.units : typeof f.hours === "number" && f.hours > 0 ? f.hours : null;
+
+  // Never guess (Oct 2026). A certificate that doesn't state its hours used to
+  // be saved as 0 hours, and one with no readable date was dated today. Both
+  // now stay empty (0051 made the columns nullable) and the CPD card asks for
+  // just that field. An empty field counts as nothing toward the year.
+  const completedDate = validIsoDate(f.completedDate);
 
   const { error } = await supabase.from("cpd_records").insert({
     agency_id: profile.agency_id,
     profile_id: profileId,
     activity_name: f.activityName?.trim() || fileName.replace(/\.[^.]+$/, ""),
     category: isUnit ? "assistant_unit" : "general",
-    hours: isUnit ? f.units : (f.hours ?? 0),
-    completed_date: f.completedDate ?? new Date().toISOString().slice(0, 10),
+    hours,
+    completed_date: completedDate,
     provider: f.provider?.trim() || null,
     evidence_path: path,
     evidence_file_name: fileName,
@@ -218,9 +189,10 @@ export async function updateCpdRecord(recordId: string, _prev: ActionState, form
   const activityName = str(formData, "activityName");
   if (!activityName) return { error: "Give the activity a name." };
 
+  // Blank stays blank: an empty hours field is "not stated", not zero.
   const hoursRaw = str(formData, "hours");
-  const hours = hoursRaw ? Number(hoursRaw) : 0;
-  if (!Number.isFinite(hours) || hours < 0) return { error: "Hours must be a number." };
+  const hours = hoursRaw ? Number(hoursRaw) : null;
+  if (hours !== null && (!Number.isFinite(hours) || hours < 0)) return { error: "Hours must be a number." };
 
   const { error } = await supabase
     .from("cpd_records")
@@ -452,6 +424,8 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
           category: "general",
           hours: session.cpd_hours,
           completed_date: session.session_date,
+          // Recorded in its own column so the record shows who delivered it.
+          provider: session.cpd_provider,
           source_session_id: sessionId,
           created_by: profile.id,
         })),
@@ -463,61 +437,6 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
   revalidatePath("/dashboard/training");
   revalidatePath("/dashboard/registers");
   return ok;
-}
-
-// ── Licence document (evidence for the licence register, same pattern as
-// property evidence — upload happens client-side, this just records the
-// path — see buildLicenceDocPath in storage/evidence.ts). ─────────────────
-export async function finalizeLicenceDocument(
-  profileId: string,
-  path: string,
-  fileName: string,
-): Promise<{ error: string | null }> {
-  const { supabase, profile } = await requireAuthContext();
-
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can attach someone else's licence document." };
-  }
-
-  const { data: existing } = await supabase
-    .from("profiles")
-    .select("licence_document_path")
-    .eq("id", profileId)
-    .maybeSingle();
-
-  if (existing?.licence_document_path && existing.licence_document_path !== path) {
-    await supabase.storage.from(EVIDENCE_BUCKET).remove([existing.licence_document_path]);
-  }
-
-  const { error } = await supabase
-    .from("profiles")
-    .update({ licence_document_path: path, licence_document_file_name: fileName })
-    .eq("id", profileId);
-
-  revalidatePath("/dashboard/registers");
-  return { error: error ? "Couldn't save the document — try again." : null };
-}
-
-export async function removeLicenceDocument(profileId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) return;
-
-  const { data: existing } = await supabase
-    .from("profiles")
-    .select("licence_document_path")
-    .eq("id", profileId)
-    .maybeSingle();
-
-  if (existing?.licence_document_path) {
-    await supabase.storage.from(EVIDENCE_BUCKET).remove([existing.licence_document_path]);
-  }
-
-  await supabase
-    .from("profiles")
-    .update({ licence_document_path: null, licence_document_file_name: null })
-    .eq("id", profileId);
-
-  revalidatePath("/dashboard/registers");
 }
 
 // ── Gifts & benefits register — Rules of Conduct probity/conflicts control.
@@ -807,34 +726,6 @@ export async function deleteBreach(breachId: string): Promise<void> {
   if (!profile.is_licensee_in_charge) return;
   await supabase.from("breaches").delete().eq("id", breachId);
   revalidatePath("/dashboard/registers");
-}
-
-// ── Corporation licence — the entity's own licence, not a person's.
-// Agency-level, so it lives on agencies alongside the insurance policies
-// rather than in the per-profile licence_* columns. See
-// 0015_corporation_licence.sql. ────────────────────────────────────────────
-export async function updateCorporationLicence(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
-
-  // Same gate as the insurance policies: an agency-level record that an agent
-  // should be able to read but not rewrite.
-  if (!profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can update the corporation licence." };
-  }
-
-  const { error } = await supabase
-    .from("agencies")
-    .update({
-      corporation_licence_holder: str(formData, "holder"),
-      corporation_licence_number: str(formData, "licenceNumber"),
-      corporation_licence_expiry: str(formData, "expiry"),
-    })
-    .eq("id", profile.agency_id);
-
-  if (error) return { error: "Couldn't save the corporation licence — try again." };
-
-  revalidatePath("/dashboard/registers");
-  return ok;
 }
 
 // ── AML/CTF pre-commencement position — the agency's standing answer, not a

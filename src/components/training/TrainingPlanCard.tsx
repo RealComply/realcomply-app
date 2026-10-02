@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/training-plans";
 import type { CpdRequirement } from "@/lib/rules/nsw-cpd";
 import type { CpdRecord, Profile, TrainingPlan, TrainingPlanItem } from "@/lib/types";
+import { countableCpdHours } from "@/lib/cpd-hours";
 
 const initial: ActionState = { error: null };
 
@@ -56,7 +57,7 @@ export function TrainingPlanCard({
   // number that matters at the end of it — the plan says what should happen,
   // this says what did.
   const isAssistant = subject.licence_type === "certificate_of_registration";
-  const logged = cpdRecords.reduce((sum, r) => sum + Number(r.hours), 0);
+  const logged = countableCpdHours(cpdRecords);
   const target = requirement.units ?? requirement.coreHours;
 
   return (

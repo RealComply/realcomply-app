@@ -236,6 +236,9 @@ export async function completeTrainingPlanItem(
         category: isAssistant ? "assistant_unit" : "general",
         hours: isAssistant ? 1 : (item.training_hours ?? 0),
         completed_date: completedDate,
+        // The provider is what makes a record count (lib/cpd-hours.ts), so it
+        // goes in its own column, not only in the notes.
+        provider: item.provider,
         notes: item.provider
           ? `From the ${plan.cpd_year_start.slice(0, 4)} training plan — ${item.provider}`
           : "From the annual training plan",

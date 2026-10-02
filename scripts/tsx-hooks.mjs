@@ -2,7 +2,7 @@
 // Node's type stripping does not touch JSX, so .tsx files are compiled here
 // with the TypeScript compiler the repo already has — no new dependency.
 // Registered from inside the test that needs it (register() at runtime), so
-// the shared `npm test` runner (scripts/test-hooks.mjs) stays as it is.
+// the shared `npm test` runner (scripts/test/register.mjs) stays as it is.
 import { readFile } from "node:fs/promises";
 import ts from "typescript";
 

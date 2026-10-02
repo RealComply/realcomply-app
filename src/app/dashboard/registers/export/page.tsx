@@ -4,6 +4,7 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
+import { countableCpdHours } from "@/lib/cpd-hours";
 
 const LICENCE_TYPE_LABELS: Record<string, string> = {
   class_1: "Class 1 licence",
@@ -66,7 +67,7 @@ export default async function RegistersExportPage() {
           {staff.map((s) => {
             const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
             const target = requirement.units ?? requirement.coreHours;
-            const total = (cpdByProfile[s.id] ?? []).reduce((sum, r) => sum + Number(r.hours), 0);
+            const total = countableCpdHours(cpdByProfile[s.id] ?? []);
             return (
               <li key={s.id} className="text-sm">
                 <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>{" "}

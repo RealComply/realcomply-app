@@ -4,7 +4,7 @@
  *
  * FOR A DEVELOPER SESSION, NOT FOR ADAM. Run from the repo root:
  *
- *   node --import ./scripts/test-hooks.mjs scripts/check-comparables.ts
+ *   node --import ./scripts/test/register.mjs scripts/check-comparables.ts
  *
  * WHY THIS IS CHECKED IN. "Draft my reasoning" writes text the agent may adopt
  * as their s72A reasoning. Until 2 Oct 2026 the rule was that the draft only
