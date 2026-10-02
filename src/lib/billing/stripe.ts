@@ -50,6 +50,23 @@ export function isTestMode(): boolean {
   return !(process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_live_");
 }
 
+/**
+ * A refusal from Stripe, carrying its error code (e.g. "invoice_upcoming_none")
+ * so a caller can log what Stripe actually said. Still an Error with the same
+ * message as before, so nothing that only catches Error notices the change.
+ */
+export class StripeApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+
+  constructor(message: string, status: number, code: string | null) {
+    super(message);
+    this.name = "StripeApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 export async function stripeRequest<T>(
   method: "GET" | "POST",
   path: string,
@@ -72,10 +89,16 @@ export async function stripeRequest<T>(
     cache: "no-store",
   });
 
-  const json = (await response.json()) as T & { error?: { message?: string; type?: string } };
+  const json = (await response.json()) as T & {
+    error?: { message?: string; type?: string; code?: string };
+  };
 
   if (!response.ok) {
-    throw new Error(`Stripe ${method} ${path}: ${json?.error?.message ?? response.statusText}`);
+    throw new StripeApiError(
+      `Stripe ${method} ${path}: ${json?.error?.message ?? response.statusText}`,
+      response.status,
+      json?.error?.code ?? null,
+    );
   }
 
   return json;
