@@ -14,6 +14,7 @@ import { signoffLinksFor } from "@/lib/data/signoff-links";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
+import { stageHold } from "@/lib/rules/stage-hold";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
 function auctionDateLabel(date: string): string {
@@ -101,17 +102,34 @@ export default async function PropertyPage({
     { onMarketCount: marketListings.filter((l) => l.asAt === null).length },
   );
 
-  const maxViewable = p.test_mode ? 5 : p.stage;
-  const requestedStage = stageParam ? (Number(stageParam) as PropertyStage) : p.stage;
+  const ruleCtx = await ruleContextFor(supabase, p);
+
+  // Held at the first earlier stage with a required card not complete (Adam,
+  // 3 Oct 2026). Later tabs lock and the page opens on that stage; the stored
+  // stage and every later card are untouched, so completing the card puts the
+  // file straight back where it was. See lib/rules/stage-hold.ts.
+  const hold = stageHold({
+    storedStage: p.stage,
+    testMode: p.test_mode,
+    signedOff: allItems["sign_licensee"]?.status === "done",
+    incompleteRequired: (s) =>
+      itemsForStage(s, p, allItems, ruleCtx)
+        .filter((i) => i.requiredForStageCompletion && allItems[i.key]?.status !== "done")
+        .map((i) => i.label),
+  });
+  const held = hold.stage !== p.stage;
+  const currentStage = hold.stage;
+
+  const maxViewable = p.test_mode ? 5 : currentStage;
+  const requestedStage = stageParam ? (Number(stageParam) as PropertyStage) : currentStage;
   const viewedStage = (
     Number.isFinite(requestedStage) && requestedStage >= 0 && requestedStage <= maxViewable
       ? requestedStage
-      : p.stage
+      : currentStage
   ) as PropertyStage;
 
-  const ruleCtx = await ruleContextFor(supabase, p);
   const stageItems = itemsForStage(viewedStage, p, allItems, ruleCtx);
-  const isCurrentStage = viewedStage === p.stage;
+  const isCurrentStage = viewedStage === currentStage;
   const countdown = auctionCountdown(p.auction_date);
 
   const people = (peopleRows ?? []) as {
@@ -220,7 +238,7 @@ export default async function PropertyPage({
                 className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                   active
                     ? "bg-rc-green-deep text-white"
-                    : s < p.stage
+                    : s < currentStage
                       ? "bg-rc-green-soft text-rc-green-deep hover:opacity-80"
                       : "border border-rc-border bg-white text-rc-muted hover:bg-rc-bg-alt"
                 }`}
@@ -257,9 +275,17 @@ export default async function PropertyPage({
           </div>
         )}
 
+        {held && (
+          <div className="mt-6 rounded-2xl border border-rc-amber/40 bg-rc-amber/10 px-4 py-2 text-xs text-rc-amber-deep">
+            This file is at {STAGE_LABELS[p.stage]}, but it is held at {STAGE_LABELS[currentStage]} until{" "}
+            {hold.waitingOn.length === 1 ? "this card is" : "these cards are"} complete:{" "}
+            {hold.waitingOn.join(", ")}. Nothing in the later stages is lost.
+          </div>
+        )}
+
         {!isCurrentStage && (
           <div className="mt-6 rounded-2xl border border-rc-border bg-rc-bg-alt px-4 py-2 text-xs text-rc-muted">
-            Viewing {STAGE_LABELS[viewedStage]} — the file&rsquo;s current stage is {STAGE_LABELS[p.stage]}.
+            Viewing {STAGE_LABELS[viewedStage]} — the file&rsquo;s current stage is {STAGE_LABELS[currentStage]}.
           </div>
         )}
 
@@ -311,7 +337,26 @@ export default async function PropertyPage({
           ))}
         </div>
 
-        {isCurrentStage && p.stage < 5 && <CompleteStageButton propertyId={p.id} stage={p.stage} />}
+        {/* Held: no Continue button. Completing the held stage's cards is
+            what releases the file, back to its own stage. */}
+        {isCurrentStage && !held && p.stage < 5 && <CompleteStageButton propertyId={p.id} stage={p.stage} />}
+
+        {/* The way on from a stage you are looking back at (Adam, 3 Oct 2026):
+            "at the bottom of the page of each stage, we should have a button
+            that moves the user onto the next stage so they don't have to
+            scroll all the way back up to the top again." The current stage
+            already ends in its Continue button; this covers every other stage
+            the file can open. A link, so it lands at the top of the next stage. */}
+        {!isCurrentStage && viewedStage < maxViewable && (
+          <div className="mt-6 border-t border-rc-border pt-6">
+            <Link
+              href={`/dashboard/${p.id}?stage=${viewedStage + 1}`}
+              className="inline-block rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600"
+            >
+              Go to {STAGE_LABELS[(viewedStage + 1) as PropertyStage]}
+            </Link>
+          </div>
+        )}
 
         {/* The assistant hand-over. Shown to the assistant as an action, and
             to everyone as a state once it has been used — the licensee should
