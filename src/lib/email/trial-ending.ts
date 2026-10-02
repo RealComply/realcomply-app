@@ -5,6 +5,7 @@ import {
   renderEmailHtml,
   renderEmailText,
   type EmailDocument,
+  type EmailSection,
 } from "./layout";
 import { PLANS, type Plan } from "@/lib/billing/entitlement";
 import type { Interval } from "@/lib/billing/stripe";
@@ -46,8 +47,12 @@ export type TrialEndingInput = {
    * What Stripe will actually charge, in cents — from its preview of the first
    * invoice, never from the price list. Checkout allows promotion codes, so
    * the list price can be the wrong figure.
+   *
+   * Null when Stripe would not preview that invoice (no default payment
+   * method, for one). The reminder still goes, naming the date the plan
+   * starts but no figure — a guessed amount is worse than none.
    */
-  amountCents: number;
+  amountCents: number | null;
   /** subscription.trial_end, already converted from Stripe's epoch seconds. */
   trialEnd: Date;
 };
@@ -80,7 +85,13 @@ function chargeDate(when: Date): string {
   }).format(when);
 }
 
-export async function sendTrialEndingEmail(input: TrialEndingInput): Promise<boolean> {
+/**
+ * What happened, so the webhook can tell a provider failure (nothing went out,
+ * so a retry is safe and wanted) from an agency that should not get one.
+ */
+export type TrialEmailResult = "sent" | "skipped" | "send_failed";
+
+export async function sendTrialEndingEmail(input: TrialEndingInput): Promise<TrialEmailResult> {
   const supabase = createServiceClient();
 
   const { data: agencyRow } = await supabase
@@ -98,45 +109,84 @@ export async function sendTrialEndingEmail(input: TrialEndingInput): Promise<boo
 
   if (!agency) {
     console.error("trial-ending: no agency", input.agencyId);
-    return false;
+    return "skipped";
   }
 
   // A comped account has no card and will never be charged, so telling it a
   // payment is coming would be alarming and wrong.
-  if (agency.status === "comped") return false;
+  if (agency.status === "comped") return "skipped";
 
   const to = await billingEmailFor(supabase, agency.id);
   if (!to) {
     console.error("trial-ending: no billing contact for agency", agency.id);
-    return false;
+    return "skipped";
   }
 
+  const message = trialEndingMessage({ ...input, agencyName: agency.name });
+  const sent = await sendEmail({ to, ...message });
+  return sent ? "sent" : "send_failed";
+}
+
+/**
+ * The email itself, apart from who it goes to — pure, so both versions of the
+ * wording can be checked without a database or a mail provider.
+ */
+export function trialEndingMessage(
+  input: Omit<TrialEndingInput, "agencyId"> & { agencyName: string },
+): { subject: string; text: string; html: string } {
   const spec = PLANS[input.plan];
-  const amount = formatAmount(input.amountCents);
   const date = chargeDate(input.trialEnd);
   const every = input.interval === "annual" ? "a year" : "a month";
+  const amount = input.amountCents === null ? null : formatAmount(input.amountCents);
+
+  // Without the amount, the date is still stated and nothing is invented: the
+  // billing page shows the figure and the payment method Stripe holds.
+  const opening: EmailSection[] = amount
+    ? [
+        {
+          kind: "paragraph",
+          lead: true,
+          text: `Your RealComply trial ends on ${date}, and your first payment will be taken that day.`,
+        },
+        {
+          kind: "rows",
+          rows: [
+            {
+              title: `${amount} on ${date}`,
+              sub: `${spec.name} — billed ${every}`,
+              detail: "Includes GST. Charged to the card you entered when you started the trial.",
+              tone: "attention",
+            },
+          ],
+        },
+      ]
+    : [
+        {
+          kind: "paragraph",
+          lead: true,
+          text: `Your RealComply trial ends in three days, and your plan will start on ${date}.`,
+        },
+        {
+          kind: "rows",
+          rows: [
+            {
+              title: `Your plan will start on ${date}`,
+              sub: `${spec.name} — billed ${every}`,
+              detail: "Your billing page shows the amount and the payment method on file.",
+              tone: "attention",
+            },
+          ],
+        },
+      ];
 
   const doc: EmailDocument = {
-    preheader: `Your first payment of ${amount} is on ${date}.`,
+    preheader: amount
+      ? `Your first payment of ${amount} is on ${date}.`
+      : `Your plan will start on ${date}.`,
     title: "Your trial ends in three days",
-    meta: agency.name,
+    meta: input.agencyName,
     sections: [
-      {
-        kind: "paragraph",
-        lead: true,
-        text: `Your RealComply trial ends on ${date}, and your first payment will be taken that day.`,
-      },
-      {
-        kind: "rows",
-        rows: [
-          {
-            title: `${amount} on ${date}`,
-            sub: `${spec.name} — billed ${every}`,
-            detail: "Includes GST. Charged to the card you entered when you started the trial.",
-            tone: "attention",
-          },
-        ],
-      },
+      ...opening,
       {
         kind: "paragraph",
         text:
@@ -157,12 +207,13 @@ export async function sendTrialEndingEmail(input: TrialEndingInput): Promise<boo
     ],
   };
 
-  return sendEmail({
-    to,
-    subject: `Your RealComply trial ends ${date} — first payment ${amount}`,
+  return {
+    subject: amount
+      ? `Your RealComply trial ends ${date} — first payment ${amount}`
+      : `Your RealComply trial is ending — your plan will start on ${date}`,
     text: renderEmailText(doc),
     html: renderEmailHtml(doc),
-  });
+  };
 }
 
 /**
