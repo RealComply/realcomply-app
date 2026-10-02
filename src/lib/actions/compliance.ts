@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { a4cSave, draftFromForm } from "@/lib/rules/esp-reasoning-adoption";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
@@ -328,6 +329,31 @@ export async function setItemStatus(
   // s53 of the Residential Tenancies Act is a separate duty and still applies.
   if (itemKey === "t1") {
     data.selfManaged = formData.get("selfManaged") === "yes";
+  }
+
+  // a4c — the ESP reasoning. When the box was filled by "Draft my reasoning",
+  // the draft is not the agent's until they confirm it, so an unconfirmed
+  // draft is refused here whatever button was pressed: nothing saves as their
+  // reasoning and the card stays incomplete. A confirmed one is recorded with
+  // who, when, the original draft and whether it was edited. See
+  // lib/rules/esp-reasoning-adoption.ts.
+  if (itemKey === "a4c") {
+    const { data: previousRow } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", propertyId)
+      .eq("item_key", "a4c")
+      .maybeSingle();
+    const saved = a4cSave({
+      note,
+      draft: draftFromForm(formData),
+      confirmed: String(formData.get("adoptDraft") ?? "") === "yes",
+      previous: ((previousRow as { data?: Record<string, unknown> } | null)?.data ?? null),
+      user: { id: user.id, name: (profile.full_name as string | null) ?? null },
+      now: new Date().toISOString(),
+    });
+    if ("error" in saved) return { error: saved.error };
+    Object.assign(data, saved.data);
   }
 
   // Set by the a4 branch below, acted on after the save succeeds.

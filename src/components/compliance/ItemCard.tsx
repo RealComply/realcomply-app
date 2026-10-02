@@ -57,8 +57,10 @@ import { DictatableTextarea } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
 import { MarketListingsPanel } from "@/components/comparables/MarketListingsPanel";
-import { longDate, type MarketListing } from "@/lib/data/market-listings";
-import { buildReasoningDraft, fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
+import type { MarketListing } from "@/lib/data/market-listings";
+import { fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
+import type { EspDraftInput } from "@/lib/data/esp-draft";
+import type { NoneOnMarketRecord, ReasoningDraftRecord } from "@/lib/rules/esp-reasoning-adoption";
 import { ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
@@ -558,6 +560,7 @@ function ChecklistItem({
   marketListings = [],
   agreementDate = null,
   allEsp,
+  comparablesReportRead = false,
 }: {
   item: ComplianceItem;
   propertyId: string;
@@ -572,6 +575,8 @@ function ChecklistItem({
   agreementDate?: string | null;
   /** a4's recorded ESP figures, quoted by the draft on a4c. Never computed. */
   allEsp?: { espLow?: number; espHigh?: number };
+  /** a4c: the comparable-sales report on a4 has been read. */
+  comparablesReportRead?: boolean;
   // Present only on amv, and only where the agency has taken the position AND
   // this file's agreement predates commencement. Absent means the choice is
   // not on the table and the card looks exactly as it always has.
@@ -596,6 +601,10 @@ function ChecklistItem({
     /** a4c: the agent recorded their reasoning in their CRM or on the report. */
     loggedElsewhere?: boolean;
     loggedElsewhereWhere?: string | null;
+    /** a4c: the agent confirmed nothing comparable was on the market at the agreement date. */
+    noneOnMarket?: NoneOnMarketRecord | null;
+    /** a4c: RealComply's draft and the agent's adoption of it. */
+    reasoningDraft?: ReasoningDraftRecord;
     preCommencement?: boolean;
     preCommencementAgreementDate?: string;
     preCommencementRevokedOn?: string;
@@ -636,16 +645,13 @@ function ChecklistItem({
 
   // ── The ESP reasoning draft ──────────────────────────────────────────────
   //
-  // Built from the sales the agent has weighed and the notes they wrote, plus
-  // the ESP they already recorded in the agency agreement. It is offered as
-  // the box's starting content and ONLY when nothing is saved — an agent's own
-  // recorded reasoning is never replaced by a generated one, whatever they
-  // change afterwards.
-  //
-  // Deliberately not folded into the remount key. The textarea is
-  // uncontrolled, so a remount after they had started typing would throw their
-  // words away; changing a weighting mid-sentence must not cost them a
-  // paragraph. Rebuilding is an explicit button in ReasoningAssist instead.
+  // Everything "Draft my reasoning" is written from, gathered once. The draft
+  // itself is only written when the agent asks for it (ReasoningAssist), and
+  // never over text that is already in the box — see draftOffer in
+  // lib/rules/esp-reasoning-adoption.ts. Until 2 Oct 2026 an older draft was
+  // poured into the box as its starting value; that went with the reversal
+  // recorded in lib/data/esp-draft.ts, because "Mark done" then saved
+  // generated text as the agent's reasoning without them ever confirming it.
   const esp: EspFigures =
     item.key === "a4c"
       ? {
@@ -654,10 +660,17 @@ function ChecklistItem({
         }
       : { low: null, high: null };
 
-  const onMarket = { listings: marketListings, asAtLabel: longDate(agreementDate) };
-  const reasoningDraft =
-    item.key === "a4c" && subject && (comparables.length > 0 || marketListings.length > 0)
-      ? buildReasoningDraft(subject, comparables, esp, onMarket) || null
+  const draftInput: EspDraftInput | null =
+    item.key === "a4c" && subject
+      ? {
+          esp,
+          subject,
+          subjectType: subject.propertyType ?? null,
+          comparables,
+          listings: marketListings,
+          agreementDate,
+          noneOnMarketConfirmed: Boolean(data.noneOnMarket),
+        }
       : null;
 
   // Shown while the card is open and there is something in the box that has
@@ -670,7 +683,7 @@ function ChecklistItem({
   const espElsewhere = item.key === "a4c" && data.loggedElsewhere === true;
 
   const showsDraft =
-    item.key === "a4c" && !isDone && !espElsewhere && Boolean(data.note ?? reasoningDraft);
+    item.key === "a4c" && !isDone && !espElsewhere && Boolean(data.note ?? draft?.note);
 
   // a7. The agent's saved answer if there is one, otherwise what the agreement
   // said, otherwise nothing — see the select below.
@@ -1102,6 +1115,7 @@ function ChecklistItem({
                     subject={subject}
                     listings={marketListings}
                     agreementDate={agreementDate}
+                    noneOnMarket={Boolean(data.noneOnMarket)}
                   />
                 </div>
               )}
@@ -1171,7 +1185,7 @@ function ChecklistItem({
                 // into it.
                 id={`note-${item.key}`}
                 name="note"
-                defaultValue={data.note ?? reasoningDraft ?? draft?.note ?? noteSeed ?? ""}
+                defaultValue={data.note ?? draft?.note ?? noteSeed ?? ""}
                 rows={item.key === "a4c" ? 9 : 2}
                 placeholder={item.notePlaceholder}
                 className={`mt-1 w-full rounded-md border px-2 py-1 text-sm ${
@@ -1181,14 +1195,15 @@ function ChecklistItem({
               {/* a4c only. The buttons that rewrite the box, sitting directly
                   under it, plus the nudge. See ReasoningAssist for the line it
                   must not cross. */}
-              {item.key === "a4c" && subject && (
+              {item.key === "a4c" && draftInput && (
                 <ReasoningAssist
                   noteId={`note-${item.key}`}
-                  subject={subject}
+                  draftInput={draftInput}
                   comparables={comparables}
-                  onMarket={onMarket}
-                  esp={esp}
                   savedReasoning={String(data.note ?? "")}
+                  documentReasoning={String(draft?.note ?? "")}
+                  reportRead={comparablesReportRead}
+                  adoption={data.reasoningDraft ?? null}
                   isDone={isDone}
                 />
               )}
@@ -3316,6 +3331,17 @@ export function ItemCard({
           // draft on a4c quotes it back; it never computes one.
           allEsp={
             (allItems["a4"]?.data as { espLow?: number; espHigh?: number } | undefined) ?? undefined
+          }
+          // "Draft my reasoning" waits for the comparables report to have been
+          // read: attached to a4, and a read of it has produced something —
+          // sales, listings, or the read stamp on a4c (a report with no sales
+          // in it has still been read, and the draft says so).
+          comparablesReportRead={
+            item.key === "a4c" &&
+            Boolean(allItems["a4"]?.evidence_path) &&
+            ((comparables ?? []).some((c) => c.source === "report") ||
+              (marketListings ?? []).some((l) => l.source === "report") ||
+              Boolean((current?.data as { aiDraft?: { generatedAt?: string } } | undefined)?.aiDraft?.generatedAt))
           }
         />
       );

@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { MarketListing } from "@/lib/data/market-listings";
 
 // Comparable sales, and the subject property they are compared against.
 //
@@ -62,6 +61,8 @@ export type SubjectAttributes = {
   address: string | null;
   /** Suburb, off the listing's address. Not a column — see suburbOf(). */
   addressSuburb: string | null;
+  /** properties.property_type ("House", "Unit"…), for "Draft my reasoning". */
+  propertyType?: string | null;
   /** What extraction read, awaiting confirmation. Null once confirmed or if never read. */
   suggestions: Partial<Omit<SubjectAttributes, "suggestions" | "confirmedAt">> | null;
   confirmedAt: string | null;
@@ -115,6 +116,7 @@ export function subjectAttributesFrom(row: Record<string, unknown> | null): Subj
     conditionNote: (row?.condition_note as string) ?? null,
     address: (row?.address as string) ?? null,
     addressSuburb: suburbOf(String(row?.address ?? "")),
+    propertyType: (row?.property_type as string) ?? null,
     suggestions,
     confirmedAt: (row?.attributes_confirmed_at as string) ?? null,
   };
@@ -435,178 +437,13 @@ function monthsAgo(iso: string): number {
 // The draft
 // ─────────────────────────────────────────────────────────────────────────
 //
-// Adam chose this shape on 7 Sep 2026 from two mocked-up options: a factual
-// paragraph the agent can accept as written, rather than one that stops
-// mid-sentence to force them to finish it. His reasoning: "the agent can still
-// add that they want."
-//
-// THE LINE IT SITS ON, and the reason it is this dull. Every clause is one of
-// three things:
-//
-//   1. a figure printed in the comparable-sales report,
-//   2. arithmetic between that report and the listing's own attributes, or
-//   3. something the agent pressed or typed.
-//
-// It adds no fact, no adjective of quality and no conclusion. The only price
-// it states other than the sale prices is the ESP the agent already recorded
-// in the agency agreement — quoting their own figure back is not the software
-// forming a view. It never says the estimate is reasonable. That sentence is
-// the agent's to write, and the card says so.
-//
-// checkComparables asserts the ABSENCE of those things, because a change that
-// made this function "helpful" would read as an improvement in review.
+// Moved to lib/data/esp-draft.ts on 2 Oct 2026, when the 7 Sep rule that the
+// draft only arranges the agent's own fragments was reversed (founder
+// decision, 2 Oct 2026). The reversal, and the limits the new draft is held
+// to, are written up at the top of that file.
 
+/** The estimate recorded in the agency agreement (a4). Quoted, never computed. */
 export type EspFigures = { low: number | null; high: number | null };
-
-/**
- * The on-market listings the agent has marked, and the date the list is as at.
- * Added 29 Sep 2026 (Stephen Borg's point: the reasoning should consider the
- * competition as well as the sales). Optional so every existing caller keeps
- * working unchanged.
- */
-export type DraftListings = {
-  listings: MarketListing[];
-  /** e.g. "12 August 2026", or null when the agreement date is not recorded yet. */
-  asAtLabel: string | null;
-};
-
-export function buildReasoningDraft(
-  subject: SubjectAttributes,
-  comparables: Comparable[],
-  esp: EspFigures,
-  onMarket?: DraftListings,
-): string {
-  const relied = comparables.filter((c) => c.weighting === "relied");
-  const considered = comparables.filter((c) => c.weighting === "considered");
-  // Legacy only — see the note on Weighting. Not offered since 29 Sep 2026.
-  const rejected = comparables.filter((c) => c.weighting === "not_comparable");
-  const competition = (onMarket?.listings ?? []).filter((l) => l.weighting === "competition");
-  const alsoOnMarket = (onMarket?.listings ?? []).filter((l) => l.weighting === "considered");
-  if (
-    relied.length === 0 &&
-    considered.length === 0 &&
-    rejected.length === 0 &&
-    competition.length === 0 &&
-    alsoOnMarket.length === 0
-  )
-    return "";
-
-  const lines: string[] = [];
-
-  if (esp.low !== null && esp.high !== null) {
-    lines.push(
-      esp.low === esp.high
-        ? `Estimated selling price recorded in the agency agreement: ${money(esp.low)}.`
-        : `Estimated selling price recorded in the agency agreement: ${money(esp.low)} to ${money(esp.high)}.`,
-    );
-    lines.push("");
-  }
-
-  if (relied.length > 0) {
-    const prices = relied
-      .map((c) => c.salePrice)
-      .filter((p): p is number => p !== null)
-      .sort((a, b) => a - b);
-
-    let opening = `Relied on ${list(relied.map(shortAddress))}`;
-    if (prices.length > 1) {
-      opening += `, which sold between ${money(prices[0])} and ${money(prices[prices.length - 1])}`;
-    } else if (prices.length === 1) {
-      opening += `, which sold for ${money(prices[0])}`;
-    }
-    lines.push(`${opening}.`);
-
-    for (const c of relied) {
-      const { same, diff, place } = proseComparison(subject, c);
-      const parts: string[] = [];
-      if (place) parts.push(place);
-      if (same.length > 0) parts.push(`same ${list(same)}`);
-      if (diff.length > 0) parts.push(list(diff));
-      const note = sentence(c.agentNote);
-      lines.push(
-        `${shortAddress(c)} — ${parts.join("; ") || "nothing recorded to compare"}.` +
-          (note ? ` ${note}` : ""),
-      );
-    }
-  }
-
-  if (considered.length > 0) {
-    lines.push("");
-    lines.push(
-      `Also looked at ${list(considered.map(shortAddress))} without treating ` +
-        `${considered.length > 1 ? "them" : "it"} as decisive.`,
-    );
-    for (const c of considered) {
-      const note = sentence(c.agentNote);
-      if (note) lines.push(`${shortAddress(c)} — ${note}`);
-    }
-  }
-
-  if (rejected.length > 0) {
-    lines.push("");
-    for (const c of rejected) {
-      const note = c.agentNote?.trim();
-      lines.push(
-        note
-          ? `Did not treat ${shortAddress(c)} as comparable — ${note}.`
-          : `Did not treat ${shortAddress(c)} as comparable.`,
-      );
-    }
-  }
-
-  // ON THE MARKET. Same line as the sales: only what the report printed
-  // (address, the other agent's advertised price) and what the agent pressed
-  // or typed. The asking price is quoted as the other agent's figure and
-  // never compared with the ESP — that comparison is the agent's to make.
-  if (competition.length > 0 || alsoOnMarket.length > 0) {
-    lines.push("");
-    const when = onMarket?.asAtLabel ? ` as at ${onMarket.asAtLabel}` : "";
-    if (competition.length > 0) {
-      lines.push(`On the market${when}, treated as direct competition: ${list(competition.map(listingPhrase))}.`);
-      for (const l of competition) {
-        const note = sentence(l.agentNote);
-        if (note) lines.push(`${shortAddress(l)} — ${note}`);
-      }
-    }
-    if (alsoOnMarket.length > 0) {
-      lines.push(
-        `${competition.length > 0 ? "Also on the market" : `On the market${when}`}, considered: ` +
-          `${list(alsoOnMarket.map(listingPhrase))}.`,
-      );
-      for (const l of alsoOnMarket) {
-        const note = sentence(l.agentNote);
-        if (note) lines.push(`${shortAddress(l)} — ${note}`);
-      }
-    }
-  }
-
-  return lines.join("\n");
-}
-
-/** "14 Smith St (advertised: $1.2m–$1.3m)" — the other agent's words, quoted. */
-function listingPhrase(l: MarketListing): string {
-  const price = l.askingPrice?.trim();
-  return price ? `${shortAddress(l)} (advertised: ${price})` : shortAddress(l);
-}
-
-/** Capitalised and closed, so the agent's fragment reads as a sentence. */
-function sentence(text: string | null): string {
-  const t = (text ?? "").trim();
-  if (!t) return "";
-  const body = t.charAt(0).toUpperCase() + t.slice(1);
-  return /[.!?]$/.test(body) ? body : `${body}.`;
-}
-
-function shortAddress(c: { address: string }): string {
-  // Street and number only. The suburb repeats on every row and adds nothing
-  // to a sentence about properties in one street's walk of each other.
-  return c.address.split(",")[0].trim() || c.address;
-}
-
-function list(items: string[]): string {
-  if (items.length <= 1) return items[0] ?? "";
-  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-}
 
 // ─────────────────────────────────────────────────────────────────────────
 // The thin-reasoning nudge
