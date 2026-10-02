@@ -12,6 +12,7 @@ import {
 import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildCpdDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
+import { formatAuDate } from "@/lib/format-date";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
 
 const initial: ActionState = { error: null };
@@ -198,7 +199,11 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
   }, [record.evidence_path]);
 
   const isUnit = record.category === "assistant_unit";
-  const amount = Number(record.hours);
+  // Null when the certificate didn't state it (0051). Never shown as 0.
+  const amount = record.hours === null || record.hours === undefined ? null : Number(record.hours);
+  const missingHours = amount === null;
+  const missingDate = !record.completed_date;
+  const missingProvider = !record.provider;
 
   if (editing) {
     return (
@@ -228,14 +233,14 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
             type="number"
             step="0.5"
             min="0"
-            defaultValue={amount}
+            defaultValue={amount ?? ""}
             placeholder={isUnit ? "Units" : "Hours"}
             className="w-24 rounded-md border border-rc-border px-2 py-1 text-sm"
           />
           <input
             name="completedDate"
             type="date"
-            defaultValue={record.completed_date}
+            defaultValue={record.completed_date ?? ""}
             className="rounded-md border border-rc-border px-2 py-1 text-sm"
           />
         </div>
@@ -271,18 +276,30 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
         </span>
         <p className="text-[13px] font-medium text-rc-ink">
           {record.activity_name}
-          {record.provider && <span className="font-normal text-rc-muted"> — {record.provider}</span>}
+          {record.provider && <span className="font-normal text-rc-muted"> · {record.provider}</span>}
         </p>
         <p className="mt-0.5 text-[11px] text-rc-faint">
-          {amount > 0 && (
+          {amount !== null && (
             <>
               {amount} {isUnit ? (amount === 1 ? "unit" : "units") : "hours"} ·{" "}
             </>
           )}
-          completed {record.completed_date}
+          {record.completed_date ? <>completed {formatAuDate(record.completed_date)}</> : "completion date not read"}
           {record.notes && <> · {record.notes.replace(/^Delivery: /, "")}</>}
         </p>
-        {!record.provider && <p className="mt-1 text-[11px] text-rc-amber-deep">No provider read off this one — worth adding.</p>}
+        {/* Ask for exactly what the certificate didn't say, and nothing else.
+            Until it has its hours, date and approved provider, the entry is
+            shown but adds nothing to the year (lib/cpd-hours.ts). */}
+        {(missingHours || missingDate || missingProvider) && (
+          <MissingCpdFields
+            record={record}
+            missingHours={missingHours}
+            missingDate={missingDate}
+            missingProvider={missingProvider}
+            isUnit={isUnit}
+            canEdit={canEdit}
+          />
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-2.5 text-xs">
         {signedUrl ? (
@@ -314,5 +331,70 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
         )}
       </div>
     </div>
+  );
+}
+
+function MissingCpdFields({
+  record,
+  missingHours,
+  missingDate,
+  missingProvider,
+  isUnit,
+  canEdit,
+}: {
+  record: CpdRecord;
+  missingHours: boolean;
+  missingDate: boolean;
+  missingProvider: boolean;
+  isUnit: boolean;
+  canEdit: boolean;
+}) {
+  const [state, action, pending] = useActionState(updateCpdRecord.bind(null, record.id), initial);
+  const what = [
+    missingHours ? (isUnit ? "units" : "hours") : null,
+    missingDate ? "completion date" : null,
+    missingProvider ? "approved provider" : null,
+  ].filter(Boolean) as string[];
+  const list = what.length > 1 ? `${what.slice(0, -1).join(", ")} and ${what[what.length - 1]}` : what[0];
+
+  return (
+    <form action={action} className="mt-1.5 rounded-md border border-rc-amber/40 bg-rc-amber/10 px-2 py-1.5 text-[11px]">
+      <p className="text-rc-amber-deep">
+        The certificate doesn&rsquo;t show the {list}. {canEdit ? `Add ${what.length === 1 ? "it" : "them"} here. ` : ""}
+        It doesn&rsquo;t count toward CPD hours until it has {what.length === 1 ? "it" : "them"}.
+      </p>
+      {canEdit && (
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          {/* The fields already read go back unchanged. */}
+          <input type="hidden" name="activityName" value={record.activity_name} />
+          {!missingProvider && <input type="hidden" name="provider" value={record.provider ?? ""} />}
+          {!missingHours && <input type="hidden" name="hours" value={String(record.hours ?? "")} />}
+          {missingProvider && (
+            <input name="provider" placeholder="Approved provider" className="w-40 rounded-md border border-rc-border px-2 py-0.5 text-xs" />
+          )}
+          {missingHours && (
+            <input
+              name="hours"
+              type="number"
+              step="0.5"
+              min="0"
+              placeholder={isUnit ? "Units" : "Hours"}
+              className="w-20 rounded-md border border-rc-border px-2 py-0.5 text-xs"
+            />
+          )}
+          {missingDate && (
+            <input name="completedDate" type="date" className="rounded-md border border-rc-border px-2 py-0.5 text-xs" />
+          )}
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-md bg-rc-green-deep px-2 py-0.5 text-xs font-semibold text-white disabled:opacity-60"
+          >
+            Save
+          </button>
+        </div>
+      )}
+      {state.error && <p className="mt-1 text-rc-amber-deep">{state.error}</p>}
+    </form>
   );
 }

@@ -17,6 +17,7 @@ import { ComplaintsWidget } from "@/components/home/ComplaintsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgManualWidget } from "@/components/home/SgManualWidget";
 import { STAGE_LABELS, type Agency, type Complaint, type CpdRecord, type Gift, type Profile, type Property, type PropertyItem, type SgManualVersion, type TrainingSession } from "@/lib/types";
+import { countableCpdHours } from "@/lib/cpd-hours";
 
 // Home — the single consolidated landing dashboard a licensee sees after
 // login, replacing "check five different pages" with one page of widgets
@@ -142,7 +143,7 @@ export default async function HomeDashboardPage() {
     const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
     const target = requirement.units ?? requirement.coreHours;
     if (target === null) return false;
-    const total = (cpdByProfile.get(s.id) ?? []).reduce((sum, r) => sum + Number(r.hours), 0);
+    const total = countableCpdHours(cpdByProfile.get(s.id) ?? []);
     return total < target;
   }).length;
 

@@ -769,6 +769,134 @@ export async function extractCpdCertificate(
   return { error: null, fields: toolUse.input as CpdCertificateFields };
 }
 
+// ── Licences and certificates of registration ──────────────────────────────
+//
+// Adam's rule, Oct 2026: upload, don't type. A NSW licence or certificate of
+// registration states everything the register keeps: whose it is, what it
+// is, its number and when it expires. So the upload reads them, and typing is
+// only for correcting a wrong read.
+//
+// Same shape as every other read in this file: one tool, forced, documentIs
+// decided FIRST so a wrong file says so instead of yielding a plausible-
+// looking licence. The model writes nothing. lib/licence-read.ts validates
+// what comes back and decides what is saved, including refusing to save at
+// all when the name on the document is someone else's.
+const LICENCE_TOOL: Anthropic.Tool = {
+  name: "record_licence",
+  description:
+    "Record the details printed on a NSW real estate licence, certificate of registration or corporation " +
+    "licence. Omit any field you cannot read with confidence and list it in unreadableFields instead. Never " +
+    "guess, and never work a date out from another date.",
+  input_schema: {
+    type: "object",
+    properties: {
+      documentIs: {
+        type: "string",
+        enum: ["licence", "certificate_of_registration", "corporation_licence", "other"],
+        description:
+          "ALWAYS set this first, from what the document actually is, not from the filename. " +
+          "'licence' — an individual's Class 1 or Class 2 licence. 'certificate_of_registration' — an " +
+          "assistant agent's certificate of registration. 'corporation_licence' — a licence held by a company. " +
+          "'other' — anything else (an invoice, a CPD certificate, an ID card, a blank page).",
+      },
+      holderName: {
+        type: "string",
+        description: "The licence holder's name exactly as printed (a person, or for a corporation licence the company).",
+      },
+      licenceType: {
+        type: "string",
+        enum: ["class_1", "class_2", "certificate_of_registration"],
+        description:
+          "Only if the document states it: 'class_1' for a Class 1 licence, 'class_2' for a Class 2 licence, " +
+          "'certificate_of_registration' for a certificate of registration.",
+      },
+      licenceNumber: {
+        type: "string",
+        description: "The licence or certificate number exactly as printed, with no spaces added or removed.",
+      },
+      expiryDate: {
+        type: "string",
+        description:
+          "The expiry date printed on the document, as YYYY-MM-DD. Only a date labelled as the expiry (or 'valid " +
+          "until'). Never an issue date, and never an issue date plus a term.",
+      },
+      unreadableFields: {
+        type: "array",
+        items: { type: "string", enum: ["holderName", "licenceType", "licenceNumber", "expiryDate"] },
+        description:
+          "Every field that appears on the document but cannot be read with confidence: blurred, cut off, " +
+          "covered by glare, or ambiguous (for example a date that could be read two ways).",
+      },
+    },
+    required: ["documentIs"],
+  },
+};
+
+/**
+ * Reads an uploaded licence. Never writes; returns the raw tool input for
+ * lib/licence-read.ts to validate. An error means nothing was read at all.
+ */
+export async function extractLicenceDocument(
+  path: string,
+  fileName: string,
+): Promise<{ error: string | null; raw?: unknown }> {
+  const { supabase } = await requireAuthContext();
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { error: "Reading documents isn't set up yet, so the details need typing in for now." };
+  }
+
+  const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
+  if (error || !blob) return { error: "Couldn't open the uploaded file to read it." };
+
+  // readableBytes rather than a plain arrayBuffer: a phone photo can arrive as
+  // HEIC, which nothing downstream can open. See lib/documents/readable-bytes.
+  const { base64, contentType } = await readableBytes(blob, fileName);
+  const documentBlock = buildDocumentBlock(contentType, base64, fileName);
+  if (!documentBlock) {
+    return { error: `That file type can't be read (${contentType}). Upload a PDF or a photo instead.` };
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 1024,
+      system:
+        "You are reading a document uploaded to the licence register of a NSW real estate agency (RealComply). " +
+        "Record only what the document explicitly and literally states. A photo may be skewed, partly covered or " +
+        "blurred: if any character of a number or date is uncertain, leave that field out and list it in " +
+        "unreadableFields. A wrong expiry date is worse than none, because reminders are scheduled from it. " +
+        "You must call record_licence exactly once; leaving fields out is a normal, successful outcome.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            documentBlock,
+            {
+              type: "text",
+              text:
+                `This was uploaded as "${fileName}". FIRST set documentIs from what the document actually is. ` +
+                "THEN record the holder name, licence type, number and expiry date as printed.",
+            },
+          ],
+        },
+      ],
+      tools: [LICENCE_TOOL],
+      tool_choice: { type: "tool", name: "record_licence" },
+    });
+
+    const toolUse = response.content.find(
+      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+    );
+    return { error: null, raw: toolUse?.input ?? {} };
+  } catch (e) {
+    console.error("extractLicenceDocument failed", { fileName, error: e });
+    return { error: "Couldn't read the document just now, so the details need typing in." };
+  }
+}
+
 // ── The revised-ESP notice ─────────────────────────────────────────────────
 //
 // Adam, 22 Aug 2026: "in the campaign stage, [the last question] should ask if
