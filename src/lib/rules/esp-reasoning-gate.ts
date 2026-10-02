@@ -153,3 +153,23 @@ export function waitsForEspReasoning(itemKey: string): boolean {
 
 export const STAGE_GATE_MESSAGE =
   "Finish the “ESP reasoning recorded” card in Listing set-up first. Later cards wait for it.";
+
+// THE HOLD (Adam, 3 Oct 2026). "There's still an error on the ESP card because
+// it's not marked as done and I can still switch over to the On market stage,
+// even though test mode is switched off."
+//
+// The gate above stops later cards being completed, but a file that had
+// already moved past Listing set-up (before the gate existed, or in test mode)
+// kept its later stage, so its stage tabs stayed open. Now, outside test mode,
+// a file whose ESP reasoning card is not complete is held at Listing set-up:
+// the later tabs lock and the page opens on Listing set-up. The stored stage is
+// left alone, so the moment the card is complete the file is back where it was.
+// A signed-off file is never held (espReasoningComplete keeps what was signed).
+
+/** Whether the file is held at Listing set-up until the ESP reasoning card is complete. */
+export function heldForEspReasoning(input: { stage: number; testMode: boolean; espComplete: boolean }): boolean {
+  return !input.testMode && input.stage > 0 && !input.espComplete;
+}
+
+export const HELD_MESSAGE =
+  "Finish the “ESP reasoning recorded” card first. The later stages open again once it is complete.";

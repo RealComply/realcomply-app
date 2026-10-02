@@ -5,6 +5,8 @@ import { a4cSave, EDIT_FIRST, editedInWording, pendingFromForm } from "@/lib/rul
 import {
   ESP_REASONING_KEY,
   STAGE_GATE_MESSAGE,
+  HELD_MESSAGE,
+  heldForEspReasoning,
   espReasoningComplete,
   espReasoningMissing,
   waitsForEspReasoning,
@@ -2136,6 +2138,11 @@ export async function completeStage(
     // The ESP reasoning card counts by its rule, not only its stored status:
     // a card saved as done with no reasoning is not complete.
     const gate = await espGateFor(supabase, propertyId);
+    // A file held at Listing set-up cannot move on from its stored stage
+    // either. See heldForEspReasoning in lib/rules/esp-reasoning-gate.ts.
+    if (heldForEspReasoning({ stage: property.stage, testMode: false, espComplete: gate.complete })) {
+      return { error: HELD_MESSAGE };
+    }
     const incomplete = required.filter((r) =>
       r.key === ESP_REASONING_KEY ? !gate.complete : byKey.get(r.key)?.status !== "done",
     );
