@@ -1,7 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { a4cSave, pendingFromForm } from "@/lib/rules/esp-reasoning-adoption";
+import { a4cSave, EDIT_FIRST, editedInWording, pendingFromForm } from "@/lib/rules/esp-reasoning-adoption";
+import {
+  ESP_REASONING_KEY,
+  STAGE_GATE_MESSAGE,
+  espReasoningComplete,
+  espReasoningMissing,
+  waitsForEspReasoning,
+} from "@/lib/rules/esp-reasoning-gate";
+import { draftEspReasoning } from "@/lib/data/esp-draft";
+import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
+import { marketListingsFor } from "@/lib/data/market-listings";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
@@ -71,6 +81,81 @@ async function loadProperty(supabase: Awaited<ReturnType<typeof createClient>>, 
   return property as Property | null;
 }
 
+// Where the ESP reasoning card stands on this file, read fresh from the
+// database. See lib/rules/esp-reasoning-gate.ts for the rule itself.
+async function espGateFor(supabase: Awaited<ReturnType<typeof createClient>>, propertyId: string) {
+  const [{ data: rows }, { count }, property] = await Promise.all([
+    supabase
+      .from("property_items")
+      .select("item_key, status, data")
+      .eq("property_id", propertyId)
+      .in("item_key", [ESP_REASONING_KEY, "sign_licensee"]),
+    supabase
+      .from("property_market_listings")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", propertyId)
+      .is("as_at", null),
+    loadProperty(supabase, propertyId),
+  ]);
+  const byKey = new Map(
+    ((rows ?? []) as { item_key: string; status: string; data: Record<string, unknown> | null }[]).map((r) => [
+      r.item_key,
+      r,
+    ]),
+  );
+  const a4c = byKey.get(ESP_REASONING_KEY);
+  const input = {
+    status: a4c?.status ?? "open",
+    data: a4c?.data ?? null,
+    onMarketCount: count ?? 0,
+    signedOff: byKey.get("sign_licensee")?.status === "done",
+  };
+  return {
+    complete: espReasoningComplete(input),
+    missing: espReasoningMissing(input),
+    testMode: Boolean(property?.test_mode),
+  };
+}
+
+// The draft "Draft my reasoning" would write for this file right now, worked
+// out on the server from the same facts the card uses. The edit-first rule is
+// checked against this, not only against what the page says it offered, so a
+// request that leaves out the draft fields cannot save the draft unchanged.
+async function currentEspDraftText(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+  noneOnMarketConfirmed: boolean,
+): Promise<string | null> {
+  const property = await loadProperty(supabase, propertyId);
+  if (!property) return null;
+  const [{ data: rows }, comparables, listings] = await Promise.all([
+    supabase
+      .from("property_items")
+      .select("item_key, event_date, data")
+      .eq("property_id", propertyId)
+      .in("item_key", ["a3", "a4"]),
+    comparablesFor(supabase, propertyId),
+    marketListingsFor(supabase, propertyId),
+  ]);
+  const byKey = new Map(
+    ((rows ?? []) as { item_key: string; event_date: string | null; data: Record<string, unknown> | null }[]).map(
+      (r) => [r.item_key, r],
+    ),
+  );
+  const a4 = (byKey.get("a4")?.data ?? {}) as { espLow?: number; espHigh?: number };
+  const subject = subjectAttributesFrom(property as unknown as Record<string, unknown>);
+  const result = draftEspReasoning({
+    esp: { low: a4.espLow ?? null, high: a4.espHigh ?? null },
+    subject,
+    subjectType: subject.propertyType ?? null,
+    comparables,
+    listings,
+    agreementDate: byKey.get("a3")?.event_date ?? null,
+    noneOnMarketConfirmed,
+  });
+  return result.kind === "draft" ? result.text : null;
+}
+
 // Upserts a property_items row, keyed on (property_id, item_key) — see the
 // unique index in supabase/migrations/0001_init.sql.
 async function upsertItem(
@@ -85,6 +170,17 @@ async function upsertItem(
     completedBy?: string | null;
   },
 ) {
+  // The stage gate (Adam, 2 Oct 2026). Every action that completes a card
+  // writes through here, so this is the one place a Pre-market or later card
+  // can be refused while the ESP reasoning card is incomplete. Opening or
+  // flagging a card is never refused.
+  if (params.status === "done" && waitsForEspReasoning(params.itemKey)) {
+    const gate = await espGateFor(supabase, params.propertyId);
+    if (!gate.testMode && !gate.complete) {
+      return { data: null, error: { message: STAGE_GATE_MESSAGE } };
+    }
+  }
+
   return supabase
     .from("property_items")
     .upsert(
@@ -355,6 +451,27 @@ export async function setItemStatus(
     });
     if ("error" in saved) return { error: saved.error };
     Object.assign(data, saved.data);
+
+    // Edit first, checked against the draft the server itself would write
+    // now, so leaving the draft fields out of the request does not get an
+    // unedited draft through as the agent's own typing.
+    const savedNote = String(data.note ?? "");
+    if (savedNote.trim()) {
+      const serverDraft = await currentEspDraftText(supabase, propertyId, Boolean(data.noneOnMarket));
+      if (serverDraft && !editedInWording(serverDraft, savedNote)) return { error: EDIT_FIRST };
+    }
+
+    // The completion rule (lib/rules/esp-reasoning-gate.ts). Only "done" is
+    // checked; saving a draft of the reasoning, or reopening, stays possible.
+    if (status === "done") {
+      const { count } = await supabase
+        .from("property_market_listings")
+        .select("id", { count: "exact", head: true })
+        .eq("property_id", propertyId)
+        .is("as_at", null);
+      const missing = espReasoningMissing({ data, onMarketCount: count ?? 0, signedOff: false });
+      if (missing.length > 0) return { error: missing.join(" ") };
+    }
   }
 
   // Set by the a4 branch below, acted on after the save succeeds.
@@ -919,6 +1036,14 @@ export async function setEspReasoningRecordedElsewhere(
   _prevState: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  // ⚠️ REVERSAL, 2 Oct 2026 (founder decision): "my reasoning is recorded
+  // elsewhere" is retired for new use. The reasoning must be in RealComply:
+  // pasted in, or read from the document dropped onto the card. Unticking an
+  // existing mark still works, so a file can be brought into line. See
+  // lib/rules/esp-reasoning-gate.ts.
+  if (String(formData.get("elsewhere") ?? "") === "on") {
+    return { error: "Paste your reasoning in, or drop in the document that has it. It needs to be in RealComply." };
+  }
   return setLoggedElsewhere(propertyId, "a4c", formData);
 }
 
@@ -2008,7 +2133,12 @@ export async function completeStage(
       allItems,
       await ruleContextFor(supabase, property),
     ).filter((i) => i.requiredForStageCompletion);
-    const incomplete = required.filter((r) => byKey.get(r.key)?.status !== "done");
+    // The ESP reasoning card counts by its rule, not only its stored status:
+    // a card saved as done with no reasoning is not complete.
+    const gate = await espGateFor(supabase, propertyId);
+    const incomplete = required.filter((r) =>
+      r.key === ESP_REASONING_KEY ? !gate.complete : byKey.get(r.key)?.status !== "done",
+    );
 
     if (incomplete.length > 0) {
       return {

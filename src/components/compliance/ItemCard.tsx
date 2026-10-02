@@ -19,7 +19,6 @@ import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } fr
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import {
-  setEspReasoningRecordedElsewhere,
   setReportDisclosureLoggedElsewhere,
   setItemStatus,
   addOfferEntry,
@@ -62,6 +61,7 @@ import { fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
 import type { EspDraftInput } from "@/lib/data/esp-draft";
 import type { NoneOnMarketRecord, ReasoningAdoptionRecord } from "@/lib/rules/esp-reasoning-adoption";
 import { Disclaimer, ReasoningAssist } from "@/components/comparables/ReasoningAssist";
+import { espReasoningMissing } from "@/lib/rules/esp-reasoning-gate";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
 const initialState: ActionState = { error: null };
@@ -683,7 +683,20 @@ function ChecklistItem({
   // Set by the "already recorded somewhere else" box. When it is on, this
   // card is a pointer plus an optional attachment, so nothing that drafts or
   // prompts for text should render — see the control itself for why.
-  const espElsewhere = item.key === "a4c" && data.loggedElsewhere === true;
+  // Retired 2 Oct 2026: the reasoning must be in RealComply, so nothing on
+  // this card is hidden for a legacy tick any more.
+  const espElsewhere = false;
+
+  // What still stops the card counting as complete, from what is saved. The
+  // server applies the same rule (lib/rules/esp-reasoning-gate.ts).
+  const espMissing =
+    item.key === "a4c"
+      ? espReasoningMissing({
+          data: data as Record<string, unknown>,
+          onMarketCount: marketListings.filter((l) => l.asAt === null).length,
+          signedOff: false,
+        })
+      : [];
 
   const showsDraft =
     item.key === "a4c" && !isDone && !espElsewhere && Boolean(data.note ?? draft?.note);
@@ -1123,43 +1136,20 @@ function ChecklistItem({
                 </div>
               )}
 
-              {/* "I already wrote this up somewhere else."
-                  Adam, 8 Sep 2026. The same control as the offer log and the
-                  report-disclosure card, on the item where it matters most:
-                  an agent who wrote their reasoning onto the comparables
-                  report at the appraisal, or into a CRM note, already holds
-                  the s72A(5) evidence. Retyping it here would create a second
-                  account of how one price was formed, and two differing
-                  accounts is worse evidence than one.
-
-                  When it is on, the drafting machinery goes away entirely —
-                  panel, draft box, prompts. Leaving a draft generator running
-                  underneath "this is recorded elsewhere" invites exactly the
-                  second version this control exists to prevent. An upload slot
-                  appears in its place (see a4c in nsw-sales.ts). */}
-              {item.key === "a4c" && (
-                <ElsewhereToggle
-                  propertyId={propertyId}
-                  elsewhere={espElsewhere}
-                  where={data.loggedElsewhereWhere ?? ""}
-                  action={setEspReasoningRecordedElsewhere}
-                  label="My reasoning is already recorded somewhere else"
-                  help="On the comparables report itself, in your CRM, or a file note. The record will point there instead — and you can attach a copy below."
-                  placeholder="Where? e.g. marked up on the Cotality report, LockedOn note"
-                  revertLabel="Save — write my reasoning here instead"
-                />
+              {/* "Recorded elsewhere" was retired on 2 Oct 2026 (see
+                  lib/rules/esp-reasoning-gate.ts): the reasoning has to be in
+                  RealComply. A file ticked before then shows where the agent
+                  said it was, so they can bring it in. */}
+              {item.key === "a4c" && data.loggedElsewhere === true && (
+                <p className="mb-2 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2 text-[11px] leading-relaxed text-rc-muted">
+                  Earlier marked as recorded in{" "}
+                  <span className="font-semibold text-rc-ink">{data.loggedElsewhereWhere || "another place"}</span>.
+                  Your reasoning now needs to be in RealComply: paste it in below, or drop in the document that
+                  has it.
+                </p>
               )}
 
-              {item.key === "a4c" && espElsewhere ? (
-                <p className="rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2 text-[11px] leading-relaxed text-rc-muted">
-                  The compliance record will show that your reasoning is recorded in{" "}
-                  <span className="font-semibold text-rc-ink">
-                    {data.loggedElsewhereWhere || "the place you named"}
-                  </span>
-                  . If you can export or scan it, attaching it below puts it on the file rather than only
-                  pointing at it — worth doing, not required.
-                </p>
-              ) : (
+              {(
                 <>
               <label className="block text-xs text-rc-muted">
                 {item.noteLabel ?? "Note"}
@@ -1266,6 +1256,13 @@ function ChecklistItem({
             findings, and re-submitting is how those get edited. Disabling it
             would make a finished item uneditable. "Reopen" is hidden on an
             item that is already open, where it did nothing. */}
+        {espMissing.length > 0 && (
+          <ul className="mb-2 space-y-0.5 text-xs text-rc-amber-deep">
+            {espMissing.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        )}
         <div className="flex gap-2">
           <button
             type="submit"

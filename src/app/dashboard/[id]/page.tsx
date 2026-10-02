@@ -13,6 +13,7 @@ import { ruleContextFor } from "@/lib/data/rule-context";
 import { signoffLinksFor } from "@/lib/data/signoff-links";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
+import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
 function auctionDateLabel(date: string): string {
@@ -92,8 +93,12 @@ export default async function PropertyPage({
   // read off the property row the page already has rather than fetched again.
   const subject = subjectAttributesFrom(property as Record<string, unknown>);
 
-  const allItems = Object.fromEntries(
-    ((propertyItemRows ?? []) as PropertyItem[]).map((item) => [item.item_key, item]),
+  // The ESP reasoning card reads by its completion rule: one stored as done
+  // with no reasoning, or no on-market answer, shows as not complete. See
+  // lib/rules/esp-reasoning-gate.ts.
+  const allItems = withEffectiveEspStatus(
+    Object.fromEntries(((propertyItemRows ?? []) as PropertyItem[]).map((item) => [item.item_key, item])),
+    { onMarketCount: marketListings.filter((l) => l.asAt === null).length },
   );
 
   const maxViewable = p.test_mode ? 5 : p.stage;

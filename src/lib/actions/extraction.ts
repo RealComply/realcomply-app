@@ -267,7 +267,7 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
             note: {
               type: "string",
               description:
-                "Only something the agent needs to act on or confirm — a gap, an inconsistency, a missing detail. Never a restatement of a fact the document already states clearly (e.g. do not write 'commission is 2.2%, as stated in clause 4' — that tells the agent nothing they don't already have in front of them). Leave this out entirely, or send an empty string, when the document covers the item completely with nothing exceptional to flag. Exception: for a4c specifically, this field instead carries a short paraphrase of the agent's own ESP reasoning if the document contains it, as an editable starting draft — not a gap-flag.",
+                "Only something the agent needs to act on or confirm — a gap, an inconsistency, a missing detail. Never a restatement of a fact the document already states clearly (e.g. do not write 'commission is 2.2%, as stated in clause 4' — that tells the agent nothing they don't already have in front of them). Leave this out entirely, or send an empty string, when the document covers the item completely with nothing exceptional to flag. Exception: for a4c specifically, this field instead carries the agent's own ESP reasoning if the document contains it, copied in the document's own words (not paraphrased or summarised), for the agent to confirm — not a gap-flag.",
             },
             espLow: {
               type: "number",
@@ -506,8 +506,8 @@ const AGENCY_AGREEMENT_PROMPT =
   "under s72A. Whether the range breaches the 10% spread is arithmetic, calculated from the figures " +
   "elsewhere, and is not your job), " +
   "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
-  "note-flagging rule: if the document contains that reasoning text, paraphrase it as a short " +
-  "editable starting draft for the agent to refine, not just a gap-flag), " +
+  "note-flagging rule: if the document contains that reasoning text, copy it in the document's own " +
+  "words, not paraphrased or summarised, for the agent to confirm, not just a gap-flag), " +
   "a3 (set offerPrice from the private-treaty offering price the agreement is required to specify " +
   "under Schedule 6 section 5 of the Regulation, copied exactly as written. This is NOT the estimated " +
   "selling price and must not be taken from the ESP field, and an auction agreement has none, so leave " +
@@ -554,7 +554,8 @@ const COMPARABLES_PROMPT =
   "method, listed date if a date is printed, beds, baths, car, land, distance. Many reports have no " +
   "for-sale section; if so, leave this out.\n\n" +
   "(3) note — the agent's own reasoning behind the ESP, ONLY if this report actually contains " +
-  "reasoning written by the agent rather than the provider's automated commentary. If all you can see " +
+  "reasoning written by the agent rather than the provider's automated commentary. Copy it in the " +
+  "report's own words; do not paraphrase or summarise. If all you can see " +
   "is generated text, leave note out entirely.\n\n" +
   "Return no other item. In particular, do not return an estimated selling price: any range printed " +
   "in this report is the provider's automated estimate, not the figure the agent recorded in the " +

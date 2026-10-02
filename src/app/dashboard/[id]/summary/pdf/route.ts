@@ -6,6 +6,7 @@ import { ruleContextFor } from "@/lib/data/rule-context";
 import { buildComplianceRecordPdf, complianceRecordFilename, type Attachment } from "@/lib/pdf/compliance-record";
 import { comparablesFor } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
+import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem } from "@/lib/types";
@@ -68,7 +69,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const { data: rows } = await supabase.from("property_items").select("*").eq("property_id", id);
-  const byKey = Object.fromEntries(((rows ?? []) as PropertyItem[]).map((i) => [i.item_key, i]));
+  const listings = await marketListingsFor(supabase, id);
+  // The ESP reasoning card prints by its completion rule, the same as the page
+  // (lib/rules/esp-reasoning-gate.ts).
+  const byKey = withEffectiveEspStatus(
+    Object.fromEntries(((rows ?? []) as PropertyItem[]).map((i) => [i.item_key, i])),
+    { onMarketCount: listings.filter((l) => l.asAt === null).length },
+  );
   const items = allItemsFor(p, byKey, await ruleContextFor(supabase, p));
 
   // ── The substance, not just the ticks (Adam, 24 Aug 2026) ───────────────
@@ -174,7 +181,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       agentNote: c.agentNote,
     })),
     // The competition, as at the agency agreement date (29 Sep 2026).
-    marketListings: (await marketListingsFor(supabase, id)).map((l) => ({
+    marketListings: listings.map((l) => ({
       address: l.address,
       askingPrice: l.askingPrice,
       saleMethod: l.saleMethod,
@@ -182,6 +189,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       weighting: l.weighting,
       agentNote: l.agentNote,
     })),
+    noneOnMarket: Boolean((byKey["a4c"]?.data as { noneOnMarket?: boolean } | undefined)?.noneOnMarket),
     agreementDate: byKey["a3"]?.event_date ?? null,
     signatures: { agent: agentSignature, licensee: licenseeSignature },
     attachments,
