@@ -52,6 +52,9 @@ export type Profile = {
   licence_expiry: string | null;
   licence_document_path: string | null;
   licence_document_file_name: string | null;
+  /** What the last read of the licence document found and where each value
+   *  came from (0051). Parse with parseReadState in lib/licence-read.ts. */
+  licence_read?: unknown;
   // The category of practice CPD hours are measured against. Fair Trading
   // sets hours per category, not per licence class — see rules/nsw-cpd.ts.
   // Null means not recorded, and the app must say it can't state a
@@ -83,6 +86,10 @@ export type Agency = {
   corporation_licence_holder: string | null;
   corporation_licence_number: string | null;
   corporation_licence_expiry: string | null;
+  /** The corporation licence as uploaded, and what reading it found (0051). */
+  corporation_licence_document_path?: string | null;
+  corporation_licence_document_file_name?: string | null;
+  corporation_licence_read?: unknown;
   icare_insurer: string | null;
   icare_policy_number: string | null;
   icare_expiry: string | null;
@@ -356,8 +363,10 @@ export type CpdRecord = {
   profile_id: string;
   activity_name: string;
   category: CpdCategory;
-  hours: number;
-  completed_date: string;
+  /** Null when the certificate does not state them (0051). Counts as nothing. */
+  hours: number | null;
+  /** Null when no date could be read (0051). Never defaulted to today. */
+  completed_date: string | null;
   // The approved provider who delivered it — what makes the record count at
   // all. An entry with no provider can't be shown to qualify as CPD.
   // See 0022_cpd_provider_evidence.sql.

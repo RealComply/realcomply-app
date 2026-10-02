@@ -38,9 +38,10 @@ export default async function CpdPage() {
     supabase
       .from("cpd_records")
       .select("*")
-      .gte("completed_date", year.start)
-      .lte("completed_date", year.end)
-      .order("completed_date", { ascending: false }),
+      // Undated certificates too (0051): their date couldn't be read, and this
+      // is the screen that asks for it. They count toward no year until dated.
+      .or(`completed_date.is.null,and(completed_date.gte.${year.start},completed_date.lte.${year.end})`)
+      .order("completed_date", { ascending: false, nullsFirst: true }),
     supabase.from("cpd_year_signoffs").select("*").eq("cpd_year_start", year.start),
   ]);
 
