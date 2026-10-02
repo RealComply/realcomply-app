@@ -5,7 +5,6 @@ import { EditPropertyDetails } from "@/components/property/EditPropertyDetails";
 import { requireProfile } from "@/lib/data/current-profile";
 import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
-import { DeletePropertySection } from "@/components/compliance/DeletePropertySection";
 import { TransferListingSection } from "@/components/compliance/TransferListingSection";
 import { HandToAgent } from "@/components/compliance/HandToAgent";
 import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
@@ -176,84 +175,94 @@ export default async function PropertyPage({
           <TestModeToggle propertyId={p.id} testMode={p.test_mode} />
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">{p.address}</h1>
-            <p className="mt-1 text-sm text-rc-muted">
-              {p.property_type}
-              {p.is_strata ? " · Strata" : ""}
-              {p.is_tenanted ? " · Tenanted" : ""}
-              {p.has_pool ? " · Pool" : ""}
-            </p>
-            {p.sale_method === "auction" && (
-              <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
-                <span className="rounded-full bg-rc-green-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rc-green-deep">
-                  Auction
-                </span>
-                {p.auction_date ? (
-                  <span className="text-rc-muted">
-                    {auctionDateLabel(p.auction_date)}
-                    {p.auction_time ? `, ${p.auction_time}` : ""}
-                    {p.auction_venue ? ` · ${p.auction_venue.toLowerCase()}` : ""}
-                  </span>
-                ) : (
-                  // Not a warning. A listing that goes to auction before the
-                  // date is fixed is completely normal, and the file should
-                  // say what it knows rather than imply something is wrong.
-                  <span className="text-rc-muted">date TBC</span>
-                )}
-                {countdown && (
-                  <span className="rounded-full bg-rc-amber/15 px-2 py-0.5 text-[11px] font-medium text-rc-amber-deep">
-                    {countdown}
-                  </span>
-                )}
-              </p>
-            )}
+        {/* Pinned while you scroll (Adam, 3 Oct 2026): "have the header on each
+            property where we've got the address, the listing set up ... hold
+            so that when you scroll down, the address of the property stays on
+            screen at all times." Address, Edit listing and the stage tabs ride
+            along directly under the user bar (--rc-userbar-h, measured by
+            UserBarHeight). Property type and auction details sit below it and
+            scroll away, so the pinned bar stays slim on a phone. z-10 keeps it
+            under the user bar (z-20) and the Edit listing overlay (z-40). */}
+        <div className="sticky top-[var(--rc-userbar-h,0px)] z-10 -mx-4 mt-3 border-b border-rc-border bg-rc-bg-alt/90 px-4 py-3 backdrop-blur-md">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <h1 className="min-w-0 text-xl font-bold tracking-tight text-rc-ink sm:text-2xl">{p.address}</h1>
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Moved up here 20 Aug 2026. It used to sit collapsed at the very
+                  bottom of the page, below every item card — Adam went looking
+                  for it and couldn't find it: "it was way down the bottom, I
+                  think it should be up the top somewhere, not in a crowded
+                  position." Beside the audit-pack button is the only other
+                  uncrowded spot on the page. */}
+              <EditPropertyDetails property={p} canDelete={profile.is_licensee_in_charge} />
+              <Link
+                href={`/dashboard/${p.id}/summary`}
+                className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted shadow-card transition hover:border-rc-green-deep/40 hover:text-rc-green-deep"
+              >
+                Download audit pack
+              </Link>
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {/* Moved up here 20 Aug 2026. It used to sit collapsed at the very
-                bottom of the page, below every item card — Adam went looking
-                for it and couldn't find it: "it was way down the bottom, I
-                think it should be up the top somewhere, not in a crowded
-                position." Beside the audit-pack button is the only other
-                uncrowded spot on the page. */}
-            <EditPropertyDetails property={p} />
-            <Link
-              href={`/dashboard/${p.id}/summary`}
-              className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted shadow-card transition hover:border-rc-green-deep/40 hover:text-rc-green-deep"
-            >
-              Download audit pack
-            </Link>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {([0, 1, 2, 3, 4, 5] as PropertyStage[]).map((s) => {
+              const reachable = s <= maxViewable;
+              const active = s === viewedStage;
+              return reachable ? (
+                <Link
+                  key={s}
+                  href={`/dashboard/${p.id}?stage=${s}`}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                    active
+                      ? "bg-rc-green-deep text-white"
+                      : s < currentStage
+                        ? "bg-rc-green-soft text-rc-green-deep hover:opacity-80"
+                        : "border border-rc-border bg-white text-rc-muted hover:bg-rc-bg-alt"
+                  }`}
+                >
+                  {STAGE_LABELS[s]}
+                </Link>
+              ) : (
+                <span
+                  key={s}
+                  className="rounded-full border border-dashed border-rc-border px-3 py-1 text-xs font-medium text-neutral-300"
+                >
+                  {STAGE_LABELS[s]}
+                </span>
+              );
+            })}
           </div>
         </div>
 
-        <div className="mt-6 flex flex-wrap gap-2">
-          {([0, 1, 2, 3, 4, 5] as PropertyStage[]).map((s) => {
-            const reachable = s <= maxViewable;
-            const active = s === viewedStage;
-            return reachable ? (
-              <Link
-                key={s}
-                href={`/dashboard/${p.id}?stage=${s}`}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                  active
-                    ? "bg-rc-green-deep text-white"
-                    : s < currentStage
-                      ? "bg-rc-green-soft text-rc-green-deep hover:opacity-80"
-                      : "border border-rc-border bg-white text-rc-muted hover:bg-rc-bg-alt"
-                }`}
-              >
-                {STAGE_LABELS[s]}
-              </Link>
-            ) : (
-              <span
-                key={s}
-                className="rounded-full border border-dashed border-rc-border px-3 py-1 text-xs font-medium text-neutral-300"
-              >
-                {STAGE_LABELS[s]}
+        <div className="mt-3">
+          <p className="text-sm text-rc-muted">
+            {p.property_type}
+            {p.is_strata ? " · Strata" : ""}
+            {p.is_tenanted ? " · Tenanted" : ""}
+            {p.has_pool ? " · Pool" : ""}
+          </p>
+          {p.sale_method === "auction" && (
+            <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
+              <span className="rounded-full bg-rc-green-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rc-green-deep">
+                Auction
               </span>
-            );
-          })}
+              {p.auction_date ? (
+                <span className="text-rc-muted">
+                  {auctionDateLabel(p.auction_date)}
+                  {p.auction_time ? `, ${p.auction_time}` : ""}
+                  {p.auction_venue ? ` · ${p.auction_venue.toLowerCase()}` : ""}
+                </span>
+              ) : (
+                // Not a warning. A listing that goes to auction before the
+                // date is fixed is completely normal, and the file should
+                // say what it knows rather than imply something is wrong.
+                <span className="text-rc-muted">date TBC</span>
+              )}
+              {countdown && (
+                <span className="rounded-full bg-rc-amber/15 px-2 py-0.5 text-[11px] font-medium text-rc-amber-deep">
+                  {countdown}
+                </span>
+              )}
+            </p>
+          )}
         </div>
 
         {/* Not stage-gated: extractFromDocuments only ever pre-fills a
@@ -387,7 +396,6 @@ export default async function PropertyPage({
           />
         )}
 
-        {profile.is_licensee_in_charge && <DeletePropertySection propertyId={p.id} address={p.address} />}
       </main>
     </>
   );

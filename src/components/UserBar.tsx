@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { UserBarHeight } from "@/components/UserBarHeight";
 import { Plus } from "lucide-react";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { UserMenu } from "@/components/UserMenu";
@@ -47,7 +48,10 @@ export function UserBar({ profile }: { profile: Profile }) {
   return (
     // pl-16 on mobile clears the sidebar's floating menu button, which is
     // fixed at left-3 top-3 and would otherwise sit on top of the search field.
-    <header className="rc-app-chrome sticky top-0 z-20 flex items-center gap-3 border-b border-rc-border bg-white/85 py-3 pl-16 pr-4 backdrop-blur-md md:pl-6 md:pr-6">
+    <header
+      id="rc-userbar"
+      className="rc-app-chrome sticky top-0 z-20 flex items-center gap-3 border-b border-rc-border bg-white/85 py-3 pl-16 pr-4 backdrop-blur-md md:pl-6 md:pr-6">
+      <UserBarHeight targetId="rc-userbar" />
       <GlobalSearch isAssistant={Boolean(profile.is_assistant)} />
 
       <Link
