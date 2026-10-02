@@ -16,11 +16,15 @@ import {
   previousAuditPeriodEnd,
   reminderStageForDay,
   reconciliationDueOn,
+  reconciliationProgress,
+  reconciliationRecordsFor,
+  reconciliationReminderFor,
+  type ReconciliationDocRow,
+  type ReconciliationProgress,
+  type ReconciliationSignatureRow,
   type ReminderStage,
 } from "@/lib/trust-account";
-import type {
-  Agency, Profile, SignoffDocument, SignoffSignature, TrustAccount, TrustAudit,
-} from "@/lib/types";
+import type { Agency, Profile, TrustAccount, TrustAudit } from "@/lib/types";
 
 // Trust account reminders — the daily job.
 //
@@ -32,14 +36,22 @@ import type {
 //
 // WHAT FIRES WHEN.
 //
-//   1st  — the month just ended. Sent whether or not anything is uploaded:
-//          this is the prompt to start, not a complaint.
-//   7th  — only while the month is still unsigned.
-//   18th — only while still unsigned, and says how long is left.
+//   1st  — the month just ended.
+//   7th  — a week in.
+//   18th — three days before the deadline, and says how long is left.
 //
-// A reminder about something already done is how people learn to ignore the
-// sender, which is why the 7th and 18th check first and the 1st is the only
-// unconditional one.
+// Every stage, the 1st included, first reads the month as it stands right now
+// through reconciliationProgress in lib/trust-account.ts — the same function
+// the trust register uses to show a month as done — and then:
+//
+//   signed          — sends nothing and writes nothing.
+//   filed, unsigned — a short "ready for your sign-off" to the licensee.
+//   not filed       — the full reminder.
+//
+// The 1st used to go regardless, as "the prompt to start". On 1 Oct 2026 that
+// sent Cass Property a September reminder for both accounts several hours
+// after both had been uploaded and signed. A reminder about something already
+// done is how people learn to ignore the sender.
 //
 // PER ACCOUNT (Adam, 25 Aug 2026). An agency with a sales account and a
 // property management account owes two reconciliations every month and gets
@@ -66,14 +78,26 @@ const TRUST_FOOTER = [
 
 export type TrustReminderResult = {
   checked: number;
+  /** Emails that went out, of either kind. */
   sent: number;
+  /** Of those, how many were the short "ready for your sign-off". */
+  sentReadyForSignoff: number;
   alreadySent: number;
+  /** Skipped because the work is done. Nothing is written for these. */
   skippedNothingDue: number;
   failed: number;
 };
 
+type ServiceClient = ReturnType<typeof createServiceClient>;
+
+/** Swappable for tests. Production passes nothing and gets the real thing. */
+export type TrustReminderDeps = {
+  supabase?: ServiceClient;
+  send?: typeof sendEmail;
+};
+
 async function alreadyRecorded(
-  supabase: ReturnType<typeof createServiceClient>,
+  supabase: ServiceClient,
   agencyId: string,
   accountId: string,
   kind: "reconciliation" | "audit",
@@ -92,11 +116,16 @@ async function alreadyRecorded(
   return Boolean(data);
 }
 
-export async function runTrustReminders(today: Date = new Date()): Promise<TrustReminderResult> {
-  const supabase = createServiceClient();
+export async function runTrustReminders(
+  today: Date = new Date(),
+  deps: TrustReminderDeps = {},
+): Promise<TrustReminderResult> {
+  const supabase = deps.supabase ?? createServiceClient();
+  const send = deps.send ?? sendEmail;
   const result: TrustReminderResult = {
     checked: 0,
     sent: 0,
+    sentReadyForSignoff: 0,
     alreadySent: 0,
     skippedNothingDue: 0,
     failed: 0,
@@ -117,58 +146,71 @@ export async function runTrustReminders(today: Date = new Date()): Promise<Trust
     result.checked += 1;
 
     const { data: profileRows } = await supabase.from("profiles").select("*").eq("agency_id", agency.id);
-    const licensees = ((profileRows ?? []) as Profile[]).filter((p) => p.is_licensee_in_charge && p.email);
+    // Someone who has left the office (archived) is no longer the licensee in
+    // charge of anything, whatever their old flag says.
+    const licensees = ((profileRows ?? []) as Profile[]).filter(
+      (p) => p.is_licensee_in_charge && p.email && !p.archived_at,
+    );
     if (licensees.length === 0) continue;
     const recipients = licensees.map((p) => p.email);
 
-    // A closed account owes nothing, so it is not chased.
+    // A closed account owes nothing, so it is not chased. Filtered in the
+    // query and again here, so a change to one cannot quietly undo the other.
     const { data: accountRows } = await supabase
       .from("trust_accounts")
       .select("*")
       .eq("agency_id", agency.id)
       .is("archived_at", null);
-    const accounts = (accountRows ?? []) as TrustAccount[];
+    const accounts = ((accountRows ?? []) as TrustAccount[]).filter((a) => !a.archived_at);
 
     for (const account of accounts) {
-        // ── Monthly reconciliation ──
-        if (stage) {
-          const month = lastCompletedMonth(today);
-          const due = reconciliationDueOn(month);
-          const left = daysUntil(due, today);
+      // ── Monthly reconciliation ──
+      if (stage) {
+        const month = lastCompletedMonth(today);
+        const due = reconciliationDueOn(month);
+        const left = daysUntil(due, today);
 
-          const signed = await isMonthSigned(supabase, account.id, month);
+        // Read now, at send time, every stage.
+        const progress = await currentReconciliationProgress(supabase, agency.id, account.id, month);
+        const kind = progress ? reconciliationReminderFor(progress) : null;
 
-          // The 1st is the prompt to start and goes regardless. The other two are
-          // only worth sending while it is genuinely outstanding.
-          const worthSending = stage === "day1" || !signed;
-
-          if (!worthSending) {
-            result.skippedNothingDue += 1;
-          } else if (await alreadyRecorded(supabase, agency.id, account.id, "reconciliation", month, stage)) {
-            result.alreadySent += 1;
+        if (kind === null) {
+          // Could not tell. Sending the wrong email is the bug this guards
+          // against, so say nothing and let tomorrow's run or the log catch it.
+          result.failed += 1;
+        } else if (kind === "none") {
+          result.skippedNothingDue += 1;
+        } else if (await alreadyRecorded(supabase, agency.id, account.id, "reconciliation", month, stage)) {
+          result.alreadySent += 1;
+        } else {
+          const ok =
+            kind === "ready_for_signoff"
+              ? await sendReadyForSignoff(send, agency, account, recipients, month, due, left)
+              : await sendReconciliation(send, agency, account, recipients, month, due, left, stage);
+          if (ok) {
+            await supabase.from("trust_reminders").insert({
+              agency_id: agency.id,
+              trust_account_id: account.id,
+              kind: "reconciliation",
+              period: month,
+              stage,
+              recipients,
+            });
+            result.sent += 1;
+            if (kind === "ready_for_signoff") result.sentReadyForSignoff += 1;
           } else {
-            const ok = await sendReconciliation(agency, account, recipients, month, due, left, stage, signed);
-            if (ok) {
-              await supabase.from("trust_reminders").insert({
-                agency_id: agency.id,
-                trust_account_id: account.id,
-                kind: "reconciliation",
-                period: month,
-                stage,
-                recipients,
-              });
-              result.sent += 1;
-            } else {
-              result.failed += 1;
-            }
+            result.failed += 1;
           }
         }
+      }
 
       // ── Annual audit ──
       if (auditStage) {
         const period = previousAuditPeriodEnd(today);
         const due = auditDueOn(period);
 
+        // The audit record as it stands now — the same row and the same
+        // confirmed_at test the trust register uses.
         const { data: auditRow } = await supabase
           .from("trust_audits")
           .select("*")
@@ -183,7 +225,7 @@ export async function runTrustReminders(today: Date = new Date()): Promise<Trust
         } else if (await alreadyRecorded(supabase, agency.id, account.id, "audit", period, auditStage)) {
           result.alreadySent += 1;
         } else {
-          const ok = await sendAudit(agency, account, recipients, period, due, daysUntil(due, today));
+          const ok = await sendAudit(send, agency, account, recipients, period, due, daysUntil(due, today));
           if (ok) {
             await supabase.from("trust_reminders").insert({
               agency_id: agency.id,
@@ -205,31 +247,42 @@ export async function runTrustReminders(today: Date = new Date()): Promise<Trust
   return result;
 }
 
-async function isMonthSigned(
-  supabase: ReturnType<typeof createServiceClient>,
+/**
+ * Where one account's month stands right now, by the same rules the trust
+ * register uses (reconciliationRecordsFor + reconciliationProgress). Null if
+ * the database could not be read.
+ */
+export async function currentReconciliationProgress(
+  supabase: ServiceClient,
+  agencyId: string,
   accountId: string,
   month: string,
-): Promise<boolean> {
-  const { data: docs } = await supabase
+): Promise<ReconciliationProgress | null> {
+  const { data: docs, error: docError } = await supabase
     .from("signoff_documents")
-    .select("id")
+    .select("id, trust_account_id, period_month, created_at")
+    .eq("agency_id", agencyId)
     .eq("trust_account_id", accountId)
     .eq("category", "trust_reconciliation")
     .eq("period_month", month);
+  if (docError) return null;
 
-  const ids = ((docs ?? []) as Pick<SignoffDocument, "id">[]).map((d) => d.id);
-  if (ids.length === 0) return false;
+  const docRows = (docs ?? []) as ReconciliationDocRow[];
+  let sigRows: ReconciliationSignatureRow[] = [];
+  if (docRows.length > 0) {
+    const { data: sigs, error: sigError } = await supabase
+      .from("signoff_signatures")
+      .select("document_id, signed_at")
+      .in("document_id", docRows.map((d) => d.id));
+    if (sigError) return null;
+    sigRows = (sigs ?? []) as ReconciliationSignatureRow[];
+  }
 
-  const { data: sigs } = await supabase
-    .from("signoff_signatures")
-    .select("id, signed_at")
-    .in("document_id", ids)
-    .not("signed_at", "is", null);
-
-  return ((sigs ?? []) as Pick<SignoffSignature, "id">[]).length > 0;
+  return reconciliationProgress(reconciliationRecordsFor(accountId, docRows, sigRows).get(month));
 }
 
 function sendReconciliation(
+  send: typeof sendEmail,
   agency: Agency,
   account: TrustAccount,
   recipients: string[],
@@ -237,7 +290,6 @@ function sendReconciliation(
   due: string,
   daysLeft: number,
   stage: ReminderStage,
-  signed: boolean,
 ): Promise<boolean> {
   const label = monthLabel(month);
   const late = daysLeft < 0;
@@ -250,21 +302,16 @@ function sendReconciliation(
 
   const opening =
     stage === "day1"
-      ? signed
-        ? `${label} has ended. The reconciliation for ${account.name} is already signed — nothing to do.`
-        : `${label} has ended, so the reconciliation for ${account.name} can be prepared and signed.`
+      ? `${label} has ended, so the reconciliation for ${account.name} can be prepared and signed.`
       : late
         ? `The ${label} reconciliation for ${account.name} was due on ${formatAuDate(due)} and is not signed.`
         : `The ${label} reconciliation for ${account.name} is still unsigned. It is due on ${formatAuDate(due)} — ${daysLeft} ${daysLeft === 1 ? "day" : "days"} away.`;
 
   // Opening is a plain paragraph, not a lead. The title already carries the
   // month, and two bold lines stacked read as two competing headings.
-  const sections: EmailSection[] = [{ kind: "paragraph", text: opening }];
-
-  // Nothing outstanding, so the email says so and stops. A reminder that reads
-  // identically whether or not the work is done trains people to ignore it.
-  if (!(stage === "day1" && signed)) {
-    sections.push({
+  const sections: EmailSection[] = [
+    { kind: "paragraph", text: opening },
+    {
       kind: "rows",
       rows: [
         {
@@ -279,27 +326,20 @@ function sendReconciliation(
           tone: late ? "risk" : "attention",
         },
       ],
-    });
-    sections.push({
-      kind: "note",
-      text: "Your assistant can upload the report. The signature is yours.",
-    });
-    sections.push({ kind: "button", label: "Open the trust register", href: TRUST_URL });
-  }
+    },
+    { kind: "note", text: "Your assistant can upload the report. The signature is yours." },
+    { kind: "button", label: "Open the trust register", href: TRUST_URL },
+  ];
 
   const doc: EmailDocument = {
-    preheader: late
-      ? `${label} reconciliation is overdue.`
-      : signed && stage === "day1"
-        ? `${label} is already signed. Nothing to do.`
-        : `Due ${formatAuDate(due)}.`,
+    preheader: late ? `${label} reconciliation is overdue.` : `Due ${formatAuDate(due)}.`,
     title: `${label} reconciliation`,
     meta: `${account.name} · ${agency.name}`,
     sections,
     footer: TRUST_FOOTER,
   };
 
-  return sendEmail({
+  return send({
     to: recipients,
     subject,
     text: renderEmailText(doc),
@@ -307,7 +347,46 @@ function sendReconciliation(
   });
 }
 
+// Uploaded, waiting on the licensee. Short on purpose: the only thing left is
+// the signature, so it says that and nothing about uploading.
+function sendReadyForSignoff(
+  send: typeof sendEmail,
+  agency: Agency,
+  account: TrustAccount,
+  recipients: string[],
+  month: string,
+  due: string,
+  daysLeft: number,
+): Promise<boolean> {
+  const label = monthLabel(month);
+  const late = daysLeft < 0;
+
+  const doc: EmailDocument = {
+    preheader: `${label} is uploaded and waiting on your signature.`,
+    title: `${label} reconciliation`,
+    meta: `${account.name} · ${agency.name}`,
+    sections: [
+      {
+        kind: "paragraph",
+        text: late
+          ? `The ${label} reconciliation for ${account.name} is uploaded and ready for your sign-off. It was due on ${formatAuDate(due)}.`
+          : `The ${label} reconciliation for ${account.name} is uploaded and ready for your sign-off. It is due on ${formatAuDate(due)}.`,
+      },
+      { kind: "button", label: "Review and sign", href: TRUST_URL },
+    ],
+    footer: TRUST_FOOTER,
+  };
+
+  return send({
+    to: recipients,
+    subject: `${account.name}: ${label} reconciliation is ready for your sign-off`,
+    text: renderEmailText(doc),
+    html: renderEmailHtml(doc),
+  });
+}
+
 function sendAudit(
+  send: typeof sendEmail,
   agency: Agency,
   account: TrustAccount,
   recipients: string[],
@@ -355,7 +434,7 @@ function sendAudit(
     footer: TRUST_FOOTER,
   };
 
-  return sendEmail({
+  return send({
     to: recipients,
     subject,
     text: renderEmailText(doc),

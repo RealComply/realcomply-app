@@ -179,7 +179,10 @@ export async function runLicenceReminders(
 
   for (const agency of (agencies ?? []) as Agency[]) {
     const { data: profileRows } = await supabase.from("profiles").select("*").eq("agency_id", agency.id);
-    const profiles = (profileRows ?? []) as Profile[];
+    // Only the people in the office today. Someone archived (0035) has left:
+    // their licence is no longer the agency's to watch, and a former licensee
+    // in charge is no longer the person to tell.
+    const profiles = ((profileRows ?? []) as Profile[]).filter((p) => !p.archived_at);
     const licensees = profiles.filter((p) => p.is_licensee_in_charge);
 
     const subjects = subjectsForAgency(agency, profiles);
