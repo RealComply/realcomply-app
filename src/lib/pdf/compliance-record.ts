@@ -248,6 +248,8 @@ export type ComplianceRecordInput = {
    * Optional so older callers keep working; an empty list prints nothing.
    */
   marketListings?: MarketListingForRecord[];
+  /** The agent confirmed nothing comparable was on the market at the agreement date (2 Oct 2026). */
+  noneOnMarket?: boolean;
   /** The agency agreement date (a3), which the on-market list is "as at". */
   agreementDate?: string | null;
   /** Typed-name attestations, reproduced with the date each was given. */
@@ -309,6 +311,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     espReasoningElsewhere = null,
     comparables,
     marketListings = [],
+    noneOnMarket = false,
     agreementDate = null,
     signatures,
     attachments,
@@ -516,13 +519,22 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   // shape as the sales above, with one difference stated on the page: these
   // prices are other agents' advertised prices or guides, not sale prices,
   // and nothing here treats them as if they were.
-  if (marketListings.length > 0) {
+  // When the agent confirmed nothing comparable was listed, the pack says so in
+  // place of the list, rather than leaving the section out (2 Oct 2026). A
+  // missing section reads as "never considered".
+  if (marketListings.length > 0 || noneOnMarket) {
     c.rule(6, 10);
     const asAt = agreementDate ? formatAuDate(agreementDate.slice(0, 10)) : null;
     c.text(
       asAt ? `On the market as at ${asAt}` : "On the market as at the agency agreement date (not recorded)",
       { size: 11, bold: true, gap: 4 },
     );
+    if (marketListings.length === 0) {
+      c.text("The agent confirmed nothing comparable was on the market at this date.", {
+        size: 9,
+        color: MUTED,
+      });
+    }
     for (const l of marketListings) {
       c.need(30);
       const facts = [

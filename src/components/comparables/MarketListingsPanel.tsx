@@ -8,6 +8,7 @@ import {
   removeListing,
   setListingNote,
   setListingWeighting,
+  setNoneOnMarket,
   type ListingActionState,
 } from "@/lib/actions/market-listings";
 import { differencesFrom, similaritiesFrom, hasSubjectDetail, type SubjectAttributes } from "@/lib/data/comparables";
@@ -59,12 +60,15 @@ export function MarketListingsPanel({
   subject,
   listings,
   agreementDate,
+  noneOnMarket = false,
 }: {
   propertyId: string;
   subject: SubjectAttributes;
   listings: MarketListing[];
   /** The agency agreement date off a3. The list is "as at" this date. */
   agreementDate: string | null;
+  /** The agent has confirmed nothing comparable was for sale at that date. */
+  noneOnMarket?: boolean;
 }) {
   const [adding, setAdding] = useState(false);
 
@@ -79,10 +83,13 @@ export function MarketListingsPanel({
       </div>
 
       {listings.length === 0 ? (
-        <p className="text-[11px] leading-relaxed text-rc-muted">
-          None read from the report yet. If your comparable-sales report lists properties for sale they&rsquo;ll
-          appear here, or add one you know of yourself.
-        </p>
+        <div className="space-y-2">
+          <p className="text-[11px] leading-relaxed text-rc-muted">
+            None read from the report yet. If your comparable-sales report lists properties for sale they&rsquo;ll
+            appear here, or add one you know of yourself.
+          </p>
+          <NoneOnMarket propertyId={propertyId} confirmed={noneOnMarket} />
+        </div>
       ) : (
         <div className="space-y-2">
           {listings.map((l) => (
@@ -378,5 +385,41 @@ function AddListing({ propertyId, onDone }: { propertyId: string; onDone: () => 
         </p>
       )}
     </form>
+  );
+}
+
+/**
+ * "There was nothing comparable for sale at the agreement date." An empty list
+ * alone says nothing — the report may not have listed any — so the agent says
+ * it, and "Draft my reasoning" can then state it as a fact they checked.
+ */
+function NoneOnMarket({ propertyId, confirmed }: { propertyId: string; confirmed: boolean }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <div>
+      <label className="flex items-start gap-2 text-[11px] text-rc-ink">
+        <input
+          type="checkbox"
+          checked={confirmed}
+          disabled={pending}
+          onChange={(e) => {
+            const next = e.target.checked;
+            startTransition(async () => {
+              const result = await setNoneOnMarket(propertyId, next);
+              setError(result.error);
+            });
+          }}
+          className="mt-0.5 shrink-0 accent-rc-green-deep"
+        />
+        <span>Nothing comparable was on the market at the agreement date</span>
+      </label>
+      {error && (
+        <p role="alert" className="mt-1.5 text-[11px] font-medium text-rc-amber-deep">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

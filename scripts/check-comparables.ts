@@ -4,16 +4,19 @@
  *
  * FOR A DEVELOPER SESSION, NOT FOR ADAM. Run from the repo root:
  *
- *   npx tsx scripts/check-comparables.ts
+ *   node --import ./scripts/test/register.mjs scripts/check-comparables.ts
  *
- * WHY THIS IS CHECKED IN. Two of these functions write text into a compliance
- * record, and the rule they have to obey is not a coding rule, it is a legal
- * one: the reasoning must be the agent's, and the software may arrange their
- * words but never add to them. A refactor that quietly made buildReasoningDraft
- * "helpful" — a linking adjective, a summarising clause, worst of all a price
- * it worked out itself — would look like an improvement in review and be a real
- * problem in a file. So the cases below assert the ABSENCE of things, which is
- * the only kind of test that catches that.
+ * WHY THIS IS CHECKED IN. "Draft my reasoning" writes text the agent may adopt
+ * as their s72A reasoning. Until 2 Oct 2026 the rule was that the draft only
+ * arranged the agent's own fragments, and the checks here asserted it stated
+ * no price and no conclusion. That rule was reversed (founder decision,
+ * 2 Oct 2026 — see src/lib/data/esp-draft.ts): the draft now concludes. So
+ * the checks now hold it to the limits that replaced the old rule. It never
+ * states an estimate other than the agreement's, never uses an asking price as
+ * support, says so plainly (and warns the agent) when the sales don't support
+ * the estimate, and contains no guarantee words. A refactor that made it
+ * "more persuasive" would read as an improvement in review, which is why
+ * these assert the ABSENCE of things.
  *
  * The difference lines are the other half: arithmetic that must not round a
  * 2m² difference into a claim, and must say nothing at all when it does not
@@ -21,7 +24,6 @@
  */
 
 import {
-  buildReasoningDraft,
   differenceLine,
   fileSpecificPrompts,
   hasSubjectDetail,
@@ -34,6 +36,8 @@ import {
   type SubjectAttributes,
 } from "../src/lib/data/comparables";
 import { daysOnMarket, onMarketHeading, type MarketListing } from "../src/lib/data/market-listings";
+import { draftEspReasoning, draftProblems, type EspDraft, type EspDraftInput } from "../src/lib/data/esp-draft";
+import { DISCLAIMER, editedInWording } from "../src/lib/rules/esp-reasoning-adoption";
 
 const ESP = { low: 1_300_000, high: 1_400_000 };
 
@@ -205,70 +209,121 @@ check("an unreadable suburb is left unsaid", unknownSuburb.place, null);
 const realDifference = proseComparison(subject, comparable({ address: "22 High St, Asquith" }));
 check("a known different suburb is still stated", realDifference.place, "in a different suburb");
 
-// ── The draft: the agent's words, arranged ────────────────────────────────
+// ── The draft: limits (a)–(f) ──────────────────────────────────────────────
+//
+// The old assertions here (no price, no conclusion) belonged to the 7 Sep
+// rule, reversed on 2 Oct 2026. These replace them.
 
 const marked: Comparable[] = [
-  comparable({ id: "a", address: "14 Smith St, Mount Colah", salePrice: 1_220_000, weighting: "relied", agentNote: "closest on land and presentation" }),
+  comparable({ id: "a", address: "14 Smith St, Mount Colah", salePrice: 1_350_000, weighting: "relied", agentNote: "closest on land and presentation" }),
   comparable({ id: "b", address: "8 Jones Ave, Mount Colah", salePrice: 1_385_000, bedrooms: 4, bathrooms: 2, carSpaces: 2, landSizeSqm: 610, internalAreaSqm: 205, weighting: "relied" }),
   comparable({ id: "c", address: "22 High St, Asquith", salePrice: 1_560_000, weighting: "not_comparable", agentNote: "renovated throughout" }),
-  comparable({ id: "d", address: "5 Rose Pl, Mount Colah", weighting: "considered" }),
+  comparable({ id: "d", address: "5 Rose Pl, Mount Colah", salePrice: 1_220_000, weighting: "considered" }),
 ];
 
-check(
-  "nothing to draft before the agent marks anything",
-  buildReasoningDraft(subject, [comparable({}), comparable({})], ESP),
-  "",
-);
-
-const drafted = buildReasoningDraft(subject, marked, ESP);
-console.log("\n--- draft as an agent would see it ---\n" + drafted + "\n---\n");
-
-for (const expected of [
-  "Estimated selling price recorded in the agency agreement: $1,300,000 to $1,400,000.",
-  "Relied on 14 Smith St and 8 Jones Ave, which sold between $1,220,000 and $1,385,000.",
-  "Closest on land and presentation.",
-  "8 Jones Ave — in the same suburb; same bedrooms, bathrooms, car spaces, land and internal area.",
-  "Also looked at 5 Rose Pl without treating it as decisive.",
-  "Did not treat 22 High St as comparable — renovated throughout.",
-]) {
-  if (drafted.includes(expected)) ok(`draft contains: ${expected.slice(0, 52)}…`);
-  else fail(`draft is missing: ${expected}`);
+function draftInput(over: Partial<EspDraftInput> = {}): EspDraftInput {
+  return {
+    esp: ESP,
+    subject,
+    subjectType: "House",
+    comparables: marked,
+    listings: [],
+    agreementDate: "2026-08-12",
+    noneOnMarketConfirmed: false,
+    ...over,
+  };
 }
 
-// DRAFT B ENDS ON A FACT, not an unfinished sentence. Adam chose this shape on
-// 7 Sep 2026 so the agent can accept it and add their own view; a trailing
-// "because" would be the other option he rejected.
-if (/because\s*$/.test(drafted)) fail("draft ends mid-sentence — that was variant A, which was not chosen");
-else ok("draft ends on a complete sentence");
+function drafted(name: string, input: EspDraftInput): EspDraft | null {
+  const result = draftEspReasoning(input);
+  if (result.kind !== "draft") {
+    fail(`${name}: expected a draft, got "${result.message}"`);
+    return null;
+  }
+  const problems = draftProblems(result, input);
+  if (problems.length === 0) ok(`${name}: within limits (a)–(f)`);
+  else fail(`${name}: ${problems.join("; ")}`);
+  return result;
+}
 
-// THE ONE THAT MATTERS. Everything in the output must be traceable to a figure
-// in the report, arithmetic, or something the agent typed or pressed. No
-// conclusion about the estimate, and no price this software worked out.
-const forbidden: Array<[RegExp, string]> = [
-  [/\btherefore\b/i, "a conclusion"],
-  [/\breasonable\b/i, "an assertion the estimate is reasonable"],
-  [/\bcomparable overall\b/i, "an overall judgement"],
-  [/\bsupports?\s+(the|this)\s+(price|estimate)\b/i, "an assertion the sales support the price"],
-  [/\bshould\b/i, "advice"],
-  [/\bI (would|recommend|suggest)\b/i, "words put in the agent's mouth"],
-];
-const offending = forbidden.filter(([re]) => re.test(drafted));
-if (offending.length === 0) ok("draft adds no judgement, advice or conclusion");
-else fail(`draft contains ${offending.map(([, why]) => why).join(", ")}`);
+const supported = drafted("sales that support the estimate", draftInput());
+if (supported) console.log("\n--- draft as an agent would see it ---\n" + supported.text + "\n---\n");
 
-// Only two kinds of figure may appear: the ESP the agent recorded, and prices
-// printed in the report. Anything else means the software invented a number.
-const allowed = new Set(["$1,300,000", "$1,400,000", "$1,220,000", "$1,385,000"]);
-const figures = drafted.match(/\$[\d,]+/g) ?? [];
-const invented = figures.filter((f) => !allowed.has(f));
-if (invented.length === 0) ok("every dollar figure is one the agent or the report supplied");
-else fail(`draft invented a figure: ${invented.join(", ")}`);
+// (a) The only estimate is the agreement's. Every other figure is a sale price.
+if (supported) {
+  const estimateFigures = supported.sections.estimate.match(/\$\d{1,3}(?:,\d{3})+/g) ?? [];
+  const allowed = new Set(["$1,300,000", "$1,400,000", ...marked.map((c) => `$${c.salePrice?.toLocaleString("en-AU")}`)]);
+  const stray = estimateFigures.filter((f) => !allowed.has(f));
+  if (stray.length === 0) ok("(a) the draft contains no estimate other than the agreement's");
+  else fail(`(a) the draft contains a figure that is not the agreement's estimate or a sale price: ${stray.join(", ")}`);
+}
+const noEstimate = draftEspReasoning(draftInput({ esp: { low: null, high: null } }));
+check("(a) with no estimate on file there is no draft", noEstimate.kind, "unavailable");
+if (noEstimate.kind === "unavailable" && /agency agreement is needed first/.test(noEstimate.message)) {
+  ok("(a) and it says the agency agreement is needed first");
+} else fail("(a) the no-estimate message does not point at the agency agreement");
 
-check(
-  "no ESP line when the agreement has no figures on file",
-  buildReasoningDraft(subject, [marked[0]], { low: null, high: null }).startsWith("Relied on"),
-  true,
-);
+// (b) Unsupported estimates are flagged, to the agent and in the draft.
+const above = drafted("sales mostly above the estimate", draftInput({
+  comparables: [comparable({ id: "x1", salePrice: 1_450_000, weighting: "relied" }), comparable({ id: "x2", salePrice: 1_490_000, weighting: "relied" })],
+}));
+const below = drafted("sales mostly below the estimate", draftInput({
+  comparables: [comparable({ id: "y1", salePrice: 1_150_000, weighting: "relied" }), comparable({ id: "y2", salePrice: 1_190_000, weighting: "relied" })],
+}));
+const tooFew = drafted("one sale only", draftInput({ comparables: [comparable({ id: "z1", salePrice: 1_350_000 })] }));
+for (const [name, d, verdict] of [["above", above, "mostly_above"], ["below", below, "mostly_below"], ["too few", tooFew, "too_few"]] as const) {
+  if (!d) continue;
+  check(`(b) ${name}: the verdict is honest`, d.evidence, verdict);
+  if (d.warning) ok(`(b) ${name}: the card shows the agent a note`);
+  else fail(`(b) ${name}: no note to the agent`);
+  if (/I consider it is supported/.test(d.text)) fail(`(b) ${name}: the draft defends an estimate the sales don't support`);
+  else ok(`(b) ${name}: the draft does not argue the estimate is supported`);
+}
+if (supported?.warning === null) ok("(b) no warning when the sales do support the estimate");
+else fail("(b) a warning was shown on sales that support the estimate");
+
+// (c) Asking prices are never support, and never set against the estimate.
+const onMarketDraft = drafted("with on-market listings", draftInput({
+  listings: [
+    listing({ id: "m1", address: "3 Oak St, Mount Colah", askingPrice: "$1.3m - $1.4m", weighting: "competition", listedDate: "2026-07-22" }),
+    listing({ id: "m2", address: "9 Elm Rd, Mount Colah", askingPrice: "Contact agent" }),
+  ],
+}));
+if (onMarketDraft) {
+  if (onMarketDraft.sections.sales.includes("$1.3m") || onMarketDraft.sections.estimate.includes("$1.3m")) {
+    fail("(c) an asking price was used as evidence for the estimate");
+  } else ok("(c) the draft never uses an asking price to support the estimate");
+  if (/listed for 21 days/.test(onMarketDraft.sections.market) && /“\$1\.3m - \$1\.4m”/.test(onMarketDraft.sections.market)) {
+    ok("(c) listings are described: address, the advertised price as written, days listed");
+  } else fail(`(c) listing description is missing facts: ${onMarketDraft.sections.market}`);
+}
+
+// (d) Only facts in the file — and no draft until the listing's details are confirmed.
+const unconfirmed = draftEspReasoning(draftInput({ subject: { ...blank, suggestions: { bedrooms: 4, landSizeSqm: 600 } } }));
+check("(d) no draft from figures the report suggested but nobody accepted", unconfirmed.kind, "unavailable");
+// The agent's own quoted notes are theirs and are taken out first.
+const ours = (d: EspDraft) => d.agentQuotes.reduce((t, q) => t.split(q).join(""), d.text);
+if (supported && !/condition|renovat|presentation|market (is|has)/i.test(ours(supported))) {
+  ok("(d) no condition or market commentary the file does not hold");
+} else if (supported) fail("(d) the draft volunteers condition or market commentary");
+
+// (e) No guarantee words, in any of the drafts above.
+const all = [supported, above, below, tooFew, onMarketDraft].filter((d): d is EspDraft => d !== null);
+const guarantee = all.filter((d) => /\b(compliant|correct|accurate)\b/i.test(d.text));
+if (guarantee.length === 0) ok("(e) no draft contains guarantee words");
+else fail("(e) a draft says the estimate is compliant, correct or accurate");
+
+// The disclaimer is on-screen only: never inside the draft text, which is what
+// the agent edits, confirms and the pack prints. And the draft cannot be
+// confirmed as it stands — a cosmetic change is not an edit.
+if (all.every((d) => !d.text.includes(DISCLAIMER))) ok("no draft carries the disclaimer in its text");
+else fail("a draft carries the disclaimer in its text");
+if (supported && !editedInWording(supported.text, supported.text.toUpperCase().replace(/\./g, ";"))) {
+  ok("capitals and punctuation alone do not count as editing the draft");
+} else fail("a cosmetic change counted as editing the draft");
+
+// (f) Marks are respected: only Relied on sales are relied on.
+if (supported) check("(f) only the sales marked Relied on are drawn on", supported.drawnOn, ["a", "b"]);
 
 // ── Prompts: drawn from this file ─────────────────────────────────────────
 
@@ -360,28 +415,21 @@ const onMarket = {
   ],
 };
 
-check(
-  "unmarked listings alone draft nothing",
-  buildReasoningDraft(subject, [], ESP, { asAtLabel: "12 August 2026", listings: [listing({})] }),
-  "",
-);
-
-const withListings = buildReasoningDraft(subject, marked, ESP, onMarket);
-console.log("\n--- draft with listings ---\n" + withListings + "\n---\n");
-
-for (const expected of [
-  "On the market as at 12 August 2026, treated as direct competition: 3 Oak St (advertised: $1.3m - $1.4m).",
-  "3 Oak St — Same street, similar block.",
-  "Also on the market, considered: 9 Elm Rd (advertised: Contact agent).",
-]) {
-  if (withListings.includes(expected)) ok(`listing draft contains: ${expected.slice(0, 48)}…`);
-  else fail(`listing draft is missing: ${expected}`);
+// KEPT FROM 29 SEP: an on-market asking price is never compared with the
+// estimate as evidence. Held now against the new draft's market paragraph.
+const withListings = drafted("on-market listings", draftInput({ listings: onMarket.listings }));
+if (withListings) {
+  console.log("\n--- draft with listings ---\n" + withListings.sections.market + "\n---\n");
+  const compares = /(below|above|under|over|within|support|justif)\w*\s+(the|our|this|my)\s+(estimate|esp|price)/i;
+  if (compares.test(withListings.sections.market) || /estimate/i.test(withListings.sections.market)) {
+    fail("an asking price was compared with the estimate as evidence");
+  } else ok("on-market asking prices are never compared with the estimate as evidence");
+  for (const v of ["$1,300,000", "$1,400,000"]) {
+    if (withListings.sections.market.includes(v)) fail("the estimate appears beside the asking prices");
+  }
+  if (withListings.sections.market.includes("“$2,100,000”")) ok("an advertised price is quoted exactly as published");
+  else fail("an advertised price was not quoted as published");
 }
-if (withListings.includes("1 Ash Cl")) fail("an unmarked listing was drafted as if the agent had weighed it");
-else ok("unmarked listings stay out of the draft");
-const listingOffending = [...forbidden, [/(below|above|under|over)\s+(the|our|this)\s+(estimate|esp|price)/i, "an asking price compared with the ESP"] as [RegExp, string]].filter(([re]) => re.test(withListings));
-if (listingOffending.length === 0) ok("listing draft adds no judgement and no ESP comparison");
-else fail(`listing draft contains ${listingOffending.map(([, why]) => why).join(", ")}`);
 
 check("days on market to the agreement date", daysOnMarket("2026-07-01", "2026-08-12"), 42);
 check("no days on market without a listed date", daysOnMarket(null, "2026-08-12"), null);

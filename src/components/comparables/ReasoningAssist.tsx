@@ -1,153 +1,259 @@
 "use client";
 
-import { useState } from "react";
-import { Info, RotateCcw, Eraser } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, Check, FileText, Info, Sparkles, X } from "lucide-react";
+import { reasoningNudge, type Comparable } from "@/lib/data/comparables";
+import { draftEspReasoning, type EspDraft, type EspDraftInput } from "@/lib/data/esp-draft";
 import {
-  buildReasoningDraft,
-  reasoningNudge,
-  type Comparable,
-  type DraftListings,
-  type EspFigures,
-  type SubjectAttributes,
-} from "@/lib/data/comparables";
+  ADOPT_LABEL,
+  DISCLAIMER,
+  EDIT_FIRST,
+  draftOffer,
+  editedInWording,
+  type ReasoningAdoptionRecord,
+} from "@/lib/rules/esp-reasoning-adoption";
 
-// The ESP reasoning card's helper.
+// The ESP reasoning card's helper: "Draft my reasoning", and adopting text the
+// agent did not type here.
 //
-// The draft itself is NOT written by this component — it arrives as the
-// textarea's default value from ItemCard, so the box has the draft in it on
-// first paint rather than after a click. Adam, 7 Sep 2026: "can we add some
-// text in the ESP reasoning recorded card, just as a draft that the agent can
-// either accept or edit?"
+// RealComply's draft is written into the box only when the agent asks, the
+// disclaimer sits directly above it while it is there (ItemCard renders it
+// over the box, because that is where the draft is), and it becomes their
+// reasoning only after they have changed its wording AND pressed ADOPT_LABEL.
+// Reasoning read from their own document needs the click but not the edit.
+// The server enforces both — see lib/rules/esp-reasoning-adoption.ts. What the
+// draft says, and the limits on it, are in lib/data/esp-draft.ts.
 //
-// What lives here is what belongs immediately under the box: the two buttons
-// that rewrite it, one line saying where its contents came from, and the
-// nudge.
+// NEVER OVER THE AGENT'S OWN TEXT. Saved reasoning: no offer. Reasoning read
+// from their document: stays in the box, the draft is a second option beside
+// it. Anything they have typed: no offer until the box is empty.
 //
-// SLIMMED 8 Sep 2026. This component used to own three panels as well — the
-// file-specific prompts, the generic factors, and a paragraph explaining the
-// draft's provenance. Adam: "the whole thing is a bit busy and hard to follow.
-// You have to jump up and down through the whole ESP reasoning section." The
-// prompts moved into the single drawer in EspPrompts, and the paragraph became
-// one line with the full text behind a disclosure. Nothing was deleted; the
-// same words are one click away.
-//
-// THE LINE, restated because this is the component most likely to be misread
-// as the software writing the reasoning. Every clause in the draft is a figure
-// off the report, arithmetic against the listing, or something the agent
-// pressed or typed. It states no price of its own — the only estimate in it is
-// the one already recorded in the agency agreement — and it never says the
-// estimate is reasonable. That sentence is the agent's.
-//
-// The insert mechanism is identical to EspPrompts and the dictate button: set
-// the textarea's value, dispatch an input event, move the caret. One mechanism
-// for "something outside the textarea wrote into it" rather than three.
+// Writing into the box uses the same mechanism as EspPrompts and the dictate
+// button: set the textarea's value, dispatch an input event, move the caret.
+
+type Chosen = EspDraft & { generatedAt: string };
 
 export function ReasoningAssist({
   noteId,
-  subject,
+  draftInput,
   comparables,
-  onMarket,
-  esp,
   savedReasoning,
+  documentReasoning,
+  reportRead,
+  adoption,
   isDone,
+  onDraftInBox,
 }: {
   noteId: string;
-  subject: SubjectAttributes;
+  draftInput: EspDraftInput;
   comparables: Comparable[];
-  /** On-market listings and their as-at date (29 Sep 2026). */
-  onMarket?: DraftListings;
-  esp: EspFigures;
-  /** What is already recorded on this item. Drives the nudge, not the draft. */
+  /** What is already recorded on this item. */
   savedReasoning: string;
+  /** Reasoning read from the agent's own uploaded document (step 3). */
+  documentReasoning: string;
+  /** The comparable-sales report has been read. */
+  reportRead: boolean;
+  /** How the reasoning on file was adopted, once confirmed. */
+  adoption: ReasoningAdoptionRecord | null;
   /** Once the agent has marked the card done, this is a record, not a draft. */
   isDone: boolean;
+  /** Tells the card a draft is in the box, so it can put the disclaimer above it. */
+  onDraftInBox: (inBox: boolean) => void;
 }) {
-  const [whyOpen, setWhyOpen] = useState(false);
-  const draft = buildReasoningDraft(subject, comparables, esp, onMarket);
-  const nudge = reasoningNudge(savedReasoning, comparables);
-  const marked = comparables.filter((c) => c.weighting !== null).length;
+  const [boxText, setBoxText] = useState("");
+  const [chosen, setChosen] = useState<Chosen | null>(null);
+  const [preview, setPreview] = useState<EspDraft | null>(null);
+  // Set once the agent empties a box that held their document's reasoning:
+  // whatever they type next is typed here, not read from the document.
+  const [documentSetAside, setDocumentSetAside] = useState(false);
+  const adoptRef = useRef<HTMLInputElement>(null);
 
-  function writeInto(text: string, mode: "heading" | "replace") {
+  // Follow the box. Uncontrolled textarea, so listen rather than own its value.
+  // Emptying it abandons a draft for good: what is typed next is the agent's.
+  useEffect(() => {
     const el = document.getElementById(noteId) as HTMLTextAreaElement | null;
     if (!el) return;
-    if (mode === "replace") {
-      el.value = text;
-    } else {
-      const existing = el.value.trimEnd();
-      el.value = existing.length > 0 ? `${existing}\n\n${text}: ` : `${text}: `;
-    }
+    const sync = () => {
+      setBoxText(el.value);
+      if (!el.value.trim()) {
+        setChosen(null);
+        setDocumentSetAside(true);
+        onDraftInBox(false);
+      }
+    };
+    sync();
+    el.addEventListener("input", sync);
+    return () => el.removeEventListener("input", sync);
+  }, [noteId, onDraftInBox]);
+
+  const active = chosen && boxText.trim() ? chosen : null;
+  const fromDocument =
+    !active &&
+    !isDone &&
+    !savedReasoning.trim() &&
+    Boolean(documentReasoning.trim()) &&
+    !documentSetAside &&
+    Boolean(boxText.trim());
+
+  const offer = active
+    ? "none"
+    : draftOffer({
+        savedNote: savedReasoning,
+        documentNote: documentReasoning,
+        boxText,
+        isDone,
+        recordedElsewhere: false,
+        reportRead,
+      });
+  const nudge = active || fromDocument ? null : reasoningNudge(savedReasoning, comparables);
+  // Worked out up front, so "the agency agreement is needed first" sits where
+  // the button would be rather than appearing only after a click.
+  const result = offer === "none" ? null : draftEspReasoning(draftInput);
+  const ready = result?.kind === "draft" ? result : null;
+  const unavailable = result?.kind === "unavailable" ? result.message : null;
+  const edited = active ? editedInWording(active.text, boxText) : false;
+
+  function writeInto(text: string) {
+    const el = document.getElementById(noteId) as HTMLTextAreaElement | null;
+    if (!el) return;
+    el.value = text;
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.focus();
-    el.selectionStart = el.selectionEnd = el.value.length;
+    el.selectionStart = el.selectionEnd = 0;
+    el.scrollTop = 0;
   }
+
+  function applyDraft(d: EspDraft) {
+    writeInto(d.text);
+    setChosen({ ...d, generatedAt: new Date().toISOString() });
+    setPreview(null);
+    onDraftInBox(true);
+  }
+
+  function leaveDraft() {
+    const backToDocument = Boolean(documentReasoning.trim()) && !savedReasoning.trim();
+    writeInto(backToDocument ? documentReasoning : "");
+    setChosen(null);
+    if (backToDocument) setDocumentSetAside(false);
+    onDraftInBox(false);
+  }
+
+  // Only this click confirms. The form reads the value as it submits, then it
+  // is cleared, so a later plain "Mark done" after a failed save cannot count.
+  function confirmClick() {
+    const el = adoptRef.current;
+    if (!el) return;
+    el.value = "yes";
+    setTimeout(() => {
+      el.value = "";
+    }, 0);
+  }
+
+  const source = active ? "realcomply_draft" : fromDocument ? "document" : "";
+  const original = active ? active.text : fromDocument ? documentReasoning : "";
 
   return (
     <div className="mt-2 space-y-2">
-      {/* Directly under the box these buttons rewrite, rather than in a panel
-          of their own further down. Adam had to scroll past the sales to find
-          them, which is the wrong way round for a control that acts on the
-          thing immediately above it. */}
-      {draft && !isDone && (
-        <div>
+      {/* Posted with the form so the server can tell RealComply's words, and
+          words read from a document, from what the agent typed here. */}
+      <input type="hidden" name="reasoningSource" value={source} />
+      <input type="hidden" name="reasoningOriginal" value={original} />
+      <input type="hidden" name="reasoningDraftGeneratedAt" value={active?.generatedAt ?? ""} />
+      <input type="hidden" name="reasoningDraftEvidence" value={active?.evidence ?? ""} />
+      <input ref={adoptRef} type="hidden" name="adoptDraft" value="" />
+
+      {active && (
+        <div className="space-y-2">
+          {active.warning && <EvidenceWarning text={active.warning} />}
           <div className="flex flex-wrap items-center gap-2">
+            <ConfirmButton disabled={!edited} onClick={confirmClick} />
             <button
               type="button"
-              onClick={() => writeInto(draft, "replace")}
+              onClick={leaveDraft}
               className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-[11px] font-semibold text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
             >
-              <RotateCcw size={11} aria-hidden="true" />
-              Rebuild from my marks
-            </button>
-            <button
-              type="button"
-              onClick={() => writeInto("", "replace")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-[11px] font-semibold text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
-            >
-              <Eraser size={11} aria-hidden="true" />
-              Clear and write my own
+              <X size={11} aria-hidden="true" />
+              {documentReasoning.trim() && !savedReasoning.trim()
+                ? "Back to the reasoning from your document"
+                : "Discard the draft"}
             </button>
           </div>
-
-          {/* ONE LINE ON THE FACE, the rest behind the icon — but the half
-              that carries the legal weight is the half that stays visible.
-              "The conclusion is yours" is the sentence the agency's position
-              rests on if s74 ever asks who formed this opinion, so it is not
-              the part that gets folded away. What folds is the explanation of
-              how the draft was assembled, which matters once and then never
-              again. */}
-          <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-rc-muted">
-            <span>
-              Built from your marks on the {marked === 1 ? "sale" : "sales"} above.{" "}
-              <span className="font-semibold text-rc-ink">The conclusion is yours to add.</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => setWhyOpen((v) => !v)}
-              aria-expanded={whyOpen}
-              aria-label={whyOpen ? "Hide where this draft came from" : "Where did this draft come from?"}
-              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition ${
-                whyOpen
-                  ? "bg-rc-green-soft text-rc-green-deep"
-                  : "text-rc-faint hover:bg-rc-bg-alt hover:text-rc-muted"
-              }`}
-            >
-              <Info size={12} aria-hidden="true" />
-            </button>
-          </p>
-
-          {whyOpen && (
-            <p className="mt-1.5 rounded-lg border border-rc-green-deep/25 bg-rc-green-soft/50 px-3 py-2 text-[11px] leading-relaxed text-rc-muted">
-              Every line is a figure off the report, arithmetic against your listing, or something you
-              pressed or typed on the {marked === 1 ? "sale" : "sales"} above. It doesn&rsquo;t put a price
-              of its own on this property and doesn&rsquo;t say the estimate is reasonable.
-            </p>
-          )}
+          {/* Why the button is unavailable, said in words rather than left to a greyed control. */}
+          {!edited && <p className="text-[11px] font-medium text-rc-amber-deep">{EDIT_FIRST}</p>}
         </div>
       )}
 
-      {/* A note, never a block. Forty files carrying the same two lines is
-          worse evidence than one honest paragraph, and the person best placed
-          to judge whether this file needs more is the one who wrote it. */}
+      {/* The agent's own document: their words, so no edit is required, but
+          they still confirm them as their reasoning in one click. */}
+      {fromDocument && (
+        <div className="space-y-2">
+          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-muted">
+            <FileText size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>
+              The box above holds the reasoning read from your uploaded document. Check it, change it if you want,
+              and confirm it as yours.
+            </span>
+          </p>
+          <ConfirmButton disabled={false} onClick={confirmClick} />
+        </div>
+      )}
+
+      {offer === "in_box" && ready && (
+        <button
+          type="button"
+          onClick={() => applyDraft(ready)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20"
+        >
+          <Sparkles size={12} aria-hidden="true" />
+          Draft my reasoning
+        </button>
+      )}
+
+      {/* The draft as a second option beside the document's reasoning. */}
+      {offer === "second_option" && ready && !preview && (
+        <button
+          type="button"
+          onClick={() => setPreview(ready)}
+          className="text-[11px] font-semibold text-rc-ink underline decoration-rc-border underline-offset-2 hover:decoration-rc-ink"
+        >
+          Or see a draft written by RealComply
+        </button>
+      )}
+      {offer === "second_option" && preview && (
+        <DraftPreview draft={preview}>
+            <button
+              type="button"
+              onClick={() => applyDraft(preview)}
+              className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-[11px] font-semibold text-rc-ink transition hover:border-rc-ink/20"
+            >
+              Use this draft instead
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreview(null)}
+              className="rounded-full px-3 py-1.5 text-[11px] font-semibold text-rc-muted transition hover:text-rc-ink"
+            >
+              Keep the reasoning from my document
+            </button>
+        </DraftPreview>
+      )}
+
+      {unavailable && (
+        <p className="flex items-start gap-1.5 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2 text-[11px] leading-relaxed text-rc-ink">
+          <Info size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>{unavailable}</span>
+        </p>
+      )}
+
+      {adoption && !active && !fromDocument && (
+        <p className="text-[11px] text-rc-muted">
+          Confirmed as {adoption.confirmedByName ? `${adoption.confirmedByName}'s` : "the agent's"} reasoning on{" "}
+          {new Date(adoption.confirmedAt).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}
+          {adoption.source === "document" ? ", from the uploaded document." : ", edited from RealComply's draft."}
+        </p>
+      )}
+
+      {/* A note, never a block. */}
       {nudge && (
         <p className="flex items-start gap-1.5 rounded-lg border border-rc-amber/40 bg-rc-amber/10 px-3 py-2 text-[11px] leading-relaxed text-rc-ink">
           <Info size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -155,5 +261,64 @@ export function ReasoningAssist({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * A draft shown outside the box (the second option beside the document's
+ * reasoning): the disclaimer directly above it, then the draft, then the note
+ * to the agent if the evidence needs one.
+ */
+export function DraftPreview({ draft, children }: { draft: EspDraft; children?: React.ReactNode }) {
+  return (
+    <div className="space-y-2 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2">
+      <Disclaimer />
+      <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-rc-ink">{draft.text}</p>
+      {draft.warning && <EvidenceWarning text={draft.warning} />}
+      {children && <div className="flex flex-wrap gap-2">{children}</div>}
+    </div>
+  );
+}
+
+/** Exactly as worded, on screen only, directly above every draft. Never part of the draft text. */
+export function Disclaimer() {
+  return (
+    <p
+      role="note"
+      className="flex items-start gap-1.5 rounded-md border border-rc-amber/60 bg-rc-amber/10 px-2.5 py-1.5 text-[11px] font-semibold leading-relaxed text-rc-ink"
+    >
+      <Sparkles size={12} className="mt-0.5 shrink-0 text-rc-amber-deep" aria-hidden="true" />
+      <span>{DISCLAIMER}</span>
+    </p>
+  );
+}
+
+function ConfirmButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="submit"
+      name="status"
+      value="done"
+      disabled={disabled}
+      onClick={onClick}
+      title={disabled ? EDIT_FIRST : undefined}
+      className="inline-flex items-center gap-1.5 rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <Check size={12} aria-hidden="true" />
+      {ADOPT_LABEL}
+    </button>
+  );
+}
+
+/** (b) Addressed to the agent whenever the sales don't support the estimate. */
+function EvidenceWarning({ text }: { text: string }) {
+  return (
+    <p
+      role="note"
+      className="flex items-start gap-1.5 rounded-lg border border-rc-amber/60 bg-rc-amber/15 px-3 py-2 text-[11px] leading-relaxed text-rc-ink"
+    >
+      <AlertTriangle size={12} className="mt-0.5 shrink-0 text-rc-amber-deep" aria-hidden="true" />
+      <span>{text}</span>
+    </p>
   );
 }

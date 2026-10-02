@@ -7,6 +7,8 @@ import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { formatAuDate } from "@/lib/format-date";
+import { marketListingsFor } from "@/lib/data/market-listings";
+import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 
 
 
@@ -30,7 +32,11 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   const p = property as Property;
 
   const { data: rows } = await supabase.from("property_items").select("*").eq("property_id", id);
-  const allItems = Object.fromEntries(((rows ?? []) as PropertyItem[]).map((i) => [i.item_key, i]));
+  const onMarketCount = (await marketListingsFor(supabase, id)).filter((l) => l.asAt === null).length;
+  const allItems = withEffectiveEspStatus(
+    Object.fromEntries(((rows ?? []) as PropertyItem[]).map((i) => [i.item_key, i])),
+    { onMarketCount },
+  );
   const items = allItemsFor(p, allItems, await ruleContextFor(supabase, p));
 
   // Signed off, or not. Same test as the PDF route and the PDF itself — see the

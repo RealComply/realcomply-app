@@ -112,3 +112,48 @@ export async function removeListing(propertyId: string, listingId: string): Prom
   revalidatePath(`/dashboard/${propertyId}`);
   return { error: null };
 }
+
+/**
+ * "There was nothing comparable on the market at the agreement date."
+ *
+ * An empty list on its own says nothing — the report may simply not have
+ * listed any. The agent saying so is a fact the ESP reasoning draft can state
+ * ("I checked … and there were none"), so it is recorded with who and when on
+ * the a4c row, beside the reasoning it feeds. Merged into the row rather than
+ * replacing it, and the item's status is left alone: this answers a question
+ * about the market, it does not complete the card.
+ *
+ * A listing added later outranks it — the draft describes listings whenever
+ * there are any.
+ */
+export async function setNoneOnMarket(propertyId: string, confirmed: boolean): Promise<ListingActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("status, data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "a4c")
+    .maybeSingle();
+  const existing = row as { status?: string; data?: Record<string, unknown> | null } | null;
+
+  const { error } = await supabase.from("property_items").upsert(
+    {
+      agency_id: profile.agency_id,
+      property_id: propertyId,
+      item_key: "a4c",
+      status: existing?.status ?? "open",
+      updated_by: user.id,
+      data: {
+        ...(existing?.data ?? {}),
+        noneOnMarket: confirmed ? { confirmedBy: user.id, confirmedAt: new Date().toISOString() } : null,
+      },
+    },
+    { onConflict: "property_id,item_key" },
+  );
+
+  if (error) return { error: "Couldn't save that. Try again." };
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return { error: null };
+}
