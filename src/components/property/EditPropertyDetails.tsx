@@ -1,11 +1,13 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { updatePropertyDetails } from "@/lib/actions/properties";
 import type { Property, PropertyType } from "@/lib/types";
 import { SaleMethodFields } from "@/components/property/SaleMethodFields";
 import { PropertyFigures } from "@/components/property/PropertyFigures";
+import { DeletePropertySection } from "@/components/compliance/DeletePropertySection";
 
 // Edit the setup answers on an existing listing.
 //
@@ -48,7 +50,11 @@ function YesNo({ name, label, value }: { name: string; label: string; value: boo
   );
 }
 
-export function EditPropertyDetails({ property }: { property: Property }) {
+// canDelete: the licensee in charge only. Delete property lives at the foot of
+// this box since 3 Oct 2026 (it used to be a box at the bottom of the property
+// page — see DeletePropertySection). It sits outside the details <form>
+// because it is a form of its own and forms cannot nest.
+export function EditPropertyDetails({ property, canDelete = false }: { property: Property; canDelete?: boolean }) {
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const action = updatePropertyDetails.bind(null, property.id);
@@ -90,7 +96,13 @@ export function EditPropertyDetails({ property }: { property: Property }) {
     <>
       {trigger}
       {/* Backdrop click or Escape leaves without saving. Nothing here is
-          written until Save, so dismissing is always safe. */}
+          written until Save, so dismissing is always safe.
+
+          Portalled to <body> since 3 Oct 2026. The trigger now lives in the
+          pinned property header, and that header's backdrop blur and z-index
+          would otherwise trap this fixed overlay inside the header's own box
+          and stacking order, drawing it as a strip under the user bar. */}
+      {createPortal(
       <div
         className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-rc-ink/40 p-4 sm:p-8"
         role="dialog"
@@ -98,11 +110,11 @@ export function EditPropertyDetails({ property }: { property: Property }) {
         aria-label="Listing details"
         onClick={() => setOpen(false)}
       >
-        <form
-          action={formAction}
+        <div
           onClick={(e) => e.stopPropagation()}
           className="w-full max-w-lg rounded-card border border-rc-border bg-white p-5 text-left shadow-card-lg"
         >
+        <form action={formAction}>
           <h2 className="text-sm font-semibold text-rc-ink">Listing details</h2>
           <p className="mt-1 text-xs leading-relaxed text-rc-muted">
             Changing an answer here changes which items appear on this file. Nothing already recorded is deleted —
@@ -230,11 +242,15 @@ export function EditPropertyDetails({ property }: { property: Property }) {
               onClick={() => setOpen(false)}
               className="rounded-full border border-rc-border bg-white px-4 py-1.5 text-xs font-medium text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
             >
-                Close
-              </button>
-            </div>
-      </form>
-      </div>
+              Close
+            </button>
+          </div>
+        </form>
+        {canDelete && <DeletePropertySection propertyId={property.id} address={property.address} />}
+        </div>
+      </div>,
+      document.body,
+      )}
     </>
   );
 }

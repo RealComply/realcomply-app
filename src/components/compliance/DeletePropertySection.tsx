@@ -15,6 +15,14 @@ const initialState: ActionState = { error: null };
 // primitive exists elsewhere in the app) — collapsed by default so it
 // can't be triggered by a stray click, and requires typing the exact
 // address back before the real submit button is even enabled.
+//
+// MOVED 3 Oct 2026. This used to sit as a "Danger zone" box at the very foot
+// of the property page, on every stage. Adam: "take it off the main page
+// altogether so we can declutter it ... it should come under edit listing."
+// It now renders only inside the Edit listing box (EditPropertyDetails),
+// below Save and Close, so it is one deliberate click further away and no
+// longer competes with the compliance cards. Same gate, same typed-address
+// confirmation.
 export function DeletePropertySection({ propertyId, address }: { propertyId: string; address: string }) {
   const [expanded, setExpanded] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -24,12 +32,12 @@ export function DeletePropertySection({ propertyId, address }: { propertyId: str
   const matches = confirmText.trim().toLowerCase() === address.trim().toLowerCase();
 
   return (
-    <div className="mt-10 rounded-card border border-rc-red/25 bg-rc-red-soft/40 p-5">
-      <p className="text-sm font-semibold text-rc-red">Danger zone</p>
+    <div className="mt-5 border-t border-rc-border pt-4">
+      <p className="text-sm font-semibold text-rc-red">Delete this property</p>
 
       {!expanded ? (
         <>
-          <p className="mt-1 text-sm text-rc-muted">
+          <p className="mt-1 text-xs leading-relaxed text-rc-muted">
             Deleting this property removes its whole compliance record, including every checklist item and
             uploaded document. This can&rsquo;t be undone.
           </p>
