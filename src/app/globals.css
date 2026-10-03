@@ -54,7 +54,7 @@
   /* The filled part of a stage oval on the progress bar, which fills from the
      left in proportion to its count (Adam, 3 Oct 2026). Mid-strength tints,
      from the approved mockup, so the dark count stays readable where the fill
-     edge crosses it: --rc-ink is 11.6:1 on the green and 9.9:1 on the red. */
+     edge crosses it: --rc-ink is 11.8:1 on the green and 10.1:1 on the red. */
   --rc-green-fill: #a8e3cc;
   --rc-red-fill: #f3b8b8;
 
