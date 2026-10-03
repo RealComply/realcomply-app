@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { stageProgress, stageStarted } from "./stage-progress";
+import { fillPercent, stageProgress, stageStarted } from "./stage-progress";
 
 describe("stageProgress", () => {
   it("counts done items against every item that applies", () => {
@@ -25,5 +25,16 @@ describe("stageProgress", () => {
     assert.equal(stageStarted(stageProgress(["done", "open"])), true);
     assert.equal(stageStarted(stageProgress(["flagged", "open"])), true);
     assert.equal(stageStarted(stageProgress(["done"])), true);
+  });
+  it("fills the oval in proportion to the count", () => {
+    assert.equal(fillPercent(stageProgress(["done", "done", "done", "done", "done", "done", "done", "open", "open"])), 78);
+    assert.equal(fillPercent(stageProgress([undefined, "open"])), 0);
+    assert.equal(fillPercent(stageProgress(["done", "done"])), 100);
+    assert.equal(fillPercent(stageProgress([])), 100);
+    assert.equal(fillPercent({ done: 199, total: 200, state: "inProgress" }), 99);
+  });
+  it("a flagged stage fills by its count and is never full", () => {
+    assert.equal(fillPercent(stageProgress(["done", "flagged"])), 50);
+    assert.equal(fillPercent(stageProgress(["flagged"])), 0);
   });
 });

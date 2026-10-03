@@ -51,10 +51,12 @@
      token system as everything else instead of a one-off Tailwind color. */
   --rc-red: #d03b3b;
   --rc-red-soft: #fdecec;
-  /* Red TEXT on --rc-red-soft. --rc-red there is 4.2:1, under the 4.5:1 small
-     text needs; this is 5.5:1. Added 3 Oct 2026 for the flagged stage on the
-     progress bar. */
-  --rc-red-deep: #b42d2d;
+  /* The filled part of a stage oval on the progress bar, which fills from the
+     left in proportion to its count (Adam, 3 Oct 2026). Mid-strength tints,
+     from the approved mockup, so the dark count stays readable where the fill
+     edge crosses it: --rc-ink is 11.8:1 on the green and 10.1:1 on the red. */
+  --rc-green-fill: #a8e3cc;
+  --rc-red-fill: #f3b8b8;
 
   /* New: depth pass — gloss/gradient badges for icon chips. Layered shadows
      for the hover-lift/glow states are defined directly in @theme below,
@@ -86,7 +88,8 @@
   --color-rc-nav-muted: var(--rc-nav-muted);
   --color-rc-red: var(--rc-red);
   --color-rc-red-soft: var(--rc-red-soft);
-  --color-rc-red-deep: var(--rc-red-deep);
+  --color-rc-green-fill: var(--rc-green-fill);
+  --color-rc-red-fill: var(--rc-red-fill);
   --font-sans: var(--font-plus-jakarta);
 
   /* Named so Tailwind generates rounded-card / shadow-card utilities —
