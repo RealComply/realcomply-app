@@ -14,6 +14,8 @@ import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { stageHold } from "@/lib/rules/stage-hold";
+import { stageProgress } from "@/lib/rules/stage-progress";
+import { StageProgressBar } from "@/components/compliance/StageProgressBar";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
 function auctionDateLabel(date: string): string {
@@ -128,6 +130,17 @@ export default async function PropertyPage({
   ) as PropertyStage;
 
   const stageItems = itemsForStage(viewedStage, p, allItems, ruleCtx);
+
+  // One count per stage for the progress bar: every item that applies to this
+  // listing in that stage, against those genuinely complete. allItems already
+  // carries the ESP reasoning card's effective status, so it counts by its
+  // rule. See lib/rules/stage-progress.ts.
+  const progress = ([0, 1, 2, 3, 4, 5] as PropertyStage[]).map((s) => ({
+    stage: s,
+    label: STAGE_LABELS[s],
+    reachable: s <= maxViewable,
+    ...stageProgress(itemsForStage(s, p, allItems, ruleCtx).map((i) => allItems[i.key]?.status)),
+  }));
   const isCurrentStage = viewedStage === currentStage;
   const countdown = auctionCountdown(p.auction_date);
 
@@ -178,8 +191,9 @@ export default async function PropertyPage({
         {/* Pinned while you scroll (Adam, 3 Oct 2026): "have the header on each
             property where we've got the address, the listing set up ... hold
             so that when you scroll down, the address of the property stays on
-            screen at all times." Address, Edit listing and the stage tabs ride
-            along directly under the user bar (--rc-userbar-h, measured by
+            screen at all times." Address, Edit listing and the progress bar
+            (which is also the stage tabs since 3 Oct) ride along directly
+            under the user bar (--rc-userbar-h, measured by
             UserBarHeight). Property type and auction details sit below it and
             scroll away, so the pinned bar stays slim on a phone. z-10 keeps it
             under the user bar (z-20) and the Edit listing overlay (z-40). */}
@@ -202,33 +216,11 @@ export default async function PropertyPage({
               </Link>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {([0, 1, 2, 3, 4, 5] as PropertyStage[]).map((s) => {
-              const reachable = s <= maxViewable;
-              const active = s === viewedStage;
-              return reachable ? (
-                <Link
-                  key={s}
-                  href={`/dashboard/${p.id}?stage=${s}`}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                    active
-                      ? "bg-rc-green-deep text-white"
-                      : s < currentStage
-                        ? "bg-rc-green-soft text-rc-green-deep hover:opacity-80"
-                        : "border border-rc-border bg-white text-rc-muted hover:bg-rc-bg-alt"
-                  }`}
-                >
-                  {STAGE_LABELS[s]}
-                </Link>
-              ) : (
-                <span
-                  key={s}
-                  className="rounded-full border border-dashed border-rc-border px-3 py-1 text-xs font-medium text-neutral-300"
-                >
-                  {STAGE_LABELS[s]}
-                </span>
-              );
-            })}
+          {/* The progress bar, which is also the way between stages (3 Oct
+              2026). See StageProgressBar for what it shows and the two
+              reversals that came with it. */}
+          <div className="mt-3">
+            <StageProgressBar propertyId={p.id} stages={progress} viewedStage={viewedStage} />
           </div>
         </div>
 
@@ -284,13 +276,12 @@ export default async function PropertyPage({
           </div>
         )}
 
-        {held && (
-          <div className="mt-6 rounded-2xl border border-rc-amber/40 bg-rc-amber/10 px-4 py-2 text-xs text-rc-amber-deep">
-            This file is at {STAGE_LABELS[p.stage]}, but it is held at {STAGE_LABELS[currentStage]} until{" "}
-            {hold.waitingOn.length === 1 ? "this card is" : "these cards are"} complete:{" "}
-            {hold.waitingOn.join(", ")}. Nothing in the later stages is lost.
-          </div>
-        )}
+        {/* ⚠️ REVERSAL, 3 Oct 2026: the stage hold message that sat here ("This
+            file is at Pre-market, but it is held at Listing set-up until these
+            cards are complete: ...") is gone. Adam: the user does not need to
+            see the system's reasoning; the progress bar replaces it. Do not
+            put it back or replace it with a to-do list. The hold itself is
+            unchanged: later stages still lock and Continue is still withheld. */}
 
         {!isCurrentStage && (
           <div className="mt-6 rounded-2xl border border-rc-border bg-rc-bg-alt px-4 py-2 text-xs text-rc-muted">

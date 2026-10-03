@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Paperclip, Sparkles, AlertTriangle, Check, Info, Plus, X } from "lucide-react";
+import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
 import { selfManaged } from "@/lib/rules/nsw-sales";
 import { formatAuDate } from "@/lib/format-date";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
@@ -169,16 +169,52 @@ function ItemShell({
   const explainerPinned = item.alwaysShowExplainer === true;
   const showExplainer = explainerPinned || explainerOpen;
 
+  // FINISHED CARDS FOLD TO ONE ROW (Adam, 3 Oct 2026; brief
+  // RealComply-progress-bar-brief-3-Oct.md, part 2). A done card shows only
+  // its title, its Done pill and an arrow; the arrow (or anywhere on the row)
+  // opens it back up to look or correct something, and closes it again.
+  //
+  //   - Done cards start folded when the page loads, and fold the moment they
+  //     are marked done.
+  //   - Open cards stay open, as before. A flagged card stays open even if it
+  //     was done before; a card that goes back to open or flagged unfolds.
+  //   - Folding changes nothing about the record. The body is hidden, not
+  //     removed, so everything inside stays mounted and editable under the
+  //     existing rules once the card is opened.
+  //
+  // Every card kind renders through this shell, so this is the one place it
+  // happens. Adjusted during render rather than in an effect, so a card that
+  // has just been marked done never paints one frame unfolded.
+  const isDone = status === "done";
+  const [folded, setFolded] = useState(isDone);
+  const [foldedFor, setFoldedFor] = useState(status);
+  if (status !== foldedFor) {
+    setFoldedFor(status);
+    setFolded(isDone);
+  }
+  const collapsed = isDone && folded;
+  const bodyId = `item-body-${item.key}`;
+
   return (
-    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    <div className={`rounded-card border border-rc-border bg-white shadow-card ${collapsed ? "px-4 py-3" : "p-4"}`}>
+      <div
+        className={`flex justify-between gap-3 ${collapsed ? "items-center" : "items-start"} ${isDone ? "cursor-pointer" : ""}`}
+        // The whole row is a click target on a done card. The arrow button
+        // below is the keyboard and screen-reader way to do the same, so this
+        // div needs no role of its own.
+        onClick={isDone ? () => setFolded((f) => !f) : undefined}
+      >
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-rc-ink">{item.label}</h3>
-            {!explainerPinned && (
+            <h3 className={`text-sm font-semibold ${collapsed ? "text-rc-muted" : "text-rc-ink"}`}>{item.label}</h3>
+            {!explainerPinned && !collapsed && (
               <button
                 type="button"
-                onClick={() => setExplainerOpen((o) => !o)}
+                onClick={(e) => {
+                  // Not also a fold toggle when the card is done.
+                  e.stopPropagation();
+                  setExplainerOpen((o) => !o);
+                }}
                 aria-expanded={explainerOpen}
                 aria-label={
                   explainerOpen ? `Hide what ${item.label} is for` : `What is ${item.label} for?`
@@ -198,15 +234,37 @@ function ItemShell({
               </span>
             )}
           </div>
-          {showExplainer && (
+          {showExplainer && !collapsed && (
             <>
               <p className="mt-1 text-sm text-rc-muted">{item.description}</p>
               {item.legalBasis && <p className="mt-1 text-xs text-rc-faint">{item.legalBasis}</p>}
             </>
           )}
         </div>
-        <StatusPill status={status} awaitingReview={awaitingReview} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          <StatusPill status={status} awaitingReview={awaitingReview} />
+          {isDone && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFolded((f) => !f);
+              }}
+              aria-expanded={!collapsed}
+              aria-controls={bodyId}
+              aria-label={collapsed ? `Show details: ${item.label}` : `Hide details: ${item.label}`}
+              className="-mr-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-rc-muted transition hover:bg-rc-bg-alt hover:text-rc-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rc-green-deep/50"
+            >
+              <ChevronRight
+                size={16}
+                aria-hidden="true"
+                className={`transition-transform ${collapsed ? "" : "rotate-90"}`}
+              />
+            </button>
+          )}
+        </div>
       </div>
+      <div id={bodyId} hidden={collapsed}>
       <div className="mt-3">{children}</div>
       {/* An attached file always keeps its control, whatever the rule says.
           Hiding one would strand a document nobody can see or remove — and
@@ -230,6 +288,7 @@ function ItemShell({
           replaceOnly={item.evidenceReplaceOnly}
         />
       )}
+      </div>
     </div>
   );
 }
