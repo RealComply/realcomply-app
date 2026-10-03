@@ -143,7 +143,9 @@ export async function setNoneOnMarket(propertyId: string, confirmed: boolean): P
       property_id: propertyId,
       item_key: "a4c",
       status: existing?.status ?? "open",
-      updated_by: user.id,
+      // No updated_by here: property_items has no such column, and sending it
+      // failed every save of this box (fixed 3 Oct 2026). Who and when are
+      // recorded on noneOnMarket below.
       data: {
         ...(existing?.data ?? {}),
         noneOnMarket: confirmed ? { confirmedBy: user.id, confirmedAt: new Date().toISOString() } : null,
