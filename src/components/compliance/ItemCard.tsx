@@ -52,7 +52,7 @@ import {
   type ReportExtractionFields,
 } from "@/lib/actions/extraction";
 import { isAiReadItem } from "@/lib/documents/ai-read-items";
-import { DictatableTextarea } from "@/components/Dictate";
+import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
 import { MarketListingsPanel } from "@/components/comparables/MarketListingsPanel";
@@ -128,6 +128,7 @@ function ItemShell({
   propertyId,
   current,
   awaitingReview = false,
+  foldable = true,
   children,
 }: {
   item: ComplianceItem;
@@ -136,6 +137,12 @@ function ItemShell({
   current?: PropertyItem;
   /** Passed through to the pill — see StatusPill. */
   awaitingReview?: boolean;
+  /**
+   * False keeps a done card open: for a done card whose body still carries
+   * something live the agent has to see (the licensee sign-off link before it
+   * is signed). See the fold notes below.
+   */
+  foldable?: boolean;
   children: ReactNode;
 }) {
   // BEHIND AN ICON, NOT UNDER THE TITLE (Adam, 8 Sep 2026): "when we have
@@ -185,24 +192,49 @@ function ItemShell({
   // Every card kind renders through this shell, so this is the one place it
   // happens. Adjusted during render rather than in an effect, so a card that
   // has just been marked done never paints one frame unfolded.
+  //
+  // Never folded, whatever its status, while something on it would be lost or
+  // missed out of sight (found in review, 3 Oct 2026):
+  //   - a file chosen in the evidence box but not attached yet. Its amber "Not
+  //     attached yet" line exists because a report was lost exactly this way;
+  //     folding the card would hide it again.
+  //   - a done card the AI ticked on its own (aiDraft.autoCompleted), which
+  //     carries "check it against the source". It starts open so that prompt
+  //     is seen; the arrow still folds it once checked.
+  //   - a card whose caller says its body is still live (foldable={false}).
+  // Dictation inside a card stops when it folds (DictationSuspended), so the
+  // microphone is never left on with its Stop button hidden.
   const isDone = status === "done";
-  const [folded, setFolded] = useState(isDone);
+  const autoCompleted = Boolean(
+    (current?.data as { aiDraft?: { autoCompleted?: boolean } } | undefined)?.aiDraft?.autoCompleted,
+  );
+  const [evidenceUnsaved, setEvidenceUnsaved] = useState(false);
+  const canFold = isDone && foldable && !evidenceUnsaved;
+  const [folded, setFolded] = useState(isDone && !autoCompleted);
   const [foldedFor, setFoldedFor] = useState(status);
   if (status !== foldedFor) {
     setFoldedFor(status);
-    setFolded(isDone);
+    setFolded(isDone && !autoCompleted);
   }
-  const collapsed = isDone && folded;
+  const collapsed = canFold && folded;
   const bodyId = `item-body-${item.key}`;
 
   return (
     <div className={`rounded-card border border-rc-border bg-white shadow-card ${collapsed ? "px-4 py-3" : "p-4"}`}>
       <div
-        className={`flex justify-between gap-3 ${collapsed ? "items-center" : "items-start"} ${isDone ? "cursor-pointer" : ""}`}
+        className={`flex justify-between gap-3 ${collapsed ? "items-center" : "items-start"} ${canFold ? "cursor-pointer" : ""}`}
         // The whole row is a click target on a done card. The arrow button
         // below is the keyboard and screen-reader way to do the same, so this
-        // div needs no role of its own.
-        onClick={isDone ? () => setFolded((f) => !f) : undefined}
+        // div needs no role of its own. A click that ends a text selection
+        // (copying the title, say) is not a toggle.
+        onClick={
+          canFold
+            ? () => {
+                if (window.getSelection()?.toString()) return;
+                setFolded((f) => !f);
+              }
+            : undefined
+        }
       >
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -235,15 +267,16 @@ function ItemShell({
             )}
           </div>
           {showExplainer && !collapsed && (
-            <>
+            // Reading the explainer is not a reason to fold the card.
+            <div onClick={(e) => e.stopPropagation()}>
               <p className="mt-1 text-sm text-rc-muted">{item.description}</p>
               {item.legalBasis && <p className="mt-1 text-xs text-rc-faint">{item.legalBasis}</p>}
-            </>
+            </div>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <StatusPill status={status} awaitingReview={awaitingReview} />
-          {isDone && (
+          {canFold && (
             <button
               type="button"
               onClick={(e) => {
@@ -265,6 +298,7 @@ function ItemShell({
         </div>
       </div>
       <div id={bodyId} hidden={collapsed}>
+      <DictationSuspended.Provider value={collapsed}>
       <div className="mt-3">{children}</div>
       {/* An attached file always keeps its control, whatever the rule says.
           Hiding one would strand a document nobody can see or remove — and
@@ -286,8 +320,10 @@ function ItemShell({
           required={item.evidenceRequired}
           warning={item.evidenceWarning}
           replaceOnly={item.evidenceReplaceOnly}
+          onUnsavedChange={setEvidenceUnsaved}
         />
       )}
+      </DictationSuspended.Provider>
       </div>
     </div>
   );
@@ -367,6 +403,7 @@ function EvidenceUploader({
   required,
   warning,
   replaceOnly = false,
+  onUnsavedChange,
 }: {
   propertyId: string;
   itemKey: string;
@@ -383,6 +420,9 @@ function EvidenceUploader({
    * setup form would never have allowed.
    */
   replaceOnly?: boolean;
+  /** Told when a file is chosen but not attached yet, or mid-upload, so the
+   *  card holding it does not fold that out of sight. */
+  onUnsavedChange?: (unsaved: boolean) => void;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const uploadAction = uploadEvidence.bind(null, propertyId, itemKey);
@@ -394,6 +434,11 @@ function EvidenceUploader({
   // replaceOnly items show the attached file, not a drop zone, until the
   // agent explicitly asks to swap it.
   const [replacing, setReplacing] = useState(false);
+
+  const unsaved = Boolean(selectedFile) || uploading || uploadPending;
+  useEffect(() => {
+    onUnsavedChange?.(unsaved);
+  }, [unsaved, onUnsavedChange]);
 
   useEffect(() => {
     if (!evidencePath) return;
@@ -2705,7 +2750,15 @@ function SendItem({
   const action = sendToLicensee.bind(null, propertyId);
   const isSignLicensee = item.key === "send_licensee";
   return (
-    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+    <ItemShell
+      item={item}
+      status={current?.status}
+      propertyId={propertyId}
+      current={current}
+      // The sign-off link panel stays in view until the licensee has signed:
+      // it carries the link, its expiry and any email that failed to send.
+      foldable={!isSignLicensee || signoffLinks.some((l) => l.signedAt !== null)}
+    >
       {current?.status === "done" ? (
         <p className="text-sm text-rc-muted">Marked sent.</p>
       ) : (

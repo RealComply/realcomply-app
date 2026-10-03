@@ -39,7 +39,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
         isPlatformAdmin={profile.is_platform_admin === true}
         counts={counts}
       />
-      <div className="flex min-h-screen flex-col">
+      {/* min-w-0: a grid column's 1fr track will not shrink below its
+          content's widest line, so without this anything wide inside a page
+          (the progress bar's six ovals, 3 Oct 2026) pushes the whole page
+          sideways just above the md breakpoint instead of scrolling in its
+          own box. */}
+      <div className="flex min-h-screen min-w-0 flex-col">
         <UserBar profile={profile} />
         {children}
         <AssistantChat />

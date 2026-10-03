@@ -1,3 +1,6 @@
+"use client";
+
+import { useLayoutEffect, useRef } from "react";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { stageStarted, type StageProgress } from "@/lib/rules/stage-progress";
@@ -39,8 +42,8 @@ export type StageProgressBarStage = StageProgress & {
 const OVAL: Record<StageProgress["state"], string> = {
   inProgress: "border-rc-green-deep bg-rc-green-soft text-rc-ink",
   finished: "border-rc-green-deep bg-rc-green-deep text-white",
-  notStarted: "border-rc-border bg-white text-rc-faint",
-  flagged: "border-rc-red bg-rc-red-soft text-rc-red",
+  notStarted: "border-rc-border bg-white text-rc-muted",
+  flagged: "border-rc-red bg-rc-red-soft text-rc-red-deep",
 };
 
 function ovalText(s: StageProgress): string {
@@ -71,10 +74,22 @@ export function StageProgressBar({
   stages: StageProgressBarStage[];
   viewedStage: PropertyStage;
 }) {
+  // On a phone only three or four ovals fit, so a file at Sold or Settled
+  // would open with the stage being viewed scrolled out of sight. Bring it
+  // into the middle of the row, before paint, whenever the viewed stage
+  // changes. Only this row scrolls; the page does not move.
+  const navRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    const target = nav?.querySelector<HTMLElement>(`[data-stage="${viewedStage}"]`);
+    if (!nav || !target || nav.scrollWidth <= nav.clientWidth) return;
+    nav.scrollLeft = target.offsetLeft - (nav.clientWidth - target.offsetWidth) / 2;
+  }, [viewedStage]);
+
   return (
     // Phones: the six ovals keep a readable width and the row scrolls sideways
     // inside this container. The page itself never scrolls sideways.
-    <nav aria-label="Stages" className="-mx-1 overflow-x-auto px-1 pb-1 pt-0.5">
+    <nav ref={navRef} aria-label="Stages" className="relative -mx-1 overflow-x-auto px-1 pb-1 pt-0.5">
       <ol className="grid min-w-[552px] grid-cols-6">
         {stages.map((s, i) => {
           const viewed = s.stage === viewedStage;
@@ -86,15 +101,15 @@ export function StageProgressBar({
               {s.state === "finished" ? <Check size={15} strokeWidth={3} /> : ovalText(s)}
             </span>
           );
+          // The name's colour follows the stage's state, as on the mockup:
+          // dark once the stage has started, grey before. The stage being
+          // viewed is marked by an underline only, so a not-started stage
+          // stays grey even while you are on it.
           const name = (
             <span
               className={`mt-1.5 block whitespace-nowrap px-1 pb-1 text-[11.5px] ${
-                viewed
-                  ? "font-semibold text-rc-ink underline decoration-rc-green-deep decoration-2 underline-offset-4"
-                  : s.state === "notStarted"
-                    ? "font-medium text-rc-faint"
-                    : "font-medium text-rc-muted"
-              }`}
+                s.state === "notStarted" ? "font-medium text-rc-muted" : "font-semibold text-rc-ink"
+              } ${viewed ? "underline decoration-rc-green-deep decoration-2 underline-offset-4" : ""}`}
               aria-hidden="true"
             >
               {s.label}
@@ -102,7 +117,9 @@ export function StageProgressBar({
           );
           const spoken = `${s.label}: ${spokenState(s)}${s.reachable ? "" : ", locked"}`;
           return (
-            <li key={s.stage} className="relative text-center">
+            // A stage the file cannot open yet is faded, so a held file's
+            // ticked later stages do not read as clickable.
+            <li key={s.stage} data-stage={s.stage} className={`relative text-center ${s.reachable ? "" : "opacity-50"}`}>
               {/* The joining line sits only in the gap between two ovals:
                   each oval is inset 8px from its column edge, so the line runs
                   from 8px left of the edge to 8px right of it. Green when the
@@ -126,7 +143,7 @@ export function StageProgressBar({
                   {name}
                 </Link>
               ) : (
-                <span className="block cursor-default" aria-label={spoken} role="img">
+                <span className="block cursor-not-allowed" aria-label={spoken} role="img">
                   {oval}
                   {name}
                 </span>
