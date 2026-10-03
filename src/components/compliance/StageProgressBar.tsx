@@ -1,9 +1,9 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import Link from "next/link";
 import { Check } from "lucide-react";
-import { stageStarted, type StageProgress } from "@/lib/rules/stage-progress";
+import { fillPercent, stageStarted, type StageProgress } from "@/lib/rules/stage-progress";
 import type { PropertyStage } from "@/lib/types";
 
 // THE PROGRESS BAR (Adam, 3 Oct 2026). Brief: RealComply-progress-bar-brief-3-Oct.md,
@@ -28,6 +28,15 @@ import type { PropertyStage } from "@/lib/types";
 // reasoning; this bar replaces it. Do not replace it with a to-do list or any
 // other message. The gating rules themselves are unchanged (lib/rules/stage-hold.ts).
 //
+// EACH OVAL IS ITS OWN SMALL PROGRESS BAR (Adam, 3 Oct 2026, brief updated the
+// same day). Its colour fills from the left in proportion to the count, so
+// "7 of 9" is seven ninths full, and the rest of the oval is plain white. This
+// replaced the first version, where an in-progress oval was evenly tinted
+// whatever its count. The fill is a mid-strength tint with dark text on top,
+// as on the approved mockup, so the count reads on both sides of the fill
+// edge. Do not swap in a strong fill: the number would break up where the
+// edge crosses it. A flagged stage fills by its count too, in red.
+//
 // Wording rules for anything drawn on the bar: no noun for what is counted
 // (not cards, tasks, items or steps), no "to go", "remaining" or percentages,
 // and never the word "compliant".
@@ -40,11 +49,27 @@ export type StageProgressBarStage = StageProgress & {
 };
 
 const OVAL: Record<StageProgress["state"], string> = {
-  inProgress: "border-rc-green-deep bg-rc-green-soft text-rc-ink",
+  inProgress: "border-rc-green-deep bg-white text-rc-ink",
   finished: "border-rc-green-deep bg-rc-green-deep text-white",
   notStarted: "border-rc-border bg-white text-rc-muted",
-  flagged: "border-rc-red bg-rc-red-soft text-rc-red-deep",
+  flagged: "border-rc-red bg-white text-rc-ink",
 };
+
+// The colour of the filled part, for the two states that fill by their count.
+// A finished stage is solid green already and a not-started one is empty.
+const FILL: Partial<Record<StageProgress["state"], string>> = {
+  inProgress: "var(--rc-green-fill)",
+  flagged: "var(--rc-red-fill)",
+};
+
+// A hard stop rather than a separate fill element: the oval's own rounded
+// border clips it, and the count needs no second copy to sit on top.
+function fillStyle(s: StageProgress): CSSProperties | undefined {
+  const fill = FILL[s.state];
+  if (!fill) return undefined;
+  const pct = fillPercent(s);
+  return { backgroundImage: `linear-gradient(to right, ${fill} ${pct}%, transparent ${pct}%)` };
+}
 
 function ovalText(s: StageProgress): string {
   return s.state === "flagged" ? `! ${s.done} of ${s.total}` : `${s.done} of ${s.total}`;
@@ -96,6 +121,7 @@ export function StageProgressBar({
           const oval = (
             <span
               className={`mx-auto flex h-[29px] w-[calc(100%-16px)] items-center justify-center rounded-full border-2 text-xs font-bold tabular-nums transition ${OVAL[s.state]}`}
+              style={fillStyle(s)}
               aria-hidden="true"
             >
               {s.state === "finished" ? <Check size={15} strokeWidth={3} /> : ovalText(s)}

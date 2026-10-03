@@ -5,6 +5,8 @@ import type { PropertyItemStatus } from "@/lib/types";
 // One oval per stage at the top of the listing page. Each shows exactly one
 // thing: "7 of 9" while in progress, a tick when finished, "0 of 4" greyed when
 // not started, and "! 2 of 5" in red when anything in the stage is flagged.
+// Each oval is also its own small progress bar: its colour fills from the left
+// in proportion to the count (fillPercent below).
 //
 // How the count works:
 //   - The second number is every item that applies to this listing in that
@@ -47,4 +49,18 @@ export function stageProgress(statuses: (PropertyItemStatus | undefined)[]): Sta
 /** Whether a stage has started: anything recorded in it, or anything flagged. */
 export function stageStarted(progress: StageProgress): boolean {
   return progress.state !== "notStarted";
+}
+
+/**
+ * How much of the oval is coloured in, as a whole percentage: the share of the
+ * stage that is done. "7 of 9" fills 78%. A finished stage is full; so is any
+ * stage with nothing to do, which reads as finished. Anything short of
+ * finished stays under 100. A flagged stage fills by
+ * its count like any other, in red, and never reaches 100% because the
+ * flagged item is not done.
+ */
+export function fillPercent(progress: StageProgress): number {
+  if (progress.done >= progress.total) return 100;
+  // Rounded, but a stage that is not finished never rounds up to looking full.
+  return Math.min(99, Math.round((100 * progress.done) / progress.total));
 }
