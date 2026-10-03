@@ -1083,7 +1083,9 @@ async function setLoggedElsewhere(
       property_id: propertyId,
       item_key: itemKey,
       status: elsewhere ? "done" : (row as PropertyItem | null)?.status ?? "open",
-      updated_by: user.id,
+      // property_items has no updated_by column; sending one failed every save
+      // here (fixed 3 Oct 2026). The person who marks it done is completed_by.
+      completed_by: elsewhere ? user.id : ((row as PropertyItem | null)?.completed_by ?? null),
       data: {
         ...existing,
         loggedElsewhere: elsewhere,
