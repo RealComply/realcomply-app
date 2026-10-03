@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, createContext, useContext } from "react";
 import { Mic, Square } from "lucide-react";
 
 // Dictation into any text field. Adam, 15 Aug 2026: typing a paragraph of ESP
@@ -81,6 +81,14 @@ function messageFor(code: string): string {
 // make useSyncExternalStore resubscribe every time.
 const NEVER_CHANGES = () => () => {};
 
+/**
+ * True while the text field is out of sight: a finished card folded to one row
+ * (ItemShell, 3 Oct 2026). Dictation stops when it turns true, because its
+ * only Stop button is inside what was just hidden, and a microphone left
+ * running with no visible way to stop it is not acceptable.
+ */
+export const DictationSuspended = createContext(false);
+
 export function useDictation(onText: (text: string) => void) {
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +160,13 @@ export function useDictation(onText: (text: string) => void) {
       recRef.current?.abort();
     };
   }, []);
+
+  // Nor on one that has been folded out of sight. abort() ends the session,
+  // and its onend handler clears the listening state.
+  const suspended = useContext(DictationSuspended);
+  useEffect(() => {
+    if (suspended) recRef.current?.abort();
+  }, [suspended]);
 
   return { supported, listening, start, stop, error };
 }
