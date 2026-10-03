@@ -75,7 +75,7 @@ export function StageProgressBar({
     // Phones: the six ovals keep a readable width and the row scrolls sideways
     // inside this container. The page itself never scrolls sideways.
     <nav aria-label="Stages" className="-mx-1 overflow-x-auto px-1 pb-1 pt-0.5">
-      <ol className="grid min-w-[504px] grid-cols-6">
+      <ol className="grid min-w-[552px] grid-cols-6">
         {stages.map((s, i) => {
           const viewed = s.stage === viewedStage;
           const oval = (
@@ -88,7 +88,7 @@ export function StageProgressBar({
           );
           const name = (
             <span
-              className={`mt-1.5 block truncate px-1 text-[11.5px] ${
+              className={`mt-1.5 block whitespace-nowrap px-1 pb-1 text-[11.5px] ${
                 viewed
                   ? "font-semibold text-rc-ink underline decoration-rc-green-deep decoration-2 underline-offset-4"
                   : s.state === "notStarted"
