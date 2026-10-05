@@ -1,3 +1,4 @@
+import { photoNoticeRecordLines, type TenantPhotoData } from "@/lib/rules/tenant-photo-notice";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
@@ -438,6 +439,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       const note = (byKey[item.key]?.data as { note?: string } | undefined)?.note;
       c.text(`• ${item.label}`, { size: 9.5, color: AMBER, indent: 4 });
       if (note) c.text(note, { size: 8.5, color: MUTED, indent: 16 });
+      if (item.key === "t5") {
+        const reasons = (byKey[item.key]?.data as { flagReasons?: string[] } | undefined)?.flagReasons ?? [];
+        for (const r of reasons) c.text(r, { size: 8.5, color: MUTED, indent: 16 });
+      }
     }
     c.rule(10, 14);
   }
@@ -471,6 +476,13 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         indent: 12,
       });
       if (item.legalBasis) c.text(item.legalBasis, { size: 8, color: FAINT, indent: 12 });
+      // t5 keeps its shoot date and the tenant's permission on the item, not
+      // in the note, so the record prints them here.
+      if (item.key === "t5" && current) {
+        for (const line of photoNoticeRecordLines((current.data ?? {}) as TenantPhotoData, formatAuDate)) {
+          c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+        }
+      }
       c.y -= 5;
     }
     c.y -= 8;

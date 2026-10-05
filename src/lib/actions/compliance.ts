@@ -30,6 +30,7 @@ import type {
   PropertyStage,
 } from "@/lib/types";
 import { STAGE_LABELS } from "@/lib/types";
+import { photoNoticeFlags, photoNoticeMissing, type TenantPhotoData } from "@/lib/rules/tenant-photo-notice";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -429,6 +430,43 @@ export async function setItemStatus(
     data.selfManaged = formData.get("selfManaged") === "yes";
   }
 
+  // t5 — tenant notice and permission for advertising photos (s55AA, s55A).
+  // The notice date is the card's event date; the rest is saved on the item.
+  // Gaps in the record refuse "done". What the dates show went wrong (under 7
+  // days' notice, permission more than 3 weeks older than the listing launch
+  // date, or dated after it) flags the card instead, like every other date
+  // check here. See lib/rules/tenant-photo-notice.ts.
+  if (itemKey === "t5") {
+    const photo: TenantPhotoData = {
+      shootDate: String(formData.get("shootDate") ?? "") || null,
+      permissionGiven: formData.get("permissionGiven") === "yes",
+      permissionDate: String(formData.get("permissionDate") ?? "") || null,
+      noBelongings: formData.get("noBelongings") === "yes",
+    };
+    Object.assign(data, photo);
+
+    if (status === "done") {
+      const missing = photoNoticeMissing({ noticeDate: eventDate, data: photo });
+      if (missing.length > 0) return { error: missing.join(" ") };
+
+      const launchDate = await launchDateFor(supabase, propertyId);
+      const flagReasons = photoNoticeFlags({ noticeDate: eventDate, data: photo, launchDate });
+      if (flagReasons.length > 0) {
+        const { error } = await upsertItem(supabase, {
+          agencyId: profile.agency_id,
+          propertyId,
+          itemKey,
+          status: "flagged",
+          data: { ...data, flagReasons },
+          eventDate,
+          completedBy: null,
+        });
+        revalidatePath(`/dashboard/${propertyId}`);
+        return error ? { error: error.message } : ok;
+      }
+    }
+  }
+
   // a4c — the ESP reasoning. Text the agent did not type here (RealComply's
   // draft, or reasoning read from their document) is not theirs until they
   // confirm it in one click, and a draft must be edited in its wording first.
@@ -602,8 +640,77 @@ export async function setItemStatus(
     await revokePreCommencementIfAgreementIsNew(supabase, propertyId, eventDate);
   }
 
+  // The launch date is half of t5's permission check, and either card can be
+  // filled in second. Re-check t5 whenever the launch date is saved, so the
+  // flag does not depend on the order the agent worked in.
+  if (!error && itemKey === "c0") {
+    await recheckTenantPhotoPermission(supabase, profile.agency_id, user.id, propertyId, status === "done" ? eventDate : null);
+  }
+
   revalidatePath(`/dashboard/${propertyId}`);
   return error ? { error: error.message } : ok;
+}
+
+// The "Listing launch date" card (c0): the day the property was first
+// advertised. t5 measures the tenant's permission against it.
+async function launchDateFor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+): Promise<string | null> {
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("event_date, status")
+    .eq("property_id", propertyId)
+    .eq("item_key", "c0")
+    .maybeSingle();
+  const launch = row as { event_date?: string | null; status?: string } | null;
+  // Flagged still counts: c0 is flagged when the contract arrived after the
+  // launch, and the launch date itself is no less real for that.
+  return launch && launch.status !== "open" ? (launch.event_date ?? null) : null;
+}
+
+// Re-runs t5's date checks after the launch date changes. Only touches a t5
+// that has been marked done or flagged: an open card is still being filled in
+// and gets checked when it is saved.
+async function recheckTenantPhotoPermission(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  agencyId: string,
+  userId: string,
+  propertyId: string,
+  launchDate: string | null,
+) {
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("status, data, event_date, completed_by")
+    .eq("property_id", propertyId)
+    .eq("item_key", "t5")
+    .maybeSingle();
+  const t5 = row as {
+    status?: "open" | "done" | "flagged";
+    data?: Record<string, unknown> | null;
+    event_date?: string | null;
+    completed_by?: string | null;
+  } | null;
+  if (!t5 || t5.status === "open") return;
+
+  const data = { ...(t5.data ?? {}) };
+  const flagReasons = photoNoticeFlags({
+    noticeDate: t5.event_date ?? null,
+    data: data as TenantPhotoData,
+    launchDate,
+  });
+  const status = flagReasons.length > 0 ? "flagged" : "done";
+  if (status === t5.status && JSON.stringify(flagReasons) === JSON.stringify(data.flagReasons ?? [])) return;
+
+  await upsertItem(supabase, {
+    agencyId,
+    propertyId,
+    itemKey: "t5",
+    status,
+    data: { ...data, flagReasons },
+    eventDate: t5.event_date ?? null,
+    completedBy: status === "done" ? (t5.completed_by ?? userId) : null,
+  });
 }
 
 // f3 — pre-purchase inspection report register (cl 37, Property and Stock
