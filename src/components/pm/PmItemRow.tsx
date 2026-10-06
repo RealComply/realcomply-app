@@ -4,7 +4,7 @@ import { useOptimistic, useState, useTransition } from "react";
 import { Info } from "lucide-react";
 import { setPmItem } from "@/lib/actions/pm";
 import { formatAuDateTimeShort } from "@/lib/format-date";
-import type { PmItem } from "@/lib/rules/nsw-pm";
+import type { PmResolvedItem } from "@/lib/rules/nsw-pm";
 import type { PmTickState } from "@/lib/rules/pm-engine";
 
 // One PM item: a tick box, the title, and one help line (brief A6).
@@ -18,6 +18,10 @@ import type { PmTickState } from "@/lib/rules/pm-engine";
 // holds no PM documents.
 //
 // The legal reference sits behind the "i", the way the sales cards fold theirs.
+//
+// An item RealComply has marked N/A itself (the tenant ended the tenancy, or
+// the ground carries no exclusion period; brief B1) shows the reason and
+// cannot be ticked.
 
 export type PmRowTick = { state: PmTickState; byName: string; at: string } | null;
 
@@ -27,12 +31,15 @@ export function PmItemRow({
   tick,
   viewerName,
   striped,
+  outgoingTenancyId,
 }: {
   propertyId: string;
-  item: PmItem;
+  item: PmResolvedItem;
   tick: PmRowTick;
   viewerName: string;
   striped: boolean;
+  /** Set for an outgoing tenant's Exit item (brief B2). */
+  outgoingTenancyId?: string;
 }) {
   const [optimistic, setOptimistic] = useOptimistic(tick);
   const [pending, startTransition] = useTransition();
@@ -47,12 +54,25 @@ export function PmItemRow({
     setError(null);
     startTransition(async () => {
       setOptimistic(next === "open" ? null : { state: next, byName: viewerName, at: new Date().toISOString() });
-      const result = await setPmItem(propertyId, item.key, next);
+      const result = await setPmItem(propertyId, item.key, next, outgoingTenancyId ?? null);
       if (result.error) setError(result.error);
     });
   }
 
-  const id = `pm-${item.key}`;
+  const id = `pm-${outgoingTenancyId ? `${outgoingTenancyId}-` : ""}${item.key}`;
+
+  if (item.auto) {
+    return (
+      <li className={`flex items-start gap-3 border-t border-rc-border px-4 py-3 ${striped ? "bg-rc-bg-alt" : ""}`}>
+        <input type="checkbox" checked={false} disabled aria-label={`${item.title}: N/A`} className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-rc-muted line-through">{item.title}</p>
+          <p className="mt-0.5 text-[12.5px] font-semibold text-rc-muted">N/A · {item.auto.note}</p>
+        </div>
+      </li>
+    );
+  }
+
   return (
     <li className={`flex items-start gap-3 border-t border-rc-border px-4 py-3 ${striped ? "bg-rc-bg-alt" : ""}`}>
       <input

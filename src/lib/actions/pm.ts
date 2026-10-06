@@ -5,10 +5,31 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import type { ActionState } from "@/lib/actions/auth";
 import { loadPmProperty, pmAgencySettings } from "@/lib/data/pm";
-import { isPmOrigin, pmGroupLabel, pmItemStage, pmOrigin } from "@/lib/rules/nsw-pm";
-import { pmBlockedLine, pmCanSetItem, pmMoveCheck, type PmTickState } from "@/lib/rules/pm-engine";
+import {
+  PM_EVENT_RECORDS,
+  PM_PET_APPLICATION,
+  PM_PET_REQUEST,
+  isPmEndedBy,
+  isPmGround,
+  isPmManagementEndedReason,
+  isPmOrigin,
+  isPmPetGround,
+  pmGroupLabel,
+  pmItemStage,
+  pmOrigin,
+  pmWaterClean,
+  pmWaterResult,
+} from "@/lib/rules/nsw-pm";
+import {
+  pmCanAnswerWater,
+  pmCanRecord,
+  pmCanSetItem,
+  pmMoveCheck,
+  pmOutgoing,
+  type PmTickState,
+} from "@/lib/rules/pm-engine";
 
-// Server actions for property management (PM), Part A. Brief:
+// Server actions for property management (PM), Parts A and B. Brief:
 // claude/RealComply-PM-build-brief-6-Oct.md.
 //
 // Every tick and every move is checked here against the same engine the page
@@ -122,7 +143,12 @@ async function ensureTenancyId(
  * database (0052) from whoever is signed in; every change is kept in the
  * history by a trigger, so nothing is ever silently lost.
  */
-export async function setPmItem(propertyId: string, itemKey: string, next: PmTickState): Promise<ActionState> {
+export async function setPmItem(
+  propertyId: string,
+  itemKey: string,
+  next: PmTickState,
+  outgoingTenancyId?: string | null,
+): Promise<ActionState> {
   const { supabase, user, pmEnabled } = await requirePm();
   if (!pmEnabled) return { error: PM_OFF };
   if (next !== "done" && next !== "na" && next !== "open") return { error: "Something went wrong. Try again." };
@@ -130,13 +156,18 @@ export async function setPmItem(propertyId: string, itemKey: string, next: PmTic
   const loaded = await loadPmProperty(supabase, propertyId);
   if (!loaded) return { error: "That property could not be found." };
 
-  // The lock, on the server.
-  const refusal = pmCanSetItem(loaded.input, itemKey, next);
+  // The lock, on the server. An outgoing tenancy's Exit is never locked, but
+  // it has to be an outgoing tenancy of this property (brief B2).
+  const refusal = pmCanSetItem(loaded.input, itemKey, next, outgoingTenancyId ?? null);
   if (refusal) return { error: refusal };
 
   // Onboarding ticks belong to the property (done once); the rest to the tenancy.
   const isOnboarding = pmItemStage(itemKey)?.scope === "property";
-  const tenancyId = isOnboarding ? null : await ensureTenancyId(supabase, loaded);
+  const tenancyId = isOnboarding
+    ? null
+    : outgoingTenancyId
+      ? outgoingTenancyId
+      : await ensureTenancyId(supabase, loaded);
   if (!isOnboarding && !tenancyId) return { error: "Couldn't save that. Try again." };
 
   let existing = supabase
@@ -164,7 +195,12 @@ export async function setPmItem(propertyId: string, itemKey: string, next: PmTic
   return { error: null };
 }
 
-/** The one move button (brief A9): Put up for lease, Tenant has moved in, and so on. */
+/**
+ * A move between groups (brief A9, B1 to B3): Put up for lease, Tenant has
+ * moved in, Tenant is vacating (with who is ending it and the ground), Tenant
+ * has moved out, Put up for lease now, Put back up for lease, Management has
+ * ended. Re-leasing starts a new tenancy; the old one is kept as it was.
+ */
 export async function movePmProperty(propertyId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   const { supabase, pmEnabled } = await requirePm();
   if (!pmEnabled) return { error: PM_OFF };
@@ -172,56 +208,262 @@ export async function movePmProperty(propertyId: string, _prev: ActionState, for
   const loaded = await loadPmProperty(supabase, propertyId);
   if (!loaded) return { error: "That property could not be found." };
 
-  const check = pmMoveCheck(loaded.input);
-  if (!check) return { error: `There is nothing to move on to from ${pmGroupLabel(loaded.property.grp)} yet.` };
+  const moveKey = String(formData.get("move") ?? "");
+  const check = pmMoveCheck(loaded.input, moveKey);
   // Someone else may have moved it since the page was drawn.
-  if (String(formData.get("from") ?? "") !== check.move.from) {
-    return { error: "This property has moved on since the page loaded. Refresh to see where it is now." };
+  if (!check || String(formData.get("from") ?? "") !== check.move.from) {
+    return {
+      error:
+        loaded.property.grp === "archived"
+          ? "This management has ended."
+          : `This property has moved on since the page loaded (it is now in ${pmGroupLabel(loaded.property.grp)}). Refresh to see where it is now.`,
+    };
   }
-  if (check.blockedBy.length > 0) return { error: pmBlockedLine(check.blockedBy) };
+  if (check.line) return { error: check.line };
+  const move = check.move;
 
+  // What the move asks for, checked before anything is written.
   let eventDate: string | null = null;
-  if (check.move.date) {
+  const tenancyUpdate: Record<string, string | null> = {};
+  const propertyUpdate: Record<string, string | null> = { grp: move.to };
+
+  if (move.asks === "date" || move.asks === "vacating" || move.asks === "managementEnded") {
     eventDate = String(formData.get("date") ?? "").trim();
-    if (!isIsoDate(eventDate)) return { error: `Enter the ${check.move.date.label.toLowerCase()}.` };
+    const label = move.date?.label ?? "Date management ended";
+    if (!isIsoDate(eventDate)) return { error: `Enter the ${label.toLowerCase()}.` };
+  }
+  if (move.date && eventDate) {
     const moveIn = loaded.tenancy?.move_in_date;
-    if (check.move.date.field === "move_out_date" && moveIn && eventDate < moveIn) {
+    if (move.date.field === "move_out_date" && moveIn && eventDate < moveIn) {
       return { error: "The move-out date can't be before the move-in date." };
     }
+    tenancyUpdate[move.date.field] = eventDate;
+  }
+  if (move.asks === "vacating") {
+    // Who is ending it (brief B1). The landlord: the ground too.
+    const endedBy = String(formData.get("endedBy") ?? "");
+    if (!isPmEndedBy(endedBy)) return { error: "Choose who is ending the tenancy: the tenant or the landlord." };
+    tenancyUpdate.ended_by = endedBy;
+    tenancyUpdate.termination_ground = null;
+    if (endedBy === "landlord") {
+      const ground = String(formData.get("ground") ?? "");
+      if (!isPmGround(ground)) return { error: "Choose the ground the landlord is ending it on." };
+      tenancyUpdate.termination_ground = ground;
+    }
+  }
+  if (move.asks === "managementEnded") {
+    const reason = String(formData.get("reason") ?? "");
+    if (!isPmManagementEndedReason(reason)) return { error: "Choose why the management has ended." };
+    propertyUpdate.management_ended_on = eventDate;
+    propertyUpdate.management_ended_reason = reason;
   }
 
   const tenancyId = await ensureTenancyId(supabase, loaded);
   if (!tenancyId) return { error: "Couldn't save that. Try again." };
 
-  if (check.move.date && eventDate) {
-    const { error } = await supabase
-      .from("pm_tenancies")
-      .update({ [check.move.date.field]: eventDate })
-      .eq("id", tenancyId);
+  if (Object.keys(tenancyUpdate).length > 0) {
+    const { error } = await supabase.from("pm_tenancies").update(tenancyUpdate).eq("id", tenancyId);
     if (error) return { error: "Couldn't save that. Try again." };
   }
 
+  // Moved only if it is still where the page saw it.
   const { data: moved, error } = await supabase
     .from("pm_properties")
-    .update({ grp: check.move.to })
+    .update(propertyUpdate)
     .eq("id", propertyId)
-    .eq("grp", check.move.from)
+    .eq("grp", move.from)
     .select("id");
   if (error) return { error: "Couldn't save that. Try again." };
   if (!moved || moved.length === 0) {
     return { error: "This property has moved on since the page loaded. Refresh to see where it is now." };
   }
 
+  // Re-leasing: the next tenant gets a new tenancy, never the old one written
+  // over (brief B2). From here on an existing property runs like any other,
+  // so nothing is "Before RealComply".
+  let newTenancyId: string | null = null;
+  if (move.newTenancy) {
+    const nextSeq = Math.max(...loaded.tenancies.map((t) => t.seq), 0) + 1;
+    const { data: created, error: tenancyError } = await supabase
+      .from("pm_tenancies")
+      .insert({ agency_id: loaded.property.agency_id, property_id: propertyId, seq: nextSeq, before_stages: [] })
+      .select("id")
+      .single();
+    if (tenancyError || !created) {
+      // Put it back where it was rather than leave it in For lease on the old tenancy.
+      await supabase.from("pm_properties").update({ grp: move.from }).eq("id", propertyId);
+      return { error: "Couldn't start the new tenancy. Try again." };
+    }
+    newTenancyId = created.id;
+  }
+
   await supabase.from("pm_group_moves").insert({
     agency_id: loaded.property.agency_id,
     property_id: propertyId,
-    tenancy_id: tenancyId,
-    from_grp: check.move.from,
-    to_grp: check.move.to,
+    tenancy_id: newTenancyId ?? tenancyId,
+    from_grp: move.from,
+    to_grp: move.to,
     event_date: eventDate,
   });
 
   revalidatePath(`/dashboard/pm/${propertyId}`);
   revalidatePath("/dashboard/pm");
+  return { error: null };
+}
+
+/** "Tenant has moved out" on an outgoing tenancy, while the next one is being let (brief B2). */
+export async function moveOutOutgoingTenant(
+  propertyId: string,
+  tenancyId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, pmEnabled } = await requirePm();
+  if (!pmEnabled) return { error: PM_OFF };
+
+  const loaded = await loadPmProperty(supabase, propertyId);
+  if (!loaded) return { error: "That property could not be found." };
+  const out = pmOutgoing(loaded.input).find((o) => o.tenancyId === tenancyId);
+  if (!out) return { error: "That tenancy has been filed under History." };
+  if (out.movedOut) return { error: "That tenant has already moved out." };
+
+  const date = String(formData.get("date") ?? "").trim();
+  if (!isIsoDate(date)) return { error: "Enter the move-out date." };
+  if (out.tenancy.moveInDate && date < out.tenancy.moveInDate) {
+    return { error: "The move-out date can't be before the move-in date." };
+  }
+
+  const { data: updated, error } = await supabase
+    .from("pm_tenancies")
+    .update({ move_out_date: date })
+    .eq("id", tenancyId)
+    .eq("property_id", propertyId)
+    .is("move_out_date", null)
+    .select("id");
+  if (error || !updated || updated.length === 0) return { error: "Couldn't save that. Try again." };
+
+  revalidatePath(`/dashboard/pm/${propertyId}`);
+  revalidatePath("/dashboard/pm");
+  return { error: null };
+}
+
+/**
+ * The water usage questions (brief B5). Saved once the answers reach an end:
+ * "No" to the first or second, or an answer to the third. The server works
+ * out the state from the answers; the screen's view of it is not trusted.
+ */
+export async function setPmWater(propertyId: string, answers: unknown): Promise<ActionState> {
+  const { supabase, user, pmEnabled } = await requirePm();
+  if (!pmEnabled) return { error: PM_OFF };
+
+  const loaded = await loadPmProperty(supabase, propertyId);
+  if (!loaded) return { error: "That property could not be found." };
+  const refusal = pmCanAnswerWater(loaded.input);
+  if (refusal) return { error: refusal };
+
+  const clean = pmWaterClean(answers);
+  if (!clean) return { error: "Something went wrong. Try again." };
+  const result = pmWaterResult(clean);
+  if (result.next !== null) return { error: "Answer the next question first." };
+
+  const tenancyId = await ensureTenancyId(supabase, loaded);
+  if (!tenancyId) return { error: "Couldn't save that. Try again." };
+
+  const { data: row } = await supabase
+    .from("pm_item_states")
+    .select("id")
+    .eq("tenancy_id", tenancyId)
+    .eq("item_key", "water_usage")
+    .maybeSingle();
+  const { error } = row
+    ? await supabase
+        .from("pm_item_states")
+        .update({ state: result.state, detail: clean, changed_by: user.id })
+        .eq("id", row.id)
+    : await supabase.from("pm_item_states").insert({
+        agency_id: loaded.property.agency_id,
+        property_id: propertyId,
+        tenancy_id: tenancyId,
+        item_key: "water_usage",
+        state: result.state,
+        detail: clean,
+        changed_by: user.id,
+      });
+  if (error) return { error: "Couldn't save that. Try again." };
+
+  revalidatePath(`/dashboard/pm/${propertyId}`);
+  revalidatePath("/dashboard/pm");
+  return { error: null };
+}
+
+const RECORD_KINDS = new Set<string>([...PM_EVENT_RECORDS.map((r) => r.key), "pet_request", "pet_application"]);
+
+/**
+ * Record something that happened (brief B6, B7): a Stage 4 event (each press
+ * records the person and the time), a pet request, or a pet on the
+ * application. The database stamps who and when.
+ */
+export async function addPmRecord(propertyId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { supabase, pmEnabled } = await requirePm();
+  if (!pmEnabled) return { error: PM_OFF };
+
+  const kind = String(formData.get("kind") ?? "");
+  if (!RECORD_KINDS.has(kind)) return { error: "Something went wrong. Try again." };
+
+  const loaded = await loadPmProperty(supabase, propertyId);
+  if (!loaded) return { error: "That property could not be found." };
+  const refusal = pmCanRecord(loaded.input, kind === "pet_application" ? "pet_application" : "ongoing");
+  if (refusal) return { error: refusal };
+
+  let data: Record<string, string | null> = {};
+  if (kind === "pet_request" || kind === "pet_application") {
+    const spec = kind === "pet_request" ? PM_PET_REQUEST : PM_PET_APPLICATION;
+    const outcome = String(formData.get("outcome") ?? "");
+    if (!spec.outcomes.some((o) => o.key === outcome)) return { error: "Choose the outcome." };
+    let ground: string | null = null;
+    if (outcome === spec.refusedKey) {
+      ground = String(formData.get("ground") ?? "");
+      if (!isPmPetGround(ground)) return { error: "Choose the ground relied on." };
+    }
+    data = { outcome, ground };
+    if (kind === "pet_request") {
+      const received = String(formData.get("received") ?? "").trim();
+      if (!isIsoDate(received)) return { error: "Enter the date the request was received." };
+      data.received = received;
+    }
+  }
+
+  const tenancyId = await ensureTenancyId(supabase, loaded);
+  if (!tenancyId) return { error: "Couldn't save that. Try again." };
+
+  const { error } = await supabase.from("pm_records").insert({
+    agency_id: loaded.property.agency_id,
+    property_id: propertyId,
+    tenancy_id: tenancyId,
+    kind,
+    data,
+  });
+  if (error) return { error: "Couldn't save that. Try again." };
+
+  revalidatePath(`/dashboard/pm/${propertyId}`);
+  return { error: null };
+}
+
+/** "Response given" on a pet request. Stops the 21-day deadline showing. Stamped by the database. */
+export async function markPetResponseGiven(propertyId: string, recordId: string): Promise<ActionState> {
+  const { supabase, pmEnabled } = await requirePm();
+  if (!pmEnabled) return { error: PM_OFF };
+
+  const { data: updated, error } = await supabase
+    .from("pm_records")
+    .update({ response_given_at: new Date().toISOString() })
+    .eq("id", recordId)
+    .eq("property_id", propertyId)
+    .eq("kind", "pet_request")
+    .is("response_given_at", null)
+    .select("id");
+  if (error || !updated || updated.length === 0) return { error: "Couldn't save that. Try again." };
+
+  revalidatePath(`/dashboard/pm/${propertyId}`);
   return { error: null };
 }
