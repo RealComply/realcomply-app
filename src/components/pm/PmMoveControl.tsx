@@ -31,6 +31,9 @@ export type PmMoveOption = { move: PmMove; line: string };
 export function PmMoveControl({ propertyId, options }: { propertyId: string; options: PmMoveOption[] }) {
   const [asking, setAsking] = useState<PmMove | null>(null);
   const [state, formAction, pending] = useActionState(movePmProperty.bind(null, propertyId), initial);
+  // A refusal belongs to the move that got it. Cancel hides it, so it never
+  // shows on the next move opened; a new submit brings back whatever it returns.
+  const [dismissed, setDismissed] = useState<ActionState | null>(null);
 
   // Close the question once the move has gone through; the page redraws in
   // the new group with its own buttons. Adjusted during render, not in an effect.
@@ -80,8 +83,11 @@ export function PmMoveControl({ propertyId, options }: { propertyId: string; opt
       move={asking}
       formAction={formAction}
       pending={pending}
-      error={state.error}
-      onCancel={() => setAsking(null)}
+      error={state === dismissed ? null : state.error}
+      onCancel={() => {
+        setDismissed(state);
+        setAsking(null);
+      }}
     />
   );
 }

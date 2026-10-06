@@ -261,12 +261,8 @@ export async function movePmProperty(propertyId: string, _prev: ActionState, for
   const tenancyId = await ensureTenancyId(supabase, loaded);
   if (!tenancyId) return { error: "Couldn't save that. Try again." };
 
-  if (Object.keys(tenancyUpdate).length > 0) {
-    const { error } = await supabase.from("pm_tenancies").update(tenancyUpdate).eq("id", tenancyId);
-    if (error) return { error: "Couldn't save that. Try again." };
-  }
-
-  // Moved only if it is still where the page saw it.
+  // Moved only if it is still where the page saw it. This goes first, so a
+  // move that loses a race with someone else's writes nothing at all.
   const { data: moved, error } = await supabase
     .from("pm_properties")
     .update(propertyUpdate)
@@ -276,6 +272,23 @@ export async function movePmProperty(propertyId: string, _prev: ActionState, for
   if (error) return { error: "Couldn't save that. Try again." };
   if (!moved || moved.length === 0) {
     return { error: "This property has moved on since the page loaded. Refresh to see where it is now." };
+  }
+
+  if (Object.keys(tenancyUpdate).length > 0) {
+    const { error: tenancyUpdateError } = await supabase.from("pm_tenancies").update(tenancyUpdate).eq("id", tenancyId);
+    if (tenancyUpdateError) {
+      // Put the property back where it was rather than leave it moved without its dates.
+      await supabase
+        .from("pm_properties")
+        .update({
+          grp: move.from,
+          management_ended_on: loaded.property.management_ended_on ?? null,
+          management_ended_reason: loaded.property.management_ended_reason ?? null,
+        })
+        .eq("id", propertyId)
+        .eq("grp", move.to);
+      return { error: "Couldn't save that. Try again." };
+    }
   }
 
   // Re-leasing: the next tenant gets a new tenancy, never the old one written
@@ -453,6 +466,12 @@ export async function addPmRecord(propertyId: string, _prev: ActionState, formDa
 export async function markPetResponseGiven(propertyId: string, recordId: string): Promise<ActionState> {
   const { supabase, pmEnabled } = await requirePm();
   if (!pmEnabled) return { error: PM_OFF };
+
+  // Allowed after move-out and while the next tenancy is let, so the 21-day
+  // deadline can always be cleared (brief B6). Not once the management has ended.
+  const { data: property } = await supabase.from("pm_properties").select("grp").eq("id", propertyId).maybeSingle();
+  if (!property) return { error: "That property could not be found." };
+  if (property.grp === "archived") return { error: "This management has ended." };
 
   const { data: updated, error } = await supabase
     .from("pm_records")

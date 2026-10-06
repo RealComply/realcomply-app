@@ -30,7 +30,7 @@ import { PmStageSection } from "@/components/pm/PmStageSection";
 import { PmItemRow } from "@/components/pm/PmItemRow";
 import { PmWaterRow } from "@/components/pm/PmWaterRow";
 import { PmMoveControl } from "@/components/pm/PmMoveControl";
-import { PmOngoingRecords, PmPetApplication, type PmRecordView } from "@/components/pm/PmRecords";
+import { PmOngoingRecords, PmOpenPetRequests, PmPetApplication, type PmRecordView } from "@/components/pm/PmRecords";
 import { PmOutgoingMoveOut } from "@/components/pm/PmOutgoingMoveOut";
 import { todayInSydney } from "@/components/pm/pm-dates";
 
@@ -158,8 +158,9 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
 
       <PmMoveControl propertyId={property.id} options={moves.map((c) => ({ move: c.move, line: c.line }))} />
 
-      {/* The tenant has moved out of the current tenancy (brief B4). */}
-      {!archived && tenancy?.move_out_date && (
+      {/* The tenant has moved out of the current tenancy (brief B4). Still shown
+          once the management has ended: its reminder is still sent. */}
+      {tenancy?.move_out_date && (
         <RetentionNote text={PM_COPY.retentionTenant(formatAuDate(pmRetentionUntil(tenancy.move_out_date)))} />
       )}
 
@@ -206,6 +207,11 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
                 />
               ))}
             </ul>
+            <PmOpenPetRequests
+              propertyId={property.id}
+              records={recordRows.filter((r) => r.tenancy_id === o.tenancyId).map(toView)}
+              today={today}
+            />
           </PmStageSection>
         );
       })}
@@ -216,8 +222,10 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
           const items = pmStageItems(stage, input.tenancy);
           const ending = v.stage === 5 ? endingLine({ ...input.tenancy, vacateDate: tenancy?.vacate_date }) : null;
           return (
+            // Keyed by tenancy as well, so nothing a row was showing for one
+            // tenancy carries over when re-leasing starts the next one.
             <PmStageSection
-              key={v.stage}
+              key={`${tenancy?.id ?? "none"}-${v.stage}`}
               stage={v.stage}
               number={v.displayNumber}
               title={v.title}
@@ -233,6 +241,7 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
                   propertyId={property.id}
                   records={currentRecords.filter((r) => r.kind !== "pet_application")}
                   canRecord={pmCanRecord(input, "ongoing") === null}
+                  canRespond={!archived}
                   note={
                     v.oval.kind === "underWay"
                       ? PM_COPY.ongoingBody(recordsIn)

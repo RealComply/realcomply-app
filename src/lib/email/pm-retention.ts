@@ -25,8 +25,14 @@ import { PM_COPY, pmManagementEndedLabel, pmRetentionUntil } from "@/lib/rules/n
 //
 // Record first, send second, the same as licence reminders: a unique index on
 // (subject_kind, subject_id, due_date) in 0053 means a reminder is never sent
-// twice, even by two overlapping runs. A failed send is visible (the row is
-// there, the email is not) rather than silently repeated.
+// twice, even by two overlapping runs. A failed send is not retried (a
+// reminder sent twice is worse than one that occasionally fails, the same call
+// licence reminders make). sendEmail logs it and the run counts it as failed;
+// the date itself is always on the property page.
+//
+// Every read is paged: the API quietly returns at most 1000 rows a request,
+// and a busy agency's tenancies pass that. If a read fails, that agency is
+// left for the next run, which still catches anything due on or before its day.
 
 const PM_URL = "https://www.realcomply.com.au/dashboard/pm";
 
@@ -52,6 +58,22 @@ export type PmRetentionSubject = {
   due: string;
   seq?: number;
 };
+
+const PAGE = 1000;
+
+type Page = PromiseLike<{ data: unknown; error: unknown }>;
+
+/** Every row, a page at a time, or null if any page failed. */
+async function selectAll<T>(page: (from: number, to: number) => Page): Promise<T[] | null> {
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1);
+    if (error) return null;
+    const rows = (data ?? []) as T[];
+    all.push(...rows);
+    if (rows.length < PAGE) return all;
+  }
+}
 
 /** Today's date in Sydney, as YYYY-MM-DD. The job runs before the working day starts there. */
 export function sydneyDate(now: Date): string {
@@ -108,28 +130,31 @@ export async function runPmRetentionReminders(
   let alreadySent = 0;
   let failed = 0;
 
-  const { data: agencyRows } = await supabase.from("agencies").select("id, name, pm_enabled");
-  for (const agency of (agencyRows ?? []) as Agency[]) {
+  const agencyRows = await selectAll<Agency>((a, b) =>
+    supabase.from("agencies").select("id, name, pm_enabled").order("id").range(a, b),
+  );
+  for (const agency of agencyRows ?? []) {
     if (agency.pm_enabled !== true) continue;
 
-    const [{ data: propertyRows }, { data: tenancyRows }, { data: peopleRows }, { data: sentRows }] = await Promise.all([
-      supabase.from("pm_properties").select("*").eq("agency_id", agency.id),
-      supabase.from("pm_tenancies").select("*").eq("agency_id", agency.id),
-      supabase.from("profiles").select("*").eq("agency_id", agency.id),
-      supabase.from("pm_retention_reminders").select("*").eq("agency_id", agency.id),
-    ]);
-    const properties = new Map(((propertyRows ?? []) as Property[]).map((p) => [p.id, p]));
-    // Only the people in the office today (0035).
-    const people = ((peopleRows ?? []) as Person[]).filter((p) => !p.archived_at);
-    const licensees = people.filter((p) => p.is_licensee_in_charge);
-    const already = new Set(
-      ((sentRows ?? []) as { subject_kind: string; subject_id: string; due_date: string }[]).map(
-        (r) => `${r.subject_kind}:${r.subject_id}:${r.due_date}`,
+    const [propertyRows, tenancyRows, peopleRows, sentRows] = await Promise.all([
+      selectAll<Property>((a, b) => supabase.from("pm_properties").select("*").eq("agency_id", agency.id).order("id").range(a, b)),
+      selectAll<Tenancy>((a, b) => supabase.from("pm_tenancies").select("*").eq("agency_id", agency.id).order("id").range(a, b)),
+      selectAll<Person>((a, b) => supabase.from("profiles").select("*").eq("agency_id", agency.id).order("id").range(a, b)),
+      selectAll<{ subject_kind: string; subject_id: string; due_date: string }>((a, b) =>
+        supabase.from("pm_retention_reminders").select("*").eq("agency_id", agency.id).order("id").range(a, b),
       ),
-    );
+    ]);
+    // Left for the next run rather than worked from half a picture.
+    if (!propertyRows || !tenancyRows || !peopleRows || !sentRows) continue;
+
+    const properties = new Map(propertyRows.map((p) => [p.id, p]));
+    // Only the people in the office today (0035).
+    const people = peopleRows.filter((p) => !p.archived_at);
+    const licensees = people.filter((p) => p.is_licensee_in_charge);
+    const already = new Set(sentRows.map((r) => `${r.subject_kind}:${r.subject_id}:${r.due_date}`));
 
     const subjects: PmRetentionSubject[] = [];
-    for (const t of (tenancyRows ?? []) as Tenancy[]) {
+    for (const t of tenancyRows) {
       const property = properties.get(t.property_id);
       if (!property || !t.move_out_date) continue;
       subjects.push({ kind: "tenancy", id: t.id, agencyId: agency.id, property, from: t.move_out_date, due: pmRetentionUntil(t.move_out_date), seq: t.seq });

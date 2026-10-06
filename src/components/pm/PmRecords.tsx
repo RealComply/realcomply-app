@@ -66,6 +66,7 @@ export function PmOngoingRecords({
   propertyId,
   records,
   canRecord,
+  canRespond,
   note,
   today,
 }: {
@@ -73,6 +74,12 @@ export function PmOngoingRecords({
   records: PmRecordView[];
   /** False before move-in and after move-out: the records show, the buttons do not. */
   canRecord: boolean;
+  /**
+   * "Response given" on a pet request still waiting for one. Separate from
+   * canRecord: the 21-day deadline shows until it is pressed (brief B6), even
+   * after the tenant has moved out. False only once the management has ended.
+   */
+  canRespond: boolean;
   note: string;
   /** YYYY-MM-DD in Sydney, for the pet reply deadline. */
   today: string;
@@ -103,7 +110,7 @@ export function PmOngoingRecords({
         {pets.length > 0 && (
           <ul className="mt-2 space-y-2">
             {pets.map((r) => (
-              <PetRequestItem key={r.id} propertyId={propertyId} r={r} today={today} canRecord={canRecord} />
+              <PetRequestItem key={r.id} propertyId={propertyId} r={r} today={today} canRespond={canRespond} />
             ))}
           </ul>
         )}
@@ -205,12 +212,12 @@ function PetRequestItem({
   propertyId,
   r,
   today,
-  canRecord,
+  canRespond,
 }: {
   propertyId: string;
   r: PmRecordView;
   today: string;
-  canRecord: boolean;
+  canRespond: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -239,7 +246,7 @@ function PetRequestItem({
                 (left > 1 ? ` (${left} days left)` : left === 1 ? " (1 day left)" : left === 0 ? " (today)" : " (passed)")}
             </span>
           )}
-          {canRecord && (
+          {canRespond && (
             <button
               type="button"
               disabled={pending}
@@ -263,6 +270,36 @@ function PetRequestItem({
         </p>
       )}
     </li>
+  );
+}
+
+// ── An outgoing tenant's pet requests still waiting for a response ─────────
+
+/**
+ * Shown in the "Outgoing tenant: Exit" section while the previous tenant is
+ * still finishing (brief B2), so a 21-day reply deadline never drops off the
+ * page when the next tenancy starts (brief B6). Nothing new is recorded here.
+ */
+export function PmOpenPetRequests({
+  propertyId,
+  records,
+  today,
+}: {
+  propertyId: string;
+  records: PmRecordView[];
+  today: string;
+}) {
+  const open = records.filter((r) => r.kind === "pet_request" && !r.responseAt);
+  if (open.length === 0) return null;
+  return (
+    <div className="border-t border-rc-border px-4 py-3">
+      <p className="text-sm font-semibold text-rc-ink">{PM_PET_REQUEST.title}</p>
+      <ul className="mt-2 space-y-2">
+        {open.map((r) => (
+          <PetRequestItem key={r.id} propertyId={propertyId} r={r} today={today} canRespond />
+        ))}
+      </ul>
+    </div>
   );
 }
 

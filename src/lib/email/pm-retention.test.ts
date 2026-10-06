@@ -9,12 +9,25 @@ import type { SendEmailInput } from "@/lib/email/send";
 type Row = Record<string, unknown>;
 type Result = { data: unknown; error: null };
 
-function fakeSupabase(tables: Record<string, Row[]>, opts: { failInsert?: boolean } = {}) {
+// Like the real API, a request returns at most MAX_ROWS rows and says nothing
+// about the rest.
+const MAX_ROWS = 1000;
+
+function fakeSupabase(tables: Record<string, Row[]>, opts: { failInsert?: boolean; failRead?: string } = {}) {
   function from(table: string) {
     const filters: ((r: Row) => boolean)[] = [];
-    const rows = () => (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
+    let window: [number, number] = [0, MAX_ROWS - 1];
+    const rows = () =>
+      (tables[table] ?? [])
+        .filter((r) => filters.every((f) => f(r)))
+        .slice(window[0], Math.min(window[1], window[0] + MAX_ROWS - 1) + 1);
     const query = {
       select: () => query,
+      order: () => query,
+      range: (fromRow: number, toRow: number) => {
+        window = [fromRow, toRow];
+        return query;
+      },
       eq: (col: string, value: unknown) => {
         filters.push((r) => r[col] === value);
         return query;
@@ -25,7 +38,11 @@ function fakeSupabase(tables: Record<string, Row[]>, opts: { failInsert?: boolea
         return Promise.resolve({ error: null });
       },
       then: <T>(resolve: (r: Result) => T, reject?: (e: unknown) => T) =>
-        Promise.resolve({ data: rows(), error: null }).then(resolve, reject),
+        Promise.resolve(
+          opts.failRead === table
+            ? ({ data: null, error: { message: "timeout" } } as unknown as Result)
+            : { data: rows(), error: null },
+        ).then(resolve, reject),
     };
     return query;
   }
@@ -132,4 +149,31 @@ test("does not send when the record could not be written first", async () => {
   const result = await runPmRetentionReminders(ON_THE_DAY, { supabase: fakeSupabase(world(), { failInsert: true }), send });
   assert.equal(sent.length, 0);
   assert.equal(result.alreadySent, 1);
+});
+
+test("a busy agency past the 1000-row page still gets every reminder", async () => {
+  const w = world();
+  w.pm_properties = [];
+  w.pm_tenancies = [];
+  for (let i = 0; i < 1205; i += 1) {
+    w.pm_properties.push({ id: `p${i}`, agency_id: "ag1", address: `${i} Example Street, Nowhere NSW 2000`, manager_id: "pm1", management_ended_on: null, management_ended_reason: null });
+    w.pm_tenancies.push({ id: `t${i}`, agency_id: "ag1", property_id: `p${i}`, seq: 1, move_out_date: "2023-10-07" });
+  }
+  const { sent, send } = capture();
+  const result = await runPmRetentionReminders(ON_THE_DAY, { supabase: fakeSupabase(w), send });
+  assert.equal(result.checked, 1205);
+  assert.equal(result.sent, 1205);
+  assert.equal(w.pm_retention_reminders.length, 1205);
+  assert.equal(sent.length, 1205 * 2);
+});
+
+test("a failed read leaves that agency for the next run instead of half-checking it", async () => {
+  const w = world();
+  const { sent, send } = capture();
+  const result = await runPmRetentionReminders(ON_THE_DAY, { supabase: fakeSupabase(w, { failRead: "pm_tenancies" }), send });
+  assert.equal(result.checked, 0);
+  assert.equal(sent.length, 0);
+  assert.equal(w.pm_retention_reminders.length, 0);
+  const again = await runPmRetentionReminders(new Date("2026-10-07T21:50:00Z"), { supabase: fakeSupabase(w), send });
+  assert.equal(again.sent, 1);
 });
