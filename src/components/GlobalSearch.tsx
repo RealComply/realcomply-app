@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Building2, Search, User, X } from "lucide-react";
-import { NAV_LINKS, type NavLink } from "@/lib/nav";
+import { NAV_LINKS, visibleNavLink, type NavLink } from "@/lib/nav";
 import type { SearchHit } from "@/app/api/search/route";
 
 // Global search — the one convention every CRM examined shares and this app
@@ -33,7 +33,7 @@ function matchesPage(link: NavLink, term: string): boolean {
   return haystack.includes(term);
 }
 
-export function GlobalSearch({ isAssistant = false }: { isAssistant?: boolean }) {
+export function GlobalSearch({ isAssistant = false, pmEnabled = false }: { isAssistant?: boolean; pmEnabled?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
@@ -42,7 +42,7 @@ export function GlobalSearch({ isAssistant = false }: { isAssistant?: boolean })
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const pages = isAssistant ? NAV_LINKS.filter((l) => l.assistantSees) : NAV_LINKS;
+  const pages = NAV_LINKS.filter((l) => visibleNavLink(l, { isAssistant, pmEnabled }));
   const trimmed = term.trim().toLowerCase();
 
   const rows: Row[] = [

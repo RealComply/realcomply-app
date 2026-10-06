@@ -77,3 +77,30 @@ export function formatAuTimestamp(iso: string | null | undefined): string {
   }).format(d);
   return parts;
 }
+
+/**
+ * A timestamp as a short Sydney date and time: "6 Oct 2026, 2:15 pm". Used
+ * where a tick records who confirmed something and when (PM, 6 Oct 2026).
+ * Built from parts rather than toLocaleString so the shape does not depend on
+ * the runtime's locale data.
+ */
+export function formatAuDateTimeShort(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-AU", {
+      timeZone: "Australia/Sydney",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+      .formatToParts(d)
+      .map((p) => [p.type, p.value]),
+  );
+  const month = MONTHS[Number(new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", month: "numeric" }).format(d)) - 1].slice(0, 3);
+  return `${parts.day} ${month} ${parts.year}, ${parts.hour}:${parts.minute} ${String(parts.dayPeriod ?? "").toLowerCase()}`;
+}
