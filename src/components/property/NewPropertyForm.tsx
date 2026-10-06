@@ -106,7 +106,7 @@ function listOut(items: string[]): string {
 // dropdown entirely — this never blocks manual entry, since the API key
 // might not be configured, the network might hiccup, or Google might
 // simply not have this address.
-function AddressAutocomplete({ defaultValue }: { defaultValue?: string }) {
+export function AddressAutocomplete({ defaultValue }: { defaultValue?: string }) {
   const [value, setValue] = useState(defaultValue ?? "");
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [open, setOpen] = useState(false);

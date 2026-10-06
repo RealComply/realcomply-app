@@ -5,6 +5,7 @@ import { UserBar } from "@/components/UserBar";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { navCountsFor } from "@/lib/data/nav-counts";
+import { pmAgencySettings } from "@/lib/data/pm";
 
 // Shared across every /dashboard/* page. Now owns the whole application
 // shell — sidebar, user bar, page background — rather than only the "Ask the
@@ -23,7 +24,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // The sidebar badges. Computed here rather than fetched from the browser so
   // the number is correct in the first paint — a count that appears a second
   // late reads as the page changing its mind.
-  const counts = await navCountsFor(supabase, profile);
+  const [counts, pm] = await Promise.all([
+    navCountsFor(supabase, profile),
+    // Whether this agency has property management switched on (0052), for
+    // the "Property management" entry beside sales.
+    pmAgencySettings(supabase, profile.agency_id),
+  ]);
 
   return (
     // Column width comes from --rc-sidebar-w, which Sidebar sets on <html>
@@ -37,6 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Sidebar
         isAssistant={Boolean(profile.is_assistant)}
         isPlatformAdmin={profile.is_platform_admin === true}
+        pmEnabled={pm.enabled}
         counts={counts}
       />
       {/* min-w-0: a grid column's 1fr track will not shrink below its
@@ -45,7 +52,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           sideways just above the md breakpoint instead of scrolling in its
           own box. */}
       <div className="flex min-h-screen min-w-0 flex-col">
-        <UserBar profile={profile} />
+        <UserBar profile={profile} pmEnabled={pm.enabled} />
         {children}
         <AssistantChat />
       </div>

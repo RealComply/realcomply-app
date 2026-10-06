@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Check, ChevronRight, KeyRound, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { LogoMark } from "@/components/Logo";
-import { NAV_GROUPS } from "@/lib/nav";
+import { NAV_GROUPS, visibleNavLink } from "@/lib/nav";
 import { EMPTY_NAV_COUNTS, type NavCounts } from "@/lib/data/nav-counts";
 
 // Left sidebar navigation, replacing the seven-link top bar (TopNav) that had
@@ -88,10 +88,12 @@ function toggleListings(button: HTMLButtonElement) {
 export function Sidebar({
   isAssistant = false,
   isPlatformAdmin = false,
+  pmEnabled = false,
   counts = EMPTY_NAV_COUNTS,
 }: {
   isAssistant?: boolean;
   isPlatformAdmin?: boolean;
+  pmEnabled?: boolean;
   counts?: NavCounts;
 }) {
   const pathname = usePathname();
@@ -135,7 +137,7 @@ export function Sidebar({
           loses its heading too — otherwise "Agency" sits there empty. */}
       {NAV_GROUPS.map((g) => ({
         ...g,
-        links: isAssistant ? g.links.filter((l) => l.assistantSees) : g.links,
+        links: g.links.filter((l) => visibleNavLink(l, { isAssistant, pmEnabled })),
       }))
         .filter((group) => group.links.length > 0)
         .map((group, gi) => (

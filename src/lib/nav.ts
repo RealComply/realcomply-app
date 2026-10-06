@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   GraduationCap,
   Home,
+  KeyRound,
   Landmark,
   LayoutGrid,
   PenLine,
@@ -41,6 +42,8 @@ export type NavLink = {
   countKey?: NavCountKey;
   /** Extra search terms. Never rendered. */
   keywords?: string[];
+  /** Shown only to an agency with property management switched on (0052). */
+  pmOnly?: boolean;
 };
 
 export type NavCountKey = "listings" | "signoffs" | "registers" | "trust";
@@ -64,6 +67,17 @@ export const NAV_GROUPS: NavGroup[] = [
         assistantSees: true,
         countKey: "listings",
         keywords: ["properties", "files", "campaigns"],
+      },
+      // Property management, beside sales (brief, 6 Oct 2026). Off for every
+      // agency unless agencies.pm_enabled is set, so it only appears where PM
+      // is switched on.
+      {
+        href: "/dashboard/pm",
+        label: "Property management",
+        Icon: KeyRound,
+        assistantSees: true,
+        pmOnly: true,
+        keywords: ["pm", "rentals", "tenancies", "leasing", "landlord", "tenant"],
       },
       { href: "/dashboard/portfolio", label: "Office overview", Icon: LayoutGrid, keywords: ["portfolio", "team files"] },
     ],
@@ -145,3 +159,10 @@ export const NAV_GROUPS: NavGroup[] = [
 
 /** Flat list, for search. */
 export const NAV_LINKS: NavLink[] = NAV_GROUPS.flatMap((g) => g.links);
+
+/** The links this viewer gets: assistants see a subset, and PM only where it is on. */
+export function visibleNavLink(link: NavLink, viewer: { isAssistant: boolean; pmEnabled: boolean }): boolean {
+  if (viewer.isAssistant && !link.assistantSees) return false;
+  if (link.pmOnly && !viewer.pmEnabled) return false;
+  return true;
+}
