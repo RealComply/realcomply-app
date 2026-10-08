@@ -517,7 +517,7 @@ export type Property = {
   car_spaces: number | null;
   land_size_sqm: number | null;
   agent_interest: boolean | null;
-  // Public URL of the agency's own listing page, read by the weekly
+  // Public URL of the agency's own listing page, read by the daily
   // advertised-price check. See 0016_listing_url.sql.
   listing_url: string | null;
   // How the property is being sold. Everything auction-specific hangs off

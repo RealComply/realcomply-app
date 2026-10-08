@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // today all three read it straight off a4 — the figure recorded at listing
 // set-up:
 //
-//   * the weekly advertised-price check (website-scan.ts), comparing the live
+//   * the daily advertised-price check (website-scan.ts), comparing the live
 //     ad against the ESP under s73(1),
 //   * the rejected-offer check (compliance.ts), flagging an offer refused at
 //     or above the ESP under s73A,

@@ -76,7 +76,7 @@ export function LicenseeEmailForm({
       </div>
 
       {/* The agency's public website. Used to find each listing's own page for
-          the weekly advertised-price check, so nobody has to paste a URL per
+          the daily advertised-price check, so nobody has to paste a URL per
           listing. For an individual agent subscription this is their employing
           agency's site — the listings live there either way. */}
       <label htmlFor="websiteUrl" className="mt-4 block text-sm font-medium text-rc-ink">

@@ -1,11 +1,13 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
+import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import type { PropertyItem } from "@/lib/types";
 
 // The advertised-price check.
@@ -55,7 +57,95 @@ export type ScanFinding = {
   priceText?: string;
   priceLow?: number;
   priceHigh?: number;
+  prohibitedTerms?: string[];
+  /**
+   * sha256 of the price area of the page as read on this check — the text
+   * around every figure and price word. Tomorrow's check compares against it.
+   */
+  priceAreaHash?: string;
+  /** When the model last actually read the page. Equal to checkedAt on a full read. */
+  readAt?: string;
+  /**
+   * True when the page's price area was the same as at the last read, so the
+   * previous read was reused and no model call was made. The check still ran:
+   * the page was fetched, compared, and the arithmetic redone against the ESP
+   * on file today.
+   */
+  aiSkipped?: boolean;
+  /** Tokens spent on this check's model read. Absent when aiSkipped. */
+  usage?: { inputTokens: number; outputTokens: number };
+  /**
+   * The issues that email the agent: no price showing, or a price below the
+   * ESP. Each is also in issues. See lib/email/listing-price-alert.ts.
+   */
+  redFlags?: RedFlag[];
+  /**
+   * What the agent was last emailed about, as alertKey(redFlags). Carried
+   * forward while the same red flags stand, so they are emailed once; cleared
+   * when there are none, so a recurrence is emailed again.
+   */
+  alertedKey?: string;
 };
+
+// The scheduled advertised-price check starts on 1 November 2026, when the new
+// NSW legislation commences (RealComply, 8 Oct 2026). Midnight in Sydney,
+// which is still daylight saving (+11:00) on that date.
+//
+// Before then the 7am run only finds listing pages (discovery), so every live
+// listing has its page recorded and is checked from the first morning. From
+// then, every live listing is checked daily and no price on the ad is a red
+// flag. "Check now" on a listing works before the date, but a page with no
+// price only becomes a red flag from it.
+const PRICE_CHECK_FROM = new Date("2026-11-01T00:00:00+11:00");
+
+/** Identifies a set of red flags: the same price below the same ESP is the same alert. */
+function alertKey(flags: RedFlag[]): string {
+  return flags.map((f) => `${f.kind}:${f.text}`).sort().join("|");
+}
+
+/** What the model read off the page. Everything else is worked out in code. */
+type PageRead = {
+  priceShown: boolean;
+  priceText?: string;
+  priceLow?: number;
+  priceHigh?: number;
+  prohibitedTerms: string[];
+  addressConfirmed: boolean;
+};
+
+// Every live listing is checked every morning (RealComply, 8 Oct 2026): the
+// page is fetched and compared daily, and read by the model whenever its price
+// area has changed. This is a floor under that: a full model read at least
+// every second day even when nothing changed, because a reused read is a
+// comparison, not a reading of the ad, and it catches what the comparison
+// cannot see (e.g. the page swapped to another property with an identical
+// price block). Just under 48h so a read made at 7:00:30 is not still "fresh"
+// by a few seconds at the 7:00 run two days later.
+const MAX_REUSE_MS = 47 * 60 * 60 * 1000;
+
+const PRICE_SIGNAL =
+  /\$\s?\d|\bprice\b|\bguide\b|\boffers?\b|\bauction\b|contact agent|expressions? of interest|\bEOI\b|\bPOA\b|o\.n\.o|\bsold\b|under (offer|contract)|for sale/gi;
+
+/**
+ * The part of the page a price lives in: 150 characters either side of every
+ * dollar figure or price word, merged where they overlap.
+ *
+ * Deliberately generous. Other listings' prices on the same page are swept in
+ * too, so a change to a "similar properties" strip costs a model read it did
+ * not strictly need. The opposite mistake — a real price change not counted as
+ * one — would leave yesterday's verdict standing on today's ad.
+ */
+function priceArea(text: string): string {
+  const spans: Array<[number, number]> = [];
+  for (const m of text.matchAll(PRICE_SIGNAL)) {
+    const start = Math.max(0, m.index - 150);
+    const end = Math.min(text.length, m.index + m[0].length + 150);
+    const last = spans[spans.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else spans.push([start, end]);
+  }
+  return spans.map(([a, b]) => text.slice(a, b)).join(" … ");
+}
 
 const EXTRACTION_TOOL: Anthropic.Tool = {
   name: "record_advertised_price",
@@ -159,7 +249,7 @@ function toText(html: string): string {
 }
 
 async function readListingPage(url: URL): Promise<string> {
-  // A listing page that hangs should fail the check, not the whole weekly run.
+  // A listing page that hangs should fail the check, not the whole daily run.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
@@ -195,6 +285,7 @@ export async function scanOneProperty(
   supabase: Db,
   anthropic: Anthropic,
   property: { id: string; agency_id: string; address: string; listing_url: string | null },
+  { forceRead = false }: { forceRead?: boolean } = {},
 ): Promise<ScanFinding | null> {
   if (!property.listing_url) return null;
 
@@ -210,103 +301,38 @@ export async function scanOneProperty(
     if (text.length < 200) {
       finding = { ...base, ok: false, summary: "Couldn't read that page — there was almost nothing on it.", issues: [] };
     } else {
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 400,
-        system:
-          "You read a real estate listing page and report the advertised price exactly as a member of the public " +
-          "would see it. Report only what is on the page. Never infer a price from anything other than a price " +
-          "displayed for this property, and never carry over a figure from another listing shown on the same page.",
-        messages: [
-          {
-            role: "user",
-            content: `Listing page for ${property.address}.\n\n${text}`,
-          },
-        ],
-        tools: [EXTRACTION_TOOL],
-        tool_choice: { type: "tool", name: "record_advertised_price" },
-      });
+      // Compare with the last read before paying for another one. Reuse only
+      // a read of the same URL, made by the model (not an error), within the
+      // last two days, with a price area byte-for-byte the same as today's. A page
+      // with no price area at all is always read — nothing to compare.
+      const area = priceArea(text);
+      const priceAreaHash = createHash("sha256").update(area).digest("hex");
+      const previous = await previousScan(supabase, property.id);
+      const reusable =
+        !forceRead &&
+        area.length > 0 &&
+        previous?.priceAreaHash === priceAreaHash &&
+        previous.url === property.listing_url &&
+        previous.readAt != null &&
+        Date.now() - new Date(previous.readAt).getTime() < MAX_REUSE_MS;
 
-      const toolUse = response.content.find(
-        (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
-      );
-      const read = (toolUse?.input ?? {}) as {
-        priceShown?: boolean;
-        priceText?: string;
-        priceLow?: number;
-        priceHigh?: number;
-        prohibitedTerms?: string[];
-        pageLooksWrong?: boolean;
-        addressMatches?: boolean;
-      };
+      const { read, readAt, usage } = reusable
+        ? {
+            read: {
+              priceShown: previous.priceShown,
+              priceText: previous.priceText,
+              priceLow: previous.priceLow,
+              priceHigh: previous.priceHigh,
+              prohibitedTerms: previous.prohibitedTerms ?? [],
+              addressConfirmed: previous.addressConfirmed,
+            } satisfies PageRead,
+            readAt: previous.readAt!,
+            usage: undefined,
+          }
+        : { ...(await readWithModel(anthropic, property.address, text)), readAt: checkedAt };
 
-      // The ESP to compare against, read from the file rather than the page,
-      // and read as the price CURRENTLY on foot rather than the one recorded
-      // at listing set-up. Where a revision notice has been served and read,
-      // that is the figure the advertising has to respect — see
-      // lib/data/effective-esp.ts.
-      const esp = await effectiveEsp(supabase, property.id);
-
-      const issues: string[] = [];
-
-      const addressConfirmed = Boolean(read.addressMatches) && !read.pageLooksWrong;
-
-      // An unconfirmed page produces no verdict at all — neither a clean result
-      // nor a breach. Everything below this point assumes we are looking at the
-      // right property, and reporting either way on a page we cannot tie to the
-      // address is how an automated check quietly misleads someone.
-      if (!addressConfirmed) {
-        const unconfirmed: ScanFinding = {
-          ...base,
-          addressConfirmed: false,
-          ok: false,
-          priceShown: Boolean(read.priceShown),
-          priceText: read.priceText,
-          issues: [],
-          summary:
-            "Couldn't confirm this page is for this property, so nothing was checked. Open it and, if it's wrong, set the right link in Edit listing details.",
-        };
-        await writeFinding(supabase, property, unconfirmed);
-        return unconfirmed;
-      }
-
-      // Arithmetic, not judgement.
-      if (read.priceLow != null && esp.low != null && read.priceLow < esp.low) {
-        issues.push(
-          `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the ${espLabel(esp)} of $${esp.low.toLocaleString("en-AU")} on this file (s73(1)).` +
-            (esp.revised
-              ? ` The price was revised${esp.revisedOn ? ` on ${esp.revisedOn}` : ""}, and s73(3) requires the advertising to be amended or retracted as soon as practicable after that.`
-              : " If the ESP has been revised, record the notice on the file so this checks against the right figure."),
-        );
-      }
-      if (read.priceLow != null && read.priceHigh != null && read.priceLow > 0) {
-        const spread = ((read.priceHigh - read.priceLow) / read.priceLow) * 100;
-        if (spread > 10) {
-          issues.push(`Advertised range spreads ${spread.toFixed(1)}%, more than the 10% allowed (s72A(2)).`);
-        }
-      }
-      for (const term of read.prohibitedTerms ?? []) {
-        issues.push(`Advertising uses “${term}”, which s73(2) prohibits.`);
-      }
-      if (read.priceShown && esp.low == null) {
-        issues.push("No ESP recorded on this file to check the advertised price against.");
-      }
-
-      finding = {
-        ...base,
-        addressConfirmed,
-        ok: issues.length === 0,
-        priceShown: Boolean(read.priceShown),
-        priceText: read.priceText,
-        priceLow: read.priceLow,
-        priceHigh: read.priceHigh,
-        issues,
-        summary: issues.length
-          ? `${issues.length} thing${issues.length === 1 ? "" : "s"} to look at on the live ad.`
-          : read.priceShown
-            ? `Advertised at ${read.priceText ?? "the recorded guide"}, consistent with the ESP on file.`
-            : "No price shown on the listing page. Nothing to check against the ESP.",
-      };
+      const record = { priceAreaHash, readAt, aiSkipped: reusable, usage };
+      finding = await assess(supabase, property.id, base, read, record);
     }
   } catch (err) {
     finding = {
@@ -319,6 +345,170 @@ export async function scanOneProperty(
 
   await writeFinding(supabase, property, finding);
   return finding;
+}
+
+/** The last finding on c1, if any. */
+async function previousScan(supabase: Db, propertyId: string): Promise<ScanFinding | undefined> {
+  const { data } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "c1")
+    .maybeSingle();
+  return ((data?.data ?? {}) as { websiteScan?: ScanFinding }).websiteScan;
+}
+
+/** One model read of the page. Reports what is on it; judges nothing. */
+async function readWithModel(
+  anthropic: Anthropic,
+  address: string,
+  text: string,
+): Promise<{ read: PageRead; usage: { inputTokens: number; outputTokens: number } }> {
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-5",
+    max_tokens: 400,
+    system:
+      "You read a real estate listing page and report the advertised price exactly as a member of the public " +
+      "would see it. Report only what is on the page. Never infer a price from anything other than a price " +
+      "displayed for this property, and never carry over a figure from another listing shown on the same page.",
+    messages: [
+      {
+        role: "user",
+        content: `Listing page for ${address}.\n\n${text}`,
+      },
+    ],
+    tools: [EXTRACTION_TOOL],
+    tool_choice: { type: "tool", name: "record_advertised_price" },
+  });
+
+  const toolUse = response.content.find(
+    (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+  );
+  const read = (toolUse?.input ?? {}) as {
+    priceShown?: boolean;
+    priceText?: string;
+    priceLow?: number;
+    priceHigh?: number;
+    prohibitedTerms?: string[];
+    pageLooksWrong?: boolean;
+    addressMatches?: boolean;
+  };
+
+  return {
+    read: {
+      priceShown: Boolean(read.priceShown),
+      priceText: read.priceText,
+      priceLow: read.priceLow,
+      priceHigh: read.priceHigh,
+      prohibitedTerms: read.prohibitedTerms ?? [],
+      addressConfirmed: Boolean(read.addressMatches) && !read.pageLooksWrong,
+    },
+    usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+  };
+}
+
+/**
+ * The arithmetic against the ESP on file, from a read of the page — fresh or
+ * reused. Redone on every check either way, because the ESP can be revised
+ * on a day the page does not change.
+ */
+async function assess(
+  supabase: Db,
+  propertyId: string,
+  base: { checkedAt: string; url: string },
+  read: PageRead,
+  record: Pick<ScanFinding, "priceAreaHash" | "readAt" | "aiSkipped" | "usage">,
+): Promise<ScanFinding> {
+  // The ESP to compare against, read from the file rather than the page,
+  // and read as the price CURRENTLY on foot rather than the one recorded
+  // at listing set-up. Where a revision notice has been served and read,
+  // that is the figure the advertising has to respect — see
+  // lib/data/effective-esp.ts.
+  const esp = await effectiveEsp(supabase, propertyId);
+
+  const issues: string[] = [];
+
+  const addressConfirmed = read.addressConfirmed;
+
+  // An unconfirmed page produces no verdict at all — neither a clean result
+  // nor a breach. Everything below this point assumes we are looking at the
+  // right property, and reporting either way on a page we cannot tie to the
+  // address is how an automated check quietly misleads someone.
+  if (!addressConfirmed) {
+    return {
+      ...base,
+      ...record,
+      addressConfirmed: false,
+      ok: false,
+      priceShown: read.priceShown,
+      priceText: read.priceText,
+      issues: [],
+      summary:
+        "Couldn't confirm this page is for this property, so nothing was checked. Open it and, if it's wrong, set the right link in Edit listing details.",
+    };
+  }
+
+  const redFlags: RedFlag[] = [];
+
+  // Red flags are for a listing still being marketed (On market, Campaign).
+  // Once it is Sold the page normally reads "Sold" with no price, and a sale
+  // price under the ESP is not underquoting, so neither emails anyone.
+  const { data: stageRow } = await supabase.from("properties").select("stage").eq("id", propertyId).maybeSingle();
+  const marketing = ((stageRow as { stage?: number } | null)?.stage ?? 0) < 4;
+
+  // No price on the ad is a red flag (RealComply, 8 Oct 2026): every live
+  // listing is checked to make sure a price is being advertised. Only on a
+  // page confirmed to be this property — see the early return above — and
+  // only from PRICE_CHECK_FROM.
+  if (!read.priceShown && marketing && new Date(base.checkedAt) >= PRICE_CHECK_FROM) {
+    const text =
+      `No price is shown on the listing page${read.priceText ? ` (it reads “${read.priceText}”)` : ""}. ` +
+      "Add the price guide to the ad.";
+    issues.push(text);
+    redFlags.push({ kind: "no_price", text });
+  }
+
+  // Arithmetic, not judgement.
+  if (read.priceLow != null && esp.low != null && read.priceLow < esp.low) {
+    const text =
+      `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the ${espLabel(esp)} of $${esp.low.toLocaleString("en-AU")} on this file (s73(1)).` +
+        (esp.revised
+          ? ` The price was revised${esp.revisedOn ? ` on ${esp.revisedOn}` : ""}, and s73(3) requires the advertising to be amended or retracted as soon as practicable after that.`
+          : " If the ESP has been revised, record the notice on the file so this checks against the right figure.");
+    issues.push(text);
+    if (marketing) redFlags.push({ kind: "below_esp", text });
+  }
+  if (read.priceLow != null && read.priceHigh != null && read.priceLow > 0) {
+    const spread = ((read.priceHigh - read.priceLow) / read.priceLow) * 100;
+    if (spread > 10) {
+      issues.push(`Advertised range spreads ${spread.toFixed(1)}%, more than the 10% allowed (s72A(2)).`);
+    }
+  }
+  for (const term of read.prohibitedTerms) {
+    issues.push(`Advertising uses “${term}”, which s73(2) prohibits.`);
+  }
+  if (read.priceShown && esp.low == null) {
+    issues.push("No ESP recorded on this file to check the advertised price against.");
+  }
+
+  return {
+    ...base,
+    ...record,
+    addressConfirmed,
+    ok: issues.length === 0,
+    priceShown: read.priceShown,
+    priceText: read.priceText,
+    priceLow: read.priceLow,
+    priceHigh: read.priceHigh,
+    prohibitedTerms: read.prohibitedTerms,
+    issues,
+    redFlags,
+    summary: issues.length
+      ? `${issues.length} thing${issues.length === 1 ? "" : "s"} to look at on the live ad.`
+      : read.priceShown
+        ? `Advertised at ${read.priceText ?? "the recorded guide"}, consistent with the ESP on file.`
+        : "No price shown on the listing page. Nothing to check against the ESP.",
+  };
 }
 
 /**
@@ -337,7 +527,13 @@ export async function scanOneProperty(
  *
  * The flag is only ever raised, never cleared: an agent who has resolved
  * something and marked the item done should not have it silently reopened by
- * next Sunday's run while they are looking the other way.
+ * tomorrow's run while they are looking the other way.
+ *
+ * Nor re-raised by a check that reused the last read and found exactly the
+ * same issues — the agent was already told about that page. Since the run went
+ * daily that would otherwise reopen a done item every morning. A fresh read
+ * (at least every second day) still re-raises, and so does a reused read
+ * whose issues changed, e.g. because the ESP was revised.
  */
 async function writeFinding(
   supabase: Db,
@@ -352,7 +548,19 @@ async function writeFinding(
     .maybeSingle();
   const row = existing as PropertyItem | null;
 
-  const shouldFlag = finding.addressConfirmed && finding.issues.length > 0;
+  const previous = ((row?.data ?? {}) as { websiteScan?: ScanFinding }).websiteScan;
+  const alreadyTold =
+    finding.aiSkipped === true && JSON.stringify(previous?.issues ?? []) === JSON.stringify(finding.issues);
+  const shouldFlag = finding.addressConfirmed && finding.issues.length > 0 && !alreadyTold;
+
+  // Email the agent about a red flag once. Only a confirmed read can clear the
+  // record of what was sent: a page that failed to load or could not be tied
+  // to the address says nothing about whether the issue is fixed, and
+  // clearing on it would re-send the same email on the next good read.
+  const flags = finding.redFlags ?? [];
+  const key = flags.length > 0 ? alertKey(flags) : undefined;
+  const newAlert = finding.addressConfirmed && key !== undefined && key !== previous?.alertedKey;
+  finding.alertedKey = finding.addressConfirmed ? key : previous?.alertedKey;
 
   // The advertised price moved but the file says the ESP was never revised.
   //
@@ -365,7 +573,6 @@ async function writeFinding(
   // Re-asking rather than flagging c1, because the question belongs on the
   // revision card and the agent needs to be asked again, not told off. The
   // reopen only fires on an answered "no" — see reopenNoRevisionIfPriceMoved.
-  const previous = ((row?.data ?? {}) as { websiteScan?: ScanFinding }).websiteScan;
   const priceMoved =
     finding.addressConfirmed &&
     previous?.priceLow != null &&
@@ -393,6 +600,51 @@ async function writeFinding(
     },
     { onConflict: "property_id,item_key" },
   );
+
+  // Recorded above, sent here: a crash between the two loses one email rather
+  // than sending it every morning. Same order as the licence reminders.
+  if (newAlert) await alertAgent(supabase, property.id, finding.url, flags);
+}
+
+/**
+ * Emails the listing's agent (properties.created_by, which follows a listing
+ * transfer). If that agent has left the office, the licensee in charge gets it
+ * instead, so a red flag on a live ad is never mailed to nobody.
+ */
+async function alertAgent(supabase: Db, propertyId: string, url: string, flags: RedFlag[]): Promise<void> {
+  const { data: prop } = await supabase
+    .from("properties")
+    .select("agency_id, address, created_by")
+    .eq("id", propertyId)
+    .maybeSingle();
+  const p = prop as { agency_id: string; address: string; created_by: string | null } | null;
+  if (!p) return;
+
+  const { data: staff } = await supabase
+    .from("profiles")
+    .select("id, email, full_name, is_licensee_in_charge, archived_at")
+    .eq("agency_id", p.agency_id);
+  const people = ((staff ?? []) as Array<{
+    id: string;
+    email: string | null;
+    full_name: string | null;
+    is_licensee_in_charge: boolean | null;
+    archived_at: string | null;
+  }>).filter((s) => !s.archived_at && s.email);
+
+  const agent = people.find((s) => s.id === p.created_by);
+  const recipients = agent ? [agent] : people.filter((s) => s.is_licensee_in_charge);
+
+  for (const r of recipients) {
+    await sendListingAlert({
+      to: r.email!,
+      agentName: r.full_name,
+      address: p.address,
+      url,
+      propertyId,
+      flags,
+    });
+  }
 }
 
 /** The agent's "check it now" button. */
@@ -414,7 +666,7 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const p = property as { id: string; agency_id: string; address: string; listing_url: string | null };
 
-  // Same path as the weekly run: find the page if we do not have one yet.
+  // Same path as the daily run: find the page if we do not have one yet.
   let url = p.listing_url;
   if (!url) {
     url = await discoverListingUrl(supabase, anthropic, p);
@@ -426,29 +678,45 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
     }
   }
 
-  await scanOneProperty(supabase, anthropic, { ...p, listing_url: url });
+  // Always a fresh read. Someone pressing the button wants the page looked
+  // at now, not told it looked the same as this morning.
+  await scanOneProperty(supabase, anthropic, { ...p, listing_url: url }, { forceRead: true });
 
   revalidatePath(`/dashboard/${propertyId}`);
   return { error: null };
 }
 
 /**
- * The weekly sweep, for the cron route.
+ * The daily sweep, for the cron route, at 7am Sydney time every day (see the
+ * route for how that is held across daylight saving).
  *
  * Service-role client: there is no logged-in user on a scheduled run, same
  * reasoning as the weekly digest. Only reaches listings that are on market or
  * later and have a URL, because a listing not yet advertised has no
  * advertisement to check.
+ *
+ * Most mornings most pages have not changed, and those cost a page fetch and
+ * no model call — see priceArea and MAX_REUSE_MS.
  */
-export async function runWeeklyListingScan(): Promise<{ checked: number; withIssues: number }> {
-  if (!process.env.ANTHROPIC_API_KEY) return { checked: 0, withIssues: 0 };
+export async function runDailyListingScan(): Promise<{
+  discovered: number;
+  checked: number;
+  read: number;
+  skipped: number;
+  withIssues: number;
+  inputTokens: number;
+  outputTokens: number;
+}> {
+  const none = { discovered: 0, checked: 0, read: 0, skipped: 0, withIssues: 0, inputTokens: 0, outputTokens: 0 };
+  if (!process.env.ANTHROPIC_API_KEY) return none;
 
   const supabase = createServiceClient();
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   // Every on-market listing, not only the ones already linked to a page. A
-  // listing with no page recorded gets one found for it first — that is the
-  // whole point of doing this on a schedule rather than behind a button.
+  // listing with no page recorded gets one found for it first, every morning,
+  // so a listing that goes live without a link is checked from the first day
+  // its page can be found.
   const { data: rows } = await supabase
     .from("properties")
     .select("id, agency_id, address, listing_url, stage")
@@ -468,26 +736,42 @@ export async function runWeeklyListingScan(): Promise<{ checked: number; withIss
   }>).filter((p) => !ended.has(p.agency_id));
 
   const db = supabase as unknown as Db;
+  const checking = new Date() >= PRICE_CHECK_FROM;
+  let discovered = 0;
   let checked = 0;
+  let read = 0;
+  let skipped = 0;
   let withIssues = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
 
   for (const property of properties) {
-    // Sequential rather than parallel. A dozen listings a week is not worth
-    // hammering an agency's own website with concurrent requests.
+    // Sequential rather than parallel. Not worth hammering an agency's own
+    // website with concurrent requests for one check a day.
     let url = property.listing_url;
     if (!url) {
       url = await discoverListingUrl(db, anthropic, property);
-      if (!url) continue; // not published yet, or not findable — try again next week
+      if (!url) continue; // not published yet, or not findable — try again tomorrow
+      discovered += 1;
     }
+
+    // Before 1 November: find pages only. See PRICE_CHECK_FROM.
+    if (!checking) continue;
 
     const finding = await scanOneProperty(db, anthropic, { ...property, listing_url: url });
     if (finding) {
       checked += 1;
+      if (finding.aiSkipped) skipped += 1;
+      else if (finding.usage) {
+        read += 1;
+        inputTokens += finding.usage.inputTokens;
+        outputTokens += finding.usage.outputTokens;
+      }
       if (!finding.ok) withIssues += 1;
     }
   }
 
-  return { checked, withIssues };
+  return { discovered, checked, read, skipped, withIssues, inputTokens, outputTokens };
 }
 
 // ── Finding the listing page ───────────────────────────────────────────────
@@ -564,8 +848,8 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
 /**
  * Finds and stores this property's listing page, from the agency's website.
  *
- * Runs automatically as part of the weekly check for any on-market listing that
- * has no page recorded yet. There is deliberately no button for this.
+ * Runs automatically every morning (see runDailyListingScan) for any on-market
+ * listing that has no page recorded yet. There is deliberately no button for this.
  *
  * Adam, 16 Aug 2026: a "find the listing page" button is "another step that the
  * agent has to do ... may as well just eyeball their own website. The whole
@@ -580,7 +864,7 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
  * never a false all-clear. See addressConfirmed on ScanFinding.
  *
  * Returns null when nothing convincing was found, which is a normal outcome —
- * a listing not yet published has no page, and next week it will.
+ * a listing not yet published has no page, and in a day or two it will.
  */
 async function discoverListingUrl(
   supabase: Db,
@@ -600,7 +884,7 @@ async function discoverListingUrl(
 
     // Two passes at most: the site's own page, then one index it points at.
     // Anything deeper is a crawl, and a crawl of someone's website is not a
-    // thing to start doing quietly on a weekly schedule.
+    // thing to start doing quietly on a schedule.
     for (let hop = 0; hop < 2; hop++) {
       const html = await readListingPage(current);
       const links = linksFrom(html, current);
@@ -645,7 +929,7 @@ async function discoverListingUrl(
     }
     return null;
   } catch {
-    // A website that cannot be read is next week's problem, not an error the
+    // A website that cannot be read is the next run's problem, not an error the
     // agent needs to see — they did not ask for this to run.
     return null;
   }
