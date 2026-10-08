@@ -85,11 +85,14 @@ type PageRead = {
   addressConfirmed: boolean;
 };
 
-// A full read at least this often even when the price area has not changed, so
-// a change the price-area comparison cannot see (the page swapped to another
-// property with an identical price block, say) is caught within a week — the
-// same guarantee the weekly check gave before it went daily.
-const MAX_REUSE_MS = 7 * 24 * 60 * 60 * 1000;
+// A full read at least every second day even when the price area has not
+// changed. Every agent's live listings are to be checked at least every second
+// day to make sure the price is being advertised (RealComply, 8 Oct 2026), and
+// a reused read is a comparison, not a reading of the ad. Also catches what the
+// price-area comparison cannot see, e.g. the page swapped to another property
+// with an identical price block. Just under 48h so a read made at 20:00:30 is
+// not still "fresh" by a few seconds at the 20:00 run two days later.
+const MAX_REUSE_MS = 47 * 60 * 60 * 1000;
 
 const PRICE_SIGNAL =
   /\$\s?\d|\bprice\b|\bguide\b|\boffers?\b|\bauction\b|contact agent|expressions? of interest|\bEOI\b|\bPOA\b|o\.n\.o|\bsold\b|under (offer|contract)|for sale/gi;
@@ -271,7 +274,7 @@ export async function scanOneProperty(
     } else {
       // Compare with the last read before paying for another one. Reuse only
       // a read of the same URL, made by the model (not an error), within the
-      // last week, with a price area byte-for-byte the same as today's. A page
+      // last two days, with a price area byte-for-byte the same as today's. A page
       // with no price area at all is always read — nothing to compare.
       const area = priceArea(text);
       const priceAreaHash = createHash("sha256").update(area).digest("hex");
@@ -478,8 +481,8 @@ async function assess(
  * Nor re-raised by a check that reused the last read and found exactly the
  * same issues — the agent was already told about that page. Since the run went
  * daily that would otherwise reopen a done item every morning. A fresh read
- * (at least weekly) still re-raises, as the weekly run always did, and so does
- * a reused read whose issues changed, e.g. because the ESP was revised.
+ * (at least every second day) still re-raises, and so does a reused read
+ * whose issues changed, e.g. because the ESP was revised.
  */
 async function writeFinding(
   supabase: Db,
@@ -608,12 +611,12 @@ export async function runDailyListingScan(): Promise<{
   // listing with no page recorded gets one found for it first — that is the
   // whole point of doing this on a schedule rather than behind a button.
   //
-  // Finding a page still happens once a week, on the Monday-morning run (Sunday
-  // in UTC), as it did before the check went daily. Discovery is up to two
-  // model calls per unlinked listing and has no yesterday's copy to compare
-  // with, so doing it daily would multiply its cost by seven for a listing
-  // that, most weeks, is simply not published yet.
-  const discoveryDay = new Date().getUTCDay() === 0;
+  // Finding a page happens every second day, so a listing that goes live
+  // without a link recorded is picked up within the same every-second-day
+  // window as everything else. Not daily: discovery is up to two model calls
+  // per unlinked listing with no yesterday's copy to compare with, and most of
+  // those listings are simply not published yet.
+  const discoveryDay = Math.floor(Date.now() / 86_400_000) % 2 === 0;
   const { data: rows } = await supabase
     .from("properties")
     .select("id, agency_id, address, listing_url, stage")
@@ -647,7 +650,7 @@ export async function runDailyListingScan(): Promise<{
     if (!url) {
       if (!discoveryDay) continue;
       url = await discoverListingUrl(db, anthropic, property);
-      if (!url) continue; // not published yet, or not findable — try again next week
+      if (!url) continue; // not published yet, or not findable — try again in two days
     }
 
     const finding = await scanOneProperty(db, anthropic, { ...property, listing_url: url });
@@ -740,8 +743,8 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
 /**
  * Finds and stores this property's listing page, from the agency's website.
  *
- * Runs automatically, once a week (see runDailyListingScan), for any on-market
- * listing that has no page recorded yet. There is deliberately no button for this.
+ * Runs automatically, every second day (see runDailyListingScan), for any
+ * on-market listing that has no page recorded yet. There is deliberately no button for this.
  *
  * Adam, 16 Aug 2026: a "find the listing page" button is "another step that the
  * agent has to do ... may as well just eyeball their own website. The whole
@@ -756,7 +759,7 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
  * never a false all-clear. See addressConfirmed on ScanFinding.
  *
  * Returns null when nothing convincing was found, which is a normal outcome —
- * a listing not yet published has no page, and next week it will.
+ * a listing not yet published has no page, and in a day or two it will.
  */
 async function discoverListingUrl(
   supabase: Db,
@@ -776,7 +779,7 @@ async function discoverListingUrl(
 
     // Two passes at most: the site's own page, then one index it points at.
     // Anything deeper is a crawl, and a crawl of someone's website is not a
-    // thing to start doing quietly on a weekly schedule.
+    // thing to start doing quietly on a schedule.
     for (let hop = 0; hop < 2; hop++) {
       const html = await readListingPage(current);
       const links = linksFrom(html, current);
@@ -821,7 +824,7 @@ async function discoverListingUrl(
     }
     return null;
   } catch {
-    // A website that cannot be read is next week's problem, not an error the
+    // A website that cannot be read is the next run's problem, not an error the
     // agent needs to see — they did not ask for this to run.
     return null;
   }
