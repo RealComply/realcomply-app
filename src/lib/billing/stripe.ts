@@ -45,9 +45,17 @@ export function stripeConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY);
 }
 
-/** True when we are pointed at a sandbox. Only meaningful if configured. */
-export function isTestMode(): boolean {
-  return !(process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_live_");
+/**
+ * True when we are pointed at a sandbox. Only meaningful if configured.
+ *
+ * A key is live if it is a live secret key (sk_live_) OR a live restricted
+ * key (rk_live_). Until 9 Oct 2026 only sk_live_ counted, and production runs
+ * on a restricted key, so the live billing page told subscribers "Nothing here
+ * charges a real card" while Stripe charged real cards (found 8 Oct, when
+ * Stripe declined a test card with "Your request was in live mode").
+ */
+export function isTestMode(key: string = process.env.STRIPE_SECRET_KEY ?? ""): boolean {
+  return !(key.startsWith("sk_live_") || key.startsWith("rk_live_"));
 }
 
 /**
