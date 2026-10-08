@@ -56,12 +56,12 @@ const STYLES = `
 .rec-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .rec-small{font-size:13px;color:var(--muted)}
 .rec-error{color:var(--red);font-size:13.5px;margin:10px 0 0;flex-basis:100%}
-.rec-list{list-style:none;padding:0;margin:0}
+.rec-box .rec-list{list-style:none;padding:0;margin:0}
 .rec-list li{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
 .rec-list li:first-child{border-top:none}
 .rec-list b{color:var(--ink);font-weight:600;overflow-wrap:anywhere}
 .rec-list .rec-btn{margin-left:auto;font-size:13px;padding:4px 13px}
-.rec-note{font-size:13px;color:var(--muted);max-width:68ch}
+.rec-note{font-size:13px;color:var(--muted);max-width:68ch;margin:0 0 10px}
 `;
 
 export function RecordsView({
