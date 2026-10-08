@@ -6,7 +6,7 @@ import { renderEmailHtml, renderEmailText, type EmailDocument } from "./layout";
 //
 // ONLY TWO THINGS ARE RED FLAGS (RealComply, 8 Oct 2026): no price showing on
 // the listing page (from 1 November 2026, when the new legislation commences —
-// see NO_PRICE_RED_FLAG_FROM in website-scan.ts), or a price below the ESP on
+// see PRICE_CHECK_FROM in website-scan.ts), or a price below the ESP on
 // file. Everything else the check finds (a range over 10%, "offers over"
 // wording, no ESP recorded) still flags the item on the card and in the Monday
 // digest, but does not email.

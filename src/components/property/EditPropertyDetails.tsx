@@ -185,7 +185,7 @@ export function EditPropertyDetails({ property, canDelete = false }: { property:
             className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
           <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-            Your own listing page for this property. Checked each morning against the ESP on file.
+            Your own listing page for this property. Checked each morning against the ESP on file, from 1 November.
           </p>
 
           <div className="mt-4">

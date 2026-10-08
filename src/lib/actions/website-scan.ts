@@ -87,11 +87,16 @@ export type ScanFinding = {
   alertedKey?: string;
 };
 
-// No price on a live ad becomes a red flag from 1 November 2026, when the new
+// The scheduled advertised-price check starts on 1 November 2026, when the new
 // NSW legislation commences (RealComply, 8 Oct 2026). Midnight in Sydney,
-// which is still daylight saving (+11:00) on that date. Until then a page with
-// no price is noted on the card, as before, and neither flags nor emails.
-const NO_PRICE_RED_FLAG_FROM = new Date("2026-11-01T00:00:00+11:00");
+// which is still daylight saving (+11:00) on that date.
+//
+// Before then the 7am run only finds listing pages (discovery), so every live
+// listing has its page recorded and is checked from the first morning. From
+// then, every live listing is checked daily and no price on the ad is a red
+// flag. "Check now" on a listing works before the date, but a page with no
+// price only becomes a red flag from it.
+const PRICE_CHECK_FROM = new Date("2026-11-01T00:00:00+11:00");
 
 /** Identifies a set of red flags: the same price below the same ESP is the same alert. */
 function alertKey(flags: RedFlag[]): string {
@@ -454,8 +459,8 @@ async function assess(
   // No price on the ad is a red flag (RealComply, 8 Oct 2026): every live
   // listing is checked to make sure a price is being advertised. Only on a
   // page confirmed to be this property — see the early return above — and
-  // only from NO_PRICE_RED_FLAG_FROM.
-  if (!read.priceShown && marketing && new Date(base.checkedAt) >= NO_PRICE_RED_FLAG_FROM) {
+  // only from PRICE_CHECK_FROM.
+  if (!read.priceShown && marketing && new Date(base.checkedAt) >= PRICE_CHECK_FROM) {
     const text =
       `No price is shown on the listing page${read.priceText ? ` (it reads “${read.priceText}”)` : ""}. ` +
       "Add the price guide to the ad.";
@@ -694,6 +699,7 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
  * no model call — see priceArea and MAX_REUSE_MS.
  */
 export async function runDailyListingScan(): Promise<{
+  discovered: number;
   checked: number;
   read: number;
   skipped: number;
@@ -701,7 +707,7 @@ export async function runDailyListingScan(): Promise<{
   inputTokens: number;
   outputTokens: number;
 }> {
-  const none = { checked: 0, read: 0, skipped: 0, withIssues: 0, inputTokens: 0, outputTokens: 0 };
+  const none = { discovered: 0, checked: 0, read: 0, skipped: 0, withIssues: 0, inputTokens: 0, outputTokens: 0 };
   if (!process.env.ANTHROPIC_API_KEY) return none;
 
   const supabase = createServiceClient();
@@ -730,6 +736,8 @@ export async function runDailyListingScan(): Promise<{
   }>).filter((p) => !ended.has(p.agency_id));
 
   const db = supabase as unknown as Db;
+  const checking = new Date() >= PRICE_CHECK_FROM;
+  let discovered = 0;
   let checked = 0;
   let read = 0;
   let skipped = 0;
@@ -744,7 +752,11 @@ export async function runDailyListingScan(): Promise<{
     if (!url) {
       url = await discoverListingUrl(db, anthropic, property);
       if (!url) continue; // not published yet, or not findable — try again tomorrow
+      discovered += 1;
     }
+
+    // Before 1 November: find pages only. See PRICE_CHECK_FROM.
+    if (!checking) continue;
 
     const finding = await scanOneProperty(db, anthropic, { ...property, listing_url: url });
     if (finding) {
@@ -759,7 +771,7 @@ export async function runDailyListingScan(): Promise<{
     }
   }
 
-  return { checked, read, skipped, withIssues, inputTokens, outputTokens };
+  return { discovered, checked, read, skipped, withIssues, inputTokens, outputTokens };
 }
 
 // ── Finding the listing page ───────────────────────────────────────────────
