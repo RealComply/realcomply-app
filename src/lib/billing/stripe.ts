@@ -68,7 +68,7 @@ export class StripeApiError extends Error {
 }
 
 export async function stripeRequest<T>(
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "DELETE",
   path: string,
   params?: Record<string, string | undefined>,
 ): Promise<T> {
@@ -83,7 +83,7 @@ export async function stripeRequest<T>(
       Authorization: `Bearer ${secretKey()}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: method === "GET" ? undefined : body,
+    body: method === "POST" ? body : undefined,
     // Stripe is the source of truth for money and must never be read from a
     // cache, least of all Next's, which caches fetch by default in places.
     cache: "no-store",
