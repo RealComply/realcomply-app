@@ -20,5 +20,9 @@ export async function GET(request: Request) {
   }
 
   const result = await runDailyListingScan();
+  // One line per run in the Vercel logs. Each finding keeps only its latest
+  // check, so this is the record of how many pages were read vs skipped, and
+  // what the reads cost, from day to day. Excludes page discovery.
+  console.log("listing-scan", JSON.stringify(result));
   return NextResponse.json(result);
 }

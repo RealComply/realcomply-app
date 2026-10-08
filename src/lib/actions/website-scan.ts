@@ -595,8 +595,11 @@ export async function runDailyListingScan(): Promise<{
   read: number;
   skipped: number;
   withIssues: number;
+  inputTokens: number;
+  outputTokens: number;
 }> {
-  if (!process.env.ANTHROPIC_API_KEY) return { checked: 0, read: 0, skipped: 0, withIssues: 0 };
+  const none = { checked: 0, read: 0, skipped: 0, withIssues: 0, inputTokens: 0, outputTokens: 0 };
+  if (!process.env.ANTHROPIC_API_KEY) return none;
 
   const supabase = createServiceClient();
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -634,6 +637,8 @@ export async function runDailyListingScan(): Promise<{
   let read = 0;
   let skipped = 0;
   let withIssues = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
 
   for (const property of properties) {
     // Sequential rather than parallel. Not worth hammering an agency's own
@@ -649,12 +654,16 @@ export async function runDailyListingScan(): Promise<{
     if (finding) {
       checked += 1;
       if (finding.aiSkipped) skipped += 1;
-      else if (finding.usage) read += 1;
+      else if (finding.usage) {
+        read += 1;
+        inputTokens += finding.usage.inputTokens;
+        outputTokens += finding.usage.outputTokens;
+      }
       if (!finding.ok) withIssues += 1;
     }
   }
 
-  return { checked, read, skipped, withIssues };
+  return { checked, read, skipped, withIssues, inputTokens, outputTokens };
 }
 
 // ── Finding the listing page ───────────────────────────────────────────────
