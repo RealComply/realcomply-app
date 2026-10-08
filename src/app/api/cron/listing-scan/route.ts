@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { runDailyListingScan } from "@/lib/actions/website-scan";
+import { scanModeAt, sydneyHour } from "@/lib/listing-scan-schedule";
 
-// The daily advertised-price check: every live listing, every morning at 7am
-// Sydney time. Same guard as the digest route: Vercel Cron adds
+// The advertised-price check, at 7am Sydney time: weekly on Mondays until 31
+// October 2026, then every live listing every morning from 1 November (see
+// lib/listing-scan-schedule.ts). Pages for unlinked listings are looked for
+// every morning throughout. Same guard as the digest route: Vercel Cron adds
 // "Authorization: Bearer <CRON_SECRET>" automatically, and that header is the
 // only thing between this route and anyone who finds the URL.
 //
@@ -26,16 +29,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const sydneyHour = Number(
-    new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", hour: "numeric", hourCycle: "h23" }).format(
-      new Date(),
-    ),
-  );
-  if (sydneyHour !== 7) {
-    return NextResponse.json({ skipped: `Not 7am in Sydney (it is ${sydneyHour}:00 there).` });
+  const now = new Date();
+  const hour = sydneyHour(now);
+  if (hour !== 7) {
+    return NextResponse.json({ skipped: `Not 7am in Sydney (it is ${hour}:00 there).` });
   }
 
-  const result = await runDailyListingScan();
+  const result = { mode: scanModeAt(now), ...(await runDailyListingScan()) };
   // One line per run in the Vercel logs. Each finding keeps only its latest
   // check, so this is the record of how many pages were read vs skipped, and
   // what the reads cost, from day to day. Excludes page discovery.

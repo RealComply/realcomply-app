@@ -8,6 +8,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
+import { PRICE_CHECK_FROM, scanModeAt } from "@/lib/listing-scan-schedule";
 import type { PropertyItem } from "@/lib/types";
 
 // The advertised-price check.
@@ -86,17 +87,6 @@ export type ScanFinding = {
    */
   alertedKey?: string;
 };
-
-// The scheduled advertised-price check starts on 1 November 2026, when the new
-// NSW legislation commences (RealComply, 8 Oct 2026). Midnight in Sydney,
-// which is still daylight saving (+11:00) on that date.
-//
-// Before then the 7am run only finds listing pages (discovery), so every live
-// listing has its page recorded and is checked from the first morning. From
-// then, every live listing is checked daily and no price on the ad is a red
-// flag. "Check now" on a listing works before the date, but a page with no
-// price only becomes a red flag from it.
-const PRICE_CHECK_FROM = new Date("2026-11-01T00:00:00+11:00");
 
 /** Identifies a set of red flags: the same price below the same ESP is the same alert. */
 function alertKey(flags: RedFlag[]): string {
@@ -285,7 +275,7 @@ export async function scanOneProperty(
   supabase: Db,
   anthropic: Anthropic,
   property: { id: string; agency_id: string; address: string; listing_url: string | null },
-  { forceRead = false }: { forceRead?: boolean } = {},
+  { forceRead = false, notify = true }: { forceRead?: boolean; notify?: boolean } = {},
 ): Promise<ScanFinding | null> {
   if (!property.listing_url) return null;
 
@@ -343,7 +333,7 @@ export async function scanOneProperty(
     };
   }
 
-  await writeFinding(supabase, property, finding);
+  await writeFinding(supabase, property, finding, notify);
   return finding;
 }
 
@@ -539,6 +529,7 @@ async function writeFinding(
   supabase: Db,
   property: { id: string; agency_id: string },
   finding: ScanFinding,
+  notify = true,
 ): Promise<void> {
   const { data: existing } = await supabase
     .from("property_items")
@@ -559,8 +550,11 @@ async function writeFinding(
   // clearing on it would re-send the same email on the next good read.
   const flags = finding.redFlags ?? [];
   const key = flags.length > 0 ? alertKey(flags) : undefined;
-  const newAlert = finding.addressConfirmed && key !== undefined && key !== previous?.alertedKey;
-  finding.alertedKey = finding.addressConfirmed ? key : previous?.alertedKey;
+  //
+  // The weekly check before 1 November (notify false) never emails, as it never
+  // did, and leaves the record alone so the first daily run can still email.
+  const newAlert = notify && finding.addressConfirmed && key !== undefined && key !== previous?.alertedKey;
+  finding.alertedKey = notify && finding.addressConfirmed ? key : previous?.alertedKey;
 
   // The advertised price moved but the file says the ESP was never revised.
   //
@@ -736,7 +730,9 @@ export async function runDailyListingScan(): Promise<{
   }>).filter((p) => !ended.has(p.agency_id));
 
   const db = supabase as unknown as Db;
-  const checking = new Date() >= PRICE_CHECK_FROM;
+  // Until 31 October: the weekly check on Mondays, page-finding only on other
+  // mornings. From 1 November: the daily check. See lib/listing-scan-schedule.
+  const mode = scanModeAt(new Date());
   let discovered = 0;
   let checked = 0;
   let read = 0;
@@ -755,10 +751,16 @@ export async function runDailyListingScan(): Promise<{
       discovered += 1;
     }
 
-    // Before 1 November: find pages only. See PRICE_CHECK_FROM.
-    if (!checking) continue;
+    if (mode === "discovery") continue;
 
-    const finding = await scanOneProperty(db, anthropic, { ...property, listing_url: url });
+    // The weekly check runs exactly as it did before the daily one existed: a
+    // fresh read of every page, flagged on issues, no emails.
+    const finding = await scanOneProperty(
+      db,
+      anthropic,
+      { ...property, listing_url: url },
+      mode === "weekly" ? { forceRead: true, notify: false } : {},
+    );
     if (finding) {
       checked += 1;
       if (finding.aiSkipped) skipped += 1;
