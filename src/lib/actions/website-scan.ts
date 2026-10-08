@@ -108,13 +108,14 @@ type PageRead = {
   addressConfirmed: boolean;
 };
 
-// A full read at least every second day even when the price area has not
-// changed. Every agent's live listings are to be checked at least every second
-// day to make sure the price is being advertised (RealComply, 8 Oct 2026), and
-// a reused read is a comparison, not a reading of the ad. Also catches what the
-// price-area comparison cannot see, e.g. the page swapped to another property
-// with an identical price block. Just under 48h so a read made at 20:00:30 is
-// not still "fresh" by a few seconds at the 20:00 run two days later.
+// Every live listing is checked every morning (RealComply, 8 Oct 2026): the
+// page is fetched and compared daily, and read by the model whenever its price
+// area has changed. This is a floor under that: a full model read at least
+// every second day even when nothing changed, because a reused read is a
+// comparison, not a reading of the ad, and it catches what the comparison
+// cannot see (e.g. the page swapped to another property with an identical
+// price block). Just under 48h so a read made at 7:00:30 is not still "fresh"
+// by a few seconds at the 7:00 run two days later.
 const MAX_REUSE_MS = 47 * 60 * 60 * 1000;
 
 const PRICE_SIGNAL =
@@ -681,8 +682,8 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
 }
 
 /**
- * The daily sweep, for the cron route. Runs at 20:00 UTC — 7am in Sydney
- * under daylight saving, 6am outside it.
+ * The daily sweep, for the cron route, at 7am Sydney time every day (see the
+ * route for how that is held across daylight saving).
  *
  * Service-role client: there is no logged-in user on a scheduled run, same
  * reasoning as the weekly digest. Only reaches listings that are on market or
@@ -707,15 +708,9 @@ export async function runDailyListingScan(): Promise<{
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   // Every on-market listing, not only the ones already linked to a page. A
-  // listing with no page recorded gets one found for it first — that is the
-  // whole point of doing this on a schedule rather than behind a button.
-  //
-  // Finding a page happens every second day, so a listing that goes live
-  // without a link recorded is picked up within the same every-second-day
-  // window as everything else. Not daily: discovery is up to two model calls
-  // per unlinked listing with no yesterday's copy to compare with, and most of
-  // those listings are simply not published yet.
-  const discoveryDay = Math.floor(Date.now() / 86_400_000) % 2 === 0;
+  // listing with no page recorded gets one found for it first, every morning,
+  // so a listing that goes live without a link is checked from the first day
+  // its page can be found.
   const { data: rows } = await supabase
     .from("properties")
     .select("id, agency_id, address, listing_url, stage")
@@ -747,9 +742,8 @@ export async function runDailyListingScan(): Promise<{
     // website with concurrent requests for one check a day.
     let url = property.listing_url;
     if (!url) {
-      if (!discoveryDay) continue;
       url = await discoverListingUrl(db, anthropic, property);
-      if (!url) continue; // not published yet, or not findable — try again in two days
+      if (!url) continue; // not published yet, or not findable — try again tomorrow
     }
 
     const finding = await scanOneProperty(db, anthropic, { ...property, listing_url: url });
@@ -842,8 +836,8 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
 /**
  * Finds and stores this property's listing page, from the agency's website.
  *
- * Runs automatically, every second day (see runDailyListingScan), for any
- * on-market listing that has no page recorded yet. There is deliberately no button for this.
+ * Runs automatically every morning (see runDailyListingScan) for any on-market
+ * listing that has no page recorded yet. There is deliberately no button for this.
  *
  * Adam, 16 Aug 2026: a "find the listing page" button is "another step that the
  * agent has to do ... may as well just eyeball their own website. The whole
