@@ -497,7 +497,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
             </Link>
             <span className="px-2 text-rc-ink-muted/50">·</span>
             <Link href="/terms" className="hover:text-white hover:underline">
-              Terms of Service
+              Terms and Conditions
             </Link>
           </p>
         </div>

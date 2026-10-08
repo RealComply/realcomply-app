@@ -334,7 +334,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
         <span>
           I&rsquo;ve read and accept the{" "}
           <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-rc-green-deep hover:underline">
-            Terms of Service
+            Terms and Conditions
           </a>{" "}
           and{" "}
           <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-rc-green-deep hover:underline">

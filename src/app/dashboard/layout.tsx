@@ -1,9 +1,11 @@
+import { redirect } from "next/navigation";
 import { AssistantChat } from "@/components/chat/AssistantChat";
 import { StrayDropGuard } from "@/components/StrayDropGuard";
 import { Sidebar } from "@/components/Sidebar";
 import { UserBar } from "@/components/UserBar";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
+import { hasAcceptedCurrentLegal } from "@/lib/legal/acceptance";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { pmAgencySettings } from "@/lib/data/pm";
 import { endedStateFor } from "@/lib/subscription-end/access";
@@ -28,7 +30,6 @@ import { accountHolderId } from "@/lib/subscription-end/access";
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireProfile();
   const supabase = await createClient();
-
   // Once the subscription has ended, every signed-in route shows the records
   // page and nothing else: no menu, no assistant (brief of 8 Oct 2026,
   // item 2). Rendered here, in place of the page, so no route is missed. The
@@ -39,6 +40,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (ended) {
     const listings = ended.mayUseRecords ? await listingsFor(createServiceClient(), ended.agencyId) : [];
     return <RecordsView profile={profile} state={ended} listings={listings} />;
+  }
+
+  // Nobody uses the app on terms they have not accepted. When the terms or
+  // privacy policy get a new version, existing users land on /accept-terms
+  // the next time they open any dashboard page. See lib/legal/acceptance.ts.
+  // After the records page on purpose: an agency whose subscription has ended
+  // must be able to take its records away without accepting new terms first.
+  if (!(await hasAcceptedCurrentLegal(supabase, profile.id))) {
+    redirect("/accept-terms");
   }
 
   // A new office whose card is not in yet sees one page: start your 14-day

@@ -136,7 +136,7 @@ export async function signup(
   // record is that it cannot have been skipped, so the check has to live where
   // the account is actually created.
   if (formData.get("acceptLegal") !== "yes") {
-    return { error: "Please accept the Terms of Service and Privacy Policy to continue." };
+    return { error: "Please accept the Terms and Conditions and Privacy Policy to continue." };
   }
   const legalVersions = currentLegalVersions();
 
