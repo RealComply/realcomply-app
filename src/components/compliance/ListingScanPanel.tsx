@@ -72,8 +72,9 @@ export function ListingScanPanel({
 
           {!finding ? (
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-              From 1 November, your website is checked against this listing&rsquo;s ESP each morning, once it&rsquo;s
-              advertised. If no price is showing, or it&rsquo;s below the ESP, you&rsquo;ll get an email. Nothing to set up.
+              Your website is checked against this listing&rsquo;s ESP every Monday morning once it&rsquo;s advertised,
+              and every morning from 1 November. From then, if no price is showing or it&rsquo;s below the ESP,
+              you&rsquo;ll get an email. Nothing to set up.
             </p>
           ) : (
             <div className="mt-1">
