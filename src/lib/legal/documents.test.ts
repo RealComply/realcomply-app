@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { LEGAL_DOCUMENTS, currentLegalVersions } from "@/lib/legal/documents";
 import { acceptsCurrentVersions } from "@/lib/legal/acceptance";
 
-// The brief of 2 Oct 2026: "Do not change any wording in Parts B, C or D. Not
+// The brief of 9 Oct 2026: "Do not change any wording in Parts B, C or D. Not
 // grammar, not spelling, not clause numbers." This holds the code to that, by
 // comparing each published body with the brief character for character. If
 // it fails, the text in documents.ts has drifted from what Adam approved.
-const BRIEF = readFileSync(join(process.cwd(), "claude/RealComply-legal-documents-publish-brief-2-Oct.md"), "utf8");
+const BRIEF = readFileSync(join(process.cwd(), "claude/RealComply-legal-documents-publish-brief-9-Oct.md"), "utf8");
 
 function part(startHeading: string, nextHeading: string | null): string {
   const start = BRIEF.indexOf(startHeading);

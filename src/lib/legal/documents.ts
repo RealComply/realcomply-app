@@ -48,7 +48,7 @@ export type LegalDocument = {
   body: string;
 };
 
-// Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-publish-brief-2-Oct.md.
+// Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 to 9 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-register-9-Oct.md.
 //
 // Verbatim. Do not edit a word, a clause number or a cross-reference here:
 // documents.test.ts checks this text against the brief, character for
@@ -330,9 +330,9 @@ const TERMS_BODY = `
 
 18.7 For 14 days after the subscription ends, the Subscriber may sign in to a records page and download a complete copy of its User Content, including the finalised compliance record for each listing, its registers and the documents it uploaded. The Provider will email the Subscriber and its Licensee in Charge when the subscription ends, and again 7 days before the User Content is deleted.
 
-18.8 After those 14 days, the Provider will permanently delete the User Content from its systems. Copies held in the Provider's backups are deleted as those backups expire. A Subscriber who resubscribes after deletion starts with an empty account.
+18.8 After those 14 days, the Provider will permanently delete the User Content from its systems. Copies held in the Provider's backups are deleted as those backups expire, within 90 days. A Subscriber who resubscribes after deletion starts with an empty account.
 
-18.9 The Provider keeps an audit trail of activity on the account (what was recorded, what RealComply prompted, sign-offs, who did them and when, including the names of Users and property addresses) for 7 years after the subscription ends, to deal with any dispute or claim, respond to regulators and meet its legal obligations. The audit trail does not include the documents the Subscriber uploaded. The Provider will give the Subscriber a copy of it on written request.
+18.9 The Provider keeps an audit trail of activity on the account (what was recorded, what RealComply prompted, sign-offs, and when, using internal identifiers rather than the names of Users or property addresses) for 7 years after the subscription ends, to deal with any dispute or claim, respond to regulators and meet its legal obligations. The audit trail does not include the documents the Subscriber uploaded. The Provider will give the Subscriber a copy of it on written request.
 
 18.10 The Subscriber is responsible for keeping the records the law requires it to keep, for as long as the law requires. The Subscriber should download its User Content before the 14 days ends. RealComply is not the Subscriber's record-keeping system after the subscription ends.
 
@@ -477,7 +477,7 @@ const TERMS_BODY = `
 **User Content** means any information, data, client records, documents, compliance records, forms, files, text, images, reports and other content uploaded to, stored in, submitted through or generated using the RealComply by or on behalf of the Subscriber or its Users.
 `.trim();
 
-// Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-publish-brief-2-Oct.md.
+// Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 to 9 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-register-9-Oct.md.
 //
 // Verbatim. Do not edit a word, a clause number or a cross-reference here:
 // documents.test.ts checks this text against the brief, character for
@@ -551,7 +551,7 @@ Disclosure to Anthropic and Google involves sending information outside Australi
 
 ## How long we keep it
 
-For as long as you or your agency holds an account. That includes the documents you upload, which we keep for as long as your subscription runs. When a subscription ends or a trial lapses without converting, you can no longer use the product, but for 14 days you can sign in to a records page and download a complete copy of your records. After that we permanently delete them. Copies held in our backups are deleted as those backups expire. We issue a certificate recording the categories and counts of what was deleted. We keep only a record of what checks were run, what was signed off, who did it and when, including user names and property addresses but not the documents you uploaded. We keep that record for seven years after the subscription ends, to deal with any dispute or claim, respond to regulators and meet our legal obligations.
+For as long as you or your agency holds an account. That includes the documents you upload, which we keep for as long as your subscription runs. When a subscription ends or a trial lapses without converting, you can no longer use the product, but for 14 days you can sign in to a records page and download a complete copy of your records. After that we permanently delete them. Copies held in our backups are deleted as those backups expire, within 90 days. We issue a certificate recording the categories and counts of what was deleted. We keep only a record of what checks were run, what was signed off, who did it and when, using internal identifiers rather than user names or property addresses, and not the documents you uploaded. We keep that record for seven years after the subscription ends, to deal with any dispute or claim, respond to regulators and meet our legal obligations.
 
 ## Security
 
@@ -575,7 +575,7 @@ If this policy changes materially we will publish a new version and record your 
 // Published at /dpa and linked from the foot of /terms and /privacy. It has
 // no acceptance checkbox of its own (brief, 2 Oct 2026), so it is not part of
 // currentLegalVersions() and changing it does not prompt anyone to re-accept.
-// Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-publish-brief-2-Oct.md.
+// Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 to 9 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-register-9-Oct.md.
 //
 // Verbatim. Do not edit a word, a clause number or a cross-reference here:
 // documents.test.ts checks this text against the brief, character for
@@ -652,12 +652,12 @@ On termination or expiry of the Subscriber's subscription, or on the lapse of a 
 
 - The Subscriber can no longer use the platform, but for 14 days may sign in to a records page and download a complete copy of its records.
 - RealComply will notify the Subscriber and its licensee in charge when the subscription ends, and again 7 days before the records are deleted.
-- At the end of the 14 days RealComply will permanently delete Subscriber Data. Copies held in backups are deleted as those backups expire.
+- At the end of the 14 days RealComply will permanently delete Subscriber Data. Copies held in backups are deleted as those backups expire, within 90 days.
 - RealComply will issue a deletion certificate recording the categories and counts of records deleted and the date of deletion, and will retain a copy. The certificate will not record the contents of the deleted records.
 
 ### 4.9 Retained audit trail
 
-Separately from Subscriber Data, RealComply retains its own audit record of what checks the platform performed, what was flagged, and what was signed off, by whom and when. This record includes the names of the Subscriber's users and property addresses, and does not include uploaded documents. It is kept for seven years from the end of the subscription.
+Separately from Subscriber Data, RealComply retains its own audit record of what checks the platform performed, what was flagged, and what was signed off, by whom and when. This record is pseudonymised: it uses internal identifiers rather than the names of the Subscriber's users or property addresses, and does not include uploaded documents. It is kept for seven years from the end of the subscription.
 
 ## 5. Subscriber's obligations
 
@@ -716,8 +716,8 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentKey, LegalDocument> = {
     key: "terms",
     path: "/terms",
     title: "Terms and Conditions",
-    version: "2026-10-02",
-    effective: "2 October 2026",
+    version: "2026-10-09",
+    effective: "9 October 2026",
     reviewed: true,
     body: TERMS_BODY,
   },
@@ -725,8 +725,8 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentKey, LegalDocument> = {
     key: "privacy",
     path: "/privacy",
     title: "Privacy Policy",
-    version: "2026-10-02",
-    effective: "2 October 2026",
+    version: "2026-10-09",
+    effective: "9 October 2026",
     reviewed: true,
     body: PRIVACY_BODY,
   },
@@ -734,8 +734,8 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentKey, LegalDocument> = {
     key: "dpa",
     path: "/dpa",
     title: "Data Processing Agreement",
-    version: "2026-10-02",
-    effective: "2 October 2026",
+    version: "2026-10-09",
+    effective: "9 October 2026",
     reviewed: true,
     body: DPA_BODY,
   },

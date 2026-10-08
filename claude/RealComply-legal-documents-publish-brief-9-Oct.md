@@ -1,8 +1,10 @@
 # Brief for Claude Code: publish the terms, privacy policy and DPA
 
-**From the Legal chat, 2 Oct 2026. Adam pastes this whole document into Claude Code.**
+**From the Legal chat, 9 Oct 2026. Adam pastes this whole document into Claude Code.**
 
-It has four parts: the instructions, then the final text of the three documents. The three texts are Natalie Melia's finals of 23 Sep 2026 with in-house changes approved by Adam on 2 Oct 2026. This document supersedes the wording in `RealComply-terms-update-changes-2-Oct.md` and `RealComply-privacy-DPA-retention-check-2-Oct.md` where they differ (audit trail now keeps names and addresses; backups have no day count; Vercel is Sydney).
+It has four parts: the instructions, then the final text of the three documents. The three texts are Natalie Melia's finals of 23 Sep 2026 with in-house changes approved by Adam (2 to 9 Oct 2026). This file combines `claude/RealComply-legal-documents-publish-brief-2-Oct.md` and its 9 Oct addendum. Nothing else needs pasting.
+
+**One question at a time.** Report back with a single question, wait until it is dealt with, then move to the next. Never several notes or questions at once.
 
 ---
 
@@ -11,7 +13,7 @@ It has four parts: the instructions, then the final text of the three documents.
 ### What to do
 
 1. Read `AGENTS.md` in the repo first.
-2. **Terms and privacy policy in the app.** `src/lib/legal/documents.ts` still serves the 22 August drafts, marked `reviewed: false`, so every acceptance is stamped `-draft`. Replace the terms with Part B and the privacy policy with Part C. Give both a new version (use the date, 2026-10-02, in whatever format the file already uses). Set `reviewed: true` so the draft banner goes and new acceptances are no longer stamped as drafts.
+2. **Terms and privacy policy in the app.** `src/lib/legal/documents.ts` still serves the 22 August drafts, marked `reviewed: false`, so every acceptance is stamped `-draft`. Replace the terms with Part B and the privacy policy with Part C. Give both a new version (use the date, 2026-10-09, in whatever format the file already uses). Set `reviewed: true` so the draft banner goes and new acceptances are no longer stamped as drafts.
 3. **DPA.** Publish Part D as a public page at `/dpa`, served the same way as `/terms` and `/privacy` if the structure allows. Link it from the foot of `/terms` and `/privacy`. It does not need its own acceptance checkbox.
 4. **Marketing site privacy page.** `public/privacy.html` (live at `https://realcomply.com.au/privacy.html`) holds an older, different policy. Make it show the same text as Part C, or redirect it to `/privacy`. The URL must keep working when signed out, because Meta's app review uses it.
 5. **Existing users.** Check how the app handles a user who accepted an older version. Existing users (today only Cass Property) should be asked to accept the new version on next sign-in. If that is not built, say so and stop. Do not build it without asking Adam.
@@ -24,7 +26,7 @@ It has four parts: the instructions, then the final text of the three documents.
 - Do not touch the AML/KYC cards or any product content.
 - No secrets in the chat or the code.
 - Add this comment at the top of each document in the code:
-  `Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-publish-brief-2-Oct.md.`
+  `Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 to 9 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-register-9-Oct.md.`
 - Add this comment where retention or document storage is handled, if there is such a place:
   `REVERSAL 2 Oct 2026 (Adam): source documents are kept for the life of the subscription. Do NOT purge at settlement. They are deleted with everything else 14 days after the subscription ends.`
 
@@ -39,9 +41,9 @@ Part C says the public website's home page uses Plausible analytics and the Meta
 - A test signup records the new version with no `-draft` on it. Use a throwaway address. Never test on Cass Property's subscription.
 - Give Adam the two public links for the Stripe customer portal: the terms page and the privacy page.
 
-### Not part of this job (already on Master's list)
+### Not part of this job
 
-These are described in the documents but not built yet. Customers stay invite-only until they are: the records page and download for ended subscriptions, the two emails, the day-14 deletion, the deletion certificate, the 7-year audit trail store, the suspension screen for failed payments with the 90-day long-stop, and the backup expiry rule.
+The failed-payment suspension screen with the 90-day long-stop (terms cl 10.2) is not built yet. It is on Master's list.
 
 ---
 
@@ -323,9 +325,9 @@ These are described in the documents but not built yet. Customers stay invite-on
 
 18.7 For 14 days after the subscription ends, the Subscriber may sign in to a records page and download a complete copy of its User Content, including the finalised compliance record for each listing, its registers and the documents it uploaded. The Provider will email the Subscriber and its Licensee in Charge when the subscription ends, and again 7 days before the User Content is deleted.
 
-18.8 After those 14 days, the Provider will permanently delete the User Content from its systems. Copies held in the Provider's backups are deleted as those backups expire. A Subscriber who resubscribes after deletion starts with an empty account.
+18.8 After those 14 days, the Provider will permanently delete the User Content from its systems. Copies held in the Provider's backups are deleted as those backups expire, within 90 days. A Subscriber who resubscribes after deletion starts with an empty account.
 
-18.9 The Provider keeps an audit trail of activity on the account (what was recorded, what RealComply prompted, sign-offs, who did them and when, including the names of Users and property addresses) for 7 years after the subscription ends, to deal with any dispute or claim, respond to regulators and meet its legal obligations. The audit trail does not include the documents the Subscriber uploaded. The Provider will give the Subscriber a copy of it on written request.
+18.9 The Provider keeps an audit trail of activity on the account (what was recorded, what RealComply prompted, sign-offs, and when, using internal identifiers rather than the names of Users or property addresses) for 7 years after the subscription ends, to deal with any dispute or claim, respond to regulators and meet its legal obligations. The audit trail does not include the documents the Subscriber uploaded. The Provider will give the Subscriber a copy of it on written request.
 
 18.10 The Subscriber is responsible for keeping the records the law requires it to keep, for as long as the law requires. The Subscriber should download its User Content before the 14 days ends. RealComply is not the Subscriber's record-keeping system after the subscription ends.
 
@@ -541,7 +543,7 @@ Disclosure to Anthropic and Google involves sending information outside Australi
 
 ## How long we keep it
 
-For as long as you or your agency holds an account. That includes the documents you upload, which we keep for as long as your subscription runs. When a subscription ends or a trial lapses without converting, you can no longer use the product, but for 14 days you can sign in to a records page and download a complete copy of your records. After that we permanently delete them. Copies held in our backups are deleted as those backups expire. We issue a certificate recording the categories and counts of what was deleted. We keep only a record of what checks were run, what was signed off, who did it and when, including user names and property addresses but not the documents you uploaded. We keep that record for seven years after the subscription ends, to deal with any dispute or claim, respond to regulators and meet our legal obligations.
+For as long as you or your agency holds an account. That includes the documents you upload, which we keep for as long as your subscription runs. When a subscription ends or a trial lapses without converting, you can no longer use the product, but for 14 days you can sign in to a records page and download a complete copy of your records. After that we permanently delete them. Copies held in our backups are deleted as those backups expire, within 90 days. We issue a certificate recording the categories and counts of what was deleted. We keep only a record of what checks were run, what was signed off, who did it and when, using internal identifiers rather than user names or property addresses, and not the documents you uploaded. We keep that record for seven years after the subscription ends, to deal with any dispute or claim, respond to regulators and meet our legal obligations.
 
 ## Security
 
@@ -636,12 +638,12 @@ On termination or expiry of the Subscriber's subscription, or on the lapse of a 
 
 - The Subscriber can no longer use the platform, but for 14 days may sign in to a records page and download a complete copy of its records.
 - RealComply will notify the Subscriber and its licensee in charge when the subscription ends, and again 7 days before the records are deleted.
-- At the end of the 14 days RealComply will permanently delete Subscriber Data. Copies held in backups are deleted as those backups expire.
+- At the end of the 14 days RealComply will permanently delete Subscriber Data. Copies held in backups are deleted as those backups expire, within 90 days.
 - RealComply will issue a deletion certificate recording the categories and counts of records deleted and the date of deletion, and will retain a copy. The certificate will not record the contents of the deleted records.
 
 ### 4.9 Retained audit trail
 
-Separately from Subscriber Data, RealComply retains its own audit record of what checks the platform performed, what was flagged, and what was signed off, by whom and when. This record includes the names of the Subscriber's users and property addresses, and does not include uploaded documents. It is kept for seven years from the end of the subscription.
+Separately from Subscriber Data, RealComply retains its own audit record of what checks the platform performed, what was flagged, and what was signed off, by whom and when. This record is pseudonymised: it uses internal identifiers rather than the names of the Subscriber's users or property addresses, and does not include uploaded documents. It is kept for seven years from the end of the subscription.
 
 ## 5. Subscriber's obligations
 
