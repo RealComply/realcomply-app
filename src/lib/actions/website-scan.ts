@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
+import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import type { PropertyItem } from "@/lib/types";
 
 // The advertised-price check.
@@ -73,7 +74,23 @@ export type ScanFinding = {
   aiSkipped?: boolean;
   /** Tokens spent on this check's model read. Absent when aiSkipped. */
   usage?: { inputTokens: number; outputTokens: number };
+  /**
+   * The issues that email the agent: no price showing, or a price below the
+   * ESP. Each is also in issues. See lib/email/listing-price-alert.ts.
+   */
+  redFlags?: RedFlag[];
+  /**
+   * What the agent was last emailed about, as alertKey(redFlags). Carried
+   * forward while the same red flags stand, so they are emailed once; cleared
+   * when there are none, so a recurrence is emailed again.
+   */
+  alertedKey?: string;
 };
+
+/** Identifies a set of red flags: the same price below the same ESP is the same alert. */
+function alertKey(flags: RedFlag[]): string {
+  return flags.map((f) => `${f.kind}:${f.text}`).sort().join("|");
+}
 
 /** What the model read off the page. Everything else is worked out in code. */
 type PageRead = {
@@ -419,14 +436,34 @@ async function assess(
     };
   }
 
+  const redFlags: RedFlag[] = [];
+
+  // Red flags are for a listing still being marketed (On market, Campaign).
+  // Once it is Sold the page normally reads "Sold" with no price, and a sale
+  // price under the ESP is not underquoting, so neither emails anyone.
+  const { data: stageRow } = await supabase.from("properties").select("stage").eq("id", propertyId).maybeSingle();
+  const marketing = ((stageRow as { stage?: number } | null)?.stage ?? 0) < 4;
+
+  // No price on the ad is a red flag (RealComply, 8 Oct 2026): every live
+  // listing is checked to make sure a price is being advertised. Only on a
+  // page confirmed to be this property — see the early return above.
+  if (!read.priceShown && marketing) {
+    const text =
+      `No price is shown on the listing page${read.priceText ? ` (it reads “${read.priceText}”)` : ""}. ` +
+      "Add the price guide to the ad.";
+    issues.push(text);
+    redFlags.push({ kind: "no_price", text });
+  }
+
   // Arithmetic, not judgement.
   if (read.priceLow != null && esp.low != null && read.priceLow < esp.low) {
-    issues.push(
+    const text =
       `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the ${espLabel(esp)} of $${esp.low.toLocaleString("en-AU")} on this file (s73(1)).` +
         (esp.revised
           ? ` The price was revised${esp.revisedOn ? ` on ${esp.revisedOn}` : ""}, and s73(3) requires the advertising to be amended or retracted as soon as practicable after that.`
-          : " If the ESP has been revised, record the notice on the file so this checks against the right figure."),
-    );
+          : " If the ESP has been revised, record the notice on the file so this checks against the right figure.");
+    issues.push(text);
+    if (marketing) redFlags.push({ kind: "below_esp", text });
   }
   if (read.priceLow != null && read.priceHigh != null && read.priceLow > 0) {
     const spread = ((read.priceHigh - read.priceLow) / read.priceLow) * 100;
@@ -452,6 +489,7 @@ async function assess(
     priceHigh: read.priceHigh,
     prohibitedTerms: read.prohibitedTerms,
     issues,
+    redFlags,
     summary: issues.length
       ? `${issues.length} thing${issues.length === 1 ? "" : "s"} to look at on the live ad.`
       : read.priceShown
@@ -502,6 +540,15 @@ async function writeFinding(
     finding.aiSkipped === true && JSON.stringify(previous?.issues ?? []) === JSON.stringify(finding.issues);
   const shouldFlag = finding.addressConfirmed && finding.issues.length > 0 && !alreadyTold;
 
+  // Email the agent about a red flag once. Only a confirmed read can clear the
+  // record of what was sent: a page that failed to load or could not be tied
+  // to the address says nothing about whether the issue is fixed, and
+  // clearing on it would re-send the same email on the next good read.
+  const flags = finding.redFlags ?? [];
+  const key = flags.length > 0 ? alertKey(flags) : undefined;
+  const newAlert = finding.addressConfirmed && key !== undefined && key !== previous?.alertedKey;
+  finding.alertedKey = finding.addressConfirmed ? key : previous?.alertedKey;
+
   // The advertised price moved but the file says the ESP was never revised.
   //
   // Adam, 22 Aug 2026, agreeing this should re-ask: a price changing on the
@@ -540,6 +587,51 @@ async function writeFinding(
     },
     { onConflict: "property_id,item_key" },
   );
+
+  // Recorded above, sent here: a crash between the two loses one email rather
+  // than sending it every morning. Same order as the licence reminders.
+  if (newAlert) await alertAgent(supabase, property.id, finding.url, flags);
+}
+
+/**
+ * Emails the listing's agent (properties.created_by, which follows a listing
+ * transfer). If that agent has left the office, the licensee in charge gets it
+ * instead, so a red flag on a live ad is never mailed to nobody.
+ */
+async function alertAgent(supabase: Db, propertyId: string, url: string, flags: RedFlag[]): Promise<void> {
+  const { data: prop } = await supabase
+    .from("properties")
+    .select("agency_id, address, created_by")
+    .eq("id", propertyId)
+    .maybeSingle();
+  const p = prop as { agency_id: string; address: string; created_by: string | null } | null;
+  if (!p) return;
+
+  const { data: staff } = await supabase
+    .from("profiles")
+    .select("id, email, full_name, is_licensee_in_charge, archived_at")
+    .eq("agency_id", p.agency_id);
+  const people = ((staff ?? []) as Array<{
+    id: string;
+    email: string | null;
+    full_name: string | null;
+    is_licensee_in_charge: boolean | null;
+    archived_at: string | null;
+  }>).filter((s) => !s.archived_at && s.email);
+
+  const agent = people.find((s) => s.id === p.created_by);
+  const recipients = agent ? [agent] : people.filter((s) => s.is_licensee_in_charge);
+
+  for (const r of recipients) {
+    await sendListingAlert({
+      to: r.email!,
+      agentName: r.full_name,
+      address: p.address,
+      url,
+      propertyId,
+      flags,
+    });
+  }
 }
 
 /** The agent's "check it now" button. */
