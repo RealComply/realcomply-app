@@ -1,0 +1,58 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Profile } from "@/lib/types";
+
+// Whether the signed-in person's agency has ended, and what they may do about
+// it.
+//
+// From the end date, every signed-in route for that agency shows one page:
+// the records page. Only two people can use it (brief, item 2): the licensee
+// in charge and the account holder. Everyone else in the agency sees a short
+// page telling them to contact their licensee.
+//
+// THE ACCOUNT HOLDER is the person who created the agency (Adam, 8 Oct 2026).
+// The agency row does not record a creator, but the creator's profile is made
+// in the same transaction as the agency, so the earliest profile in the
+// agency is theirs. On an individual agent plan that is the agent.
+
+export type EndedState = {
+  agencyId: string;
+  agencyName: string;
+  endedAt: Date;
+  /** Licensee in charge or account holder. */
+  mayUseRecords: boolean;
+  isAccountHolder: boolean;
+};
+
+export async function accountHolderId(supabase: SupabaseClient, agencyId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("agency_id", agencyId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (data as { id?: string } | null)?.id ?? null;
+}
+
+/** Null when the agency is current, which is every agency almost always. */
+export async function endedStateFor(supabase: SupabaseClient, profile: Profile): Promise<EndedState | null> {
+  const { data } = await supabase
+    .from("agencies")
+    .select("id, name, ended_at")
+    .eq("id", profile.agency_id)
+    .maybeSingle();
+
+  const agency = data as { id: string; name: string; ended_at: string | null } | null;
+  if (!agency?.ended_at) return null;
+
+  const holder = await accountHolderId(supabase, agency.id);
+  const isAccountHolder = holder === profile.id;
+
+  return {
+    agencyId: agency.id,
+    agencyName: agency.name,
+    endedAt: new Date(agency.ended_at),
+    mayUseRecords: isAccountHolder || profile.is_licensee_in_charge === true,
+    isAccountHolder,
+  };
+}

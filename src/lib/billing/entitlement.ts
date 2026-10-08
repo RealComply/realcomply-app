@@ -198,7 +198,11 @@ export function readOnlyMessage(status: BillingStatus): string {
     case "past_due":
       return "We couldn't take the last payment, so new listings and new records are paused. Everything already on file stays readable and you can export all of it.";
     case "canceled":
-      return "This subscription has ended, so new listings and new records are paused. Everything already on file stays readable and you can export all of it at any time.";
+      // Rarely seen: an ended agency is shown the records page instead
+      // (lib/subscription-end/). Kept true for the moment between Stripe's
+      // event and the page refreshing. Not "at any time": records are
+      // deleted 14 days after the end (Terms v.4, DPA cl 4.8).
+      return "This subscription has ended, so nothing can be added or changed. You can download your records until they are deleted, 14 days after the end date.";
     default:
       return "New listings and new records are paused on this account. Everything already on file stays readable and exportable.";
   }
