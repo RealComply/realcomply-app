@@ -52,6 +52,9 @@ begin
   insert into public.pm_records (agency_id, property_id, tenancy_id, kind, data, recorded_by)
     values (b_agency, b_prop, b_ten, 'pet_request', '{"received": "2026-10-01", "outcome": "consent"}', b_user)
     returning id into b_pet;
+  -- One reminder already sent for A's own tenancy, written as the daily job would.
+  insert into public.pm_retention_reminders (agency_id, subject_kind, subject_id, due_date)
+    values (a_agency, 'tenancy', a_ten, date '2029-10-07');
 
   -- From here on, act as person A, signed in, through the same role the app uses.
   perform set_config('request.jwt.claims', json_build_object('sub', a_user, 'role', 'authenticated')::text, true);
@@ -125,13 +128,16 @@ begin
   end;
   if not blocked then raise exception 'FAIL 6: "Response given" was pressed twice'; end if;
 
-  -- 7. Nobody signed in can read or write the file reminder log.
-  blocked := false;
+  -- 7. Nobody signed in can read or write the file reminder log, not even
+  --    their own agency's rows. Supabase may grant the table to signed-in
+  --    users by default; row-level security with no policy is what keeps it
+  --    closed, so a read sees nothing and a write is refused or changes nothing.
+  n := 0;
   begin
     select count(*) into n from public.pm_retention_reminders;
-  exception when others then blocked := true;
+  exception when insufficient_privilege then n := 0;
   end;
-  if not blocked then raise exception 'FAIL 7: a signed-in person can read the file reminder log'; end if;
+  if n <> 0 then raise exception 'FAIL 7: a signed-in person can read the file reminder log'; end if;
   blocked := false;
   begin
     insert into public.pm_retention_reminders (agency_id, subject_kind, subject_id, due_date)
@@ -139,6 +145,16 @@ begin
   exception when others then blocked := true;
   end;
   if not blocked then raise exception 'FAIL 7: a signed-in person can write the file reminder log'; end if;
+  -- No filter on purpose: a filtered write also needs read access, so only an
+  -- unfiltered one shows a write-only leak. All of it is rolled back below.
+  begin
+    update public.pm_retention_reminders set due_date = current_date;
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    delete from public.pm_retention_reminders;
+  exception when insufficient_privilege then null;
+  end;
 
   -- Back to the owner to check 4 did nothing.
   reset role;
@@ -148,6 +164,8 @@ begin
   if n <> 1 then raise exception 'FAIL 4: person A ended agency B''s tenancy'; end if;
   select count(*) into n from public.pm_properties where id = b_prop and management_ended_on is null;
   if n <> 1 then raise exception 'FAIL 4: person A ended agency B''s management'; end if;
+  select count(*) into n from public.pm_retention_reminders where subject_id = a_ten and due_date = date '2029-10-07';
+  if n <> 1 then raise exception 'FAIL 7: a signed-in person changed or removed the file reminder log'; end if;
 
   raise notice 'PM Part B isolation: all checks passed';
 end
