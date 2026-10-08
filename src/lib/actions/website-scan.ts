@@ -87,6 +87,12 @@ export type ScanFinding = {
   alertedKey?: string;
 };
 
+// No price on a live ad becomes a red flag from 1 November 2026, when the new
+// NSW legislation commences (RealComply, 8 Oct 2026). Midnight in Sydney,
+// which is still daylight saving (+11:00) on that date. Until then a page with
+// no price is noted on the card, as before, and neither flags nor emails.
+const NO_PRICE_RED_FLAG_FROM = new Date("2026-11-01T00:00:00+11:00");
+
 /** Identifies a set of red flags: the same price below the same ESP is the same alert. */
 function alertKey(flags: RedFlag[]): string {
   return flags.map((f) => `${f.kind}:${f.text}`).sort().join("|");
@@ -446,8 +452,9 @@ async function assess(
 
   // No price on the ad is a red flag (RealComply, 8 Oct 2026): every live
   // listing is checked to make sure a price is being advertised. Only on a
-  // page confirmed to be this property — see the early return above.
-  if (!read.priceShown && marketing) {
+  // page confirmed to be this property — see the early return above — and
+  // only from NO_PRICE_RED_FLAG_FROM.
+  if (!read.priceShown && marketing && new Date(base.checkedAt) >= NO_PRICE_RED_FLAG_FROM) {
     const text =
       `No price is shown on the listing page${read.priceText ? ` (it reads “${read.priceText}”)` : ""}. ` +
       "Add the price guide to the ad.";
