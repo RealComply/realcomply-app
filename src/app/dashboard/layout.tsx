@@ -6,6 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { pmAgencySettings } from "@/lib/data/pm";
+import { endedStateFor } from "@/lib/subscription-end/access";
+import { listingsFor } from "@/lib/subscription-end/records";
+import { createServiceClient } from "@/lib/supabase/service";
+import { RecordsView } from "@/components/records/RecordsView";
 
 // Shared across every /dashboard/* page. Now owns the whole application
 // shell — sidebar, user bar, page background — rather than only the "Ask the
@@ -21,6 +25,18 @@ import { pmAgencySettings } from "@/lib/data/pm";
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireProfile();
   const supabase = await createClient();
+
+  // Once the subscription has ended, every signed-in route shows the records
+  // page and nothing else: no menu, no assistant (brief of 8 Oct 2026,
+  // item 2). Rendered here, in place of the page, so no route is missed. The
+  // listings are read with the service client for the reason given in
+  // lib/subscription-end/records.ts, and only for the two people who may use
+  // the page.
+  const ended = await endedStateFor(supabase, profile);
+  if (ended) {
+    const listings = ended.mayUseRecords ? await listingsFor(createServiceClient(), ended.agencyId) : [];
+    return <RecordsView profile={profile} state={ended} listings={listings} />;
+  }
   // The sidebar badges. Computed here rather than fetched from the browser so
   // the number is correct in the first paint — a count that appears a second
   // late reads as the page changing its mind.

@@ -48,6 +48,11 @@ export type SendEmailInput = {
    * noreply address that confirms their suspicion.
    */
   replyTo?: string;
+  /**
+   * Files sent with the message. Added 8 Oct 2026 for the deletion
+   * certificate, which goes out as a PDF.
+   */
+  attachments?: Array<{ filename: string; content: Uint8Array; contentType: string }>;
 };
 
 // ── SES, over SMTP ─────────────────────────────────────────────────────────
@@ -86,6 +91,15 @@ async function sendViaSes(from: string, input: SendEmailInput): Promise<void> {
     text: input.text,
     html: input.html,
     ...(input.replyTo ? { replyTo: input.replyTo } : {}),
+    ...(input.attachments
+      ? {
+          attachments: input.attachments.map((a) => ({
+            filename: a.filename,
+            content: Buffer.from(a.content),
+            contentType: a.contentType,
+          })),
+        }
+      : {}),
   });
 }
 
@@ -118,6 +132,15 @@ async function sendViaResend(from: string, input: SendEmailInput): Promise<void>
       // Resend spells it reply_to; nodemailer spells it replyTo. The seam is
       // here rather than at every call site.
       ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+      ...(input.attachments
+        ? {
+            attachments: input.attachments.map((a) => ({
+              filename: a.filename,
+              content: Buffer.from(a.content).toString("base64"),
+              content_type: a.contentType,
+            })),
+          }
+        : {}),
     }),
   });
 

@@ -142,7 +142,9 @@ export async function runTrustReminders(
 
   const { data: agencies } = await supabase.from("agencies").select("*");
 
-  for (const agency of (agencies ?? []) as Agency[]) {
+  // An agency whose subscription has ended is on its records page and will
+  // be deleted at day 14. No more reminders.
+  for (const agency of ((agencies ?? []) as Agency[]).filter((a) => !a.ended_at)) {
     result.checked += 1;
 
     const { data: profileRows } = await supabase.from("profiles").select("*").eq("agency_id", agency.id);

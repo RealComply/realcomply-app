@@ -111,6 +111,15 @@ export type Agency = {
   comped_by: string | null;
   comped_reason: string | null;
   comped_until: string | null;
+  // When the subscription ended (0054). Set by the database when status moves
+  // to canceled, cleared on reactivation, never set for a protected agency.
+  // See lib/subscription-end/.
+  ended_at?: string | null;
+  ended_notice_sent_at?: string | null;
+  ended_reminder_sent_at?: string | null;
+  legal_hold?: boolean;
+  legal_hold_reason?: string | null;
+  legal_hold_set_at?: string | null;
   created_at: string;
 };
 

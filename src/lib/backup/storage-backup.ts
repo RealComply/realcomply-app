@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 
@@ -42,6 +43,13 @@ import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 // being replaced — the backup copy stays. That asymmetry IS the protection. A
 // true mirror would faithfully replicate a mistaken deletion and leave nothing
 // to recover from.
+//
+// ONE DELIBERATE EXCEPTION, 8 Oct 2026. When a subscription ends and its
+// 14 days pass, the deletion job (lib/subscription-end/deletion.ts) deletes
+// that agency's copies here too, because the terms promise deletion
+// "including any back-ups". With bucket versioning on, each delete leaves an
+// old version that the bucket's lifecycle rule removes after 90 days. Nothing
+// else ever deletes from this bucket.
 
 export type BackupResult = {
   ok: boolean;
@@ -53,13 +61,13 @@ export type BackupResult = {
   error?: string;
 };
 
-type StorageObject = {
+export type StorageObject = {
   path: string;
   size: number | null;
   updatedAt: string | null;
 };
 
-function backupConfig() {
+export function backupConfig() {
   // Trimmed, every one of them. These four values are typed or pasted into a
   // web form by a human, and on 16 Sep 2026 a trailing character on the bucket
   // name cost an afternoon: S3 answered "The specified bucket is not valid"
@@ -88,8 +96,11 @@ export function storageBackupConfigured(): boolean {
  * so this has to recurse rather than assume a depth. Depth is capped as a
  * guard against a pathological tree costing an entire run.
  */
-async function listAllObjects(
-  supabase: ReturnType<typeof createServiceClient>,
+export async function listAllObjects(
+  // Any client: the backup job passes the service client, and the records
+  // page passes the signed-in user's, whose own agency folder RLS lets them
+  // list (0002).
+  supabase: SupabaseClient,
   prefix = "",
   depth = 0,
 ): Promise<StorageObject[]> {

@@ -9,6 +9,7 @@ import {
 import { sendTrialEndingEmail } from "@/lib/email/trial-ending";
 import { handleTrialWillEnd, type TrialSubscription } from "@/lib/billing/trial-reminder";
 import type { Plan } from "@/lib/billing/entitlement";
+import { sendEndedEmail } from "@/lib/subscription-end/emails";
 
 // Stripe's side of the conversation.
 //
@@ -197,6 +198,19 @@ async function applySubscription(
   const { error } = await supabase.from("agencies").update(update).eq("id", agencyId);
   if (error) {
     throw new Error(`agencies update failed: ${error.message}`);
+  }
+
+  // The subscription has ended. The database has just set ended_at (0054),
+  // unless the agency is protected, in which case this sends nothing. The
+  // day 0 email goes now rather than at the next daily run; if it fails, the
+  // daily run sends it. Never thrown: a 500 here would make Stripe retry an
+  // update that has already succeeded.
+  if (update.status === "canceled") {
+    try {
+      await sendEndedEmail(supabase, agencyId, "day0");
+    } catch (e) {
+      console.error("Stripe webhook: day 0 email failed", agencyId, e instanceof Error ? e.message : e);
+    }
   }
 }
 
