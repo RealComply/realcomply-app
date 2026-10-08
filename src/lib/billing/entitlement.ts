@@ -31,6 +31,24 @@ export type Plan =
   | "office_5";
 export type BillingStatus = "trialing" | "active" | "past_due" | "canceled" | "comped";
 
+/**
+ * The free trial, in days. Terms v.4 cl 4.3: "The Provider may offer a 14 day
+ * trial period and to access such trial the Subscriber will be required to
+ * enter their payment details." Was 30 until 9 Oct 2026 (Adam: "the trial is
+ * 14 days, not 30, to match terms clause 4.3").
+ */
+export const TRIAL_DAYS = 14;
+
+/**
+ * Has this agency still to start its trial? True for a new office whose card
+ * has not yet been taken: status 'trialing' (the default for a new agency
+ * since 0055) with no Stripe subscription. Until it starts, the app shows one
+ * page, "Start your 14-day trial", and the database refuses new records.
+ */
+export function needsTrialStart(agency: { status: string | null; stripe_subscription_id: string | null }): boolean {
+  return agency.status === "trialing" && !agency.stripe_subscription_id;
+}
+
 // Two ladders, not one.
 //
 // Adam, 2 Sep 2026: "an agent doing 100 sales or more can afford to pay more
@@ -120,7 +138,11 @@ export async function entitlementFor(
   agencyId: string,
 ): Promise<Entitlement> {
   const [{ data: agencyRow }, { data: count }] = await Promise.all([
-    supabase.from("agencies").select("plan, status, trial_ends_at, comped_until").eq("id", agencyId).maybeSingle(),
+    supabase
+      .from("agencies")
+      .select("plan, status, trial_ends_at, comped_until, stripe_subscription_id")
+      .eq("id", agencyId)
+      .maybeSingle(),
     supabase.rpc("agency_listing_count", { p_agency_id: agencyId }),
   ]);
 
@@ -129,6 +151,7 @@ export async function entitlementFor(
     status?: BillingStatus;
     trial_ends_at?: string | null;
     comped_until?: string | null;
+    stripe_subscription_id?: string | null;
   };
 
   // Defaults matter here, and they default OPEN rather than closed.
@@ -142,7 +165,9 @@ export async function entitlementFor(
   const status: BillingStatus = agency.status ?? "comped";
 
   const compExpired = status === "comped" && agency.comped_until != null && new Date(agency.comped_until) <= new Date();
-  const mayWrite = (status === "trialing" || status === "active" || status === "comped") && !compExpired;
+  // Mirrors agency_may_write() (0055): a trial counts once the card is in.
+  const trialStarted = status !== "trialing" || Boolean(agency.stripe_subscription_id);
+  const mayWrite = (status === "trialing" || status === "active" || status === "comped") && !compExpired && trialStarted;
 
   const listingCount = typeof count === "number" ? count : 0;
   const spec = PLANS[plan];
@@ -198,7 +223,11 @@ export function readOnlyMessage(status: BillingStatus): string {
     case "past_due":
       return "We couldn't take the last payment, so new listings and new records are paused. Everything already on file stays readable and you can export all of it.";
     case "canceled":
-      return "This subscription has ended, so new listings and new records are paused. Everything already on file stays readable and you can export all of it at any time.";
+      // Rarely seen: an ended agency is shown the records page instead
+      // (lib/subscription-end/). Kept true for the moment between Stripe's
+      // event and the page refreshing. Not "at any time": records are
+      // deleted 14 days after the end (Terms v.4, DPA cl 4.8).
+      return "This subscription has ended, so nothing can be added or changed. You can download your records until they are deleted, 14 days after the end date.";
     default:
       return "New listings and new records are paused on this account. Everything already on file stays readable and exportable.";
   }

@@ -71,6 +71,20 @@ export async function requireAuthContext() {
     redirect("/signup");
   }
 
+  // Once a subscription has ended, nothing can be added or changed and AI
+  // features are off (brief of 8 Oct 2026). The database refuses the writes
+  // on its own (0054); this stops every action before it starts, including
+  // the ones that would call Anthropic first and write afterwards. Back to
+  // the dashboard, which for an ended agency is the records page.
+  const { data: agency } = await supabase
+    .from("agencies")
+    .select("ended_at")
+    .eq("id", (profile as { agency_id: string }).agency_id)
+    .maybeSingle();
+  if ((agency as { ended_at?: string | null } | null)?.ended_at) {
+    redirect("/dashboard/records");
+  }
+
   return { supabase, user, profile };
 }
 

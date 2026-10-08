@@ -455,12 +455,17 @@ export async function runWeeklyListingScan(): Promise<{ checked: number; withIss
     .gte("stage", 2)
     .lte("stage", 4);
 
-  const properties = (rows ?? []) as Array<{
+  // Not for an agency whose subscription has ended. Its records are frozen
+  // and AI features are off for it.
+  const { data: endedRows } = await supabase.from("agencies").select("id").not("ended_at", "is", null);
+  const ended = new Set(((endedRows ?? []) as Array<{ id: string }>).map((a) => a.id));
+
+  const properties = ((rows ?? []) as Array<{
     id: string;
     agency_id: string;
     address: string;
     listing_url: string | null;
-  }>;
+  }>).filter((p) => !ended.has(p.agency_id));
 
   const db = supabase as unknown as Db;
   let checked = 0;

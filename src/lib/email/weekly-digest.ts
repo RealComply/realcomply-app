@@ -372,7 +372,9 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
 
   const { data: agencies } = await supabase.from("agencies").select("*");
 
-  for (const agency of (agencies ?? []) as Agency[]) {
+  // No digest for an agency whose subscription has ended: there is nothing
+  // it can act on, and its own emails already say what happens next.
+  for (const agency of ((agencies ?? []) as Agency[]).filter((a) => !a.ended_at)) {
     const bundle = await loadAgencyBundle(supabase, agency);
     const licenceSection = renderLicenceAndPiSection(bundle.agency, bundle.profiles);
     const trainingSection = renderTrainingSection(

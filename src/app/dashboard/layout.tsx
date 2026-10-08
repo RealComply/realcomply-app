@@ -8,6 +8,13 @@ import { requireProfile } from "@/lib/data/current-profile";
 import { hasAcceptedCurrentLegal } from "@/lib/legal/acceptance";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { pmAgencySettings } from "@/lib/data/pm";
+import { endedStateFor } from "@/lib/subscription-end/access";
+import { listingsFor } from "@/lib/subscription-end/records";
+import { createServiceClient } from "@/lib/supabase/service";
+import { RecordsView } from "@/components/records/RecordsView";
+import { TrialStartView } from "@/components/billing/TrialStartView";
+import { needsTrialStart } from "@/lib/billing/entitlement";
+import { accountHolderId } from "@/lib/subscription-end/access";
 
 // Shared across every /dashboard/* page. Now owns the whole application
 // shell — sidebar, user bar, page background — rather than only the "Ask the
@@ -23,11 +30,39 @@ import { pmAgencySettings } from "@/lib/data/pm";
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireProfile();
   const supabase = await createClient();
+  // Once the subscription has ended, every signed-in route shows the records
+  // page and nothing else: no menu, no assistant (brief of 8 Oct 2026,
+  // item 2). Rendered here, in place of the page, so no route is missed. The
+  // listings are read with the service client for the reason given in
+  // lib/subscription-end/records.ts, and only for the two people who may use
+  // the page.
+  const ended = await endedStateFor(supabase, profile);
+  if (ended) {
+    const listings = ended.mayUseRecords ? await listingsFor(createServiceClient(), ended.agencyId) : [];
+    return <RecordsView profile={profile} state={ended} listings={listings} />;
+  }
+
   // Nobody uses the app on terms they have not accepted. When the terms or
   // privacy policy get a new version, existing users land on /accept-terms
   // the next time they open any dashboard page. See lib/legal/acceptance.ts.
+  // After the records page on purpose: an agency whose subscription has ended
+  // must be able to take its records away without accepting new terms first.
   if (!(await hasAcceptedCurrentLegal(supabase, profile.id))) {
     redirect("/accept-terms");
+  }
+
+  // A new office whose card is not in yet sees one page: start your 14-day
+  // trial (Adam, 9 Oct 2026). See TrialStartView.
+  const { data: billingRow } = await supabase
+    .from("agencies")
+    .select("name, status, stripe_subscription_id")
+    .eq("id", profile.agency_id)
+    .maybeSingle();
+  const billing = billingRow as { name: string; status: string | null; stripe_subscription_id: string | null } | null;
+  if (billing && needsTrialStart(billing)) {
+    const mayStart =
+      profile.is_licensee_in_charge === true || (await accountHolderId(supabase, profile.agency_id)) === profile.id;
+    return <TrialStartView profile={profile} agencyName={billing.name} mayStart={mayStart} />;
   }
   // The sidebar badges. Computed here rather than fetched from the browser so
   // the number is correct in the first paint — a count that appears a second

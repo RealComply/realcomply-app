@@ -192,7 +192,9 @@ export async function runLicenceReminders(
 
   const { data: agencies } = await supabase.from("agencies").select("*");
 
-  for (const agency of (agencies ?? []) as Agency[]) {
+  // An agency whose subscription has ended is on its records page and will
+  // be deleted at day 14. Nothing more about its licences.
+  for (const agency of ((agencies ?? []) as Agency[]).filter((a) => !a.ended_at)) {
     const { data: profileRows } = await supabase.from("profiles").select("*").eq("agency_id", agency.id);
     // Only the people in the office today. Someone archived (0035) has left:
     // their licence is no longer the agency's to watch, and a former licensee
