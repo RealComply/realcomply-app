@@ -1,59 +1,52 @@
-// The published legal documents, and their versions.
-//
-// Built 22 Aug 2026, ahead of the lawyer's drafts, because the plumbing is the
-// slow part and the words are the fast part. When the real documents arrive,
-// replace `body` and bump `version`. Nothing else has to change.
-//
-// 2 Oct 2026: the real documents arrived. Terms and privacy policy replaced,
-// the Data Processing Agreement added, all three marked reviewed. The 22 Aug
-// drafts that people accepted are in git history under version
-// "2026-08-22-draft".
-//
-// WHY A VERSION STRING AT ALL. "The agency accepted our terms" is worth very
-// little on its own. What a regulator or a court asks is which terms, as they
-// stood when. So every acceptance records the exact version identifier of the
-// document that was on screen, and old versions must never be edited in place
-// once anyone has accepted them: publish a new version instead. That is the
-// whole reason acceptance is stored against a version rather than a boolean.
-//
-// Bumping the terms or privacy version also sends every existing user through
-// /accept-terms on their next visit to the app (see lib/legal/acceptance.ts),
-// so any change to accepted text means everyone agrees again. Talk to Adam
-// before making one.
-//
-// Versions are dates because that is what people cite in correspondence, and
-// a date sorts correctly without anyone having to remember a scheme.
+# Brief for Claude Code: publish the terms, privacy policy and DPA
 
-export type LegalDocumentKey = "terms" | "privacy" | "dpa";
+**From the Legal chat, 2 Oct 2026. Adam pastes this whole document into Claude Code.**
 
-export type LegalDocument = {
-  key: LegalDocumentKey;
-  /** Route path, also the link target in the signup checkbox. */
-  path: string;
-  title: string;
-  /** Bump this whenever the text changes. Never edit a version people accepted. */
-  version: string;
-  /** Shown under the title so a reader knows which version they are looking at. */
-  effective: string;
-  /**
-   * True once a lawyer has settled the text. While false the page carries a
-   * visible notice saying so, because a placeholder that looks like a real
-   * policy is worse than an obvious draft: someone will otherwise rely on it.
-   */
-  reviewed: boolean;
-  /**
-   * Markdown-ish plain text: "#", "##" and "###" headings, paragraphs, "- "
-   * lists, "|" tables and **bold**. Rendered by components/legal/LegalPage.
-   */
-  body: string;
-};
+It has four parts: the instructions, then the final text of the three documents. The three texts are Natalie Melia's finals of 23 Sep 2026 with in-house changes approved by Adam on 2 Oct 2026. This document supersedes the wording in `RealComply-terms-update-changes-2-Oct.md` and `RealComply-privacy-DPA-retention-check-2-Oct.md` where they differ (audit trail now keeps names and addresses; backups have no day count; Vercel is Sydney).
 
-// Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-publish-brief-2-Oct.md.
-//
-// Verbatim. Do not edit a word, a clause number or a cross-reference here:
-// documents.test.ts checks this text against the brief, character for
-// character.
-const TERMS_BODY = `
+---
+
+## PART A: Instructions
+
+### What to do
+
+1. Read `AGENTS.md` in the repo first.
+2. **Terms and privacy policy in the app.** `src/lib/legal/documents.ts` still serves the 22 August drafts, marked `reviewed: false`, so every acceptance is stamped `-draft`. Replace the terms with Part B and the privacy policy with Part C. Give both a new version (use the date, 2026-10-02, in whatever format the file already uses). Set `reviewed: true` so the draft banner goes and new acceptances are no longer stamped as drafts.
+3. **DPA.** Publish Part D as a public page at `/dpa`, served the same way as `/terms` and `/privacy` if the structure allows. Link it from the foot of `/terms` and `/privacy`. It does not need its own acceptance checkbox.
+4. **Marketing site privacy page.** `public/privacy.html` (live at `https://realcomply.com.au/privacy.html`) holds an older, different policy. Make it show the same text as Part C, or redirect it to `/privacy`. The URL must keep working when signed out, because Meta's app review uses it.
+5. **Existing users.** Check how the app handles a user who accepted an older version. Existing users (today only Cass Property) should be asked to accept the new version on next sign-in. If that is not built, say so and stop. Do not build it without asking Adam.
+6. **Show Adam before it goes live.** Deploy to a preview and give Adam the preview links for `/terms`, `/privacy` and `/dpa`. Merge to `main` only after he says yes.
+
+### Rules
+
+- **Do not change any wording** in Parts B, C or D. Not grammar, not spelling, not clause numbers. If something looks wrong, tell Adam.
+- Keep the clause numbers exactly as written. They are typed in by hand because cross-references depend on them.
+- Do not touch the AML/KYC cards or any product content.
+- No secrets in the chat or the code.
+- Add this comment at the top of each document in the code:
+  `Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-publish-brief-2-Oct.md.`
+- Add this comment where retention or document storage is handled, if there is such a place:
+  `REVERSAL 2 Oct 2026 (Adam): source documents are kept for the life of the subscription. Do NOT purge at settlement. They are deleted with everything else 14 days after the subscription ends.`
+
+### One thing to check in the code and report back
+
+Part C says the public website's home page uses Plausible analytics and the Meta pixel. That was true on 19 August. Confirm both are still there. If either is gone, tell Adam so that sentence can be changed.
+
+### Checks before saying it is done
+
+- `/terms`, `/privacy`, `/dpa` and `/privacy.html` all load when signed out.
+- The draft banner is gone.
+- A test signup records the new version with no `-draft` on it. Use a throwaway address. Never test on Cass Property's subscription.
+- Give Adam the two public links for the Stripe customer portal: the terms page and the privacy page.
+
+### Not part of this job (already on Master's list)
+
+These are described in the documents but not built yet. Customers stay invite-only until they are: the records page and download for ended subscriptions, the two emails, the day-14 deletion, the deletion certificate, the 7-year audit trail store, the suspension screen for failed payments with the 90-day long-stop, and the backup expiry rule.
+
+---
+
+## PART B: Terms and Conditions (final text)
+
 # REALCOMPLY TERMS AND CONDITIONS
 
 ## 1. General Terms
@@ -475,14 +468,11 @@ const TERMS_BODY = `
 **User** means the Subscriber or any individual authorised by a Subscriber to access and use the RealComply on the Subscriber's behalf, including a Licensee in Charge (where applicable), principal, agent, employee, contractor or other authorised personnel.
 
 **User Content** means any information, data, client records, documents, compliance records, forms, files, text, images, reports and other content uploaded to, stored in, submitted through or generated using the RealComply by or on behalf of the Subscriber or its Users.
-`.trim();
 
-// Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-publish-brief-2-Oct.md.
-//
-// Verbatim. Do not edit a word, a clause number or a cross-reference here:
-// documents.test.ts checks this text against the brief, character for
-// character.
-const PRIVACY_BODY = `
+---
+
+## PART C: Privacy Policy (final text)
+
 # Privacy Policy
 
 RealComply Pty Ltd ACN 700 934 792
@@ -570,17 +560,11 @@ If you are not satisfied with our response you may complain to the Office of the
 ## Changes
 
 If this policy changes materially we will publish a new version and record your acceptance of it.
-`.trim();
 
-// Published at /dpa and linked from the foot of /terms and /privacy. It has
-// no acceptance checkbox of its own (brief, 2 Oct 2026), so it is not part of
-// currentLegalVersions() and changing it does not prompt anyone to re-accept.
-// Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-publish-brief-2-Oct.md.
-//
-// Verbatim. Do not edit a word, a clause number or a cross-reference here:
-// documents.test.ts checks this text against the brief, character for
-// character.
-const DPA_BODY = `
+---
+
+## PART D: Data Processing Agreement (final text)
+
 # Data Processing Agreement
 
 RealComply Pty Ltd ACN 700 934 792 and the Subscriber
@@ -709,46 +693,3 @@ This Agreement continues for as long as RealComply holds Subscriber Data. Clause
 | Anthropic PBC | AI extraction of figures and dates from uploaded documents | United States | Text of uploaded documents. Not used for model training. |
 | Google LLC | Address autocomplete | United States | Partial address strings typed by users |
 | Amazon Web Services (SES) | Transactional email | Sydney, Australia | Names, email addresses, property addresses, compliance status |
-`.trim();
-
-export const LEGAL_DOCUMENTS: Record<LegalDocumentKey, LegalDocument> = {
-  terms: {
-    key: "terms",
-    path: "/terms",
-    title: "Terms and Conditions",
-    version: "2026-10-02",
-    effective: "2 October 2026",
-    reviewed: true,
-    body: TERMS_BODY,
-  },
-  privacy: {
-    key: "privacy",
-    path: "/privacy",
-    title: "Privacy Policy",
-    version: "2026-10-02",
-    effective: "2 October 2026",
-    reviewed: true,
-    body: PRIVACY_BODY,
-  },
-  dpa: {
-    key: "dpa",
-    path: "/dpa",
-    title: "Data Processing Agreement",
-    version: "2026-10-02",
-    effective: "2 October 2026",
-    reviewed: true,
-    body: DPA_BODY,
-  },
-};
-
-export function legalDocument(key: LegalDocumentKey): LegalDocument {
-  return LEGAL_DOCUMENTS[key];
-}
-
-/** The pair recorded against an acceptance. */
-export function currentLegalVersions(): { terms: string; privacy: string } {
-  return {
-    terms: LEGAL_DOCUMENTS.terms.version,
-    privacy: LEGAL_DOCUMENTS.privacy.version,
-  };
-}

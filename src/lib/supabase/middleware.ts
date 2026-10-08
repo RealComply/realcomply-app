@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const LEGAL_PATHS = new Set(["/terms", "/privacy", "/dpa"]);
+
 /**
  * Refreshes the Supabase auth session on every request and redirects
  * signed-out users away from protected routes. Called from middleware.ts.
@@ -42,9 +44,15 @@ export async function updateSession(request: NextRequest) {
   // make the whole sign-off-by-link feature impossible. The token in the URL is
   // the credential, and the page reads nothing except through the two
   // SECURITY DEFINER functions in 0014_licensee_signoff_links.sql.
+  //
+  // The legal documents are public for the same kind of reason: a privacy
+  // policy only account holders can read is not published, and the Stripe
+  // customer portal and Meta's app review both link to them signed out.
+  const isLegalRoute = LEGAL_PATHS.has(request.nextUrl.pathname);
   const isPublicRoute =
     request.nextUrl.pathname === "/" ||
     request.nextUrl.pathname.startsWith("/signoff/") ||
+    isLegalRoute ||
     isAuthRoute;
 
   if (!user && !isPublicRoute) {

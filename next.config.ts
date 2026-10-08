@@ -1,6 +1,20 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        // /privacy.html held an older, different privacy policy (Meta's app
+        // review links to it, so the URL has to keep working signed out).
+        // Brief of 2 Oct 2026: one policy, in one place. 301 rather than
+        // Next's default 308 because it is the code every crawler has
+        // followed longest.
+        source: "/privacy.html",
+        destination: "/privacy",
+        statusCode: 301,
+      },
+    ];
+  },
   experimental: {
     serverActions: {
       // Property creation can upload up to three evidence documents (agency
