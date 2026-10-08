@@ -55,7 +55,7 @@ export function buildFounderInviteEmail(input: FounderInviteEmail): {
       },
       {
         kind: "paragraph",
-        text: "The link below sets up your agency and signs you in. There's nothing to pay and no card required.",
+        text: "The link below sets up your agency and signs you in. It starts with a 14-day free trial: you enter card details on Stripe's page to begin, and nothing is charged until the trial ends.",
       },
       { kind: "button", label: "Set up your agency", href: url },
       {

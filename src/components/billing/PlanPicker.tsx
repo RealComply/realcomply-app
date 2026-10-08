@@ -124,7 +124,7 @@ export function PlanPicker({
 
       <div className="mt-6 rounded-xl border border-rc-border bg-white p-4">
         <p className="text-sm text-rc-muted">
-          <span className="font-semibold text-rc-ink">30 days free</span>, then $
+          <span className="font-semibold text-rc-ink">14 days free</span>, then $
           {priceOf(plan).toLocaleString("en-AU")}
           {per} including GST. Cancel any time from this page. Payment details are entered on Stripe&rsquo;s own
           page, never here.
