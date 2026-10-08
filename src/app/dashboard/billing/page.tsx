@@ -7,6 +7,7 @@ import { MasterSwitch } from "@/components/billing/MasterSwitch";
 import { formatAuDate } from "@/lib/format-date";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { ManageBillingButton } from "@/components/billing/ManageBillingButton";
+import { accountHolderId } from "@/lib/subscription-end/access";
 
 // Billing.
 //
@@ -29,6 +30,9 @@ export default async function BillingPage({
   const { started, cancelled } = await searchParams;
 
   const entitlement = await entitlementFor(supabase, profile.agency_id);
+  // The licensee in charge or the account holder sets up billing (9 Oct 2026).
+  const mayManageBilling =
+    profile.is_licensee_in_charge === true || (await accountHolderId(supabase, profile.agency_id)) === profile.id;
 
   const { data: agencyRow } = await supabase
     .from("agencies")
@@ -195,11 +199,11 @@ export default async function BillingPage({
 
       {/* ── Subscribe ───────────────────────────────────────────────── */}
       {!subscribed && entitlement.status !== "comped" && (
-        profile.is_licensee_in_charge ? (
+        mayManageBilling ? (
           <PlanPicker suggested={entitlement.impliedTier} listingCount={entitlement.listingCount} />
         ) : (
           <p className="mt-6 rounded-xl border border-rc-border bg-white px-4 py-3 text-sm text-rc-muted">
-            Your licensee in charge sets up billing for the office.
+            Your licensee in charge or the account holder sets up billing for the office.
           </p>
         )
       )}

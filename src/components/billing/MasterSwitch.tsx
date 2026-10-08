@@ -88,7 +88,7 @@ export function MasterSwitch({
             disabled={pending}
             className="rounded-full bg-rc-green-deep px-4 py-2 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
           >
-            {pending ? "Saving…" : "Put on a 30-day trial"}
+            {pending ? "Saving…" : "Put on a 14-day trial"}
           </button>
           <button
             type="submit"

@@ -10,6 +10,9 @@ import { endedStateFor } from "@/lib/subscription-end/access";
 import { listingsFor } from "@/lib/subscription-end/records";
 import { createServiceClient } from "@/lib/supabase/service";
 import { RecordsView } from "@/components/records/RecordsView";
+import { TrialStartView } from "@/components/billing/TrialStartView";
+import { needsTrialStart } from "@/lib/billing/entitlement";
+import { accountHolderId } from "@/lib/subscription-end/access";
 
 // Shared across every /dashboard/* page. Now owns the whole application
 // shell — sidebar, user bar, page background — rather than only the "Ask the
@@ -36,6 +39,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (ended) {
     const listings = ended.mayUseRecords ? await listingsFor(createServiceClient(), ended.agencyId) : [];
     return <RecordsView profile={profile} state={ended} listings={listings} />;
+  }
+
+  // A new office whose card is not in yet sees one page: start your 14-day
+  // trial (Adam, 9 Oct 2026). See TrialStartView.
+  const { data: billingRow } = await supabase
+    .from("agencies")
+    .select("name, status, stripe_subscription_id")
+    .eq("id", profile.agency_id)
+    .maybeSingle();
+  const billing = billingRow as { name: string; status: string | null; stripe_subscription_id: string | null } | null;
+  if (billing && needsTrialStart(billing)) {
+    const mayStart =
+      profile.is_licensee_in_charge === true || (await accountHolderId(supabase, profile.agency_id)) === profile.id;
+    return <TrialStartView profile={profile} agencyName={billing.name} mayStart={mayStart} />;
   }
   // The sidebar badges. Computed here rather than fetched from the browser so
   // the number is correct in the first paint — a count that appears a second
