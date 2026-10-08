@@ -12,8 +12,9 @@
 --
 -- Run it after 0054. It is safe on the live database: everything happens
 -- inside one transaction that is rolled back at the end, so the made-up
--- agency and people never exist outside it, and the status changes it makes
--- to Cass Property and Comply Real Estate are undone.
+-- agencies and people never exist outside it. It never touches Cass Property
+-- or Comply Real Estate: their protection is checked through the guard
+-- function, not their rows.
 --
 -- Pass: the last line says "Subscription end: all checks passed".
 -- Fail: it stops with an error naming the check that failed.
@@ -25,7 +26,8 @@ declare
   cass   uuid := 'b4763dfb-b33e-43bb-94ca-702a7e989a27';
   comply uuid := '2972edd0-7995-4946-803b-064d2a50baee';
   t_agency uuid := gen_random_uuid();   -- the throwaway agency
-  c_agency uuid := gen_random_uuid();   -- a comped one
+  c_agency uuid := gen_random_uuid();   -- comped by status
+  k_agency uuid := gen_random_uuid();   -- comped by an admin (comped_by set)
   p_agency uuid := gen_random_uuid();   -- one with a platform admin in it
   lic  uuid := gen_random_uuid();
   adm  uuid := gen_random_uuid();
@@ -43,11 +45,13 @@ begin
   insert into public.agencies (id, name, status) values
     (t_agency, 'Subscription end test', 'active'),
     (c_agency, 'Subscription end test comped', 'comped'),
+    (k_agency, 'Subscription end test comped by admin', 'active'),
     (p_agency, 'Subscription end test owner', 'active');
   insert into public.profiles (id, agency_id, full_name, email, is_agent, is_licensee_in_charge) values
     (lic, t_agency, 'Test Licensee', 'end-test-lic@example.invalid', true, true),
     (adm, p_agency, 'Test Owner', 'end-test-admin@example.invalid', true, true);
   update public.profiles set is_platform_admin = true where id = adm;
+  update public.agencies set comped_by = adm where id = k_agency;
   insert into public.properties (id, agency_id, created_by, address) values
     (prop, t_agency, lic, '1 Test Street, Testville');
   insert into public.gifts (id, agency_id, profile_id, gift_date, description, value, direction, created_by)
@@ -59,23 +63,31 @@ begin
   if ended is null then raise exception 'FAIL 1: a cancelled agency got no end date'; end if;
 
   -- ── Never for the protected ones ───────────────────────────────────────
-  update public.agencies set status = 'canceled' where id in (cass, comply, c_agency, p_agency);
-  if exists (select 1 from public.agencies where id = cass and ended_at is not null) then
-    raise exception 'FAIL 2: Cass Property got an end date';
+  -- Cass Property and Comply Real Estate are checked through the guard
+  -- function, never by touching their rows: the brief allows testing on a
+  -- throwaway agency only. The function is the same one the end-date
+  -- trigger and the deletion job use, asked about each office as if Stripe
+  -- had just cancelled it with nothing else protecting it.
+  if not public.agency_is_protected_values(cass, 'canceled', null) then
+    raise exception 'FAIL 2: Cass Property is not protected';
   end if;
-  if exists (select 1 from public.agencies where id = comply and ended_at is not null) then
-    raise exception 'FAIL 3: Comply Real Estate got an end date';
+  if not public.agency_is_protected_values(comply, 'canceled', null) then
+    raise exception 'FAIL 3: Comply Real Estate is not protected';
   end if;
-  if exists (select 1 from public.agencies where id = c_agency and ended_at is not null) then
+  update public.agencies set status = 'canceled' where id in (c_agency, k_agency, p_agency);
+  if exists (select 1 from public.agencies where id in (c_agency, k_agency) and ended_at is not null) then
     raise exception 'FAIL 4: a comped agency got an end date';
   end if;
   if exists (select 1 from public.agencies where id = p_agency and ended_at is not null) then
     raise exception 'FAIL 5: the platform owner''s agency got an end date';
   end if;
-  -- Even written directly.
-  update public.agencies set ended_at = now() where id in (cass, comply);
-  if exists (select 1 from public.agencies where id in (cass, comply) and ended_at is not null) then
-    raise exception 'FAIL 6: an end date could be written straight onto a protected office';
+  -- Even written directly, whatever the status now says. (An agency comped
+  -- only by its status stops being comped once it is cancelled, so it is not
+  -- in this list; one comped by an admin, the named offices and the
+  -- platform owner's agency always are.)
+  update public.agencies set ended_at = now() where id in (k_agency, p_agency);
+  if exists (select 1 from public.agencies where id in (k_agency, p_agency) and ended_at is not null) then
+    raise exception 'FAIL 6: an end date could be written straight onto a protected agency';
   end if;
 
   -- ── As the licensee of the ended agency ─────────────────────────────────
