@@ -10,7 +10,7 @@ import { checkListingNow } from "@/lib/actions/website-scan";
 // confirm. Adam, 16 Aug 2026: a button the agent has to press "may as well just
 // eyeball their own website. The whole point of this is for RealComply to
 // routinely check the website and come back to the agent and let them know if
-// their advertised price has slipped below the ESP." So the weekly run finds
+// their advertised price has slipped below the ESP." So the daily run finds
 // the page itself, and this panel is a read-out of what it found. Check now
 // exists only for the impatient.
 //
@@ -28,6 +28,8 @@ export type ScanFinding = {
   issues: string[];
   priceShown: boolean;
   priceText?: string;
+  readAt?: string;
+  aiSkipped?: boolean;
 };
 
 function when(iso: string): string {
@@ -70,7 +72,7 @@ export function ListingScanPanel({
 
           {!finding ? (
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-              Your website is checked against this listing&rsquo;s ESP each week, once it&rsquo;s advertised. Nothing
+              Your website is checked against this listing&rsquo;s ESP each morning, once it&rsquo;s advertised. Nothing
               to set up.
             </p>
           ) : (
@@ -114,6 +116,14 @@ export function ListingScanPanel({
                   {finding.url}
                 </a>
               </p>
+              {/* Say so when this morning's check reused the last read. The
+                  verdict above was redone against today's ESP, but the page
+                  itself was last read by the model at readAt. */}
+              {finding.aiSkipped && finding.readAt && (
+                <p className="mt-0.5 text-[11px] leading-relaxed text-rc-faint">
+                  Price on the page unchanged since it was last read, {when(finding.readAt)}.
+                </p>
+              )}
               <p className="mt-0.5 text-[11px] leading-relaxed text-rc-faint">
                 A read of your own listing page, not a compliance decision.
               </p>

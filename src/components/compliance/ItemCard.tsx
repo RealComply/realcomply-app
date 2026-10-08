@@ -2434,7 +2434,7 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
       ) : (
         <form action={confirmFormAction} className="space-y-3">
           {/* Says where these figures came from, and it matters. Everything
-              downstream — the weekly advertised-price check, the rejected-offer
+              downstream — the daily advertised-price check, the rejected-offer
               check, the licensee's sign-off summary — measures against this
               number. A licensee putting their name to the file is entitled to
               know whether it was read off the document or typed beside it. */}

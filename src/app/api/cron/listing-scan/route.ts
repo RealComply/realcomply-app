@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { runWeeklyListingScan } from "@/lib/actions/website-scan";
+import { runDailyListingScan } from "@/lib/actions/website-scan";
 
-// The weekly advertised-price check. Same guard as the digest route: Vercel
+// The daily advertised-price check, 20:00 UTC (7am Sydney in daylight saving,
+// 6am otherwise — Vercel Cron schedules are UTC only). Same guard as the digest route: Vercel
 // Cron adds "Authorization: Bearer <CRON_SECRET>" automatically, and that
 // header is the only thing between this route and anyone who finds the URL.
 //
-// Scheduled an hour before the weekly digest (see vercel.json) so Monday's
-// email reports findings from a fresh check rather than last week's.
+// Sunday's run lands an hour before the weekly digest (see vercel.json), so
+// Monday's email reports findings from that morning's check.
 //
 // Can be run by hand from the Vercel dashboard: Project Settings → Cron Jobs →
 // Run. That path needs no secret, since Vercel supplies the header itself.
@@ -18,6 +19,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await runWeeklyListingScan();
+  const result = await runDailyListingScan();
   return NextResponse.json(result);
 }
