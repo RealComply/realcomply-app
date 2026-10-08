@@ -6,7 +6,12 @@ import { formatAuDate } from "@/lib/format-date";
 import { FounderInvites, type FounderInvite } from "@/components/admin/FounderInvites";
 import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyAccessQueue";
 import { storageBackupConfigured, countEvidenceObjects } from "@/lib/backup/storage-backup";
-import { DryRunButton, LegalHoldForm } from "@/components/admin/EndedSubscriptionControls";
+import {
+  DeleteNowForm,
+  DryRunButton,
+  LegalHoldForm,
+  SendOwedEmailsButton,
+} from "@/components/admin/EndedSubscriptionControls";
 import { deletionDate, longDate, sydneyDate } from "@/lib/subscription-end/dates";
 
 // Who is on RealComply — the only screen that looks across every agency.
@@ -407,11 +412,15 @@ export default async function AdminPage() {
               {a.ended_reminder_sent_at ? "sent" : "not sent"}
             </p>
             <LegalHoldForm agencyId={a.id} held={a.legal_hold} reason={a.legal_hold_reason} />
+            {/* Testing on a throwaway agency. Never rendered on the live site,
+                and the action refuses there too. */}
+            {process.env.VERCEL_ENV !== "production" && <DeleteNowForm agencyId={a.id} name={a.name} />}
           </section>
         ))}
       </div>
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-3">
         <DryRunButton />
+        <SendOwedEmailsButton />
       </div>
       <h3 className="mt-5 text-xs font-bold uppercase tracking-wide text-rc-faint">Deletion log</h3>
       <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white text-xs shadow-card">

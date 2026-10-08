@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { runDeletionJob } from "@/lib/subscription-end/deletion";
+import { runEndedNotices } from "@/lib/subscription-end/notices";
 
 // Staff-only actions for ended subscriptions: the legal hold switch (Data
 // Retention Policy section 6) and a dry run of the deletion job.
@@ -57,4 +58,53 @@ export async function runDeletionDryRun(_prev: AdminActionState, _formData: Form
     error: null,
     message: n === 0 ? "Dry run done. No agency has an ended subscription." : `Dry run done for ${n} agenc${n === 1 ? "y" : "ies"}. See the log below.`,
   };
+}
+
+/** Sends any day 0 or day 7 email that is owed now, as the daily job would. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function sendOwedEndedEmails(_prev: AdminActionState, _formData: FormData): Promise<AdminActionState> {
+  if (!(await requirePlatformAdmin())) return { error: "Not allowed." };
+  const tally = await runEndedNotices();
+  revalidatePath("/dashboard/admin");
+  return {
+    error: null,
+    message: `Sent ${tally.sent}, nothing owed for ${tally.skipped}, failed ${tally.send_failed}.`,
+  };
+}
+
+/**
+ * Runs the real day-14 deletion for ONE agency now, without waiting for its
+ * date. For testing on a throwaway agency in a preview (brief of 8 Oct 2026,
+ * "a real run on the throwaway agency only").
+ *
+ * NEVER ON THE LIVE SITE: refused when VERCEL_ENV is production, so the
+ * button cannot exist where real offices are. The name must be typed exactly,
+ * and the job's own guards still refuse a protected office or one on hold.
+ */
+export async function deleteAgencyNowForTesting(_prev: AdminActionState, formData: FormData): Promise<AdminActionState> {
+  if (!deletionNowAllowed()) return { error: "Not available on the live site." };
+  if (!(await requirePlatformAdmin())) return { error: "Not allowed." };
+
+  const agencyId = String(formData.get("agency_id") ?? "");
+  const typed = String(formData.get("confirm_name") ?? "").trim();
+
+  const service = createServiceClient();
+  const { data } = await service.from("agencies").select("name, ended_at").eq("id", agencyId).maybeSingle();
+  const agency = data as { name: string; ended_at: string | null } | null;
+  if (!agency?.ended_at) return { error: "That agency has not ended." };
+  if (typed !== agency.name) return { error: `Type the agency's name exactly ("${agency.name}") to confirm.` };
+
+  const report = await runDeletionJob({ dryRun: false, agencyId, force: true });
+  revalidatePath("/dashboard/admin");
+  const outcome = report.outcomes[0];
+  if (!outcome) return { error: "Nothing was run." };
+  if (outcome.status !== "completed") return { error: `Not deleted: ${outcome.status}${outcome.reason ? ` (${outcome.reason})` : ""}.` };
+  return { error: null, message: `Deleted. Certificate ${outcome.certificateNumber} has been emailed.` };
+}
+
+// Previews only, never the live site. Not exported: a "use server" file may
+// only export actions. The staff page makes the same check to decide whether
+// to show the button at all.
+function deletionNowAllowed(): boolean {
+  return process.env.VERCEL_ENV !== "production";
 }
