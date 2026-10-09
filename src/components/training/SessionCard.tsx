@@ -47,13 +47,17 @@ export function SessionCard({
           <p className="text-xs text-rc-muted">
             {attendeeIds.length === 0 ? "No attendance recorded" : `${attendeeIds.length} attended`}
           </p>
-          <button
-            type="button"
-            onClick={() => setEditingAttendance((v) => !v)}
-            className="text-xs font-medium text-rc-green-deep hover:underline"
-          >
-            {editingAttendance ? "Cancel" : "Edit attendance"}
-          </button>
+          {/* Recording attendance rewrites people's session CPD, so it is the
+              licensee's (Adam, 7 Oct 2026; was anyone). Same flag as delete. */}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => setEditingAttendance((v) => !v)}
+              className="text-xs font-medium text-rc-green-deep hover:underline"
+            >
+              {editingAttendance ? "Cancel" : "Edit attendance"}
+            </button>
+          )}
         </div>
 
         {!editingAttendance && attendeeIds.length > 0 && (

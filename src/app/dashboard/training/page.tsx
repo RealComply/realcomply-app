@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { AddSessionForm } from "@/components/training/AddSessionForm";
 import { SessionCard } from "@/components/training/SessionCard";
 import { TrainingTabs } from "@/components/training/TrainingTabs";
@@ -34,7 +34,7 @@ export default async function TrainingPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   const { tab } = await searchParams;
   const year = currentCpdYear();
@@ -135,9 +135,12 @@ export default async function TrainingPage({
         approved provider running a session at your office does, so the venue isn&rsquo;t the test.
       </WhyDisclosure>
 
-      <div className="mt-4">
-        <AddSessionForm />
-      </div>
+      {/* The licensee runs the office's training log (Adam, 7 Oct 2026). */}
+      {access.actsAsLicensee && (
+        <div className="mt-4">
+          <AddSessionForm />
+        </div>
+      )}
 
       <div className="mt-6 space-y-4">
         {sessions.length === 0 ? (
@@ -149,7 +152,7 @@ export default async function TrainingPage({
               session={session}
               staff={staff}
               attendeeIds={attendeesBySession.get(session.id) ?? []}
-              canDelete={profile.is_licensee_in_charge}
+              canDelete={access.actsAsLicensee}
             />
           ))
         )}
