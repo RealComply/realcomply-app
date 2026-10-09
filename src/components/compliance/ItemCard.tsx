@@ -867,6 +867,26 @@ function ChecklistItem({
       {/* Outside the form below, because its own Add button is a form and
           forms cannot nest. */}
       {item.key === "f4" && <BuyerListItem propertyId={propertyId} current={current} />}
+      {/* The same for the a4c sales and the competition. They were inside the
+          form from 7 Sep (moved onto this card, above the box they fill),
+          where a nested form makes the browser drop the inner one: "Add a
+          sale" and "Add a listing" did nothing, and the page logged a
+          hydration error (preview check, 9 Oct 2026). Nothing in the form
+          comes before them on a4c, so the card reads the same. */}
+      {item.key === "a4c" && subject && !espElsewhere && !item.showFindings && !item.hideNote && (
+        <div className="mb-3">
+          <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
+          {/* The competition, under the sales (Stephen Borg, 28 Sep
+              2026; mockup v2 approved by Adam). */}
+          <MarketListingsPanel
+            propertyId={propertyId}
+            subject={subject}
+            listings={marketListings}
+            agreementDate={agreementDate}
+            noneOnMarket={Boolean(data.noneOnMarket)}
+          />
+        </div>
+      )}
       <form action={formAction} className="space-y-3">
         {wrongDocument ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
@@ -1243,20 +1263,8 @@ function ChecklistItem({
                   on the ESP card, where the report is attached, and Adam could
                   not find them. Weighing the sales IS the reasoning, so they
                   belong with it.) */}
-              {item.key === "a4c" && subject && !espElsewhere && (
-                <div className="mb-3">
-                  <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
-                  {/* The competition, under the sales (Stephen Borg, 28 Sep
-                      2026; mockup v2 approved by Adam). */}
-                  <MarketListingsPanel
-                    propertyId={propertyId}
-                    subject={subject}
-                    listings={marketListings}
-                    agreementDate={agreementDate}
-                    noneOnMarket={Boolean(data.noneOnMarket)}
-                  />
-                </div>
-              )}
+              {/* The sales and the competition sit above this box, but outside
+                  the form: see the note at the top of the form. */}
 
               {/* "Recorded elsewhere" was retired on 2 Oct 2026 (see
                   lib/rules/esp-reasoning-gate.ts): the reasoning has to be in
