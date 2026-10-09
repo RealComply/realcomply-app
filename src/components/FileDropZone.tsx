@@ -3,7 +3,7 @@
 import { useId, useRef, useState, type DragEvent } from "react";
 import { AlertTriangle, Paperclip, Upload, X } from "lucide-react";
 import { useStrayDropGuard } from "@/lib/use-file-drop";
-import { MAX_EVIDENCE_BYTES } from "@/lib/storage/evidence";
+import { MAX_EVIDENCE_BYTES, evidenceFileProblem } from "@/lib/storage/evidence";
 
 // A file picker you can also drop a file onto.
 //
@@ -94,12 +94,17 @@ export function FileDropZone({
     if (dropped.length === 0) return;
     const chosen = dropped[0];
 
-    if (chosen.size > maxBytes) {
+    // The evidence rule (type, then 150 MB) unless this zone sets a smaller
+    // limit of its own, as the agency logo does.
+    const problem =
+      evidenceFileProblem(chosen) ??
+      (chosen.size > maxBytes ? `${chosen.name} is ${formatBytes(chosen.size)}. The limit is ${formatBytes(maxBytes)}.` : null);
+    if (problem) {
       // Refused, and nothing kept. Holding on to it and greying the button
       // would put us back where we started: a file on screen that is not
       // going anywhere, and a form that will not move.
       setTookFirst(false);
-      setTooBig(`${chosen.name} is ${formatBytes(chosen.size)}. The limit is ${formatBytes(maxBytes)}.`);
+      setTooBig(problem);
       onFile(null);
       if (inputRef.current) inputRef.current.value = "";
       return;

@@ -325,7 +325,7 @@ function LicenceDocument({
             : `Upload ${uploadLabel}`}
       <input
         type="file"
-        accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+        accept="application/pdf,image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
         onChange={handleFile}
         disabled={Boolean(uploading)}
         className="hidden"
