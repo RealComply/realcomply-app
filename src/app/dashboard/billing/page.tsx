@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
+import { notFound } from "next/navigation";
 import { entitlementFor, PLANS, annualPrice } from "@/lib/billing/entitlement";
 import { isTestMode, stripeConfigured } from "@/lib/billing/stripe";
 import { MasterSwitch } from "@/components/billing/MasterSwitch";
 import { formatAuDate } from "@/lib/format-date";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { ManageBillingButton } from "@/components/billing/ManageBillingButton";
-import { accountHolderId } from "@/lib/subscription-end/access";
+import { isAccountHolder } from "@/lib/subscription-end/access";
 
 // Billing.
 //
@@ -25,14 +26,17 @@ export default async function BillingPage({
 }: {
   searchParams: Promise<{ started?: string; cancelled?: string }>;
 }) {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   const { started, cancelled } = await searchParams;
 
   const entitlement = await entitlementFor(supabase, profile.agency_id);
   // The licensee in charge or the account holder sets up billing (9 Oct 2026).
   const mayManageBilling =
-    profile.is_licensee_in_charge === true || (await accountHolderId(supabase, profile.agency_id)) === profile.id;
+    access.actsAsLicensee || (await isAccountHolder(supabase));
+  // Billing follows who pays, not the role (Adam, 8 Oct 2026). An agent
+  // invited into an office does not get it, and a typed address refuses.
+  if (!mayManageBilling) notFound();
 
   const { data: agencyRow } = await supabase
     .from("agencies")

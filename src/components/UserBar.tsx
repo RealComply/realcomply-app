@@ -41,7 +41,15 @@ function roleLabel(profile: Profile): string {
   }
 }
 
-export function UserBar({ profile, pmEnabled = false }: { profile: Profile; pmEnabled?: boolean }) {
+export function UserBar({
+  profile,
+  pmEnabled = false,
+  actsAsLicensee = false,
+}: {
+  profile: Profile;
+  pmEnabled?: boolean;
+  actsAsLicensee?: boolean;
+}) {
   const name = profile.full_name ?? profile.email;
   const role = roleLabel(profile);
 
@@ -52,7 +60,7 @@ export function UserBar({ profile, pmEnabled = false }: { profile: Profile; pmEn
       id="rc-userbar"
       className="rc-app-chrome sticky top-0 z-20 flex items-center gap-3 border-b border-rc-border bg-white/85 py-3 pl-16 pr-4 backdrop-blur-md md:pl-6 md:pr-6">
       <UserBarHeight targetId="rc-userbar" />
-      <GlobalSearch isAssistant={Boolean(profile.is_assistant)} pmEnabled={pmEnabled} />
+      <GlobalSearch actsAsLicensee={actsAsLicensee} pmEnabled={pmEnabled} />
 
       <Link
         href="/dashboard/new"

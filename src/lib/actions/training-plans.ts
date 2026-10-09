@@ -269,14 +269,16 @@ export async function completeTrainingPlanItem(
 }
 
 export async function deleteTrainingPlanItem(itemId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, access } = await requireAuthContext();
   const { data: itemRow } = await supabase.from("training_plan_items").select("plan_id").eq("id", itemId).maybeSingle();
   const planId = (itemRow as { plan_id: string } | null)?.plan_id;
   if (!planId) return;
 
   const plan = await loadPlan(supabase, planId);
   if (!plan) return;
-  if (plan.profile_id !== profile.id && !profile.is_licensee_in_charge) return;
+  // Only the licensee deletes a compliance record (Adam, 9 Oct 2026; was the
+  // plan's owner or the licensee). Logged by the database (0058).
+  if (!access.actsAsLicensee) return;
   if (plan.principal_signed_at) return;
 
   await supabase.from("training_plan_items").delete().eq("id", itemId);

@@ -495,9 +495,13 @@ export async function setStaffRole(
  * the listings they ran are the record of what happened; the person leaving
  * does not change what they did. 0035 has the full reasoning.
  *
- * Refused while they still hold unfinished listings, because an archived person
- * cannot sign anything — those files would stall with nobody able to finish
- * them. Move the listings first.
+ * REVERSAL (Adam, 7 Oct 2026). Was: refused while they still held
+ * unfinished listings ("move the listings first"). Now their listings, and
+ * any properties they manage, pass to the licensee in charge doing the
+ * archiving, who reassigns them from there. Since agents see only their own
+ * listings (0058), a file left on an archived person's name would be one
+ * that only the licensee could see; handing it over says so plainly, and
+ * every move is recorded in property_transfers by guard_listing_transfer.
  */
 export async function archiveStaff(profileId: string): Promise<ActionState> {
   const ctx = await requireLicenseeAndSubject(profileId);
@@ -510,11 +514,22 @@ export async function archiveStaff(profileId: string): Promise<ActionState> {
     return { error: "They've already been removed." };
   }
 
-  const open = await openListingsFor(ctx.supabase, profileId);
-  if (open > 0) {
-    return {
-      error: `${ctx.subject.full_name ?? "They"} still has ${open} unfinished listing${open === 1 ? "" : "s"}. Move those to another agent first — an archived person can't sign a file, so they'd have nobody to complete them.`,
-    };
+  // Their listings and managed properties pass to the licensee in charge
+  // first, so nothing is left that nobody works on. Before the archive, so a
+  // failure here leaves them as they were rather than half-removed.
+  const { error: moveError } = await ctx.supabase
+    .from("properties")
+    .update({ created_by: ctx.profile.id })
+    .eq("created_by", profileId);
+  if (moveError) {
+    return { error: "Couldn't move their listings to you, so they have not been removed. Try again." };
+  }
+  const { error: pmMoveError } = await ctx.supabase
+    .from("pm_properties")
+    .update({ manager_id: ctx.profile.id })
+    .eq("manager_id", profileId);
+  if (pmMoveError) {
+    return { error: "Couldn't move the properties they manage to you, so they have not been removed. Try again." };
   }
 
   const { error } = await ctx.supabase

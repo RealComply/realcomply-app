@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { PLANS, TRIAL_DAYS, type Plan } from "@/lib/billing/entitlement";
-import { accountHolderId } from "@/lib/subscription-end/access";
+import { isAccountHolder } from "@/lib/subscription-end/access";
 import { priceIdFor, stripeRequest, type Interval } from "@/lib/billing/stripe";
 
 // Starting and managing a subscription.
@@ -43,14 +43,15 @@ export async function startCheckout(
   _prev: BillingActionState,
   formData: FormData,
 ): Promise<BillingActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   // The licensee in charge, or the account holder (whoever created the
   // agency). On an individual agent plan the account holder is the agent and
   // often not a licensee in charge, and since 9 Oct 2026 a new office cannot
-  // use RealComply at all until this has run, so they must be able to.
-  const holder = await accountHolderId(supabase, profile.agency_id);
-  if (!profile.is_licensee_in_charge && holder !== profile.id) {
+  // use RealComply at all until this has run, so they must be able to. The
+  // agent on their own plan also counts as the licensee (lib/access.ts), the
+  // same rule the Billing page uses to let them in.
+  if (!profile.is_licensee_in_charge && !access.actsAsLicensee && !(await isAccountHolder(supabase))) {
     return { error: "Only the licensee in charge or the account holder can set up billing for the agency." };
   }
 

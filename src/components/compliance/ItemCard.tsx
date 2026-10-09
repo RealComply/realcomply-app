@@ -13,6 +13,7 @@ import {
 } from "@/lib/rules/aml-precommencement";
 import { FileDropZone } from "@/components/FileDropZone";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
+import { useViewerAccess } from "@/components/ViewerAccess";
 import type { SignoffLink } from "@/lib/data/signoff-links";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
@@ -129,6 +130,7 @@ function ItemShell({
   current,
   awaitingReview = false,
   foldable = true,
+  evidenceReadOnly = false,
   children,
 }: {
   item: ComplianceItem;
@@ -137,6 +139,10 @@ function ItemShell({
   current?: PropertyItem;
   /** Passed through to the pill — see StatusPill. */
   awaitingReview?: boolean;
+  /** The attached file as a link only, with nothing to attach, replace or
+   *  remove: a licensee-only card seen by anyone else, or one locked once
+   *  done (LicenseeOnlyItem). */
+  evidenceReadOnly?: boolean;
   /**
    * False keeps a done card open: for a done card whose body still carries
    * something live the agent has to see (the licensee sign-off link before it
@@ -309,7 +315,15 @@ function ItemShell({
           arrives here as a plain boolean already accounting for it, because
           hideEvidenceWhen itself is a function and can't cross the
           server/client boundary into this component. */}
-      {!item.hideEvidence && (
+      {!item.hideEvidence && evidenceReadOnly && current?.evidence_path && (
+        <div className="mt-3 text-sm">
+          <ReportEvidenceLink
+            path={current.evidence_path}
+            fileName={(current.data as { evidenceFileName?: string } | undefined)?.evidenceFileName ?? "Attached file"}
+          />
+        </div>
+      )}
+      {!item.hideEvidence && !evidenceReadOnly && (
         <EvidenceUploader
           key={current?.evidence_path ?? "none"}
           propertyId={propertyId}
@@ -424,6 +438,10 @@ function EvidenceUploader({
    *  card holding it does not fold that out of sight. */
   onUnsavedChange?: (unsaved: boolean) => void;
 }) {
+  // Only the licensee removes a document (Adam, 9 Oct 2026); everyone else
+  // gets Replace, which keeps the file on record.
+  const { actsAsLicensee } = useViewerAccess();
+  const replaceOnlyHere = replaceOnly || !actsAsLicensee;
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const uploadAction = uploadEvidence.bind(null, propertyId, itemKey);
   const [uploadState, uploadFormAction, uploadPending] = useActionState(uploadAction, initialState);
@@ -555,7 +573,7 @@ function EvidenceUploader({
               Only on items that actually have a reader behind them; offering
               it on a pool certificate would be a button that does nothing. */}
           {isAiReadItem(itemKey) && <RereadButton propertyId={propertyId} itemKey={itemKey} />}
-          {replaceOnly ? (
+          {replaceOnlyHere ? (
             <button
               type="button"
               onClick={() => setReplacing(true)}
@@ -1878,6 +1896,7 @@ function ReportEvidenceLink({ path, fileName }: { path: string; fileName: string
 // document states about itself, so it's not something extraction can check;
 // the note field is where that goes if it matters for this entry.
 function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+  const { actsAsLicensee } = useViewerAccess();
   const boundAction = addReportEntry.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const entries =
@@ -2172,16 +2191,19 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
                   buyer list, but addressed by recordedAt rather than index —
                   f3 entries are unshifted (newest first), so an index would
                   point at a different entry the moment a new one is logged. */}
-              <form action={removeReportEntry.bind(null, propertyId, e.recordedAt)} className="absolute right-0 top-1.5">
-                <button
-                  type="submit"
-                  aria-label="Remove this report entry"
-                  title="Remove"
-                  className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
-                >
-                  <X size={13} />
-                </button>
-              </form>
+              {/* The licensee's only (Adam, 9 Oct 2026). */}
+              {actsAsLicensee && (
+                <form action={removeReportEntry.bind(null, propertyId, e.recordedAt)} className="absolute right-0 top-1.5">
+                  <button
+                    type="submit"
+                    aria-label="Remove this report entry"
+                    title="Remove"
+                    className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
+                  >
+                    <X size={13} />
+                  </button>
+                </form>
+              )}
               <span className="font-medium text-rc-ink">
                 {[e.pestInspection && "Pest", e.buildingInspection && "Building", e.strata && "Strata"]
                   .filter(Boolean)
@@ -2672,10 +2694,34 @@ function SaleItem({ item, propertyId, current }: { item: ComplianceItem; propert
   );
 }
 
-function SignItem({ item, propertyId, current, profile }: { item: ComplianceItem; propertyId: string; current?: PropertyItem; profile: Profile }) {
+function SignItem({
+  item,
+  propertyId,
+  current,
+  profile,
+  listingAgentId,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  profile: Profile;
+  listingAgentId?: string;
+}) {
   const boundAction = signItem.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const data = (current?.data ?? {}) as { typedName?: string; signedAt?: string };
+
+  // Signed comes first: whoever is looking, a signature on file is the answer.
+  if (data.signedAt) {
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        <p className="text-sm text-rc-muted">
+          Signed <span className="font-medium text-rc-ink">{data.typedName}</span> on{" "}
+          {new Date(data.signedAt).toLocaleString("en-AU")}
+        </p>
+      </ItemShell>
+    );
+  }
 
   if (item.licenseeOnly && !profile.is_licensee_in_charge) {
     return (
@@ -2685,13 +2731,11 @@ function SignItem({ item, propertyId, current, profile }: { item: ComplianceItem
     );
   }
 
-  if (data.signedAt) {
+  // Only the listing's own agent signs the agent sign-off (Adam, 9 Oct 2026).
+  if (!data.signedAt && item.key === "sign_agent" && listingAgentId && listingAgentId !== profile.id) {
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-        <p className="text-sm text-rc-muted">
-          Signed <span className="font-medium text-rc-ink">{data.typedName}</span> on{" "}
-          {new Date(data.signedAt).toLocaleString("en-AU")}
-        </p>
+        <p className="text-sm text-rc-muted">Waiting on the listing&rsquo;s agent to sign.</p>
       </ItemShell>
     );
   }
@@ -2793,6 +2837,7 @@ function BuyerListItem({
   propertyId: string;
   current?: PropertyItem;
 }) {
+  const { actsAsLicensee } = useViewerAccess();
   const boundAction = addBuyerEntry.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const data = (current?.data ?? {}) as {
@@ -2837,16 +2882,19 @@ function BuyerListItem({
           {entries.map((entry, i) => (
             <li key={`${entry.name}-${i}`} className="flex items-center gap-3 bg-white px-3 py-2">
               <span className="min-w-0 flex-1 truncate text-sm text-rc-ink">{entry.name}</span>
-              <form action={removeBuyerEntry.bind(null, propertyId, i)}>
-                <button
-                  type="submit"
-                  aria-label={`Remove ${entry.name}`}
-                  title="Remove"
-                  className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
-                >
-                  <X size={13} />
-                </button>
-              </form>
+              {/* The licensee's only (Adam, 9 Oct 2026). */}
+              {actsAsLicensee && (
+                <form action={removeBuyerEntry.bind(null, propertyId, i)}>
+                  <button
+                    type="submit"
+                    aria-label={`Remove ${entry.name}`}
+                    title="Remove"
+                    className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
+                  >
+                    <X size={13} />
+                  </button>
+                </form>
+              )}
             </li>
           ))}
         </ul>
@@ -3306,6 +3354,28 @@ function AuctionOutcomeItem({
   );
 }
 
+// A licensee-only item (b4) seen by anyone else, or by anyone once it is
+// done: what is recorded and who it is waiting on, instead of a "Mark done"
+// that refused only once pressed (preview check, 9 Oct 2026). Once done it is
+// locked for the licensee too (guard_listing_signoff, 0058), so the form and
+// the file controls would only fail. setItemStatus refuses on the server
+// either way. The sign cards have their own version of this in SignItem.
+function LicenseeOnlyItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+  const note = ((current?.data ?? {}) as { note?: string }).note;
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} evidenceReadOnly>
+      {current?.status === "done" ? (
+        <p className="text-sm text-rc-muted">
+          Done by the licensee in charge{note ? ": " : "."}
+          {note && <span className="text-rc-ink">{note}</span>}
+        </p>
+      ) : (
+        <p className="text-sm text-rc-muted">Waiting on the licensee in charge.</p>
+      )}
+    </ItemShell>
+  );
+}
+
 export function ItemCard({
   item,
   propertyId,
@@ -3317,12 +3387,15 @@ export function ItemCard({
   subject = null,
   comparables = [],
   marketListings = [],
+  listingAgentId,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   profile: Profile;
   allItems: Record<string, PropertyItem>;
+  /** Whose listing this is. The agent sign-off is theirs alone (Adam, 9 Oct 2026). */
+  listingAgentId?: string;
   // The agency's standing position. Passed in rather than fetched here so the
   // page does one agency lookup for the whole list instead of one per card.
   amlPreCommencementEnabled?: boolean;
@@ -3337,6 +3410,10 @@ export function ItemCard({
   // Only the ESP reasoning card uses them.
   marketListings?: MarketListing[];
 }) {
+  if (item.licenseeOnly && item.kind !== "sign" && (!profile.is_licensee_in_charge || current?.status === "done")) {
+    return <LicenseeOnlyItem item={item} propertyId={propertyId} current={current} />;
+  }
+
   switch (item.kind) {
     case "offers":
       return <OffersLogItem item={item} propertyId={propertyId} current={current} />;
@@ -3349,7 +3426,9 @@ export function ItemCard({
     case "sale":
       return <SaleItem item={item} propertyId={propertyId} current={current} />;
     case "sign":
-      return <SignItem item={item} propertyId={propertyId} current={current} profile={profile} />;
+      return (
+        <SignItem item={item} propertyId={propertyId} current={current} profile={profile} listingAgentId={listingAgentId} />
+      );
     case "send":
       return <SendItem item={item} propertyId={propertyId} current={current} signoffLinks={signoffLinks} />;
     case "export":

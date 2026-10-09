@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { agencyPeople } from "@/lib/data/people";
 import { Paperclip } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { SgManualUploader } from "@/components/registers/SgManualUploader";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
-import type { Profile, SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
+import type { SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // SG Manual store — simple upload + version history (see the SG Manual
 // scope decision: the full AI gap-analysis/redline review flow from the
@@ -15,20 +16,19 @@ import type { Profile, SgManualVersion, SignoffDocument, SignoffSignature } from
 // registers.ts) so staff can acknowledge it right here, not just from the
 // full Document sign-offs register.
 export default async function SgManualPage() {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
-  const [{ data: versionRows }, { data: staffRows }, { data: signoffDocRows }, { data: signoffSigRows }, { data: agency }] = await Promise.all([
+  const [{ data: versionRows }, staff, { data: signoffDocRows }, { data: signoffSigRows }, { data: agency }] = await Promise.all([
     supabase.from("sg_manual_versions").select("*").order("created_at", { ascending: false }),
-    supabase.from("profiles").select("*"),
+    agencyPeople(supabase),
     supabase.from("signoff_documents").select("*").eq("category", "sg_manual").order("created_at", { ascending: false }),
     supabase.from("signoff_signatures").select("*"),
     supabase.from("agencies").select("aml_precommencement_enabled").eq("id", profile.agency_id).maybeSingle(),
   ]);
 
   const versions = (versionRows ?? []) as SgManualVersion[];
-  const staff = (staffRows ?? []) as Profile[];
-  const nameFor = (id: string | null) => (id ? staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "Unknown" : "Unknown");
+  const nameFor = (id: string | null) => (id ? staff.find((s) => s.id === id)?.full_name ?? "Unknown" : "Unknown");
 
   const signedUrls = await Promise.all(
     versions.map((v) => supabase.storage.from(EVIDENCE_BUCKET).createSignedUrl(v.file_path, 3600)),
@@ -57,7 +57,11 @@ export default async function SgManualPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Supervision Guidelines Manual</h1>
-            <p className="mt-1 text-sm text-rc-muted">Upload and keep the current version on file, with history.</p>
+            <p className="mt-1 text-sm text-rc-muted">
+              {profile.is_licensee_in_charge
+                ? "Upload and keep the current version on file, with history."
+                : "The office's current version, with history. The licensee in charge publishes new versions."}
+            </p>
           </div>
           <Link href="/dashboard/registers" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
             ← Registers
@@ -90,6 +94,7 @@ export default async function SgManualPage() {
               signatures={signoffSigs.filter((s) => s.document_id === currentSignoff.id)}
               profiles={staff}
               currentProfile={profile}
+              ownOnly={!access.actsAsLicensee}
               fileUrl={currentSignoffUrl}
             />
             <Link href="/dashboard/document-signoffs" className="mt-1 inline-block text-xs text-rc-muted transition hover:text-rc-green-deep hover:underline">

@@ -33,8 +33,10 @@ function isIsoDate(value: string): boolean {
 
 /** Where this office keeps its PM records ("PropertyMe"). Named once per agency. */
 export async function setPmRecordsSystem(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, pmEnabled } = await requirePm();
+  const { supabase, pmEnabled, access } = await requirePm();
   if (!pmEnabled) return { error: PM_OFF };
+  // Licensee only (Adam, 9 Oct 2026); checked in the database too (0058).
+  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can change the records system." };
   const name = String(formData.get("recordsSystem") ?? "").trim();
   if (name.length > 80) return { error: "Keep the name under 80 characters." };
   const { error } = await supabase.rpc("set_agency_pm_records_system", { p_name: name });

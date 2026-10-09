@@ -9,8 +9,18 @@ import type { ActionState } from "@/lib/actions/auth";
 
 const initial: ActionState = { error: null };
 
-export function RecordsSystemSetting({ agencyName, current }: { agencyName: string; current: string | null }) {
-  const [editing, setEditing] = useState(!current);
+// Licensee only (Adam, 9 Oct 2026): the PM records system is an agency
+// detail. Everyone else sees it, read only.
+export function RecordsSystemSetting({
+  agencyName,
+  current,
+  canChange,
+}: {
+  agencyName: string;
+  current: string | null;
+  canChange: boolean;
+}) {
+  const [editing, setEditing] = useState(!current && canChange);
   const [state, formAction, pending] = useActionState(setPmRecordsSystem, initial);
 
   const [lastPending, setLastPending] = useState(pending);
@@ -19,13 +29,21 @@ export function RecordsSystemSetting({ agencyName, current }: { agencyName: stri
     if (!pending && !state.error) setEditing(false);
   }
 
-  if (!editing && current) {
+  if (!editing) {
     return (
       <p className="mt-1 text-sm text-rc-muted">
-        {agencyName}. Records are kept in <b className="font-semibold text-rc-ink">{current}</b>.{" "}
-        <button type="button" onClick={() => setEditing(true)} className="font-semibold text-rc-green-deep hover:underline">
-          Change
-        </button>
+        {current ? (
+          <>
+            {agencyName}. Records are kept in <b className="font-semibold text-rc-ink">{current}</b>.
+          </>
+        ) : (
+          <>{agencyName}. The licensee hasn&rsquo;t named the records system yet.</>
+        )}{" "}
+        {canChange && (
+          <button type="button" onClick={() => setEditing(true)} className="font-semibold text-rc-green-deep hover:underline">
+            Change
+          </button>
+        )}
       </p>
     );
   }

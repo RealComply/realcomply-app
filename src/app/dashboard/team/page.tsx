@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { LicenseeEmailForm } from "@/components/team/LicenseeEmailForm";
 import { AgencyLogoForm } from "@/components/team/AgencyLogoForm";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireLicenseePage } from "@/lib/data/current-profile";
 import { InviteAgentForm } from "@/components/team/InviteAgentForm";
 import { PendingInvitesList } from "@/components/team/PendingInvitesList";
 import { StaffRow } from "@/components/team/StaffRow";
@@ -18,7 +18,9 @@ import type { AgencyInvite, Profile } from "@/lib/types";
 // joined yet, and the form to invite someone new (see accept_invite in
 // 0006_agency_invites.sql for how the join itself works).
 export default async function TeamPage() {
-  const profile = await requireProfile();
+  // Licensee only (Adam, 7 Oct 2026): a typed address refuses, not just a
+  // hidden link.
+  const { profile } = await requireLicenseePage();
   const supabase = await createClient();
 
   const [{ data: staffRows }, { data: inviteRows }, { data: linkRows }] = await Promise.all([

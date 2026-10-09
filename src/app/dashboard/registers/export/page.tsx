@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireLicenseePage } from "@/lib/data/current-profile";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
@@ -17,7 +17,9 @@ const LICENCE_TYPE_LABELS: Record<string, string> = {
 // (src/app/dashboard/[id]/summary/page.tsx); a polished branded export is a
 // later follow-up, not built here.
 export default async function RegistersExportPage() {
-  const profile = await requireProfile();
+  // Licensee only (Adam, 7 Oct 2026): a typed address refuses, not just a
+  // hidden link.
+  const { profile } = await requireLicenseePage();
   const supabase = await createClient();
   const cpdYear = currentCpdYear();
 

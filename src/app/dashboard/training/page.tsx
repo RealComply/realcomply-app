@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { AddSessionForm } from "@/components/training/AddSessionForm";
 import { SessionCard } from "@/components/training/SessionCard";
 import { TrainingTabs } from "@/components/training/TrainingTabs";
@@ -34,7 +34,7 @@ export default async function TrainingPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   const { tab } = await searchParams;
   const year = currentCpdYear();
@@ -88,7 +88,14 @@ export default async function TrainingPage({
     cpdByProfile.get(row.profile_id)!.push(row);
   }
 
-  const needsPlan = staff.filter((s) => !planByProfile.has(s.id) || !planByProfile.get(s.id)!.principal_signed_at).length;
+  // Plans and the per-agent record are each person's own (0058: own or
+  // licensee). An agent or assistant can see their assistant or agent's name,
+  // but not that person's plan or attendance, so a card for them would always
+  // read empty whatever they had done (preview check, 9 Oct 2026). They get
+  // their own card only; the licensee gets everyone's.
+  const people = access.actsAsLicensee ? staff : staff.filter((s) => s.id === profile.id);
+
+  const needsPlan = people.filter((s) => !planByProfile.has(s.id) || !planByProfile.get(s.id)!.principal_signed_at).length;
 
   // Adam, 18 Aug 2026: "having these sections so text heavy is just gonna put
   // people off... most agents don't need to know this stuff. The licensee
@@ -105,10 +112,10 @@ export default async function TrainingPage({
       </WhyDisclosure>
 
       <div className="mt-4 space-y-4">
-        {staff.length === 0 ? (
+        {people.length === 0 ? (
           <p className="text-sm text-rc-muted">No team members on file yet.</p>
         ) : (
-          staff.map((s) => {
+          people.map((s) => {
             const plan = planByProfile.get(s.id) ?? null;
             return (
               <TrainingPlanCard
@@ -135,13 +142,19 @@ export default async function TrainingPage({
         approved provider running a session at your office does, so the venue isn&rsquo;t the test.
       </WhyDisclosure>
 
-      <div className="mt-4">
-        <AddSessionForm />
-      </div>
+      {/* The licensee runs the office's training log (Adam, 7 Oct 2026). */}
+      {access.actsAsLicensee && (
+        <div className="mt-4">
+          <AddSessionForm />
+        </div>
+      )}
 
       <div className="mt-6 space-y-4">
         {sessions.length === 0 ? (
-          <p className="text-sm text-rc-muted">No training sessions logged yet.</p>
+          <p className="text-sm text-rc-muted">
+            {/* Anyone else sees only the sessions they attended (0058). */}
+            {access.actsAsLicensee ? "No training sessions logged yet." : "No sessions you attended yet."}
+          </p>
         ) : (
           sessions.map((session) => (
             <SessionCard
@@ -149,7 +162,8 @@ export default async function TrainingPage({
               session={session}
               staff={staff}
               attendeeIds={attendeesBySession.get(session.id) ?? []}
-              canDelete={profile.is_licensee_in_charge}
+              canDelete={access.actsAsLicensee}
+              ownOnly={!access.actsAsLicensee}
             />
           ))
         )}
@@ -159,11 +173,17 @@ export default async function TrainingPage({
         <section className="mt-8">
           <h2 className="text-sm font-semibold text-rc-ink">Per-agent training record</h2>
           <p className="mt-1 text-xs text-rc-muted">
-            Who&rsquo;s attended what — mark attendance on a session above (&ldquo;Edit attendance&rdquo;) to populate
-            this.
+            {access.actsAsLicensee ? (
+              <>
+                Who&rsquo;s attended what — mark attendance on a session above (&ldquo;Edit attendance&rdquo;) to
+                populate this.
+              </>
+            ) : (
+              "The sessions you attended. The licensee in charge records attendance."
+            )}
           </p>
           <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
-            {staff.map((s) => {
+            {people.map((s) => {
               const attended = sessionsByAgent.get(s.id) ?? [];
               return (
                 <li key={s.id} className="px-4 py-3 text-sm">

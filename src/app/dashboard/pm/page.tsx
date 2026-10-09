@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { loadPmCards, pmAgencySettings, pmPeople, type PmPropertyRow } from "@/lib/data/pm";
 import { PM_GROUPS, isPmGroup, type PmGroup } from "@/lib/rules/nsw-pm";
 import { pmCardSummary } from "@/lib/rules/pm-engine";
@@ -40,7 +40,7 @@ export default async function PmDashboardPage({
 }: {
   searchParams: Promise<{ group?: string; q?: string; page?: string }>;
 }) {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   const settings = await pmAgencySettings(supabase, profile.agency_id);
   if (!settings.enabled) notFound();
@@ -99,7 +99,19 @@ export default async function PmDashboardPage({
 
   const inputs = await loadPmCards(supabase, sections.flatMap((s) => s.rows));
   const pages = Math.max(1, Math.ceil(pagedTotal / PAGE_SIZE));
-  const activePeople = people.filter((p) => !p.archived);
+  // Who the viewer may file a property for (0058, can_see_agent): the licensee
+  // anyone, an assistant themself and the agents they assist, an agent
+  // themself. The picker offered an agent their assistant, which the database
+  // would then refuse (preview check, 9 Oct 2026).
+  let mayFileFor: Set<string> | null = null;
+  if (!access.actsAsLicensee) {
+    mayFileFor = new Set([profile.id]);
+    if (profile.is_assistant) {
+      const { data: links } = await supabase.from("assistant_agents").select("agent_id").eq("assistant_id", profile.id);
+      for (const l of (links ?? []) as { agent_id: string }[]) mayFileFor.add(l.agent_id);
+    }
+  }
+  const activePeople = people.filter((p) => !p.archived && (!mayFileFor || mayFileFor.has(p.id)));
 
   const navItems: { key: PmGroup | null; label: string; count: number }[] = [
     { key: null, label: "All properties", count: totalAll.count ?? 0 },
@@ -109,7 +121,11 @@ export default async function PmDashboardPage({
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
       <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Property management</h1>
-      <RecordsSystemSetting agencyName={agencyRow.data?.name ?? "Your agency"} current={settings.recordsSystem} />
+      <RecordsSystemSetting
+        agencyName={agencyRow.data?.name ?? "Your agency"}
+        current={settings.recordsSystem}
+        canChange={access.actsAsLicensee}
+      />
 
       <div className="mt-5">
         <AddPmPropertyForm people={activePeople} viewerId={profile.id} />

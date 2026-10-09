@@ -86,12 +86,12 @@ function toggleListings(button: HTMLButtonElement) {
 }
 
 export function Sidebar({
-  isAssistant = false,
+  actsAsLicensee = false,
   isPlatformAdmin = false,
   pmEnabled = false,
   counts = EMPTY_NAV_COUNTS,
 }: {
-  isAssistant?: boolean;
+  actsAsLicensee?: boolean;
   isPlatformAdmin?: boolean;
   pmEnabled?: boolean;
   counts?: NavCounts;
@@ -133,11 +133,12 @@ export function Sidebar({
         </span>
       </Link>
 
-      {/* An assistant's nav is a subset, and a group that loses all its links
-          loses its heading too — otherwise "Agency" sits there empty. */}
+      {/* An agent's and an assistant's nav is a subset, and a group that loses
+          all its links loses its heading too — otherwise "Agency" sits there
+          empty. */}
       {NAV_GROUPS.map((g) => ({
         ...g,
-        links: g.links.filter((l) => visibleNavLink(l, { isAssistant, pmEnabled })),
+        links: g.links.filter((l) => visibleNavLink(l, { actsAsLicensee, pmEnabled })),
       }))
         .filter((group) => group.links.length > 0)
         .map((group, gi) => (
@@ -149,7 +150,7 @@ export function Sidebar({
               gi === 0 ? "mt-0.5" : "mt-4"
             }`}
           >
-            {isAssistant && group.heading === "Compliance records" ? "Your record" : group.heading}
+            {!actsAsLicensee && group.heading === "Compliance records" ? "Your record" : group.heading}
           </div>
           {group.links.map(({ href, label, Icon, exact, countKey }) => {
             const active = isActive(pathname, href, exact);

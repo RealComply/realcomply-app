@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Send, Copy, Check, X, RotateCw, AlertTriangle } from "lucide-react";
+import { Send, X, RotateCw, AlertTriangle } from "lucide-react";
 import { issueSignoffLink, resendSignoffLink, revokeSignoffLink } from "@/lib/actions/signoff-links";
 import { liveLink, signedLink, type SignoffLink } from "@/lib/data/signoff-links";
 import { formatAuTimestamp } from "@/lib/format-date";
@@ -31,10 +31,11 @@ import { formatAuTimestamp } from "@/lib/format-date";
 // the agent doesn't have to create a link, copy it, open their email, paste it
 // in, send it with an explanation. We should do all that for them."
 //
-// THE COPY PATH STAYS, as a second option. Some agents will want to send it
-// themselves with their own note, and a link arriving from a person the
-// licensee knows is likelier to be opened than one from software they have
-// never heard of. Default to automatic; never remove the manual route.
+// REVERSAL (Adam, 9 Oct 2026). Was: "the copy path stays, as a second
+// option… never remove the manual route." Now the link is never shown here
+// and there is no Copy button: an agent holding the link could open it and
+// sign as the licensee. It goes only by email, to the agency's licensee
+// email; if a send fails, Send again.
 //
 // SENT IS A FACT, NOT AN ASSUMPTION. This panel says "Sent to X on <date>"
 // only when the email actually reached the provider — email_sent_at in 0047.
@@ -46,18 +47,11 @@ import { formatAuTimestamp } from "@/lib/format-date";
 export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; links: SignoffLink[] }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [justSent, setJustSent] = useState(false);
 
   const signed = signedLink(links);
   const live = liveLink(links);
   const expired = !signed && !live && links.length > 0;
-
-  // Built here rather than server-side so the link always carries the origin
-  // the agent is actually using, which matters on preview deployments. The
-  // EMAIL uses NEXT_PUBLIC_SITE_URL instead, because a server action has no
-  // window to read.
-  const url = live && typeof window !== "undefined" ? `${window.location.origin}/signoff/${live.token}` : null;
 
   // Attempted and not delivered. Distinct from "not attempted", which only
   // happens on rows created before 0047.
@@ -73,7 +67,7 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
         return;
       }
       if (result.emailed === false) {
-        setError("The link was created but the email couldn't be sent. Copy it and send it yourself.");
+        setError("The link was created but the email couldn't be sent. Press Send again in a moment.");
         return;
       }
       setJustSent(true);
@@ -96,17 +90,6 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
       const result = await revokeSignoffLink(id, propertyId);
       if (result.error) setError(result.error);
     });
-  }
-
-  async function copy() {
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError("Couldn't copy automatically. Select the link and copy it manually.");
-    }
   }
 
   return (
@@ -133,7 +116,7 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
                 Couldn&rsquo;t email {live.sentTo}
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-                The link below is valid — copy it and send it to them yourself, or try sending again.
+                The link is still valid. Send it again; it only ever goes to the licensee&rsquo;s email.
               </p>
             </>
           ) : (
@@ -141,12 +124,6 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
               Sent to {live.sentTo} on {formatAuTimestamp(live.emailSentAt ?? live.createdAt)}
             </p>
           )}
-
-          {/* break-all so a long token wraps inside the card instead of
-              forcing the whole item card wider on a phone. */}
-          <p className="mt-1 break-all font-mono text-[11px] leading-relaxed text-rc-muted">
-            {url ?? `/signoff/${live.token}`}
-          </p>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
@@ -157,14 +134,6 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
             >
               <RotateCw size={12} aria-hidden="true" />
               {pending ? "Sending…" : justSent ? "Sent again" : "Send again"}
-            </button>
-            <button
-              type="button"
-              onClick={copy}
-              className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20"
-            >
-              {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
-              {copied ? "Copied" : "Copy link"}
             </button>
             <button
               type="button"
