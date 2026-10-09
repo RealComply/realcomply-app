@@ -20,7 +20,8 @@ export function DocumentSignoffCard({
 }: {
   document: SignoffDocument;
   signatures: SignoffSignature[];
-  profiles: Profile[];
+  /** Names only (agency_people): an agent cannot read colleagues' profiles. */
+  profiles: Array<{ id: string; full_name: string | null; email?: string | null }>;
   currentProfile: Profile;
   fileUrl: string | null;
 }) {

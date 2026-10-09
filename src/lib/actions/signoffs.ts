@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
+import { createServiceClient } from "@/lib/supabase/service";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { appendSignaturePage, buildSignatureCertificate } from "@/lib/pdf/sign-stamp";
 import type { SignoffCategory, SignerScope } from "@/lib/types";
@@ -28,7 +29,7 @@ export async function createSignoffDocument(params: {
   notes: string | null;
   signerScope: SignerScope;
 }): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   // Trust reconciliations are the one exception to licensee-only publishing
   // (Adam, 25 Aug 2026: "I want the licensee or the licensee's assistant to be
@@ -41,12 +42,14 @@ export async function createSignoffDocument(params: {
   // caller, so an assistant cannot publish a trust document that they are then
   // able to sign themselves.
   const isReconciliation = params.category === "trust_reconciliation";
-  const mayPublish =
-    profile.is_licensee_in_charge || (isReconciliation && Boolean(profile.is_assistant));
+  // REVERSAL (Adam, 7 Oct 2026): trust accounts are the licensee's only, and
+  // an assistant no longer has them (brief: agent access, 8 Oct). The
+  // database refuses an assistant's document too (0058).
+  const mayPublish = access.actsAsLicensee;
 
   if (!mayPublish) {
     return isReconciliation
-      ? { error: "Only the licensee in charge or their assistant can upload a trust reconciliation." }
+      ? { error: "Only the licensee in charge can upload a trust reconciliation." }
       : { error: "Only the licensee in charge can publish a document for sign-off." };
   }
 
@@ -186,7 +189,11 @@ export async function signDocument(documentId: string, _prev: ActionState, _form
   // signed and must not be told otherwise, so the failure is logged and the
   // action still succeeds. What must never happen is the reverse: a stamped
   // file with no row behind it.
-  await stampSignedCopy(supabase, {
+  // Built with the server's own access, not the signer's (Adam, 9 Oct 2026:
+  // people see only their own signature rows now). The signature itself has
+  // already gone through the signer's own rules above; this only redraws the
+  // document from what the database holds, for a document in their agency.
+  await stampSignedCopy(createServiceClient(), {
     documentId,
     agencyId: profile.agency_id,
     title: (doc as { title: string }).title,
@@ -506,6 +513,17 @@ export async function replaceSignoffDocument(
   const by = profile.full_name ?? profile.email ?? "the licensee in charge";
   const line = `Replaced ${when} by ${by}. Previous file: ${previous}. Any signature on the previous file was voided and the report re-signed.`;
 
+  // Rule 1, now first and in the database (Adam, 9 Oct 2026, option a). A
+  // signature can no longer be edited, so the old one is moved into
+  // signoff_signature_voids with the file it was given on — who, when, which
+  // file — before the file is swapped. Done before the update so the record
+  // carries the old file's path, not the new one.
+  const { error: voidError } = await supabase.rpc("void_document_signatures", { p_document_id: documentId });
+  if (voidError) {
+    console.error("voiding signature failed:", documentId, voidError.message);
+    return { error: "Couldn't set aside the old signature, so the report was not replaced. Try again." };
+  }
+
   const { error } = await supabase
     .from("signoff_documents")
     .update({
@@ -523,18 +541,6 @@ export async function replaceSignoffDocument(
   if (error) {
     console.error("replaceSignoffDocument failed:", documentId, error.message);
     return { error: "Couldn't replace that report — try again." };
-  }
-
-  // Rule 1. Cleared rather than deleted, so the signer row survives and the
-  // month reads as "waiting on the licensee" rather than "not uploaded".
-  const { error: sigError } = await supabase
-    .from("signoff_signatures")
-    .update({ signed_at: null, typed_name: null })
-    .eq("document_id", documentId);
-
-  if (sigError) {
-    console.error("voiding signature failed:", documentId, sigError.message);
-    return { error: "The file was replaced but the old signature could not be cleared. Tell support before signing again." };
   }
 
   revalidatePath("/dashboard/trust");

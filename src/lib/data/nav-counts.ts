@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { agencyPeople } from "@/lib/data/people";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computePropertyDigests } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
@@ -168,6 +169,7 @@ export const navCountsFor = cache(async function navCountsFor(
     { data: trustAccountRows },
     { data: trustDocRows },
     { data: trustAuditRows },
+    people,
   ] = await Promise.all([
     propertyIds.length > 0
       ? supabase.from("property_items").select("*").in("property_id", propertyIds)
@@ -195,6 +197,10 @@ export const navCountsFor = cache(async function navCountsFor(
       .select("id, period_month, trust_account_id, created_at")
       .eq("category", "trust_reconciliation"),
     supabase.from("trust_audits").select("period_end, confirmed_at, trust_account_id"),
+    // Who the licensees are, from the names-only list: since 0058 an agent
+    // reads only their own profile, which would leave this empty and turn
+    // every settled file's "Send to licensee" into "Licensee signature".
+    agencyPeople(supabase),
   ]);
 
   const itemsByProperty = new Map<string, Map<string, PropertyItem>>();
@@ -204,7 +210,7 @@ export const navCountsFor = cache(async function navCountsFor(
   }
 
   const staff = (staffRows ?? []) as Pick<Profile, "id" | "is_licensee_in_charge" | "licence_expiry">[];
-  const licenseeIds = new Set(staff.filter((s) => s.is_licensee_in_charge).map((s) => s.id));
+  const licenseeIds = new Set(people.filter((s) => s.is_licensee_in_charge).map((s) => s.id));
 
   // The same rollup the Portfolio page and the Monday digest use, rather than
   // a second definition of "what is outstanding" that could drift from them.
