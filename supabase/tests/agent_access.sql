@@ -25,6 +25,12 @@ declare
   blocked boolean;
   r record;
 begin
+  -- Deleting a file the way the app does. Supabase refuses a plain SQL delete
+  -- on storage.objects (storage.protect_delete) unless this flag is on, which
+  -- is what its Storage service sets for every real request. With it on, the
+  -- rules in 0058 decide, exactly as they do for the app. Transaction only.
+  perform set_config('storage.allow_delete_query', 'true', true);
+
   -- ── Made-up offices, people and listings (as the database owner). ──
   insert into auth.users (id, email) values
     (lic, 'aa-lic@example.invalid'), (ag1, 'aa-ag1@example.invalid'),
