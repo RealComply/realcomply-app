@@ -1,7 +1,8 @@
 -- ===== 0057: stop people changing their own role, 9 October 2026 =====
 --
 -- ALREADY LIVE. Adam ran this in the Supabase SQL editor on 9 Oct 2026
--- (claude/RealComply-urgent-profile-guard-9-Oct.sql). This file is here so the
+-- (claude/RealComply-urgent-profile-guard-9-Oct.sql), copied below exactly as
+-- he ran it. This file is here so the
 -- repo's migration history matches the live database. Running it again is
 -- harmless: it replaces the function and the trigger with the same thing.
 --
@@ -25,15 +26,14 @@
 -- Tests: supabase/tests/profile_privileged_columns.sql.
 
 create or replace function public.guard_profile_privileged_columns()
- returns trigger
- language plpgsql
- set search_path to 'public'
-as $function$
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $f$
 declare
   v_caller_is_licensee boolean;
 begin
-  -- Only direct calls from the app's users are checked. Database functions
-  -- that run with higher rights, and the service role, pass through.
   if current_user not in ('authenticated', 'anon') then
     return new;
   end if;
@@ -62,10 +62,8 @@ begin
 
   return new;
 end
-$function$;
+$f$;
 
--- A trigger function is never called directly. Live it is executable by
--- postgres and service_role only.
 revoke execute on function public.guard_profile_privileged_columns() from public, anon, authenticated;
 
 drop trigger if exists profiles_privileged_columns_guard on public.profiles;
