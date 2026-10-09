@@ -2677,7 +2677,19 @@ function SaleItem({ item, propertyId, current }: { item: ComplianceItem; propert
   );
 }
 
-function SignItem({ item, propertyId, current, profile }: { item: ComplianceItem; propertyId: string; current?: PropertyItem; profile: Profile }) {
+function SignItem({
+  item,
+  propertyId,
+  current,
+  profile,
+  listingAgentId,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  profile: Profile;
+  listingAgentId?: string;
+}) {
   const boundAction = signItem.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const data = (current?.data ?? {}) as { typedName?: string; signedAt?: string };
@@ -2686,6 +2698,15 @@ function SignItem({ item, propertyId, current, profile }: { item: ComplianceItem
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
         <p className="text-sm text-rc-muted">Waiting on the licensee in charge to sign.</p>
+      </ItemShell>
+    );
+  }
+
+  // Only the listing's own agent signs the agent sign-off (Adam, 9 Oct 2026).
+  if (!data.signedAt && item.key === "sign_agent" && listingAgentId && listingAgentId !== profile.id) {
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        <p className="text-sm text-rc-muted">Waiting on the listing&rsquo;s agent to sign.</p>
       </ItemShell>
     );
   }
@@ -3322,12 +3343,15 @@ export function ItemCard({
   subject = null,
   comparables = [],
   marketListings = [],
+  listingAgentId,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   profile: Profile;
   allItems: Record<string, PropertyItem>;
+  /** Whose listing this is. The agent sign-off is theirs alone (Adam, 9 Oct 2026). */
+  listingAgentId?: string;
   // The agency's standing position. Passed in rather than fetched here so the
   // page does one agency lookup for the whole list instead of one per card.
   amlPreCommencementEnabled?: boolean;
@@ -3354,7 +3378,9 @@ export function ItemCard({
     case "sale":
       return <SaleItem item={item} propertyId={propertyId} current={current} />;
     case "sign":
-      return <SignItem item={item} propertyId={propertyId} current={current} profile={profile} />;
+      return (
+        <SignItem item={item} propertyId={propertyId} current={current} profile={profile} listingAgentId={listingAgentId} />
+      );
     case "send":
       return <SendItem item={item} propertyId={propertyId} current={current} signoffLinks={signoffLinks} />;
     case "export":

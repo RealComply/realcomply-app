@@ -306,6 +306,7 @@ export default async function PropertyPage({
                   propertyId={p.id}
                   current={allItems[item.key]}
                   profile={profile}
+                  listingAgentId={p.created_by}
                   allItems={allItems}
                   amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
                   signoffLinks={signoffLinks}
@@ -326,6 +327,7 @@ export default async function PropertyPage({
               propertyId={p.id}
               current={allItems[item.key]}
               profile={profile}
+              listingAgentId={p.created_by}
               allItems={allItems}
               amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
               signoffLinks={signoffLinks}

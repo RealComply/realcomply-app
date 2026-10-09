@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { loadPmCards, pmAgencySettings, pmPeople, type PmPropertyRow } from "@/lib/data/pm";
 import { PM_GROUPS, isPmGroup, type PmGroup } from "@/lib/rules/nsw-pm";
 import { pmCardSummary } from "@/lib/rules/pm-engine";
@@ -40,7 +40,7 @@ export default async function PmDashboardPage({
 }: {
   searchParams: Promise<{ group?: string; q?: string; page?: string }>;
 }) {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   const settings = await pmAgencySettings(supabase, profile.agency_id);
   if (!settings.enabled) notFound();
@@ -109,7 +109,11 @@ export default async function PmDashboardPage({
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
       <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Property management</h1>
-      <RecordsSystemSetting agencyName={agencyRow.data?.name ?? "Your agency"} current={settings.recordsSystem} />
+      <RecordsSystemSetting
+        agencyName={agencyRow.data?.name ?? "Your agency"}
+        current={settings.recordsSystem}
+        canChange={access.actsAsLicensee}
+      />
 
       <div className="mt-5">
         <AddPmPropertyForm people={activePeople} viewerId={profile.id} />

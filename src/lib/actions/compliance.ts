@@ -1885,6 +1885,16 @@ export async function signItem(
     return { error: "Only the licensee in charge can sign here." };
   }
 
+  // An agent sign-off is the listing's own agent's (Adam, 9 Oct 2026). The
+  // database refuses anyone else and stamps who and when from the login
+  // (0058); this is the plain message.
+  if (itemKey === "sign_agent") {
+    const property = await loadProperty(supabase, propertyId);
+    if (!property || property.created_by !== user.id) {
+      return { error: "Only the listing's agent can sign here." };
+    }
+  }
+
   const typedName = String(formData.get("typedName") ?? "").trim();
   if (!typedName) {
     return { error: "Type your name to adopt it as your signature." };
