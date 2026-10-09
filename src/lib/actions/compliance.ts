@@ -1428,7 +1428,10 @@ export async function markNoReports(propertyId: string): Promise<void> {
 // card shows before anything has ever been logged, so re-answering (Yes/No)
 // still works cleanly afterwards.
 export async function removeReportEntry(propertyId: string, recordedAt: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
+  // Only the licensee removes an entry from the file (REVERSAL, Adam, 9 Oct
+  // 2026; was anyone on the file). Found still open in the preview check.
+  if (!access.actsAsLicensee) return;
 
   const { data: existing } = await supabase
     .from("property_items")
@@ -1557,7 +1560,10 @@ export async function addBuyerEntry(
 // trusting — and a misspelt buyer name is exactly the kind of thing spotted
 // one line after typing it.
 export async function removeBuyerEntry(propertyId: string, index: number): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
+  // Only the licensee removes an entry from the file (REVERSAL, Adam, 9 Oct
+  // 2026; was anyone on the file). Found still open in the preview check.
+  if (!access.actsAsLicensee) return;
 
   const { data: existing } = await supabase
     .from("property_items")

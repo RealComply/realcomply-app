@@ -31,10 +31,10 @@ export function NeedsAttentionWidget({
       caption={
         items.length === 0
           ? own
-            ? "Nothing to do on your listings right now"
+            ? "No listings need anything right now"
             : "Nothing pending across the portfolio"
           : own
-            ? "of your listings have something to do"
+            ? "listings with something to do"
             : "files awaiting sign-off or with open flags"
       }
       tone={items.length > 0 ? "warn" : "ok"}

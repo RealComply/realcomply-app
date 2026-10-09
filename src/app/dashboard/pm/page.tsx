@@ -99,7 +99,19 @@ export default async function PmDashboardPage({
 
   const inputs = await loadPmCards(supabase, sections.flatMap((s) => s.rows));
   const pages = Math.max(1, Math.ceil(pagedTotal / PAGE_SIZE));
-  const activePeople = people.filter((p) => !p.archived);
+  // Who the viewer may file a property for (0058, can_see_agent): the licensee
+  // anyone, an assistant themself and the agents they assist, an agent
+  // themself. The picker offered an agent their assistant, which the database
+  // would then refuse (preview check, 9 Oct 2026).
+  let mayFileFor: Set<string> | null = null;
+  if (!access.actsAsLicensee) {
+    mayFileFor = new Set([profile.id]);
+    if (profile.is_assistant) {
+      const { data: links } = await supabase.from("assistant_agents").select("agent_id").eq("assistant_id", profile.id);
+      for (const l of (links ?? []) as { agent_id: string }[]) mayFileFor.add(l.agent_id);
+    }
+  }
+  const activePeople = people.filter((p) => !p.archived && (!mayFileFor || mayFileFor.has(p.id)));
 
   const navItems: { key: PmGroup | null; label: string; count: number }[] = [
     { key: null, label: "All properties", count: totalAll.count ?? 0 },

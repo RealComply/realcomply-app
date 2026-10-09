@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireAccess } from "@/lib/data/current-profile";
 import { STAGE_LABELS, type Property, type Profile } from "@/lib/types";
 
 // Global search.
@@ -63,6 +64,11 @@ export async function GET(request: Request) {
     return Response.json({ hits: [] satisfies SearchHit[] });
   }
 
+  // People are found for the licensee only. A person hit opens the Team page,
+  // which is the licensee's; for an agent or an assistant it was a row that
+  // led to "page not found" (preview check, 9 Oct 2026).
+  const { access } = await requireAccess();
+
   const [{ data: propertyRows }, { data: peopleRows }] = await Promise.all([
     supabase
       .from("properties")
@@ -70,11 +76,13 @@ export async function GET(request: Request) {
       .ilike("address", `%${term}%`)
       .order("created_at", { ascending: false })
       .limit(6),
-    supabase
-      .from("profiles")
-      .select("id, full_name, email, is_licensee_in_charge, is_assistant, is_agent")
-      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
-      .limit(4),
+    access.actsAsLicensee
+      ? supabase
+          .from("profiles")
+          .select("id, full_name, email, is_licensee_in_charge, is_assistant, is_agent")
+          .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
+          .limit(4)
+      : Promise.resolve({ data: [] }),
   ]);
 
   const listings: SearchHit[] = ((propertyRows ?? []) as Pick<

@@ -127,7 +127,7 @@ export async function AgentHome({
           />
           <StatTile
             n={counts.signoffs}
-            l="Sign-offs waiting on you"
+            l="Sign-offs"
             tone={counts.signoffs > 0 ? "warn" : "ok"}
             icon={PenLine}
             href="/dashboard/document-signoffs"
@@ -149,7 +149,7 @@ export async function AgentHome({
           />
           <StatTile
             n={cpdTarget === null ? `${cpdDone}` : `${cpdDone} / ${cpdTarget}`}
-            l={`My CPD, ${cpdYear.label}`}
+            l="My CPD"
             tone={cpdTarget !== null && cpdDone < cpdTarget ? "warn" : "ok"}
             icon={ClipboardCheck}
             href="/dashboard/cpd"

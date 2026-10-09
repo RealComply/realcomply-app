@@ -57,7 +57,11 @@ export default async function SgManualPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Supervision Guidelines Manual</h1>
-            <p className="mt-1 text-sm text-rc-muted">Upload and keep the current version on file, with history.</p>
+            <p className="mt-1 text-sm text-rc-muted">
+              {profile.is_licensee_in_charge
+                ? "Upload and keep the current version on file, with history."
+                : "The office's current version, with history. The licensee in charge publishes new versions."}
+            </p>
           </div>
           <Link href="/dashboard/registers" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
             ← Registers

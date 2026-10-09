@@ -1,7 +1,8 @@
 -- ===== READ ONLY. Agent access test, 9 October 2026 =====
 --
 -- Proves the rules in migration 0058 (an agent sees only their own work, only
--- the licensee deletes, sign-offs only by the signer). Run after 0058. Safe
+-- the licensee deletes, sign-offs only by the signer) and 0059 (who is the
+-- account holder). Run after 0059. Safe
 -- on the live database: everything happens inside one transaction that is
 -- rolled back at the end, so the made-up offices, people and listings it
 -- creates never exist outside it.
@@ -46,6 +47,9 @@ begin
     (asst, office, 'Test Assistant', 'aa-asst@example.invalid', false, true, false),
     (q, solo, 'Test Solo', 'aa-solo@example.invalid', false, false, true);
   insert into public.assistant_agents (agency_id, assistant_id, agent_id) values (office, asst, ag1);
+  -- Whoever created the agency comes first: the licensee in the office, the
+  -- agent on their own plan.
+  update public.profiles set created_at = now() + interval '1 minute' where id in (ag1, ag2, asst);
 
   insert into public.properties (agency_id, created_by, address) values (office, ag1, '1 Test St') returning id into p1;
   insert into public.properties (agency_id, created_by, address) values (office, ag2, '2 Test St') returning id into p2;
@@ -226,6 +230,10 @@ begin
   exception when others then blocked := true; end;
   if not blocked then raise exception 'FAIL 11: agent can read the licensee''s sign-off link'; end if;
 
+  -- 17. An agent is not the account holder, though the earliest profile they
+  --     can see is their own (0059).
+  if public.is_account_holder() then raise exception 'FAIL 17: an agent counts as the account holder'; end if;
+
   -- ══════════════ As the assistant to agent 1 ══════════════
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', asst, 'role', 'authenticated')::text, true);
@@ -247,6 +255,8 @@ begin
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', lic, 'role', 'authenticated')::text, true);
   set local role authenticated;
+
+  if not public.is_account_holder() then raise exception 'FAIL 17: the office''s creator is not the account holder'; end if;
 
   -- 13. Nothing changed for the licensee: sees everything, deletes, signs.
   select count(*) into n from public.properties;
@@ -290,6 +300,8 @@ begin
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', q, 'role', 'authenticated')::text, true);
   set local role authenticated;
+
+  if not public.is_account_holder() then raise exception 'FAIL 17: the agent on their own plan is not the account holder'; end if;
 
   -- 16. Counts as the licensee for their own account, except complaints.
   delete from public.property_items where property_id = pq and item_key = 'a1';

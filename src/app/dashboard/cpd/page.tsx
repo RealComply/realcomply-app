@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { CpdPersonCard } from "@/components/training/CpdPersonCard";
 import { currentCpdYear } from "@/lib/cpd-year";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
@@ -29,7 +29,7 @@ import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
 // posture the rest of the product takes — surface and record; the licensee
 // decides.
 export default async function CpdPage() {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   const year = currentCpdYear();
 
@@ -45,7 +45,11 @@ export default async function CpdPage() {
     supabase.from("cpd_year_signoffs").select("*").eq("cpd_year_start", year.start),
   ]);
 
-  const staff = (staffRows ?? []) as Profile[];
+  // CPD is each person's own (0058: own or licensee). An agent or assistant can
+  // see their assistant or agent's name but not their certificates or tick, so
+  // a card for that person read "Not yet" whatever they had done (preview
+  // check, 9 Oct 2026). They get their own card only; the licensee everyone's.
+  const staff = ((staffRows ?? []) as Profile[]).filter((s) => access.actsAsLicensee || s.id === profile.id);
   const records = (cpdRows ?? []) as CpdRecord[];
   const signoffs = (signoffRows ?? []) as CpdYearSignoff[];
 

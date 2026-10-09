@@ -88,7 +88,14 @@ export default async function TrainingPage({
     cpdByProfile.get(row.profile_id)!.push(row);
   }
 
-  const needsPlan = staff.filter((s) => !planByProfile.has(s.id) || !planByProfile.get(s.id)!.principal_signed_at).length;
+  // Plans and the per-agent record are each person's own (0058: own or
+  // licensee). An agent or assistant can see their assistant or agent's name,
+  // but not that person's plan or attendance, so a card for them would always
+  // read empty whatever they had done (preview check, 9 Oct 2026). They get
+  // their own card only; the licensee gets everyone's.
+  const people = access.actsAsLicensee ? staff : staff.filter((s) => s.id === profile.id);
+
+  const needsPlan = people.filter((s) => !planByProfile.has(s.id) || !planByProfile.get(s.id)!.principal_signed_at).length;
 
   // Adam, 18 Aug 2026: "having these sections so text heavy is just gonna put
   // people off... most agents don't need to know this stuff. The licensee
@@ -105,10 +112,10 @@ export default async function TrainingPage({
       </WhyDisclosure>
 
       <div className="mt-4 space-y-4">
-        {staff.length === 0 ? (
+        {people.length === 0 ? (
           <p className="text-sm text-rc-muted">No team members on file yet.</p>
         ) : (
-          staff.map((s) => {
+          people.map((s) => {
             const plan = planByProfile.get(s.id) ?? null;
             return (
               <TrainingPlanCard
@@ -166,7 +173,7 @@ export default async function TrainingPage({
             this.
           </p>
           <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
-            {staff.map((s) => {
+            {people.map((s) => {
               const attended = sessionsByAgent.get(s.id) ?? [];
               return (
                 <li key={s.id} className="px-4 py-3 text-sm">

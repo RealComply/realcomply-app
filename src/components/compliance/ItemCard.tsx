@@ -1883,6 +1883,7 @@ function ReportEvidenceLink({ path, fileName }: { path: string; fileName: string
 // document states about itself, so it's not something extraction can check;
 // the note field is where that goes if it matters for this entry.
 function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+  const { actsAsLicensee } = useViewerAccess();
   const boundAction = addReportEntry.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const entries =
@@ -2177,16 +2178,19 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
                   buyer list, but addressed by recordedAt rather than index —
                   f3 entries are unshifted (newest first), so an index would
                   point at a different entry the moment a new one is logged. */}
-              <form action={removeReportEntry.bind(null, propertyId, e.recordedAt)} className="absolute right-0 top-1.5">
-                <button
-                  type="submit"
-                  aria-label="Remove this report entry"
-                  title="Remove"
-                  className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
-                >
-                  <X size={13} />
-                </button>
-              </form>
+              {/* The licensee's only (Adam, 9 Oct 2026). */}
+              {actsAsLicensee && (
+                <form action={removeReportEntry.bind(null, propertyId, e.recordedAt)} className="absolute right-0 top-1.5">
+                  <button
+                    type="submit"
+                    aria-label="Remove this report entry"
+                    title="Remove"
+                    className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
+                  >
+                    <X size={13} />
+                  </button>
+                </form>
+              )}
               <span className="font-medium text-rc-ink">
                 {[e.pestInspection && "Pest", e.buildingInspection && "Building", e.strata && "Strata"]
                   .filter(Boolean)
@@ -2819,6 +2823,7 @@ function BuyerListItem({
   propertyId: string;
   current?: PropertyItem;
 }) {
+  const { actsAsLicensee } = useViewerAccess();
   const boundAction = addBuyerEntry.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const data = (current?.data ?? {}) as {
@@ -2863,16 +2868,19 @@ function BuyerListItem({
           {entries.map((entry, i) => (
             <li key={`${entry.name}-${i}`} className="flex items-center gap-3 bg-white px-3 py-2">
               <span className="min-w-0 flex-1 truncate text-sm text-rc-ink">{entry.name}</span>
-              <form action={removeBuyerEntry.bind(null, propertyId, i)}>
-                <button
-                  type="submit"
-                  aria-label={`Remove ${entry.name}`}
-                  title="Remove"
-                  className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
-                >
-                  <X size={13} />
-                </button>
-              </form>
+              {/* The licensee's only (Adam, 9 Oct 2026). */}
+              {actsAsLicensee && (
+                <form action={removeBuyerEntry.bind(null, propertyId, i)}>
+                  <button
+                    type="submit"
+                    aria-label={`Remove ${entry.name}`}
+                    title="Remove"
+                    className="rounded-md p-1 text-rc-faint transition hover:bg-rc-amber/10 hover:text-rc-amber-deep"
+                  >
+                    <X size={13} />
+                  </button>
+                </form>
+              )}
             </li>
           ))}
         </ul>
@@ -3332,6 +3340,26 @@ function AuctionOutcomeItem({
   );
 }
 
+// A licensee-only item (b4) seen by anyone else: what is recorded and who it
+// is waiting on, instead of a "Mark done" that refused only once pressed
+// (preview check, 9 Oct 2026). setItemStatus refuses it on the server either
+// way. The sign cards have their own version of this in SignItem.
+function LicenseeOnlyItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+  const note = ((current?.data ?? {}) as { note?: string }).note;
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      {current?.status === "done" ? (
+        <p className="text-sm text-rc-muted">
+          Done by the licensee in charge{note ? ": " : "."}
+          {note && <span className="text-rc-ink">{note}</span>}
+        </p>
+      ) : (
+        <p className="text-sm text-rc-muted">Waiting on the licensee in charge.</p>
+      )}
+    </ItemShell>
+  );
+}
+
 export function ItemCard({
   item,
   propertyId,
@@ -3366,6 +3394,10 @@ export function ItemCard({
   // Only the ESP reasoning card uses them.
   marketListings?: MarketListing[];
 }) {
+  if (item.licenseeOnly && item.kind !== "sign" && !profile.is_licensee_in_charge) {
+    return <LicenseeOnlyItem item={item} propertyId={propertyId} current={current} />;
+  }
+
   switch (item.kind) {
     case "offers":
       return <OffersLogItem item={item} propertyId={propertyId} current={current} />;

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { PLANS, TRIAL_DAYS, type Plan } from "@/lib/billing/entitlement";
-import { accountHolderId } from "@/lib/subscription-end/access";
+import { isAccountHolder } from "@/lib/subscription-end/access";
 import { priceIdFor, stripeRequest, type Interval } from "@/lib/billing/stripe";
 
 // Starting and managing a subscription.
@@ -49,8 +49,7 @@ export async function startCheckout(
   // agency). On an individual agent plan the account holder is the agent and
   // often not a licensee in charge, and since 9 Oct 2026 a new office cannot
   // use RealComply at all until this has run, so they must be able to.
-  const holder = await accountHolderId(supabase, profile.agency_id);
-  if (!profile.is_licensee_in_charge && holder !== profile.id) {
+  if (!profile.is_licensee_in_charge && !(await isAccountHolder(supabase))) {
     return { error: "Only the licensee in charge or the account holder can set up billing for the agency." };
   }
 

@@ -23,6 +23,12 @@ export type EndedState = {
   isAccountHolder: boolean;
 };
 
+/**
+ * For the cron jobs only, with the service client. Through a signed-in
+ * person's own connection this is wrong since 0058: an agent sees only
+ * themself and their assistants, so the earliest profile they can see is
+ * their own. Use isAccountHolder() for the signed-in person.
+ */
 export async function accountHolderId(supabase: SupabaseClient, agencyId: string): Promise<string | null> {
   const { data } = await supabase
     .from("profiles")
@@ -32,6 +38,17 @@ export async function accountHolderId(supabase: SupabaseClient, agencyId: string
     .limit(1)
     .maybeSingle();
   return (data as { id?: string } | null)?.id ?? null;
+}
+
+/**
+ * Whether the signed-in person is their agency's account holder, asked of the
+ * database (0059), which can see the whole agency (preview check, 9 Oct 2026:
+ * every agent counted as the account holder and Billing opened for them). An
+ * error, including 0059 not having run yet, reads as no.
+ */
+export async function isAccountHolder(supabase: SupabaseClient): Promise<boolean> {
+  const { data, error } = await supabase.rpc("is_account_holder");
+  return !error && data === true;
 }
 
 /** Null when the agency is current, which is every agency almost always. */
@@ -45,14 +62,13 @@ export async function endedStateFor(supabase: SupabaseClient, profile: Profile):
   const agency = data as { id: string; name: string; ended_at: string | null } | null;
   if (!agency?.ended_at) return null;
 
-  const holder = await accountHolderId(supabase, agency.id);
-  const isAccountHolder = holder === profile.id;
+  const holder = await isAccountHolder(supabase);
 
   return {
     agencyId: agency.id,
     agencyName: agency.name,
     endedAt: new Date(agency.ended_at),
-    mayUseRecords: isAccountHolder || profile.is_licensee_in_charge === true,
-    isAccountHolder,
+    mayUseRecords: holder || profile.is_licensee_in_charge === true,
+    isAccountHolder: holder,
   };
 }
