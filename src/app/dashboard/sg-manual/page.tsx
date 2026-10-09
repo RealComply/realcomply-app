@@ -2,7 +2,7 @@ import Link from "next/link";
 import { agencyPeople } from "@/lib/data/people";
 import { Paperclip } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { SgManualUploader } from "@/components/registers/SgManualUploader";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
@@ -16,7 +16,7 @@ import type { SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/t
 // registers.ts) so staff can acknowledge it right here, not just from the
 // full Document sign-offs register.
 export default async function SgManualPage() {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
   const [{ data: versionRows }, staff, { data: signoffDocRows }, { data: signoffSigRows }, { data: agency }] = await Promise.all([
@@ -94,6 +94,7 @@ export default async function SgManualPage() {
               signatures={signoffSigs.filter((s) => s.document_id === currentSignoff.id)}
               profiles={staff}
               currentProfile={profile}
+              ownOnly={!access.actsAsLicensee}
               fileUrl={currentSignoffUrl}
             />
             <Link href="/dashboard/document-signoffs" className="mt-1 inline-block text-xs text-rc-muted transition hover:text-rc-green-deep hover:underline">

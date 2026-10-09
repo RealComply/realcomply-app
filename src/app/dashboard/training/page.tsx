@@ -160,6 +160,7 @@ export default async function TrainingPage({
               staff={staff}
               attendeeIds={attendeesBySession.get(session.id) ?? []}
               canDelete={access.actsAsLicensee}
+              ownOnly={!access.actsAsLicensee}
             />
           ))
         )}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { agencyPeople } from "@/lib/data/people";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { SignoffDocument, SignoffSignature } from "@/lib/types";
@@ -13,7 +13,7 @@ import type { SignoffDocument, SignoffSignature } from "@/lib/types";
 // on Registers → Trust account since 25 Aug 2026, licensee signs). Both show
 // up in the list below. See signoffs.ts and 0009_document_signoffs.sql.
 export default async function DocumentSignoffsPage() {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
   const [{ data: docRows }, { data: sigRows }, staff] = await Promise.all([
@@ -95,6 +95,7 @@ export default async function DocumentSignoffsPage() {
               signatures={signatures.filter((s) => s.document_id === doc.id)}
               profiles={staff}
               currentProfile={profile}
+              ownOnly={!access.actsAsLicensee}
               fileUrl={signedUrls[i]?.data?.signedUrl ?? null}
             />
           ))}

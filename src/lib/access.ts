@@ -32,7 +32,9 @@ export function accessFrom(
   const isAgentPlan = typeof plan === "string" && plan.startsWith("agent_");
   const licensee = active && profile.is_licensee_in_charge === true;
   return {
-    actsAsLicensee: licensee || (active && isAgentPlan),
+    // Not an assistant on an agent plan: the agent is the licensee for their
+    // own account, the person helping them is not (0059).
+    actsAsLicensee: licensee || (active && isAgentPlan && profile.is_assistant !== true),
     officeLicensee: licensee && !isAgentPlan,
     isAssistant: active && profile.is_assistant === true,
     isAgentPlan,

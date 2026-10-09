@@ -349,6 +349,26 @@ export async function setItemStatus(
 
   const data: Record<string, unknown> = { note };
 
+  // Parts of a card's record that have their own controls and are not in this
+  // form: the f4 buyer list (entries) and "recorded somewhere else" (f4, d2,
+  // a4c). This form used to save the note alone, so Mark done or Reopen on f4
+  // erased the buyer list, for anyone and with no licensee check (review of
+  // agent access, 9 Oct 2026). Removing a buyer is the licensee's, through
+  // removeBuyerEntry; marking the card done keeps them.
+  const { data: existingRow } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", itemKey)
+    .maybeSingle();
+  const existingData = ((existingRow as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<
+    string,
+    unknown
+  >;
+  for (const key of ["entries", "loggedElsewhere", "loggedElsewhereWhere"]) {
+    if (key in existingData) data[key] = existingData[key];
+  }
+
   // amv — closing the vendor AML item by pre-commencement rather than by CDD.
   //
   // Re-checked here from scratch and never taken on the browser's word. The

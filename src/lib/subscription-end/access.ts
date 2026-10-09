@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { accessFrom } from "@/lib/access";
 import type { Profile } from "@/lib/types";
 
 // Whether the signed-in person's agency has ended, and what they may do about
@@ -55,14 +56,16 @@ export async function isAccountHolder(supabase: SupabaseClient): Promise<boolean
 export async function endedStateFor(supabase: SupabaseClient, profile: Profile): Promise<EndedState | null> {
   const { data } = await supabase
     .from("agencies")
-    .select("id, name, ended_at")
+    .select("id, name, ended_at, plan")
     .eq("id", profile.agency_id)
     .maybeSingle();
 
-  const agency = data as { id: string; name: string; ended_at: string | null } | null;
+  const agency = data as { id: string; name: string; ended_at: string | null; plan: string | null } | null;
   if (!agency?.ended_at) return null;
 
-  const holder = await isAccountHolder(supabase);
+  // The agent on their own plan is the account holder (lib/access.ts).
+  const access = accessFrom(profile, agency.plan);
+  const holder = (await isAccountHolder(supabase)) || (access.isAgentPlan && access.actsAsLicensee);
 
   return {
     agencyId: agency.id,

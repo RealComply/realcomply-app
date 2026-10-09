@@ -21,6 +21,7 @@ declare
   ag2 uuid := gen_random_uuid();      -- agent 2
   asst uuid := gen_random_uuid();     -- assistant to agent 1
   q uuid := gen_random_uuid();        -- the agent on their own plan
+  qa uuid := gen_random_uuid();       -- an assistant to the agent on their own plan
   p1 uuid; p2 uuid; pq uuid; doc uuid; ta uuid;
   n integer;
   blocked boolean;
@@ -233,6 +234,11 @@ begin
   -- 17. An agent is not the account holder, though the earliest profile they
   --     can see is their own (0059).
   if public.is_account_holder() then raise exception 'FAIL 17: an agent counts as the account holder'; end if;
+  blocked := false;
+  begin
+    update public.profiles set created_at = '2000-01-01' where id = ag1;
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 17: an agent back-dated their profile to become the account holder'; end if;
 
   -- ══════════════ As the assistant to agent 1 ══════════════
   reset role;
@@ -317,6 +323,25 @@ begin
   if exists (select 1 from public.properties where agency_id = office) then
     raise exception 'FAIL 16: agent on their own plan can see another office';
   end if;
+
+  -- ══════════════ As an assistant to the agent on their own plan ══════════════
+  reset role;
+  insert into auth.users (id, email) values (qa, 'aa-solo-asst@example.invalid');
+  insert into public.profiles (id, agency_id, full_name, email, is_licensee_in_charge, is_assistant, is_agent)
+    values (qa, solo, 'Test Solo Assistant', 'aa-solo-asst@example.invalid', false, true, false);
+  update public.profiles set created_at = now() + interval '1 minute' where id = qa;
+  insert into public.assistant_agents (agency_id, assistant_id, agent_id) values (solo, qa, q);
+  perform set_config('request.jwt.claims', json_build_object('sub', qa, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+
+  -- 18. The agent counts as the licensee on their own plan; their assistant
+  --     does not (0059).
+  if public.acts_as_licensee() then raise exception 'FAIL 18: an assistant on an agent plan acts as the licensee'; end if;
+  if public.is_account_holder() then raise exception 'FAIL 18: an assistant on an agent plan is the account holder'; end if;
+  insert into public.property_items (agency_id, property_id, item_key, status) values (solo, pq, 'a2', 'done');
+  delete from public.property_items where property_id = pq and item_key = 'a2';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL 18: an assistant on an agent plan deleted a record'; end if;
 
   reset role;
   raise notice 'Agent access: all checks passed';

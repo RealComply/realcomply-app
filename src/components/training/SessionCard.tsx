@@ -11,11 +11,15 @@ export function SessionCard({
   staff,
   attendeeIds,
   canDelete,
+  ownOnly = false,
 }: {
   session: TrainingSession;
   staff: Profile[];
   attendeeIds: string[];
   canDelete: boolean;
+  /** An agent or assistant: they read their own attendance only (0058), and
+   *  only see sessions they attended, so a headcount would always say 1. */
+  ownOnly?: boolean;
 }) {
   const [editingAttendance, setEditingAttendance] = useState(false);
   const boundAction = recordAttendance.bind(null, session.id);
@@ -45,7 +49,11 @@ export function SessionCard({
       <div className="mt-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-rc-muted">
-            {attendeeIds.length === 0 ? "No attendance recorded" : `${attendeeIds.length} attended`}
+            {ownOnly
+              ? "You attended"
+              : attendeeIds.length === 0
+                ? "No attendance recorded"
+                : `${attendeeIds.length} attended`}
           </p>
           {/* Recording attendance rewrites people's session CPD, so it is the
               licensee's (Adam, 7 Oct 2026; was anyone). Same flag as delete. */}
@@ -60,7 +68,7 @@ export function SessionCard({
           )}
         </div>
 
-        {!editingAttendance && attendeeIds.length > 0 && (
+        {!ownOnly && !editingAttendance && attendeeIds.length > 0 && (
           <p className="mt-1 text-xs text-rc-muted">
             {staff
               .filter((s) => attendeeIds.includes(s.id))

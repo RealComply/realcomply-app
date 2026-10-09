@@ -44,6 +44,12 @@ describe("accessFrom", () => {
     assert.equal(a.officeLicensee, false);
   });
 
+  it("an assistant to an agent on their own plan is not the licensee", () => {
+    const a = accessFrom(assistant, "agent_1");
+    assert.equal(a.actsAsLicensee, false);
+    assert.equal(a.isAssistant, true);
+  });
+
   it("an assistant is flagged as one", () => {
     assert.equal(accessFrom(assistant, "office_1").isAssistant, true);
     assert.equal(accessFrom(assistant, "office_1").actsAsLicensee, false);
