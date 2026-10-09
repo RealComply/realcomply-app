@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { MAX_EVIDENCE_BYTES } from "@/lib/storage/evidence";
+import { MAX_EVIDENCE_BYTES, evidenceFileProblem } from "@/lib/storage/evidence";
 
 // Drag-and-drop for any upload control, not just the ones built as a drop zone.
 //
@@ -96,11 +96,14 @@ export function useFileDrop({
 
         // Same rule as FileDropZone: refuse on the spot rather than at submit,
         // and never keep a file that is not going anywhere.
-        if (chosen.size > maxBytes) {
+        const problem =
+          evidenceFileProblem(chosen) ??
+          (chosen.size > maxBytes
+            ? `${chosen.name} is ${formatBytes(chosen.size)}. The limit is ${formatBytes(maxBytes)}. Nothing was attached.`
+            : null);
+        if (problem) {
           setTookFirstOnly(false);
-          setDropError(
-            `${chosen.name} is ${formatBytes(chosen.size)}. The limit is ${formatBytes(maxBytes)}. Nothing was attached.`,
-          );
+          setDropError(problem);
           return;
         }
 
