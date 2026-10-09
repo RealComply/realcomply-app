@@ -214,6 +214,11 @@ begin
     update public.property_signoff_requests set signed_at = now(), signed_name = 'Fake' where property_id = p1;
   exception when others then blocked := true; end;
   if not blocked then raise exception 'FAIL 11: agent marked a sign-off link as signed'; end if;
+  blocked := false;
+  begin
+    perform token from public.property_signoff_requests where property_id = p1;
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 11: agent can read the licensee''s sign-off link'; end if;
 
   -- ══════════════ As the assistant to agent 1 ══════════════
   reset role;

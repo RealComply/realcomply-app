@@ -11,12 +11,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // on a card that renders fine on the server, and it makes the state of a legal
 // request depend on a round trip that may not come back.
 //
-// The token is readable by agency members under the RLS policy in 0014. There
-// was never a reason to treat it as write-only.
+// The token is NOT read here (Adam, 9 Oct 2026). Since 0058 nobody signed in
+// can read it: the link goes only to the licensee, by email, so an agent
+// cannot open it and sign as the licensee. lib/actions/signoff-links.ts reads
+// it with the server's own access when it sends the email.
 
 export type SignoffLink = {
   id: string;
-  token: string;
   sentTo: string;
   createdAt: string;
   expiresAt: string;
@@ -42,7 +43,7 @@ export async function signoffLinksFor(
   const { data } = await supabase
     .from("property_signoff_requests")
     .select(
-      "id, token, sent_to, created_at, expires_at, signed_at, signed_name, email_sent_at, email_attempts, email_error",
+      "id, sent_to, created_at, expires_at, signed_at, signed_name, email_sent_at, email_attempts, email_error",
     )
     .eq("property_id", propertyId)
     .is("revoked_at", null)
@@ -50,7 +51,6 @@ export async function signoffLinksFor(
 
   return ((data ?? []) as Array<Record<string, string | number | null>>).map((row) => ({
     id: String(row.id),
-    token: String(row.token),
     sentTo: String(row.sent_to ?? ""),
     createdAt: String(row.created_at),
     expiresAt: String(row.expires_at),

@@ -285,6 +285,16 @@ revoke update on public.property_signoff_requests from authenticated, anon;
 grant update (revoked_at, email_sent_at, email_attempts, email_error)
   on public.property_signoff_requests to authenticated;
 
+-- Nobody signed in can read the link's token (Adam, 9 Oct 2026). Was: it
+-- was shown to the agent with a "Copy link" button, so an agent could open
+-- it and sign as the licensee. Now the link only ever goes by email to the
+-- licensee; the server reads the token with its own access to send it.
+revoke select on public.property_signoff_requests from authenticated, anon;
+grant select (id, agency_id, property_id, sent_to, statement, ruleset_version, created_by,
+              created_at, expires_at, signed_at, signed_name, revoked_at,
+              email_sent_at, email_attempts, email_error)
+  on public.property_signoff_requests to authenticated;
+
 -- The link always goes to the licensee email on the agency (which only the
 -- licensee can now change), whatever the browser sends.
 create or replace function public.guard_signoff_request_insert()
