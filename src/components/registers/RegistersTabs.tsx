@@ -55,10 +55,12 @@ export function RegistersTabs({
   breachesBadge,
   defaultTab = "licence",
 }: {
-  licence: ReactNode;
-  insurance: ReactNode;
+  // null hides the tab. Agents and assistants get gifts and breaches only,
+  // and complaints are the licensee in charge's alone (Adam, 9 Oct 2026).
+  licence: ReactNode | null;
+  insurance: ReactNode | null;
   gifts: ReactNode;
-  complaints: ReactNode;
+  complaints: ReactNode | null;
   breaches: ReactNode;
   licenceBadge?: TabBadge;
   insuranceBadge?: TabBadge;
@@ -71,7 +73,11 @@ export function RegistersTabs({
   // /dashboard/registers.
   defaultTab?: TabKey;
 }) {
-  const [active, setActive] = useState<TabKey>(defaultTab);
+  const content: Record<TabKey, ReactNode | null> = { licence, insurance, gifts, complaints, breaches };
+  const shown = TABS.filter((t) => content[t.key] !== null);
+  const [active, setActive] = useState<TabKey>(
+    content[defaultTab] !== null ? defaultTab : (shown[0]?.key ?? defaultTab),
+  );
   const badges: Partial<Record<TabKey, TabBadge | undefined>> = {
     licence: licenceBadge,
     insurance: insuranceBadge,
@@ -83,7 +89,7 @@ export function RegistersTabs({
   return (
     <div>
       <div className="flex flex-wrap gap-1 border-b border-rc-border">
-        {TABS.map((tab) => {
+        {shown.map((tab) => {
           const Icon = tab.icon;
           return (
             <button

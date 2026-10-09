@@ -2,9 +2,10 @@ import { redirect } from "next/navigation";
 import { AssistantChat } from "@/components/chat/AssistantChat";
 import { StrayDropGuard } from "@/components/StrayDropGuard";
 import { Sidebar } from "@/components/Sidebar";
+import { ViewerAccessProvider } from "@/components/ViewerAccess";
 import { UserBar } from "@/components/UserBar";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { hasAcceptedCurrentLegal } from "@/lib/legal/acceptance";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { pmAgencySettings } from "@/lib/data/pm";
@@ -28,7 +29,7 @@ import { accountHolderId } from "@/lib/subscription-end/access";
 // is now wrapped in React's cache() so the layout and the page share a single
 // fetch per request rather than doing two.
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   // Once the subscription has ended, every signed-in route shows the records
   // page and nothing else: no menu, no assistant (brief of 8 Oct 2026,
@@ -84,7 +85,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           unsaved on it — with it. See lib/use-file-drop.ts. */}
       <StrayDropGuard />
       <Sidebar
-        isAssistant={Boolean(profile.is_assistant)}
+        actsAsLicensee={access.actsAsLicensee}
         isPlatformAdmin={profile.is_platform_admin === true}
         pmEnabled={pm.enabled}
         counts={counts}
@@ -95,8 +96,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
           sideways just above the md breakpoint instead of scrolling in its
           own box. */}
       <div className="flex min-h-screen min-w-0 flex-col">
-        <UserBar profile={profile} pmEnabled={pm.enabled} />
-        {children}
+        <UserBar profile={profile} pmEnabled={pm.enabled} actsAsLicensee={access.actsAsLicensee} />
+        <ViewerAccessProvider
+          value={{ actsAsLicensee: access.actsAsLicensee, officeLicensee: access.officeLicensee }}
+        >
+          {children}
+        </ViewerAccessProvider>
         <AssistantChat />
       </div>
     </div>

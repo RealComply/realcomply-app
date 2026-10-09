@@ -13,6 +13,7 @@ import {
 } from "@/lib/rules/aml-precommencement";
 import { FileDropZone } from "@/components/FileDropZone";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
+import { useViewerAccess } from "@/components/ViewerAccess";
 import type { SignoffLink } from "@/lib/data/signoff-links";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
@@ -424,6 +425,10 @@ function EvidenceUploader({
    *  card holding it does not fold that out of sight. */
   onUnsavedChange?: (unsaved: boolean) => void;
 }) {
+  // Only the licensee removes a document (Adam, 9 Oct 2026); everyone else
+  // gets Replace, which keeps the file on record.
+  const { actsAsLicensee } = useViewerAccess();
+  const replaceOnlyHere = replaceOnly || !actsAsLicensee;
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const uploadAction = uploadEvidence.bind(null, propertyId, itemKey);
   const [uploadState, uploadFormAction, uploadPending] = useActionState(uploadAction, initialState);
@@ -555,7 +560,7 @@ function EvidenceUploader({
               Only on items that actually have a reader behind them; offering
               it on a pool certificate would be a button that does nothing. */}
           {isAiReadItem(itemKey) && <RereadButton propertyId={propertyId} itemKey={itemKey} />}
-          {replaceOnly ? (
+          {replaceOnlyHere ? (
             <button
               type="button"
               onClick={() => setReplacing(true)}

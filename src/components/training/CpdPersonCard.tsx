@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerAccess } from "@/components/ViewerAccess";
 import { useActionState, useEffect, useState, type ChangeEvent } from "react";
 import { Check, Paperclip, Trash2 } from "lucide-react";
 import {
@@ -47,6 +48,7 @@ export function CpdPersonCard({
   cpdYearLabel: string;
 }) {
   const canEdit = viewerProfile.id === subject.id || Boolean(viewerProfile.is_licensee_in_charge);
+  const { actsAsLicensee } = useViewerAccess();
   const done = Boolean(signoff);
 
   const [uploading, setUploading] = useState(false);
@@ -152,8 +154,10 @@ export function CpdPersonCard({
       <div className="mt-4 flex items-start gap-2.5 border-t border-rc-border pt-3">
         <button
           type="button"
-          onClick={canEdit ? toggleDone : undefined}
-          disabled={!canEdit || ticking}
+          // Un-ticking removes the year's sign-off record, which only the
+          // licensee may do (Adam, 9 Oct 2026).
+          onClick={canEdit && (!done || actsAsLicensee) ? toggleDone : undefined}
+          disabled={!canEdit || ticking || (done && !actsAsLicensee)}
           aria-pressed={done}
           className={`mt-0.5 grid h-[18px] w-[18px] shrink-0 place-items-center rounded-[5px] border transition ${
             done ? "border-rc-green-deep bg-rc-green-deep text-white" : "border-rc-border bg-white"
@@ -179,6 +183,7 @@ export function CpdPersonCard({
 }
 
 function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boolean }) {
+  const { actsAsLicensee } = useViewerAccess();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [state, action, pending] = useActionState(updateCpdRecord.bind(null, record.id), initial);
@@ -319,14 +324,15 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
             <button type="button" onClick={() => setEditing(true)} className="font-medium text-rc-muted hover:text-rc-ink">
               Edit
             </button>
-            <button
+            {/* Only the licensee deletes a CPD record (Adam, 9 Oct 2026). */}
+            {actsAsLicensee && <button
               type="button"
               onClick={() => deleteCpdRecord(record.id)}
               aria-label="Remove"
               className="text-rc-faint transition hover:text-rc-amber-deep"
             >
               <Trash2 size={13} />
-            </button>
+            </button>}
           </>
         )}
       </div>

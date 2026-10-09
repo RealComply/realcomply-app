@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Building2, ClipboardCheck, Flag, ShieldCheck, MessageSquareWarning } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireLicenseePage } from "@/lib/data/current-profile";
 import { StatTile } from "@/components/home/WidgetCard";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
@@ -18,7 +18,9 @@ import { STAGE_LABELS, type Agency, type Complaint, type Profile, type Property,
 // "who exactly is expiring" list and its agent-viewing note are folded in
 // below, and /dashboard/licensee now just redirects here.
 export default async function PortfolioPage() {
-  const profile = await requireProfile();
+  // Licensee only (Adam, 7 Oct 2026): a typed address refuses, not just a
+  // hidden link.
+  const { profile } = await requireLicenseePage();
   const supabase = await createClient();
 
   const { data: properties } = await supabase.from("properties").select("*").order("created_at", { ascending: false });

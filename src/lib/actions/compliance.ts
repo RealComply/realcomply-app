@@ -13,6 +13,7 @@ import { draftEspReasoning } from "@/lib/data/esp-draft";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { redirect } from "next/navigation";
+import { accessFrom } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
@@ -78,14 +79,19 @@ export async function requireAuthContext() {
   // the dashboard, which for an ended agency is the records page.
   const { data: agency } = await supabase
     .from("agencies")
-    .select("ended_at")
+    .select("ended_at, plan")
     .eq("id", (profile as { agency_id: string }).agency_id)
     .maybeSingle();
   if ((agency as { ended_at?: string | null } | null)?.ended_at) {
     redirect("/dashboard/records");
   }
 
-  return { supabase, user, profile };
+  // Who may do what (lib/access.ts; the database rules in 0058 are the ones
+  // that count). Every action that is the licensee's checks access, not the
+  // raw flag, so the agent on their own plan counts as the licensee.
+  const access = accessFrom(profile as { is_licensee_in_charge: boolean; is_assistant: boolean; archived_at?: string | null }, (agency as { plan?: string } | null)?.plan);
+
+  return { supabase, user, profile, access };
 }
 
 async function loadProperty(supabase: Awaited<ReturnType<typeof createClient>>, propertyId: string) {
@@ -2070,7 +2076,11 @@ export async function uploadEvidence(
 // on the item row) without touching the item's status, note, or any other
 // data — evidence is supporting material, not the record of completion.
 export async function removeEvidence(propertyId: string, itemKey: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
+  // Only the licensee deletes compliance records, and the delete is logged
+  // (REVERSAL, Adam, 9 Oct 2026; was any member). The database refuses it
+  // too (0058); this gives a plain message instead of a silent no-op.
+  if (!access.actsAsLicensee) return;
 
   const { data: existingRow } = await supabase
     .from("property_items")

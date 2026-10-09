@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerAccess } from "@/components/ViewerAccess";
 import { useActionState, useState, useTransition } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { DictateButton, appendDictated } from "@/components/Dictate";
@@ -285,6 +286,7 @@ function ComparableRow({
     });
   }
 
+  const { actsAsLicensee } = useViewerAccess();
   function remove() {
     setError(null);
     startTransition(async () => {
@@ -314,16 +316,19 @@ function ComparableRow({
             <p className="mt-0.5 text-[11px] text-rc-faint">Added by you, not from the report.</p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={remove}
-          disabled={pending}
-          aria-label={`Remove ${comparable.address}`}
-          title="Remove this sale — a duplicate, a misread, or one that isn't comparable."
-          className="shrink-0 rounded-full p-1 text-rc-faint transition hover:bg-rc-bg-alt hover:text-rc-ink disabled:opacity-50"
-        >
-          <X size={13} aria-hidden="true" />
-        </button>
+        {/* Only the licensee removes a row (Adam, 9 Oct 2026). */}
+        {actsAsLicensee && (
+          <button
+            type="button"
+            onClick={remove}
+            disabled={pending}
+            aria-label={`Remove ${comparable.address}`}
+            title="Remove this sale — a duplicate, a misread, or one that isn't comparable."
+            className="shrink-0 rounded-full p-1 text-rc-faint transition hover:bg-rc-bg-alt hover:text-rc-ink disabled:opacity-50"
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       {/* Adam's two columns, 7 Sep 2026. Both sides are the same arithmetic —

@@ -1,5 +1,6 @@
 import { cache } from "react";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { accessFrom, type Access } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import type { Profile } from "@/lib/types";
@@ -108,3 +109,25 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
 
   redirect("/signup");
 });
+
+/**
+ * The signed-in person's access (see lib/access.ts). Cached per request like
+ * requireProfile, so the layout, the menu and the page share one lookup.
+ */
+export const requireAccess = cache(async function requireAccess(): Promise<{ profile: Profile; access: Access }> {
+  const profile = await requireProfile();
+  const supabase = await createClient();
+  const { data: agency } = await supabase.from("agencies").select("plan").eq("id", profile.agency_id).maybeSingle();
+  return { profile, access: accessFrom(profile, (agency as { plan?: string } | null)?.plan) };
+});
+
+/**
+ * For a page that is the licensee's only (Office overview, Trust, Team…). A
+ * typed address refuses rather than just hiding the link (Adam, 7 Oct): the
+ * page is not found, the same as an address that does not exist.
+ */
+export async function requireLicenseePage(): Promise<{ profile: Profile; access: Access }> {
+  const ctx = await requireAccess();
+  if (!ctx.access.actsAsLicensee) notFound();
+  return ctx;
+}
