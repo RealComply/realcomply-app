@@ -130,6 +130,7 @@ function ItemShell({
   current,
   awaitingReview = false,
   foldable = true,
+  evidenceReadOnly = false,
   children,
 }: {
   item: ComplianceItem;
@@ -138,6 +139,10 @@ function ItemShell({
   current?: PropertyItem;
   /** Passed through to the pill — see StatusPill. */
   awaitingReview?: boolean;
+  /** The attached file as a link only, with nothing to attach, replace or
+   *  remove: a licensee-only card seen by anyone else, or one locked once
+   *  done (LicenseeOnlyItem). */
+  evidenceReadOnly?: boolean;
   /**
    * False keeps a done card open: for a done card whose body still carries
    * something live the agent has to see (the licensee sign-off link before it
@@ -310,7 +315,15 @@ function ItemShell({
           arrives here as a plain boolean already accounting for it, because
           hideEvidenceWhen itself is a function and can't cross the
           server/client boundary into this component. */}
-      {!item.hideEvidence && (
+      {!item.hideEvidence && evidenceReadOnly && current?.evidence_path && (
+        <div className="mt-3 text-sm">
+          <ReportEvidenceLink
+            path={current.evidence_path}
+            fileName={(current.data as { evidenceFileName?: string } | undefined)?.evidenceFileName ?? "Attached file"}
+          />
+        </div>
+      )}
+      {!item.hideEvidence && !evidenceReadOnly && (
         <EvidenceUploader
           key={current?.evidence_path ?? "none"}
           propertyId={propertyId}
@@ -2698,6 +2711,18 @@ function SignItem({
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const data = (current?.data ?? {}) as { typedName?: string; signedAt?: string };
 
+  // Signed comes first: whoever is looking, a signature on file is the answer.
+  if (data.signedAt) {
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        <p className="text-sm text-rc-muted">
+          Signed <span className="font-medium text-rc-ink">{data.typedName}</span> on{" "}
+          {new Date(data.signedAt).toLocaleString("en-AU")}
+        </p>
+      </ItemShell>
+    );
+  }
+
   if (item.licenseeOnly && !profile.is_licensee_in_charge) {
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -2711,17 +2736,6 @@ function SignItem({
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
         <p className="text-sm text-rc-muted">Waiting on the listing&rsquo;s agent to sign.</p>
-      </ItemShell>
-    );
-  }
-
-  if (data.signedAt) {
-    return (
-      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-        <p className="text-sm text-rc-muted">
-          Signed <span className="font-medium text-rc-ink">{data.typedName}</span> on{" "}
-          {new Date(data.signedAt).toLocaleString("en-AU")}
-        </p>
       </ItemShell>
     );
   }
@@ -3340,14 +3354,16 @@ function AuctionOutcomeItem({
   );
 }
 
-// A licensee-only item (b4) seen by anyone else: what is recorded and who it
-// is waiting on, instead of a "Mark done" that refused only once pressed
-// (preview check, 9 Oct 2026). setItemStatus refuses it on the server either
-// way. The sign cards have their own version of this in SignItem.
+// A licensee-only item (b4) seen by anyone else, or by anyone once it is
+// done: what is recorded and who it is waiting on, instead of a "Mark done"
+// that refused only once pressed (preview check, 9 Oct 2026). Once done it is
+// locked for the licensee too (guard_listing_signoff, 0058), so the form and
+// the file controls would only fail. setItemStatus refuses on the server
+// either way. The sign cards have their own version of this in SignItem.
 function LicenseeOnlyItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const note = ((current?.data ?? {}) as { note?: string }).note;
   return (
-    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} evidenceReadOnly>
       {current?.status === "done" ? (
         <p className="text-sm text-rc-muted">
           Done by the licensee in charge{note ? ": " : "."}
@@ -3394,7 +3410,7 @@ export function ItemCard({
   // Only the ESP reasoning card uses them.
   marketListings?: MarketListing[];
 }) {
-  if (item.licenseeOnly && item.kind !== "sign" && !profile.is_licensee_in_charge) {
+  if (item.licenseeOnly && item.kind !== "sign" && (!profile.is_licensee_in_charge || current?.status === "done")) {
     return <LicenseeOnlyItem item={item} propertyId={propertyId} current={current} />;
   }
 

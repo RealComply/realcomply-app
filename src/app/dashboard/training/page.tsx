@@ -151,7 +151,10 @@ export default async function TrainingPage({
 
       <div className="mt-6 space-y-4">
         {sessions.length === 0 ? (
-          <p className="text-sm text-rc-muted">No training sessions logged yet.</p>
+          <p className="text-sm text-rc-muted">
+            {/* Anyone else sees only the sessions they attended (0058). */}
+            {access.actsAsLicensee ? "No training sessions logged yet." : "No sessions you attended yet."}
+          </p>
         ) : (
           sessions.map((session) => (
             <SessionCard
@@ -170,8 +173,14 @@ export default async function TrainingPage({
         <section className="mt-8">
           <h2 className="text-sm font-semibold text-rc-ink">Per-agent training record</h2>
           <p className="mt-1 text-xs text-rc-muted">
-            Who&rsquo;s attended what — mark attendance on a session above (&ldquo;Edit attendance&rdquo;) to populate
-            this.
+            {access.actsAsLicensee ? (
+              <>
+                Who&rsquo;s attended what — mark attendance on a session above (&ldquo;Edit attendance&rdquo;) to
+                populate this.
+              </>
+            ) : (
+              "The sessions you attended. The licensee in charge records attendance."
+            )}
           </p>
           <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
             {people.map((s) => {

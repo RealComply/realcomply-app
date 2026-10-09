@@ -1552,9 +1552,11 @@ export async function addBuyerEntry(
     return { error: "Enter the buyer's name." };
   }
 
+  // status too: it is kept below, and without it here a done list went back
+  // to open whenever a buyer was added (preview check, 9 Oct 2026).
   const { data: existing } = await supabase
     .from("property_items")
-    .select("data")
+    .select("data, status")
     .eq("property_id", propertyId)
     .eq("item_key", "f4")
     .maybeSingle();

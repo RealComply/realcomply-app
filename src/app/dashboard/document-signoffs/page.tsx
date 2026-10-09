@@ -79,7 +79,12 @@ export default async function DocumentSignoffsPage() {
         )}
 
         <div className="mt-8 space-y-4">
-          {documents.length === 0 && (
+          {/* An agent or assistant sees only the documents they sign (0058),
+              so "nothing here yet" would wrongly say the office has none. */}
+          {documents.length === 0 && !access.actsAsLicensee && (
+            <p className="text-sm text-rc-muted">Nothing waiting on your signature.</p>
+          )}
+          {documents.length === 0 && access.actsAsLicensee && (
             <p className="text-sm text-rc-muted">
               Nothing here yet. Publishing a new{" "}
               <Link href="/dashboard/sg-manual" className="text-rc-green-deep hover:underline">
