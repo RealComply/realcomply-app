@@ -49,6 +49,12 @@ function assistantBlocked(itemKey: string, profile: { is_assistant?: boolean }):
   return ASSISTANT_BLOCKED_ITEMS.has(itemKey) || Boolean(getItem(itemKey)?.licenseeOnly);
 }
 
+// What setItemStatus keeps from a card's existing record, by card: the parts
+// with their own controls outside the Mark done form.
+const CARRIED_BY_ITEM: Record<string, string[]> = {
+  f4: ["entries", "loggedElsewhere", "loggedElsewhereWhere"],
+};
+
 const ASSISTANT_BLOCKED_MESSAGE =
   "Assistants can prepare a file but not sign it. Hand it to the agent to review and sign.";
 
@@ -350,23 +356,28 @@ export async function setItemStatus(
   const data: Record<string, unknown> = { note };
 
   // Parts of a card's record that have their own controls and are not in this
-  // form: the f4 buyer list (entries) and "recorded somewhere else" (f4, d2,
-  // a4c). This form used to save the note alone, so Mark done or Reopen on f4
-  // erased the buyer list, for anyone and with no licensee check (review of
-  // agent access, 9 Oct 2026). Removing a buyer is the licensee's, through
-  // removeBuyerEntry; marking the card done keeps them.
-  const { data: existingRow } = await supabase
-    .from("property_items")
-    .select("data")
-    .eq("property_id", propertyId)
-    .eq("item_key", itemKey)
-    .maybeSingle();
-  const existingData = ((existingRow as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<
-    string,
-    unknown
-  >;
-  for (const key of ["entries", "loggedElsewhere", "loggedElsewhereWhere"]) {
-    if (key in existingData) data[key] = existingData[key];
+  // form: the f4 buyer list (entries) and its "recorded somewhere else". This
+  // form used to save the note alone, so Mark done or Reopen on f4 erased the
+  // buyer list, for anyone and with no licensee check (review of agent
+  // access, 9 Oct 2026). Removing a buyer is the licensee's, through
+  // removeBuyerEntry; marking the card done keeps them. Not a4c: its
+  // "recorded elsewhere" was retired on 2 Oct, and saving the reasoning here
+  // is what clears an old mark. d2 (offers) has its own actions.
+  const carried = CARRIED_BY_ITEM[itemKey] ?? [];
+  if (carried.length > 0) {
+    const { data: existingRow } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+    const existingData = ((existingRow as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<
+      string,
+      unknown
+    >;
+    for (const key of carried) {
+      if (key in existingData) data[key] = existingData[key];
+    }
   }
 
   // amv — closing the vendor AML item by pre-commencement rather than by CDD.
