@@ -17,12 +17,20 @@ function fakeSupabase(tables: Record<string, Row[]>, opts: { failInsert?: boolea
   function from(table: string) {
     const filters: ((r: Row) => boolean)[] = [];
     let window: [number, number] = [0, MAX_ROWS - 1];
+    // Only the columns asked for, like the API: a guard on a column the job
+    // never selects must fail here too.
+    let columns: string[] | null = null;
+    const pick = (r: Row): Row => (columns ? Object.fromEntries(columns.map((c) => [c, r[c]])) : r);
     const rows = () =>
       (tables[table] ?? [])
         .filter((r) => filters.every((f) => f(r)))
-        .slice(window[0], Math.min(window[1], window[0] + MAX_ROWS - 1) + 1);
+        .slice(window[0], Math.min(window[1], window[0] + MAX_ROWS - 1) + 1)
+        .map(pick);
     const query = {
-      select: () => query,
+      select: (list = "*") => {
+        columns = list.trim() === "*" ? null : list.split(",").map((c) => c.trim());
+        return query;
+      },
       order: () => query,
       range: (fromRow: number, toRow: number) => {
         window = [fromRow, toRow];
@@ -49,10 +57,10 @@ function fakeSupabase(tables: Record<string, Row[]>, opts: { failInsert?: boolea
   return { from } as unknown as NonNullable<PmRetentionDeps["supabase"]>;
 }
 
-function world(over: { pmEnabled?: boolean; managerArchived?: boolean; moveOut?: string | null; endedOn?: string | null } = {}) {
+function world(over: { pmEnabled?: boolean; managerArchived?: boolean; moveOut?: string | null; endedOn?: string | null; subscriptionEndedAt?: string | null } = {}) {
   return {
     agencies: [
-      { id: "ag1", name: "Made-up Realty", pm_enabled: over.pmEnabled ?? true },
+      { id: "ag1", name: "Made-up Realty", pm_enabled: over.pmEnabled ?? true, ended_at: over.subscriptionEndedAt ?? null },
       { id: "ag2", name: "Other Made-up Realty", pm_enabled: true },
     ],
     profiles: [
@@ -142,6 +150,21 @@ test("an agency with PM switched off gets nothing", async () => {
   const { sent, send } = capture();
   await runPmRetentionReminders(ON_THE_DAY, { supabase: fakeSupabase(world({ pmEnabled: false })), send });
   assert.equal(sent.length, 0);
+});
+
+test("an agency whose subscription has ended gets nothing, and gets it after it comes back", async () => {
+  const w = world({ subscriptionEndedAt: "2026-10-01T00:00:00Z" });
+  const { sent, send } = capture();
+  const result = await runPmRetentionReminders(ON_THE_DAY, { supabase: fakeSupabase(w), send });
+  assert.equal(result.checked, 0);
+  assert.equal(sent.length, 0);
+  assert.equal(w.pm_retention_reminders.length, 0);
+
+  // Reactivated a few days later: the reminder due on 7 October still goes.
+  w.agencies[0].ended_at = null;
+  const later = await runPmRetentionReminders(new Date("2026-10-09T21:50:00Z"), { supabase: fakeSupabase(w), send });
+  assert.equal(later.sent, 1);
+  assert.equal(w.pm_retention_reminders.length, 1);
 });
 
 test("does not send when the record could not be written first", async () => {

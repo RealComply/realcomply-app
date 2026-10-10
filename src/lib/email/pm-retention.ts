@@ -21,7 +21,11 @@ import { PM_COPY, pmManagementEndedLabel, pmRetentionUntil } from "@/lib/rules/n
 // corrected after the fact moves the reminder with it (the dedupe key holds
 // the due date, so the new date gets its own reminder and the old one is
 // never looked at again). Archived people are never mailed. An agency with PM
-// switched off gets nothing, because nobody there can open the property.
+// switched off gets nothing, because nobody there can open the property. Nor
+// does an agency whose subscription has ended (0054), the same as licence and
+// trust reminders: it is on its records page until it is deleted at day 14,
+// or for as long as a legal hold keeps it. If it comes back, the next run
+// sends anything due on or before that day.
 //
 // Record first, send second, the same as licence reminders: a unique index on
 // (subject_kind, subject_id, due_date) in 0053 means a reminder is never sent
@@ -36,7 +40,7 @@ import { PM_COPY, pmManagementEndedLabel, pmRetentionUntil } from "@/lib/rules/n
 
 const PM_URL = "https://www.realcomply.com.au/dashboard/pm";
 
-type Agency = { id: string; name: string; pm_enabled?: boolean };
+type Agency = { id: string; name: string; pm_enabled?: boolean; ended_at?: string | null };
 type Person = { id: string; agency_id: string; email: string; full_name: string | null; is_licensee_in_charge: boolean; archived_at: string | null };
 type Property = {
   id: string;
@@ -131,10 +135,10 @@ export async function runPmRetentionReminders(
   let failed = 0;
 
   const agencyRows = await selectAll<Agency>((a, b) =>
-    supabase.from("agencies").select("id, name, pm_enabled").order("id").range(a, b),
+    supabase.from("agencies").select("id, name, pm_enabled, ended_at").order("id").range(a, b),
   );
   for (const agency of agencyRows ?? []) {
-    if (agency.pm_enabled !== true) continue;
+    if (agency.pm_enabled !== true || agency.ended_at) continue;
 
     const [propertyRows, tenancyRows, peopleRows, sentRows] = await Promise.all([
       selectAll<Property>((a, b) => supabase.from("pm_properties").select("*").eq("agency_id", agency.id).order("id").range(a, b)),
