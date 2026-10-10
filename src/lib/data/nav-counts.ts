@@ -225,7 +225,7 @@ export const navCountsFor = cache(async function navCountsFor(
     supabase.from("gifts").select("id", { count: "exact", head: true }).eq("status", "flagged"),
     supabase.from("complaints").select("id", { count: "exact", head: true }).neq("status", "resolved"),
     supabase.from("breaches").select("status, notifiable, notified_date"),
-    // Every column, so opened_on comes through once G4b.sql has added it and
+    // Every column, so opened_on comes through once 0060 has added it and
     // nothing breaks before then. A handful of rows per agency.
     supabase.from("trust_accounts").select("*"),
     supabase

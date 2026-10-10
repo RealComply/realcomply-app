@@ -344,7 +344,7 @@ export type TrustAccount = {
   created_at: string;
   /** The day the account opened, when it opened part way through a year. Null
    *  means it was already open: every month and audit is owed. Optional until
-   *  supabase/migrations/pending/G4b.sql has run. */
+   *  supabase/migrations/0060_check_fixes.sql has run. */
   opened_on?: string | null;
 };
 

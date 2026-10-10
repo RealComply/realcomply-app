@@ -2092,7 +2092,7 @@ export async function uploadEvidence(
     const looksLike = await screenForIdDocument(supabase, path, fileName);
     if (looksLike) {
       // Deleted on the uploader's own access: since 0058 only the licensee
-      // deletes files, and pending/G2.sql lets the person who uploaded a
+      // deletes files, and 0060 lets the person who uploaded a
       // refused ID document delete it. Said only when it actually went (10 Oct
       // 2026): a delete the database refuses comes back empty, not as an error,
       // and the agent was being told "deleted" over a copy still in storage.

@@ -130,7 +130,7 @@ export async function createSignoffDocument(params: {
 // 10 Oct 2026: that case never got this far — since 0058 someone with no row
 // cannot see the document at all. The database now gives each person who
 // joins a row on the current SG Manual version (see
-// supabase/migrations/pending/G4b.sql), so a new starter is asked to sign it
+// supabase/migrations/0060_check_fixes.sql), so a new starter is asked to sign it
 // and the licensee sees them as outstanding.
 //
 // A TICK, NOT A TYPED NAME (Adam, 8 Sep 2026): "we can just add a tick box

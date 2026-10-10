@@ -1,8 +1,8 @@
 -- ===== READ ONLY. Refused ID document test, 10 October 2026 =====
 --
--- Proves supabase/migrations/pending/G2.sql: the person who uploaded an ID
+-- Proves supabase/migrations/0060_check_fixes.sql (section G2): the person who uploaded an ID
 -- document RealComply refused can delete it, and nothing else changes about
--- who deletes files (0058). Run after G2.sql. Safe on the live database:
+-- who deletes files (0058). Run after 0060. Safe on the live database:
 -- everything happens inside one transaction that is rolled back at the end.
 --
 -- Pass: the last line says "Refused ID document: all checks passed".
