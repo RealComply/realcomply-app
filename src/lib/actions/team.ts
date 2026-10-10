@@ -233,8 +233,16 @@ export async function saveLicenseeEmail(
   // Filling the field in for the first time is someone finishing their setup,
   // not replacing anybody, and firing there would be noise on day one — which
   // is how a notice earns itself a reputation for being dismissed unread.
+  //
+  // And only for the licensee in charge (10 Oct 2026). s31(3) puts the duty
+  // on whoever employs the licensee, which is not the agent on their own plan
+  // who has just recorded that their principal changed. Telling that agent
+  // they have 5 business days to notify Fair Trading is the product giving a
+  // statutory instruction to the wrong person, so they get no notice.
   const licenseeChanged =
-    previousName.length > 0 && previousName.toLowerCase() !== licenseeName.toLowerCase();
+    profile.is_licensee_in_charge === true &&
+    previousName.length > 0 &&
+    previousName.toLowerCase() !== licenseeName.toLowerCase();
 
   // From here the licensee is saved, so every answer carries licenseeChanged
   // and the page is refreshed, even if the website then fails to save.
@@ -516,7 +524,8 @@ export async function setStaffRole(
  * see only their own listings (0058), a file left on an archived person's
  * name would be one that only the licensee could see; handing it over says
  * so plainly, and every move is recorded in property_transfers by
- * guard_listing_transfer. Settled listings stay in their name (10 Oct 2026).
+ * guard_listing_transfer. Settled listings they signed stay in their name
+ * (10 Oct 2026).
  */
 export async function archiveStaff(profileId: string): Promise<ActionState> {
   const ctx = await requireLicenseeAndSubject(profileId);
@@ -538,11 +547,36 @@ export async function archiveStaff(profileId: string): Promise<ActionState> {
   // file is the record of who did it. Moving it put the licensee's name on
   // the finalised record as the agent, beside the departed agent's own
   // signature, and the licensee already sees every file anyway.
-  const { error: moveError } = await ctx.supabase
+  //
+  // Settled is not finished, though (10 Oct 2026). A file stays at stage 5
+  // for good, with the purchaser check, the final price, the agent's
+  // signature and the hand-off still to do. Only the listing's agent can
+  // give the agent signature (guard_listing_signoff, 0058), so a settled
+  // file they had not signed, left on their name, could never be signed by
+  // anyone. Their signature is what makes it theirs: a settled file they
+  // have not signed moves with the unfinished ones.
+  const { data: settledRows, error: settledError } = await ctx.supabase
+    .from("properties")
+    .select("id, property_items(status)")
+    .eq("created_by", profileId)
+    .eq("stage", 5)
+    .eq("property_items.item_key", "sign_agent");
+  if (settledError) {
+    return { error: "Couldn't move their listings to you, so they have not been removed. Try again." };
+  }
+  const unsignedIds = ((settledRows ?? []) as { id: string; property_items: { status: string }[] | null }[])
+    .filter((r) => !(r.property_items ?? []).some((i) => i.status === "done"))
+    .map((r) => r.id);
+
+  // One update, so either every file moves or none does.
+  const moveQuery = ctx.supabase
     .from("properties")
     .update({ created_by: ctx.profile.id })
-    .eq("created_by", profileId)
-    .lt("stage", 5);
+    .eq("created_by", profileId);
+  const { error: moveError } =
+    unsignedIds.length > 0
+      ? await moveQuery.or(`stage.lt.5,id.in.(${unsignedIds.join(",")})`)
+      : await moveQuery.lt("stage", 5);
   if (moveError) {
     return { error: "Couldn't move their listings to you, so they have not been removed. Try again." };
   }

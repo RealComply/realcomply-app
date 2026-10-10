@@ -61,9 +61,23 @@ function isActive(pathname: string | null, href: string, exact?: boolean): boole
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function toggleRail(button: HTMLButtonElement) {
+// What the two toggles tell a screen reader, read from the classes on <html>
+// (10 Oct 2026). The markup can only say "false": the saved state is put back
+// by the inline script in app/layout.tsx, which runs before the body exists,
+// so after a reload the sidebar looked collapsed or unfolded while both
+// buttons still announced the opposite. Every copy is set, because the
+// mobile drawer renders the Listings toggle a second time.
+function syncToggleState() {
+  const root = document.documentElement;
+  const railed = String(root.classList.contains(RAIL_CLASS));
+  const listingsOpen = String(root.classList.contains(LISTINGS_CLASS));
+  document.querySelectorAll("[data-rail-toggle]").forEach((b) => b.setAttribute("aria-pressed", railed));
+  document.querySelectorAll("[data-listings-toggle]").forEach((b) => b.setAttribute("aria-expanded", listingsOpen));
+}
+
+function toggleRail() {
   const railed = document.documentElement.classList.toggle(RAIL_CLASS);
-  button.setAttribute("aria-pressed", String(railed));
+  syncToggleState();
   try {
     window.localStorage.setItem(STORAGE_KEY, railed ? "1" : "0");
   } catch {
@@ -75,9 +89,9 @@ function toggleRail(button: HTMLButtonElement) {
 // Same mechanism as the rail, for the same reason: the open/closed state is
 // restored before first paint by the inline script in app/layout.tsx, so it
 // cannot live in React state without either a flash or a hydration mismatch.
-function toggleListings(button: HTMLButtonElement) {
+function toggleListings() {
   const open = document.documentElement.classList.toggle(LISTINGS_CLASS);
-  button.setAttribute("aria-expanded", String(open));
+  syncToggleState();
   try {
     window.localStorage.setItem(LISTINGS_KEY, open ? "1" : "0");
   } catch {
@@ -101,6 +115,11 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  // After every render, not just the first: opening the drawer, or the first
+  // listing arriving, mounts another toggle that starts at "false". React
+  // leaves the attribute alone afterwards, since the prop never changes.
+  useEffect(() => syncToggleState());
 
   // Escape closes the mobile drawer, matching what a keyboard user expects of
   // any overlay. No-op on desktop, where the drawer is never open.
@@ -289,7 +308,7 @@ export function Sidebar({
                 <button
                   type="button"
                   data-listings-toggle
-                  onClick={(e) => toggleListings(e.currentTarget)}
+                  onClick={toggleListings}
                   aria-expanded="false"
                   aria-label="Show or hide your listings"
                   title="Show or hide your listings"
@@ -465,10 +484,11 @@ export function Sidebar({
         <div className="min-h-0 flex-1 overflow-y-auto">{panel}</div>
         <button
           type="button"
-          onClick={(e) => toggleRail(e.currentTarget)}
+          onClick={toggleRail}
           title="Collapse or expand the sidebar"
           aria-label="Collapse or expand the sidebar"
           aria-pressed="false"
+          data-rail-toggle
           data-rail-center
           className="mx-3 mb-4 mt-1 flex h-8 items-center gap-2 rounded-lg px-3 text-rc-nav-muted transition hover:bg-white/[0.06] hover:text-white"
         >

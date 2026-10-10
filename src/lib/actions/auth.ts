@@ -264,9 +264,12 @@ export async function signup(
   redirect("/dashboard/home");
 }
 
+// This device only (10 Oct 2026). Supabase's signOut() defaults to every
+// session the account has, so signing out on a phone also signed the person
+// out of the laptop they were working on.
 export async function logout() {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
 
