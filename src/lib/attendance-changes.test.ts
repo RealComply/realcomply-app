@@ -17,9 +17,17 @@ test("unticking someone removes only them", () => {
   assert.deepEqual(c, { unticked: ["b"], ticked: [], needCpd: [] });
 });
 
-test("an attendee whose session CPD write failed gets it on the next save", () => {
-  const c = attendanceChanges({ recorded: ["a", "b"], withCpd: ["a"], wanted: ["a", "b"] });
-  assert.deepEqual(c, { unticked: [], ticked: [], needCpd: ["b"] });
+test("a session CPD record the licensee deleted is not put back by a later save", () => {
+  // b's record was deleted (logged); the licensee then adds latecomer c.
+  const c = attendanceChanges({ recorded: ["a", "b"], withCpd: ["a"], wanted: ["a", "b", "c"] });
+  assert.deepEqual(c, { unticked: [], ticked: ["c"], needCpd: ["c"] });
+});
+
+test("someone unticked and ticked again gets session CPD again", () => {
+  const off = attendanceChanges({ recorded: ["a", "b"], withCpd: ["a", "b"], wanted: ["a"] });
+  assert.deepEqual(off.unticked, ["b"]);
+  const on = attendanceChanges({ recorded: ["a"], withCpd: ["a"], wanted: ["a", "b"] });
+  assert.deepEqual(on, { unticked: [], ticked: ["b"], needCpd: ["b"] });
 });
 
 test("unticking everyone removes everyone", () => {
