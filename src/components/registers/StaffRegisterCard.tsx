@@ -19,6 +19,8 @@ import { LicenceReadNotice } from "@/components/registers/LicenceReadNotice";
 import { parseReadState } from "@/lib/licence-read";
 import { countableCpdHours } from "@/lib/cpd-hours";
 import { formatAuDate } from "@/lib/format-date";
+import { useOnSaved } from "@/lib/use-on-saved";
+import { useViewerAccess } from "@/components/ViewerAccess";
 import Link from "next/link";
 import { Paperclip } from "lucide-react";
 import type { CpdRecord, Profile } from "@/lib/types";
@@ -47,7 +49,11 @@ export function StaffRegisterCard({
   /** Profile id to display name, for "typed by" lines. */
   nameOf?: Record<string, string>;
 }) {
+  // Someone else's licence stays with the licensee IN CHARGE, not the agent
+  // on their own plan: the database lets only them update another person's
+  // profile ("profiles: licensee can update agency members", 0058).
   const canEdit = viewerProfile.id === profile.id || viewerProfile.is_licensee_in_charge;
+  const { actsAsLicensee } = useViewerAccess();
   const isAssistant = profile.licence_type === "certificate_of_registration";
   // Was a flat 7 hours for anyone holding a licence. Fair Trading sets hours
   // per CATEGORY of practice (7 residential sales / commercial / business
@@ -64,6 +70,7 @@ export function StaffRegisterCard({
   const licenceAction = updateLicence.bind(null, profile.id);
   const [licenceState, licenceFormAction, licencePending] = useActionState(licenceAction, initialState);
   const [editingLicence, setEditingLicence] = useState(false);
+  useOnSaved(licencePending, licenceState.error, () => setEditingLicence(false));
   const [readResult, setReadResult] = useState<LicenceReadResult | null>(null);
   const readState = parseReadState(profile.licence_read);
   const detailsMissing = !profile.licence_type || !profile.licence_number || !profile.licence_expiry;
@@ -112,13 +119,7 @@ export function StaffRegisterCard({
             )}
           </div>
         ) : (
-          <form
-            action={async (formData) => {
-              await licenceFormAction(formData);
-              setEditingLicence(false);
-            }}
-            className="space-y-2"
-          >
+          <form action={licenceFormAction} className="space-y-2">
             <div className="flex flex-wrap gap-2">
               <select
                 name="licenceType"
@@ -196,10 +197,9 @@ export function StaffRegisterCard({
         <LicenceReadNotice
           state={readState}
           target={{ kind: "person", profileId: profile.id }}
-          holderLabel={profile.full_name ?? profile.email}
           nameOf={nameOf}
           canEdit={canEdit}
-          canReread={Boolean(viewerProfile.is_licensee_in_charge && profile.licence_document_path && detailsMissing)}
+          canReread={Boolean(actsAsLicensee && canEdit && profile.licence_document_path && detailsMissing)}
           onReread={() => readLicenceFromDocument(profile.id)}
           lastResult={readResult}
         />

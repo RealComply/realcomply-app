@@ -43,6 +43,11 @@ export type Subject = {
 };
 
 const REGISTERS_URL = "https://www.realcomply.com.au/dashboard/registers";
+// Where the holder uploads the renewed licence: their own card on the
+// Licences tab, which an agent or assistant has again since 10 Oct 2026.
+// While the tab was hidden from them this button landed them on the Gift
+// register. Named outright rather than left to the page's default tab.
+export const HOLDER_LICENCE_URL = `${REGISTERS_URL}?tab=licence`;
 
 const LICENCE_FOOTER = [
   "RealComply sends reminders. Renewals are made by the holder with NSW Fair Trading. RealComply " +
@@ -116,7 +121,7 @@ export function holderDocument(subject: Subject, days: number): EmailDocument {
       },
       { kind: "paragraph", text: advice },
       { kind: "note", text: "Your licensee in charge has been sent a copy of this." },
-      { kind: "button", label: "Open the register", href: REGISTERS_URL },
+      { kind: "button", label: "Open the register", href: HOLDER_LICENCE_URL },
     ],
     footer: LICENCE_FOOTER,
   };

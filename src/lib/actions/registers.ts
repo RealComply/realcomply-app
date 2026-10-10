@@ -35,9 +35,11 @@ export async function updateInsurancePolicy(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  // access, not the raw flag: the agent on their own plan is the licensee
+  // for their account, and 0058 lets them write the agency row (10 Oct 2026).
+  if (!access.actsAsLicensee) {
     return { error: "Only the licensee in charge can update the agency's insurance details." };
   }
 
@@ -507,22 +509,22 @@ export async function addGift(_prev: ActionState, formData: FormData): Promise<A
 // itself is never hidden or deleted, just marked reviewed (same "record the
 // diligence, don't scrub the record" principle as everywhere else).
 export async function markGiftReviewed(giftId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase.from("gifts").update({ status: "reviewed" }).eq("id", giftId).eq("status", "flagged");
   revalidatePath("/dashboard/registers");
 }
 
 export async function deleteGift(giftId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase.from("gifts").delete().eq("id", giftId);
   revalidatePath("/dashboard/registers");
 }
 
 export async function updateGiftThreshold(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return { error: "Only the licensee in charge can change the threshold." };
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can change the threshold." };
 
   const thresholdRaw = str(formData, "giftThreshold");
   const threshold = thresholdRaw ? Number(thresholdRaw) : NaN;
@@ -733,10 +735,12 @@ export async function recordBreachNotification(
 
 // Closing is licensee-only: signing off that a breach is dealt with is a
 // supervision judgement, the same trust level as the other licensee-gated
-// actions in this app.
+// actions in this app. The licensee here includes the agent on their own plan
+// (access.actsAsLicensee; 0058 lets them close and delete), who could never
+// close a breach while this checked the raw flag (10 Oct 2026).
 export async function closeBreach(breachId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase
     .from("breaches")
     .update({ status: "closed", closed_date: new Date().toISOString().slice(0, 10) })
@@ -745,8 +749,8 @@ export async function closeBreach(breachId: string): Promise<void> {
 }
 
 export async function deleteBreach(breachId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase.from("breaches").delete().eq("id", breachId);
   revalidatePath("/dashboard/registers");
 }

@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { accessFrom } from "@/lib/access";
 import { agencyPeople } from "@/lib/data/people";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computePropertyDigests } from "@/lib/property-digest";
@@ -110,6 +111,36 @@ export type NavCounts = {
   trustAmber: number;
 };
 
+/**
+ * The expiry dates behind the Registers dot, for this viewer (10 Oct 2026).
+ *
+ * The dot has to match the page it opens. An agent or assistant's Registers
+ * page shows their own licence, gifts and breaches, so for them only their
+ * own licence date counts. Before this, the office's insurance, the
+ * corporation licence and their assistant's (or agent's) licence all lit
+ * their dot, and they could open Registers and find nothing to act on.
+ *
+ * People who have left (archived) never count: their licence is no longer
+ * the agency's to watch, and the reminder job skips them too.
+ */
+export function registerExpiryDates(
+  staff: Pick<Profile, "id" | "licence_expiry" | "archived_at">[],
+  agency: Pick<Agency, "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry"> | null,
+  viewer: { id: string; licenseeView: boolean },
+): (string | null)[] {
+  const dates = staff
+    .filter((s) => !s.archived_at && (viewer.licenseeView || s.id === viewer.id))
+    .map((s) => s.licence_expiry);
+  if (!viewer.licenseeView || !agency) return dates;
+  return [
+    ...dates,
+    agency.corporation_licence_expiry,
+    agency.pi_expiry,
+    agency.cyber_expiry,
+    agency.icare_expiry,
+  ];
+}
+
 export const EMPTY_NAV_COUNTS: NavCounts = {
   listings: 0,
   listingsFlagged: 0,
@@ -181,11 +212,12 @@ export const navCountsFor = cache(async function navCountsFor(
     // One query answers two questions: who the licensees are (the rules layer
     // needs it to decide whether a settled file wants "Send to licensee" or
     // "Licensee signature") and whose licence is lapsing.
-    supabase.from("profiles").select("id, is_licensee_in_charge, licence_expiry"),
-    // A single row by primary key — the cheapest query in the batch.
+    supabase.from("profiles").select("id, is_licensee_in_charge, licence_expiry, archived_at"),
+    // A single row by primary key — the cheapest query in the batch. The plan
+    // says whether this viewer acts as the licensee (lib/access.ts).
     supabase
       .from("agencies")
-      .select("pi_expiry, cyber_expiry, icare_expiry, corporation_licence_expiry")
+      .select("pi_expiry, cyber_expiry, icare_expiry, corporation_licence_expiry, plan")
       .eq("id", profile.agency_id)
       .maybeSingle(),
     supabase.from("gifts").select("id", { count: "exact", head: true }).eq("status", "flagged"),
@@ -209,7 +241,7 @@ export const navCountsFor = cache(async function navCountsFor(
     itemsByProperty.get(row.property_id)!.set(row.item_key, row);
   }
 
-  const staff = (staffRows ?? []) as Pick<Profile, "id" | "is_licensee_in_charge" | "licence_expiry">[];
+  const staff = (staffRows ?? []) as Pick<Profile, "id" | "is_licensee_in_charge" | "licence_expiry" | "archived_at">[];
   const licenseeIds = new Set(people.filter((s) => s.is_licensee_in_charge).map((s) => s.id));
 
   // The same rollup the Portfolio page and the Monday digest use, rather than
@@ -242,17 +274,15 @@ export const navCountsFor = cache(async function navCountsFor(
   // ── The registers rollup ────────────────────────────────────────────────
   const agency = agencyRow as Pick<
     Agency,
-    "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry"
+    "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry" | "plan"
   > | null;
+  const licenseeView = accessFrom(profile, agency?.plan).actsAsLicensee;
 
-  const credentialStatuses = staff.map((s) => expiryStatus(s.licence_expiry));
-  if (agency?.corporation_licence_expiry) {
-    credentialStatuses.push(expiryStatus(agency.corporation_licence_expiry));
-  }
-  const insuranceStatuses = agency
-    ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry].map((d) => expiryStatus(d))
-    : [];
-  const allExpiries = [...credentialStatuses, ...insuranceStatuses];
+  // Gifts, breaches and complaints need no such filter: the database returns
+  // an agent only the ones they logged (0058), the same rows their page shows.
+  const allExpiries = registerExpiryDates(staff, agency, { id: profile.id, licenseeView }).map((d) =>
+    expiryStatus(d),
+  );
 
   const breachRowsTyped = (breachRows ?? []) as Pick<Breach, "status" | "notifiable" | "notified_date">[];
   // s89 gives five days to notify. A notifiable breach that has not been

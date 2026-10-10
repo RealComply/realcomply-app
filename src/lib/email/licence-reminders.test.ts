@@ -140,3 +140,17 @@ test("a test reminder goes to the team member and the licensee, labelled, and re
   assert.ok(sent.every((s) => !/compliant/i.test(s.text)));
   assert.equal(tables.licence_reminders.length, 0);
 });
+
+// ── Where the button goes ───────────────────────────────────────────────────
+
+test("the holder's button opens their own licence card; the licensee's opens the register", async () => {
+  const { sent, deps } = world("2026-10-15");
+  await runLicenceReminders(day("2026-10-01"), deps);
+  const holder = sent.find((s) => s.to === "jane@example.com");
+  const licensee = sent.find((s) => s.to === "lic@example.com");
+  // An agent's Registers page opened on the Gift register while their
+  // Licences tab was hidden (check of 10 Oct 2026). The holder is sent to
+  // the tab that has the upload.
+  assert.ok((holder?.html ?? "").includes('href="https://www.realcomply.com.au/dashboard/registers?tab=licence"'));
+  assert.ok((licensee?.html ?? "").includes('href="https://www.realcomply.com.au/dashboard/registers"'));
+});
