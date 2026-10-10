@@ -33,9 +33,9 @@ begin
   insert into auth.users (id, email) values
     (a_user, 'pm-b-test-a@example.invalid'),
     (b_user, 'pm-b-test-b@example.invalid');
-  insert into public.agencies (id, name) values
-    (a_agency, 'PM Part B isolation test A'),
-    (b_agency, 'PM Part B isolation test B');
+  insert into public.agencies (id, name, status) values
+    (a_agency, 'PM Part B isolation test A', 'active'),
+    (b_agency, 'PM Part B isolation test B', 'active');
   insert into public.profiles (id, agency_id, full_name, email) values
     (a_user, a_agency, 'Test A', 'pm-b-test-a@example.invalid'),
     (b_user, b_agency, 'Test B', 'pm-b-test-b@example.invalid');
