@@ -2,15 +2,31 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
+import { daysUntil, sydneyToday } from "@/lib/trust-account";
 
 export type ActionState = { error: string | null; saved?: boolean };
 
 // The day the account opened, if the licensee gave one (10 Oct 2026). Months
 // and audit years that ended before it are not asked for — see
 // monthBeforeOpening in lib/trust-account.ts. Blank means it was already open.
-function openedOnFrom(formData: FormData): string | null {
+//
+// Not more than a month ahead (10 Oct 2026). A date in the future quietly
+// marks every month before it "Before it opened" and the year's audit as not
+// owed, so a mistyped year (2027 for 2026) took an open account's overdue
+// reconciliations and audit off the page, the badge and the reminders with
+// no warning. A month still lets an account about to open be set up early.
+const OPENED_ON_MAX_DAYS_AHEAD = 31;
+
+function openedOnFrom(formData: FormData): { openedOn: string | null; error: string | null } {
   const value = String(formData.get("openedOn") ?? "").trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return { openedOn: null, error: null };
+  if (daysUntil(value, sydneyToday()) > OPENED_ON_MAX_DAYS_AHEAD) {
+    return {
+      openedOn: null,
+      error: "The opening date is more than a month away. Check the year — months before it are not asked for.",
+    };
+  }
+  return { openedOn: value, error: null };
 }
 
 // ── The accounts themselves ───────────────────────────────────────────────
@@ -29,7 +45,8 @@ export async function createTrustAccount(_prev: ActionState, formData: FormData)
   if (!name) return { error: "Give the account a name — whatever you call it in the office." };
   if (name.length > 80) return { error: "That name is too long. Eighty characters is the limit." };
 
-  const openedOn = openedOnFrom(formData);
+  const { openedOn, error: openedOnError } = openedOnFrom(formData);
+  if (openedOnError) return { error: openedOnError };
   const { error } = await supabase
     .from("trust_accounts")
     .insert({ agency_id: profile.agency_id, name, ...(openedOn ? { opened_on: openedOn } : {}) });
@@ -50,7 +67,8 @@ export async function renameTrustAccount(_prev: ActionState, formData: FormData)
   if (!id || !name) return { error: "Give the account a name." };
 
   // Written only when it changed, so a plain rename never touches it.
-  const openedOn = openedOnFrom(formData);
+  const { openedOn, error: openedOnError } = openedOnFrom(formData);
+  if (openedOnError) return { error: openedOnError };
   const openedOnWas = String(formData.get("openedOnWas") ?? "").trim() || null;
   const { error } = await supabase
     .from("trust_accounts")

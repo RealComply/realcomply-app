@@ -3,6 +3,7 @@ import { accessFrom } from "@/lib/access";
 import { agencyPeople } from "@/lib/data/people";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computePropertyDigests } from "@/lib/property-digest";
+import { documentsWaitingOn } from "@/lib/signoff/awaiting";
 import { expiryStatus } from "@/lib/expiry-status";
 import {
   auditDueOn,
@@ -194,6 +195,7 @@ export const navCountsFor = cache(async function navCountsFor(
   const [
     { data: itemRows },
     { data: signatureRows },
+    { data: licenseeOnlyDocRows },
     { data: staffRows },
     { data: agencyRow },
     { count: giftCount },
@@ -211,6 +213,9 @@ export const navCountsFor = cache(async function navCountsFor(
     // what is waiting on ME, and which trust reconciliations have been signed
     // by anyone. The table is small — one row per signer per document.
     supabase.from("signoff_signatures").select("document_id, signer_id, signed_at"),
+    // Documents that want one licensee's signature, not each licensee's
+    // (10 Oct 2026): once one has signed, the others are not waited on.
+    supabase.from("signoff_documents").select("id").eq("signer_scope", "licensee_only"),
     // One query answers two questions: who the licensees are (the rules layer
     // needs it to decide whether a settled file wants "Send to licensee" or
     // "Licensee signature") and whose licence is lapsing.
@@ -358,7 +363,11 @@ export const navCountsFor = cache(async function navCountsFor(
     // three months out is a reminder, not a badge — the licence reminder emails
     // already cover that cadence, and a dot that never goes out stops meaning
     // anything.
-    signoffs: signatures.filter((sig) => sig.signer_id === profile.id && !sig.signed_at).length,
+    signoffs: documentsWaitingOn(
+      profile.id,
+      signatures,
+      new Set(((licenseeOnlyDocRows ?? []) as Array<{ id: string }>).map((d) => d.id)),
+    ),
     registersRed,
     registersAmber,
     trustRed: trustOverdue,

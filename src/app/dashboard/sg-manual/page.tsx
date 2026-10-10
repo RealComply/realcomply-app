@@ -7,6 +7,7 @@ import { SgManualUploader } from "@/components/registers/SgManualUploader";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { notAskedToSign } from "@/lib/signoff/awaiting";
 import type { SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // SG Manual store — simple upload + version history (see the SG Manual
@@ -41,6 +42,12 @@ export default async function SgManualPage() {
   const signoffDocs = (signoffDocRows ?? []) as SignoffDocument[];
   const signoffSigs = (signoffSigRows ?? []) as SignoffSignature[];
   const currentSignoff = current ? signoffDocs.find((d) => d.file_path === current.file_path) : undefined;
+  const currentSigs = currentSignoff ? signoffSigs.filter((s) => s.document_id === currentSignoff.id) : [];
+  // Present staff with no row on the current version (10 Oct 2026): anyone
+  // who joined after it was published and before 0060 began adding new
+  // starters. Only the licensee reads every row, so only they can tell.
+  const notAsked =
+    access.actsAsLicensee && currentSignoff?.signer_scope === "all_staff" ? notAskedToSign(staff, currentSigs) : [];
   // The signed copy where there is one, so opening the current version from
   // this page shows the signature page rather than the bare upload. The
   // version list below still links each original.
@@ -91,11 +98,12 @@ export default async function SgManualPage() {
           <div className="mt-4">
             <DocumentSignoffCard
               document={currentSignoff}
-              signatures={signoffSigs.filter((s) => s.document_id === currentSignoff.id)}
+              signatures={currentSigs}
               profiles={staff}
               currentProfile={profile}
               ownOnly={!access.actsAsLicensee}
               fileUrl={currentSignoffUrl}
+              notAsked={notAsked}
             />
             <Link href="/dashboard/document-signoffs" className="mt-1 inline-block text-xs text-rc-muted transition hover:text-rc-green-deep hover:underline">
               View all sign-offs →

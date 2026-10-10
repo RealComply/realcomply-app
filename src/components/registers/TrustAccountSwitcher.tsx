@@ -181,7 +181,11 @@ export function TrustAccountSwitcher({
                 <Pencil size={12} aria-hidden="true" /> Edit {active.name}
               </button>
               {active.archived_at ? (
-                <form action={archive}>
+                // Clears the "close it?" question on the way back (10 Oct
+                // 2026). It was answered when the account closed, but the page
+                // refreshes in place and kept it, so reopening put "Close it"
+                // straight back on screen: one click from closing again.
+                <form action={archive} onSubmit={() => setConfirmingClose(null)}>
                   <input type="hidden" name="accountId" value={active.id} />
                   <input type="hidden" name="archived" value="no" />
                   <button
