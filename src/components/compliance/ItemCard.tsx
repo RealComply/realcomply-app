@@ -2983,6 +2983,21 @@ function ExportItem({
 
 const money = (n: number) => `$${n.toLocaleString("en-AU")}`;
 
+// The auction-day cards close their editor once the save has gone through,
+// and only then (10 Oct 2026). They used to close the moment Save was pressed,
+// before the server answered, so a refusal (no licence number, "Sold" with no
+// price) went to a form that was already gone and the card read as saved.
+function useSaveThenClose(
+  action: (prev: ActionState, formData: FormData) => Promise<ActionState>,
+  setEditing: (editing: boolean) => void,
+) {
+  return useActionState(async (prev: ActionState, formData: FormData) => {
+    const result = await action(prev, formData);
+    if (!result.error) setEditing(false);
+    return result;
+  }, initialState);
+}
+
 // x1 — the auctioneer. Three typed fields, shown as a plain line once saved.
 function AuctioneerItem({
   item,
@@ -2995,8 +3010,7 @@ function AuctioneerItem({
 }) {
   const saved = (current?.data ?? {}) as { name?: string; licenceNumber?: string; businessAddress?: string };
   const [editing, setEditing] = useState(!saved.name);
-  const action = setAuctioneerDetails.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, formAction, pending] = useSaveThenClose(setAuctioneerDetails.bind(null, propertyId), setEditing);
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -3016,13 +3030,7 @@ function AuctioneerItem({
           </button>
         </div>
       ) : (
-        <form
-          action={async (fd) => {
-            await formAction(fd);
-            setEditing(false);
-          }}
-          className="space-y-2"
-        >
+        <form action={formAction} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3083,8 +3091,7 @@ function ReserveItem({
 }) {
   const saved = (current?.data ?? {}) as { reserve?: number; givenAt?: string };
   const [editing, setEditing] = useState(saved.reserve == null);
-  const action = setReserve.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, formAction, pending] = useSaveThenClose(setReserve.bind(null, propertyId), setEditing);
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -3103,13 +3110,7 @@ function ReserveItem({
           </button>
         </div>
       ) : (
-        <form
-          action={async (fd) => {
-            await formAction(fd);
-            setEditing(false);
-          }}
-          className="space-y-2"
-        >
+        <form action={formAction} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3174,8 +3175,7 @@ function AuctionOutcomeItem({
   const [choice, setChoice] = useState<AuctionOutcomeKind | null>(saved.outcome ?? null);
   const [vendorBid, setVendorBid] = useState(Boolean(saved.vendorBid));
   const [editing, setEditing] = useState(!saved.outcome);
-  const action = recordAuctionOutcome.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, formAction, pending] = useSaveThenClose(recordAuctionOutcome.bind(null, propertyId), setEditing);
 
   if (!editing) {
     const chosen = OUTCOME_CHOICES.find((c) => c.value === saved.outcome);
@@ -3222,13 +3222,7 @@ function AuctionOutcomeItem({
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form
-        action={async (fd) => {
-          await formAction(fd);
-          setEditing(false);
-        }}
-        className="space-y-3"
-      >
+      <form action={formAction} className="space-y-3">
         <input type="hidden" name="outcome" value={choice ?? ""} />
         <div className="flex flex-wrap gap-2">
           {OUTCOME_CHOICES.map((c) => (
