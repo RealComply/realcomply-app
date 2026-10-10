@@ -227,6 +227,23 @@ async function upsertItem(
     }
   }
 
+  // The attached file's name, kept through every save (review, 10 Oct 2026).
+  // The upsert replaces the whole record but leaves evidence_path alone, so
+  // a caller writing a fresh record (the reserve, the auction outcome, the
+  // sale price) dropped the name and the file showed as "View file". Only
+  // setItemStatus carried it. Here unless the caller set it themselves.
+  let data = params.data;
+  if (!("evidenceFileName" in data)) {
+    const { data: existingRow } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", params.propertyId)
+      .eq("item_key", params.itemKey)
+      .maybeSingle();
+    const fileName = (existingRow as { data?: { evidenceFileName?: unknown } | null } | null)?.data?.evidenceFileName;
+    if (fileName !== undefined) data = { ...data, evidenceFileName: fileName };
+  }
+
   return supabase
     .from("property_items")
     .upsert(
@@ -235,7 +252,7 @@ async function upsertItem(
         property_id: params.propertyId,
         item_key: params.itemKey,
         status: params.status,
-        data: params.data,
+        data,
         event_date: params.eventDate ?? null,
         completed_by: params.completedBy ?? null,
       },
