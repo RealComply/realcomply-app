@@ -78,7 +78,7 @@ export function TrainingPlanCard({
               <>Requirement not established for {cpdYearLabel}</>
             ) : (
               <>
-                {logged}/{target} {isAssistant ? "units" : "hrs"} logged this year
+                {logged}/{target} {isAssistant ? (target === 1 ? "unit" : "units") : target === 1 ? "hr" : "hrs"} logged this year
               </>
             )}
           </p>
@@ -288,7 +288,7 @@ function PlanItemRow({ item, canEdit, locked }: { item: TrainingPlanItem; canEdi
           <p className="mt-0.5 text-neutral-600">
             {item.counts_toward_cpd ? "CPD" : "Office training"}
             {item.delivery_type && <> · {DELIVERY_LABELS[item.delivery_type] ?? item.delivery_type}</>}
-            {item.training_hours !== null && <> · {item.training_hours} hrs</>}
+            {item.training_hours !== null && <> · {item.training_hours} {Number(item.training_hours) === 1 ? "hr" : "hrs"}</>}
             {item.provider && <> · {item.provider}</>}
             {!item.counts_toward_cpd && <span className="text-rc-faint"> · doesn&rsquo;t count toward CPD</span>}
           </p>

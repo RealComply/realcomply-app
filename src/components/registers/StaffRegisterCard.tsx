@@ -231,7 +231,7 @@ export function StaffRegisterCard({
         <p className="text-xs text-rc-muted">
           {target === null ? (
             <>
-              CPD {cpdYearLabel}: {totalHours} {isAssistant ? "units" : "hrs"} logged,{" "}
+              CPD {cpdYearLabel}: {totalHours} {isAssistant ? (totalHours === 1 ? "unit" : "units") : totalHours === 1 ? "hr" : "hrs"} logged,{" "}
               <span className="text-rc-amber-deep">requirement not established</span>
             </>
           ) : (
