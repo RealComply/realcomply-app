@@ -51,9 +51,27 @@ function assistantBlocked(itemKey: string, profile: { is_assistant?: boolean }):
 
 // What setItemStatus keeps from a card's existing record, by card: the parts
 // with their own controls outside the Mark done form.
+//
+// Added 10 Oct 2026, because the save replaces the whole record:
+//   c1 websiteScan — the live-ad check's last finding. Recording the guide
+//      wiped it, so the panel went blank and the next run had no last price
+//      to compare with (no ESP re-ask, the same alert emailed again).
+//   a3 and b1 aiDraft — what was read from the agreement and the contract.
+//      a3's holds the offer price that pre-fills b4's price statement for the
+//      licensee, and b1's is the prescribed-documents list; Mark done erased
+//      both. Not every card's: on most cards aiDraft is an offer the save
+//      answers (a1/a2's auto-tick, which Reopen has to undo; a4c's reasoning,
+//      see esp-reasoning-adoption.ts).
 const CARRIED_BY_ITEM: Record<string, string[]> = {
   f4: ["entries", "loggedElsewhere", "loggedElsewhereWhere"],
+  c1: ["websiteScan"],
+  a3: ["aiDraft"],
+  b1: ["aiDraft"],
 };
+
+// Kept on every card: the attached file's name. The file itself (evidence_path)
+// survives a save, so its name has to as well, or it shows as "View file".
+const CARRIED_ON_EVERY_ITEM = ["evidenceFileName"];
 
 const ASSISTANT_BLOCKED_MESSAGE =
   "Assistants can prepare a file but not sign it. Hand it to the agent to review and sign.";
@@ -363,22 +381,22 @@ export async function setItemStatus(
   // removeBuyerEntry; marking the card done keeps them. Not a4c: its
   // "recorded elsewhere" was retired on 2 Oct, and saving the reasoning here
   // is what clears an old mark. d2 (offers) has its own actions.
-  const carried = CARRIED_BY_ITEM[itemKey] ?? [];
-  if (carried.length > 0) {
-    const { data: existingRow } = await supabase
-      .from("property_items")
-      .select("data")
-      .eq("property_id", propertyId)
-      .eq("item_key", itemKey)
-      .maybeSingle();
-    const existingData = ((existingRow as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<
-      string,
-      unknown
-    >;
-    for (const key of carried) {
-      if (key in existingData) data[key] = existingData[key];
-    }
+  const carried = [...CARRIED_ON_EVERY_ITEM, ...(CARRIED_BY_ITEM[itemKey] ?? [])];
+  const { data: existingRow } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", itemKey)
+    .maybeSingle();
+  const existingData = ((existingRow as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const kept: Record<string, unknown> = {};
+  for (const key of carried) {
+    if (key in existingData) kept[key] = existingData[key];
   }
+  Object.assign(data, kept);
 
   // amv — closing the vendor AML item by pre-commencement rather than by CDD.
   //
@@ -433,6 +451,7 @@ export async function setItemStatus(
       itemKey,
       status: "done",
       data: {
+        ...kept,
         note: preCommencementNote(signed),
         preCommencement: true,
         preCommencementAgreementDate: signed,
