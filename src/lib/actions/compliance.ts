@@ -51,9 +51,27 @@ function assistantBlocked(itemKey: string, profile: { is_assistant?: boolean }):
 
 // What setItemStatus keeps from a card's existing record, by card: the parts
 // with their own controls outside the Mark done form.
+//
+// Added 10 Oct 2026, because the save replaces the whole record:
+//   c1 websiteScan — the live-ad check's last finding. Recording the guide
+//      wiped it, so the panel went blank and the next run had no last price
+//      to compare with (no ESP re-ask, the same alert emailed again).
+//   a3 and b1 aiDraft — what was read from the agreement and the contract.
+//      a3's holds the offer price that pre-fills b4's price statement for the
+//      licensee, and b1's is the prescribed-documents list; Mark done erased
+//      both. Not every card's: on most cards aiDraft is an offer the save
+//      answers (a1/a2's auto-tick, which Reopen has to undo; a4c's reasoning,
+//      see esp-reasoning-adoption.ts).
 const CARRIED_BY_ITEM: Record<string, string[]> = {
   f4: ["entries", "loggedElsewhere", "loggedElsewhereWhere"],
+  c1: ["websiteScan"],
+  a3: ["aiDraft"],
+  b1: ["aiDraft"],
 };
+
+// Kept on every card: the attached file's name. The file itself (evidence_path)
+// survives a save, so its name has to as well, or it shows as "View file".
+const CARRIED_ON_EVERY_ITEM = ["evidenceFileName"];
 
 const ASSISTANT_BLOCKED_MESSAGE =
   "Assistants can prepare a file but not sign it. Hand it to the agent to review and sign.";
@@ -363,22 +381,22 @@ export async function setItemStatus(
   // removeBuyerEntry; marking the card done keeps them. Not a4c: its
   // "recorded elsewhere" was retired on 2 Oct, and saving the reasoning here
   // is what clears an old mark. d2 (offers) has its own actions.
-  const carried = CARRIED_BY_ITEM[itemKey] ?? [];
-  if (carried.length > 0) {
-    const { data: existingRow } = await supabase
-      .from("property_items")
-      .select("data")
-      .eq("property_id", propertyId)
-      .eq("item_key", itemKey)
-      .maybeSingle();
-    const existingData = ((existingRow as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<
-      string,
-      unknown
-    >;
-    for (const key of carried) {
-      if (key in existingData) data[key] = existingData[key];
-    }
+  const carried = [...CARRIED_ON_EVERY_ITEM, ...(CARRIED_BY_ITEM[itemKey] ?? [])];
+  const { data: existingRow } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", itemKey)
+    .maybeSingle();
+  const existingData = ((existingRow as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const kept: Record<string, unknown> = {};
+  for (const key of carried) {
+    if (key in existingData) kept[key] = existingData[key];
   }
+  Object.assign(data, kept);
 
   // amv — closing the vendor AML item by pre-commencement rather than by CDD.
   //
@@ -433,6 +451,7 @@ export async function setItemStatus(
       itemKey,
       status: "done",
       data: {
+        ...kept,
         note: preCommencementNote(signed),
         preCommencement: true,
         preCommencementAgreementDate: signed,
@@ -2072,10 +2091,23 @@ export async function uploadEvidence(
     const { screenForIdDocument } = await import("@/lib/actions/extraction");
     const looksLike = await screenForIdDocument(supabase, path, fileName);
     if (looksLike) {
-      await supabase.storage.from(EVIDENCE_BUCKET).remove([path]);
+      // Deleted on the uploader's own access: since 0058 only the licensee
+      // deletes files, and pending/G2.sql lets the person who uploaded a
+      // refused ID document delete it. Said only when it actually went (10 Oct
+      // 2026): a delete the database refuses comes back empty, not as an error,
+      // and the agent was being told "deleted" over a copy still in storage.
+      const { data: removed, error: removeError } = await supabase.storage.from(EVIDENCE_BUCKET).remove([path]);
+      const deleted = !removeError && (removed?.length ?? 0) > 0;
+      if (!deleted) {
+        // The folder only, never the file name, which often carries a name.
+        console.error("refused ID document not deleted:", path.split("/").slice(0, 3).join("/"), removeError?.message);
+      }
       return {
         error:
-          `That looks like ${looksLike}, so it hasn't been attached and has been deleted. ` +
+          `That looks like ${looksLike}, so it hasn't been attached` +
+          (deleted
+            ? " and has been deleted. "
+            : ". RealComply couldn't delete the copy just now, so it is still stored, though not on this file. ") +
           "RealComply doesn't keep the documents used to prove someone's identity, address or ownership — " +
           "licences, passports, rates notices, title searches and the like. Attach the verification record " +
           "instead: the VOI certificate or the signing audit trail, which shows the check was done without " +
@@ -2316,18 +2348,6 @@ async function revokePreCommencementIfAgreementIsNew(
 }
 
 /**
- * Reopens d3 where it was answered "no revision needed" before an offer
- * arrived that calls the estimate into question.
- *
- * The answer was given honestly, on the information available at the time;
- * this offer is new information. Reopened rather than flagged — nothing has
- * gone wrong, a question has simply been re-asked, and an agent who logs an
- * offer truthfully should not collect an amber mark for it.
- *
- * Only touches an item still answered "no". An answered "yes, revised" is left
- * alone, since the revision it records may well be the response to this.
- */
-/**
  * Puts the advertised guide back in front of the agent after a rejection at or
  * above it.
  *
@@ -2355,43 +2375,6 @@ async function reopenGuideAfterRejection(
     .from("property_items")
     .update({ status: "flagged", data: { ...(c1.data ?? {}), rejectionPrompt: reason } })
     .eq("id", c1.id);
-}
-
-/**
- * Public wrapper so the weekly website check can re-ask the revision question.
- *
- * Same guard as every other caller: only an item answered "no revision" is
- * reopened. A file where the notice is already attached is left alone, and so
- * is one nobody has answered yet.
- */
-export async function reopenNoRevisionIfPriceMoved(propertyId: string, reason: string): Promise<void> {
-  const supabase = await createClient();
-  await reopenStaleNoRevision(supabase, propertyId, reason);
-}
-
-async function reopenStaleNoRevision(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  propertyId: string,
-  reason: string,
-): Promise<void> {
-  const { data: row } = await supabase
-    .from("property_items")
-    .select("id, status, data")
-    .eq("property_id", propertyId)
-    .eq("item_key", "d3")
-    .maybeSingle();
-
-  const d3 = (row as { id?: string; status?: string; data?: { espRevised?: boolean } } | null) ?? null;
-  if (!d3?.id || d3.status !== "done" || d3.data?.espRevised !== false) return;
-
-  await supabase
-    .from("property_items")
-    .update({
-      status: "open",
-      completed_by: null,
-      data: { ...d3.data, espRevised: undefined, reopenedReason: reason },
-    })
-    .eq("id", d3.id);
 }
 
 async function recheckAdvertisedPrice(propertyId: string, espChanged: boolean): Promise<void> {

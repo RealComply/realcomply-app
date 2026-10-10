@@ -374,9 +374,12 @@ export async function deleteProperty(
 ): Promise<ActionState> {
   const confirmAddress = String(formData.get("confirmAddress") ?? "").trim();
 
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  // The licensee's, which on an agent plan is the agent themself (10 Oct
+  // 2026; the database has allowed it since 0058, the app still asked for
+  // the licensee-in-charge flag).
+  if (!access.actsAsLicensee) {
     return { error: "Only the licensee in charge can delete a property file." };
   }
 
