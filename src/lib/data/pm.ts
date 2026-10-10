@@ -135,7 +135,12 @@ export async function loadPmCards(
   return out;
 }
 
-/** The agency's people, for names on ticks and the property manager picker. */
+/**
+ * The people this viewer can read, for the property manager picker and the
+ * dashboard's cards. Not for names on ticks: since 0058 an agent can't read
+ * the licensee's profile, so the property page names people from
+ * agency_people instead (check, 10 Oct 2026).
+ */
 export type PmPerson = { id: string; name: string; archived: boolean };
 
 export async function pmPeople(supabase: SupabaseClient): Promise<PmPerson[]> {

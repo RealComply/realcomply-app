@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { loadPmProperty, pmAgencySettings, pmPeople } from "@/lib/data/pm";
+import { loadPmProperty, pmAgencySettings } from "@/lib/data/pm";
+import { agencyPeople } from "@/lib/data/people";
 import { PM_COPY, pmGroupLabel, pmStage } from "@/lib/rules/nsw-pm";
 import { pmBlockedLine, pmMoveCheck, pmStageCountLabel, pmStageViews, type PmStageView } from "@/lib/rules/pm-engine";
 import { PmStageOvals } from "@/components/pm/PmStageOvals";
@@ -27,11 +28,14 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
   const settings = await pmAgencySettings(supabase, profile.agency_id);
   if (!settings.enabled) notFound();
 
-  const [loaded, people] = await Promise.all([loadPmProperty(supabase, id), pmPeople(supabase)]);
+  // Names only (agency_people, 0058). Since 7 Oct an agent cannot read the
+  // licensee's or a colleague's profile, so their ticks read "Someone" where
+  // the who-confirmed-it stamp is the whole record (check, 10 Oct 2026).
+  const [loaded, people] = await Promise.all([loadPmProperty(supabase, id), agencyPeople(supabase)]);
   if (!loaded) notFound();
 
   const { property, input } = loaded;
-  const nameOf = new Map(people.map((p) => [p.id, p.name]));
+  const nameOf = new Map(people.filter((p) => p.full_name?.trim()).map((p) => [p.id, p.full_name!.trim()]));
   const viewerName = nameOf.get(profile.id) ?? profile.full_name ?? profile.email;
   const views = pmStageViews(input);
   const move = pmMoveCheck(input);
