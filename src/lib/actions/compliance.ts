@@ -2316,18 +2316,6 @@ async function revokePreCommencementIfAgreementIsNew(
 }
 
 /**
- * Reopens d3 where it was answered "no revision needed" before an offer
- * arrived that calls the estimate into question.
- *
- * The answer was given honestly, on the information available at the time;
- * this offer is new information. Reopened rather than flagged — nothing has
- * gone wrong, a question has simply been re-asked, and an agent who logs an
- * offer truthfully should not collect an amber mark for it.
- *
- * Only touches an item still answered "no". An answered "yes, revised" is left
- * alone, since the revision it records may well be the response to this.
- */
-/**
  * Puts the advertised guide back in front of the agent after a rejection at or
  * above it.
  *
@@ -2355,43 +2343,6 @@ async function reopenGuideAfterRejection(
     .from("property_items")
     .update({ status: "flagged", data: { ...(c1.data ?? {}), rejectionPrompt: reason } })
     .eq("id", c1.id);
-}
-
-/**
- * Public wrapper so the weekly website check can re-ask the revision question.
- *
- * Same guard as every other caller: only an item answered "no revision" is
- * reopened. A file where the notice is already attached is left alone, and so
- * is one nobody has answered yet.
- */
-export async function reopenNoRevisionIfPriceMoved(propertyId: string, reason: string): Promise<void> {
-  const supabase = await createClient();
-  await reopenStaleNoRevision(supabase, propertyId, reason);
-}
-
-async function reopenStaleNoRevision(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  propertyId: string,
-  reason: string,
-): Promise<void> {
-  const { data: row } = await supabase
-    .from("property_items")
-    .select("id, status, data")
-    .eq("property_id", propertyId)
-    .eq("item_key", "d3")
-    .maybeSingle();
-
-  const d3 = (row as { id?: string; status?: string; data?: { espRevised?: boolean } } | null) ?? null;
-  if (!d3?.id || d3.status !== "done" || d3.data?.espRevised !== false) return;
-
-  await supabase
-    .from("property_items")
-    .update({
-      status: "open",
-      completed_by: null,
-      data: { ...d3.data, espRevised: undefined, reopenedReason: reason },
-    })
-    .eq("id", d3.id);
 }
 
 async function recheckAdvertisedPrice(propertyId: string, espChanged: boolean): Promise<void> {
