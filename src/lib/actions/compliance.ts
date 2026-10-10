@@ -721,12 +721,18 @@ export async function addReportEntry(
     };
   }
 
+  // What the document did not state, kept to what cl 37(4) still asks for
+  // (10 Oct 2026). The card stopped flagging the preparer's contact, PI
+  // insurance and repurchase on 3 Sep, because the Regulation does not require
+  // particulars that are not known or reasonably obtainable; this list was
+  // never changed with it, so every saved entry still showed them in amber.
+  // Only a read document is checked: an entry typed without a copy has the
+  // type and date it needs (required above) and nowhere to state a preparer.
   const missingFields: string[] = [];
-  if (!inspectionDate) missingFields.push("inspection date");
-  if (!preparerName) missingFields.push("preparer's name");
-  if (!preparerContact) missingFields.push("preparer's business address/phone");
-  if (!preparerInsured) missingFields.push("whether the preparer holds PI insurance");
-  if (!availableForRepurchase) missingFields.push("whether it's available for repurchase");
+  if (evidencePath) {
+    if (!inspectionDate) missingFields.push("inspection date");
+    if (!preparerName) missingFields.push("preparer's name");
+  }
 
   const { data: existing } = await supabase
     .from("property_items")

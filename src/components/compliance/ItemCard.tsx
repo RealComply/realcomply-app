@@ -1904,6 +1904,15 @@ function ReportEvidenceLink({ path, fileName }: { path: string; fileName: string
   );
 }
 
+// What a logged report's document did not state, by the rule addReportEntry
+// applies since 10 Oct 2026: the date and the preparer's name, and only where
+// a document was read. Entries saved before then carry the old list, which
+// also flagged the details cl 37(4) does not require, on typed entries too.
+function reportEntryGaps(e: { evidencePath: string | null; missingFields?: string[] }): string[] {
+  if (!e.evidencePath) return [];
+  return (e.missingFields ?? []).filter((f) => f === "inspection date" || f === "preparer's name");
+}
+
 // f3 — the cl 37 report register. The agent just uploads the report; every
 // cl 37 field is read straight from it via extractReportDetails, shown
 // read-only (same "Findings, not a form" idea as b1) so there's nothing left
@@ -2238,9 +2247,10 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
                   <ReportEvidenceLink path={e.evidencePath} fileName={e.evidenceFileName} />
                 </>
               )}
-              {e.missingFields && e.missingFields.length > 0 && (
+              {reportEntryGaps(e).length > 0 && (
                 <p className="mt-1 flex items-center gap-1 text-rc-amber-deep">
-                  <AlertTriangle size={12} className="shrink-0" /> Not stated in the document: {e.missingFields.join(", ")}
+                  <AlertTriangle size={12} className="shrink-0" /> Not stated in the document:{" "}
+                  {reportEntryGaps(e).join(", ")}
                 </p>
               )}
             </li>
