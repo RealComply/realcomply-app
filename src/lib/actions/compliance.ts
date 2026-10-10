@@ -93,7 +93,10 @@ export async function requireAuthContext() {
     .single();
 
   if (!profile) {
-    redirect("/signup");
+    // Through the dashboard rather than straight to /signup: requireProfile
+    // there tells someone who was removed from the office so, instead of
+    // offering to set up an agency (10 Oct 2026).
+    redirect("/dashboard/home");
   }
 
   // Once a subscription has ended, nothing can be added or changed and AI

@@ -134,23 +134,51 @@ begin
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL 2b: the agent deleted a VOI certificate after taking it off the card'; end if;
 
-  -- 2c. Nor the licensee's contract, taken off b1 and moved into a1 as its
-  --     owner (a Storage move renames the file and makes the mover its owner).
+  -- 2c. They cannot move the licensee's contract off b1 at all (H6: only the
+  --     licensee moves or overwrites a filed document).
   update public.property_items set evidence_path = null where property_id = p1 and item_key = 'b1';
   update storage.objects set name = office || '/' || p1 || '/a1/9-moved.pdf', owner_id = ag1::text
    where name like '%/b1/9-contract.pdf';
   get diagnostics n = row_count;
-  if n <> 1 then raise exception 'FAIL 2c: setup, the agent could not move the file'; end if;
-  delete from storage.objects where name like '%/a1/9-moved.pdf';
-  get diagnostics n = row_count;
-  if n <> 0 then raise exception 'FAIL 2c: the agent deleted a contract they moved into a1'; end if;
+  if n <> 0 then raise exception 'FAIL 2c: the agent moved a filed contract'; end if;
 
-  -- 2d. Nor the licensee's agreement moved into a1 while still on a3.
+  -- 2d. And had a move happened anyway (here done with full rights), the file
+  --     moved into a1 still counts as once on record, so it cannot be deleted
+  --     as a refused upload. Same for the agreement moved while still on a3.
+  reset role;
+  update storage.objects set name = office || '/' || p1 || '/a1/9-moved.pdf', owner_id = ag1::text
+   where name like '%/b1/9-contract.pdf';
   update storage.objects set name = office || '/' || p1 || '/a1/10-moved.pdf', owner_id = ag1::text
    where name like '%/a3/10-agreement.pdf';
+  set local role authenticated;
+  delete from storage.objects where name like '%/a1/9-moved.pdf';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL 2d: the agent deleted a contract moved into a1'; end if;
   delete from storage.objects where name like '%/a1/10-moved.pdf';
   get diagnostics n = row_count;
-  if n <> 0 then raise exception 'FAIL 2d: the agent deleted an agreement they moved into a1'; end if;
+  if n <> 0 then raise exception 'FAIL 2d: the agent deleted an agreement moved into a1'; end if;
+
+  -- 14. Moving files (H6). The agent moves their own unsaved upload into the
+  --     new listing, the way moveStagedEvidence does...
+  reset role;
+  insert into storage.objects (bucket_id, name, owner_id, created_at) values
+    ('compliance-evidence', office || '/_pending/s1/a3/11-staged.pdf', ag1::text, now()),
+    ('compliance-evidence', office || '/_pending/s2/a3/12-colleague-staged.pdf', ag2::text, now());
+  set local role authenticated;
+  update storage.objects set name = office || '/' || p1 || '/a3/11-staged.pdf'
+   where name = office || '/_pending/s1/a3/11-staged.pdf';
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL 14: the agent could not move their own staged upload into the listing'; end if;
+  -- ...but not a colleague's staged upload,
+  update storage.objects set name = office || '/' || p1 || '/a3/12-taken.pdf'
+   where name = office || '/_pending/s2/a3/12-colleague-staged.pdf';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL 14: the agent moved a colleague''s staged upload'; end if;
+  -- ...and cannot write over a filed document (the row half of an overwrite).
+  update storage.objects set owner_id = ag1::text, metadata = '{}'::jsonb
+   where name like '%/a3/10-moved.pdf' or name like '%/a3/11-staged.pdf';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL 14: the agent overwrote a filed document'; end if;
 
   -- 3. Their own refused licence upload can go; their licence document on record cannot.
   delete from storage.objects where name like '%/_licences/%/6-refused-licence.pdf';
@@ -227,6 +255,12 @@ begin
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', lic, 'role', 'authenticated')::text, true);
   set local role authenticated;
+
+  -- 14a. The licensee can still move a filed document (putting the contract back).
+  update storage.objects set name = office || '/' || p1 || '/b1/9-contract.pdf'
+   where name = office || '/' || p1 || '/a1/9-moved.pdf';
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL 14a: the licensee could not move a filed document'; end if;
 
   -- 6. The customer id cannot be written directly, even while it is empty:
   --    only set_agency_stripe_customer gets past the billing guard.

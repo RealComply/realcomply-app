@@ -285,14 +285,14 @@ async function createCustomer(
   // update was refused every time: the billing-column guard (0044, 0054)
   // lets nobody but a platform admin change stripe_customer_id, and the
   // error was never read, so every attempt made a new customer. The function
-  // sets it only while it is empty, and hands back the one already there if
-  // someone else got in first; that one is used, so both people end up on
-  // the same customer. Until it has run in the database this logs and goes
-  // on as before.
+  // records it while the agency has no subscription yet (replacing any id
+  // stored before, so one Stripe no longer has can be swapped out), keeps
+  // the one already there once a subscription exists, and refuses an id
+  // another agency holds. It hands back what is now on the row. Until it has
+  // run in the database this logs and goes on as before.
   //
-  // Replacing a customer Stripe no longer has (10 Oct 2026): the function
-  // swaps it for this one while there is no subscription. If it hands the
-  // dead one back instead, this checkout still goes ahead on the new one.
+  // If it hands back a dead id we asked it to replace, this checkout still
+  // goes ahead on the new customer.
   const { data, error } = await supabase.rpc("set_agency_stripe_customer", { p_customer_id: customer.id });
   if (error) {
     console.error("createCustomer could not record the Stripe customer:", error.message);

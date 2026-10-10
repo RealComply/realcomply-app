@@ -20,6 +20,8 @@
 --      sign. (Section H4a)
 --   6. my_profile_is_archived(), for the screen a removed person sees.
 --      (Section H4b)
+--   7. Only the licensee moves or overwrites a filed document; anyone else
+--      moves only their own unsaved upload into its new listing. (Section H6)
 --
 -- Nothing here touches Cass Property's data. The only data changes are the
 -- two that clear stored refusals (section G1a), and both leave Cass Property
@@ -639,5 +641,33 @@ as $$
 $$;
 revoke execute on function public.my_profile_is_archived() from public, anon;
 grant execute on function public.my_profile_is_archived() to authenticated;
+
+-- ======================================================================
+-- Section H6
+-- ======================================================================
+-- ===== H6: only the licensee moves or overwrites a filed document, 10 October 2026 =====
+--
+-- Found in the review of these fixes. Since 0058 only the licensee deletes a
+-- file ("Make it so that only a licensee can delete compliance records", Adam,
+-- 9 Oct). But the UPDATE rule still let anyone who may file to a folder move
+-- or overwrite what is already there. Through the Storage service directly (not
+-- the app), an agent could move an attached document out of its card, or
+-- upload over it, which destroys the original with no deletion_log row.
+--
+-- The app moves a file in one place only: a new listing's uploads, staged in
+-- {agency}/_pending/ before the listing exists, go to the listing's folder
+-- once it does (moveStagedEvidence). It never overwrites (every upload has a
+-- new name, upsert off). So the licensee keeps moving and overwriting as
+-- before; everyone else may move only their own staged upload. Safe while
+-- the app now live is in use: it only refuses what that app never does.
+drop policy if exists "compliance-evidence: whoever may file it can update" on storage.objects;
+create policy "compliance-evidence: whoever may file it can update" on storage.objects
+  for update using (
+    bucket_id = 'compliance-evidence'
+    and public.evidence_path_writable(name)
+    and (public.acts_as_licensee()
+         or ((storage.foldername(name))[2] = '_pending'
+             and coalesce(owner_id, owner::text) = auth.uid()::text)))
+  with check (bucket_id = 'compliance-evidence' and public.evidence_path_writable(name));
 
 commit;
