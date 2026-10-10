@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireLicenseePage } from "@/lib/data/current-profile";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { BREACH_CATEGORY_LABELS } from "@/lib/types";
 import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
 import { countableCpdHours } from "@/lib/cpd-hours";
 
@@ -19,17 +20,25 @@ const LICENCE_TYPE_LABELS: Record<string, string> = {
 export default async function RegistersExportPage() {
   // Licensee only (Adam, 7 Oct 2026): a typed address refuses, not just a
   // hidden link.
-  const { profile } = await requireLicenseePage();
+  const { profile, access } = await requireLicenseePage();
   const supabase = await createClient();
   const cpdYear = currentCpdYear();
 
+  // The complaints register is kept by the licensee in charge of an office
+  // only (Adam, 9 Oct 2026), and the database returns no complaints to
+  // anyone else, the agent on their own plan included. So for them the
+  // section is left out, the same as the Complaints tab: printing "No
+  // complaints logged." stated something about a register this account
+  // doesn't keep (check of 10 Oct 2026).
   const [{ data: staffRows }, { data: agencyRow }, { data: cpdRows }, { data: giftRows }, { data: complaintRows }, { data: breachRows }] =
     await Promise.all([
       supabase.from("profiles").select("*").order("full_name", { ascending: true }),
       supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
       supabase.from("cpd_records").select("*").gte("completed_date", cpdYear.start).lte("completed_date", cpdYear.end),
       supabase.from("gifts").select("*").order("gift_date", { ascending: false }),
-      supabase.from("complaints").select("*").order("received_date", { ascending: false }),
+      access.officeLicensee
+        ? supabase.from("complaints").select("*").order("received_date", { ascending: false })
+        : Promise.resolve({ data: [] as Complaint[] }),
       supabase.from("breaches").select("*").order("identified_date", { ascending: false }),
     ]);
 
@@ -135,21 +144,23 @@ export default async function RegistersExportPage() {
         </ul>
       </section>
 
-      <section className="mt-8">
-        <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Complaints register</h2>
-        <ul className="mt-2 space-y-1">
-          {complaints.length === 0 && <li className="text-sm text-rc-muted">No complaints logged.</li>}
-          {complaints.map((c) => (
-            <li key={c.id} className="text-sm">
-              <span className="font-medium text-rc-ink">{c.received_date}</span>{" "}
-              <span className="text-rc-muted">
-                — {c.complainant} · {c.nature} · {c.status}
-                {c.resolved_date ? ` (resolved ${c.resolved_date})` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {access.officeLicensee && (
+        <section className="mt-8">
+          <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Complaints register</h2>
+          <ul className="mt-2 space-y-1">
+            {complaints.length === 0 && <li className="text-sm text-rc-muted">No complaints logged.</li>}
+            {complaints.map((c) => (
+              <li key={c.id} className="text-sm">
+                <span className="font-medium text-rc-ink">{c.received_date}</span>{" "}
+                <span className="text-rc-muted">
+                  — {c.complainant} · {c.nature} · {c.status}
+                  {c.resolved_date ? ` (resolved ${c.resolved_date})` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="mt-8">
         <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">
@@ -161,7 +172,7 @@ export default async function RegistersExportPage() {
             <li key={b.id} className="text-sm">
               <span className="font-medium text-rc-ink">{b.identified_date}</span>{" "}
               <span className="text-rc-muted">
-                — {b.category} · {b.severity} · {b.description} · {b.status}
+                — {BREACH_CATEGORY_LABELS[b.category] ?? b.category} · {b.severity} · {b.description} · {b.status}
                 {b.corrective_action ? ` · action: ${b.corrective_action}` : " · no corrective action recorded"}
                 {b.notifiable ? (b.notified_date ? ` · notified ${b.notified_date}` : " · NOTIFICATION OUTSTANDING") : ""}
               </span>

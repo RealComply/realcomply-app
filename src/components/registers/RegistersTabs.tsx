@@ -55,8 +55,9 @@ export function RegistersTabs({
   breachesBadge,
   defaultTab = "licence",
 }: {
-  // null hides the tab. Agents and assistants get gifts and breaches only,
-  // and complaints are the licensee in charge's alone (Adam, 9 Oct 2026).
+  // null hides the tab. Agents and assistants get their own licence, gifts
+  // and breaches (own licence back 10 Oct 2026), and complaints are the
+  // licensee in charge's alone (Adam, 9 Oct 2026).
   licence: ReactNode | null;
   insurance: ReactNode | null;
   gifts: ReactNode;

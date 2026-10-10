@@ -7,6 +7,7 @@ import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import { countableCpdHours } from "@/lib/cpd-hours";
 import { REMINDER_SCHEDULE_WORDS } from "@/lib/licence-reminders";
 import { TestReminderControl } from "@/components/registers/TestReminderControl";
+import { useViewerAccess } from "@/components/ViewerAccess";
 import type { ReminderInfo } from "@/components/registers/ReminderLine";
 import type { Agency, CpdRecord, Profile } from "@/lib/types";
 
@@ -14,6 +15,10 @@ import type { Agency, CpdRecord, Profile } from "@/lib/types";
 // (InsurancePanel) — this used to also render a PI insurance card, but
 // bundling insurance into "Licence register" left no room for anything else
 // (Adam, 13 Aug 2026).
+//
+// An agent or assistant gets this tab with their own card only (10 Oct 2026):
+// staff is just them, and the corporation licence and the test reminder are
+// the licensee's. See the note in app/dashboard/registers/page.tsx.
 export function LicencePanel({
   staff,
   cpdByProfile,
@@ -22,6 +27,7 @@ export function LicencePanel({
   agency,
   reminderInfoByProfile = {},
   corporationReminderInfo = { next: null, last: null },
+  nameOf: names = {},
 }: {
   staff: Profile[];
   cpdByProfile: Record<string, CpdRecord[]>;
@@ -30,8 +36,16 @@ export function LicencePanel({
   agency: Agency | null;
   reminderInfoByProfile?: Record<string, ReminderInfo>;
   corporationReminderInfo?: ReminderInfo;
+  /** Everyone's display name (agencyPeople), for "typed by" lines. */
+  nameOf?: Record<string, string>;
 }) {
-  const nameOf: Record<string, string> = Object.fromEntries(staff.map((s) => [s.id, s.full_name ?? s.email]));
+  // The licensee's controls go to the agent on their own plan too
+  // (lib/access.ts), not only to whoever has the licensee-in-charge flag.
+  const { actsAsLicensee } = useViewerAccess();
+  const nameOf: Record<string, string> = {
+    ...names,
+    ...Object.fromEntries(staff.map((s) => [s.id, s.full_name ?? s.email])),
+  };
   const statuses = staff.map((s) => expiryStatus(s.licence_expiry));
   const current = statuses.filter((s) => s === "ok" || s === "soon").length;
   const expiringSoon = statuses.filter((s) => s === "urgent").length;
@@ -67,7 +81,7 @@ export function LicencePanel({
         emailed {REMINDER_SCHEDULE_WORDS}. The licensee in charge is copied on every one. RealComply
         reminds; the holder renews with NSW Fair Trading. Upload the renewed licence here once it comes
         through: RealComply reads the new date and the reminders for the old one stop.
-        {viewerProfile.is_licensee_in_charge && (
+        {actsAsLicensee && (
           <TestReminderControl
             members={staff.filter((s) => !s.archived_at).map((s) => ({ id: s.id, name: s.full_name ?? s.email }))}
           />
@@ -76,11 +90,11 @@ export function LicencePanel({
 
       {/* The entity's own licence, above the people. The individuals' licences
           hang off the corporation licence, not the other way around. */}
-      {agency && (
+      {agency && actsAsLicensee && (
         <div className="mt-4">
           <CorporationLicenceCard
             agency={agency}
-            canEdit={Boolean(viewerProfile.is_licensee_in_charge)}
+            canEdit={actsAsLicensee}
             reminderInfo={corporationReminderInfo}
             nameOf={nameOf}
           />

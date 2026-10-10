@@ -30,6 +30,12 @@ import type { Agency, LicenceType, Profile } from "@/lib/types";
 // WHO MAY DO WHAT is unchanged: a person maintains their own licence, the
 // licensee in charge can maintain anyone's, and the corporation licence is the
 // licensee's alone. The one-off "Read from document" is the licensee's.
+//
+// "The licensee" for the corporation licence, the one-off read and the test
+// reminder is access.actsAsLicensee, so the agent on their own plan counts
+// (10 Oct 2026; 0058 lets them write the agency row). Someone ELSE's licence
+// stays with the licensee in charge: only they may update another person's
+// profile in the database.
 
 export type ActionState = { error: string | null };
 
@@ -187,8 +193,12 @@ async function readPersonLicence(
     // The wrong person's licence, or not a licence at all. Nothing is saved.
     // A file just uploaded goes straight back out of Storage: it is somebody
     // else's personal document and has no business sitting on this record.
+    //
+    // Nothing means nothing (10 Oct 2026). The refusal used to be written to
+    // licence_read, which kept the other person's name in this person's
+    // record. The warning is the message returned below, shown once in the
+    // browser that uploaded it.
     if (fresh) await discardUpload(supabase, path);
-    await supabase.from("profiles").update({ licence_read: decision.state }).eq("id", subject.id);
     revalidatePath("/dashboard/registers");
     const who = subject.full_name ?? subject.email;
     return decision.kind === "name_mismatch"
@@ -262,8 +272,8 @@ export async function attachLicenceDocument(
  * licensee's to run; it never discards the file it reads.
  */
 export async function readLicenceFromDocument(profileId: string): Promise<LicenceReadResult> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee || (profile.id !== profileId && !profile.is_licensee_in_charge)) {
     return { error: "Only the licensee in charge can do this." };
   }
   const subject = await loadPerson(supabase, profileId);
@@ -418,8 +428,8 @@ async function readCorporationLicence(
   });
 
   if (decision.kind !== "save") {
+    // Saves nothing, the same as a person's licence above.
     if (fresh) await discardUpload(supabase, path);
-    await supabase.from("agencies").update({ corporation_licence_read: decision.state }).eq("id", agency.id);
     revalidatePath("/dashboard/registers");
     return decision.kind === "name_mismatch"
       ? {
@@ -466,8 +476,8 @@ async function readCorporationLicence(
 }
 
 export async function attachCorporationLicenceDocument(path: string, fileName: string): Promise<LicenceReadResult> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) {
     return { error: "Only the licensee in charge can update the corporation licence." };
   }
   const agency = await loadAgency(supabase, profile.agency_id);
@@ -476,8 +486,8 @@ export async function attachCorporationLicenceDocument(path: string, fileName: s
 }
 
 export async function readCorporationLicenceFromDocument(): Promise<LicenceReadResult> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return { error: "Only the licensee in charge can do this." };
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can do this." };
   const agency = await loadAgency(supabase, profile.agency_id);
   if (!agency?.corporation_licence_document_path) return { error: "There's no document on file to read." };
   return readCorporationLicence(
@@ -491,11 +501,11 @@ export async function readCorporationLicenceFromDocument(): Promise<LicenceReadR
 }
 
 export async function updateCorporationLicence(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   // Same gate as the insurance policies: an agency-level record that an agent
   // should be able to read but not rewrite.
-  if (!profile.is_licensee_in_charge) {
+  if (!access.actsAsLicensee) {
     return { error: "Only the licensee in charge can update the corporation licence." };
   }
 
@@ -536,8 +546,8 @@ export async function updateCorporationLicence(_prev: ActionState, formData: For
 }
 
 export async function removeCorporationLicenceDocument(): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   const agency = await loadAgency(supabase, profile.agency_id);
   if (!agency?.corporation_licence_document_path) return;
   const before = corporationSnapshot(agency);
@@ -562,7 +572,7 @@ export async function removeCorporationLicenceDocument(): Promise<void> {
 export type GapTarget = { kind: "person"; profileId: string } | { kind: "corporation" };
 
 export async function fillLicenceGaps(target: GapTarget, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
   const at = new Date().toISOString();
 
   const expiry = formData.has("expiry") ? str(formData, "expiry") : undefined;
@@ -602,7 +612,7 @@ export async function fillLicenceGaps(target: GapTarget, _prev: ActionState, for
       agencyId: subject.agency_id, subject: "person", profileId: subject.id, source: "typed", before, after, by: profile.id,
     });
   } else {
-    if (!profile.is_licensee_in_charge) {
+    if (!access.actsAsLicensee) {
       return { error: "Only the licensee in charge can update the corporation licence." };
     }
     const agency = await loadAgency(supabase, profile.agency_id);
@@ -647,8 +657,8 @@ export async function fillLicenceGaps(target: GapTarget, _prev: ActionState, for
 export async function sendTestLicenceReminder(
   memberId: string,
 ): Promise<{ error: string | null; sentTo?: string[]; failedTo?: string[] }> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) {
     return { error: "Only the licensee in charge can send a test reminder." };
   }
 

@@ -37,6 +37,11 @@ import type { Agency } from "@/lib/types";
 // Read-only for an agent, editable by the licensee in charge, matching how
 // the insurance policies behave. An agent still needs to see it: they are the
 // ones who put the licence number on advertising.
+//
+// Since the agent access change (0058) it is shown to the licensee only (the
+// agent on their own plan included): an agent can no longer open the
+// corporation licence document or its reminders, so the card would show them
+// a link that never loads. LicencePanel decides; canEdit stays for safety.
 
 const initial: ActionState = { error: null };
 
@@ -159,7 +164,6 @@ export function CorporationLicenceCard({
       <LicenceReadNotice
         state={readState}
         target={{ kind: "corporation" }}
-        holderLabel={holder ?? agency.name}
         nameOf={nameOf}
         canEdit={canEdit}
         canReread={Boolean(canEdit && documentPath && (!holder || !licenceNumber || !expiry))}

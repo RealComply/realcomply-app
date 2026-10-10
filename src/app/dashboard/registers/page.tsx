@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
+import { agencyPeople } from "@/lib/data/people";
 import { RegistersTabs } from "@/components/registers/RegistersTabs";
 import { LicencePanel } from "@/components/registers/LicencePanel";
 import { InsurancePanel } from "@/components/registers/InsurancePanel";
@@ -39,6 +40,12 @@ export default async function RegistersPage({
   // themselves, and nothing else here; complaints are the licensee in
   // charge's only, even for an agent on their own plan. The database rules
   // (0058) return only those rows; this decides which tabs show.
+  //
+  // Plus their OWN licence or certificate (10 Oct 2026). Hiding the whole
+  // Licences tab took away the only place a person can upload their renewed
+  // licence, while the reminder emails kept sending them here to do exactly
+  // that, and the reminders never stopped. A person still maintains their own
+  // licence (0058: own profile, own licence_history, own _licences folder).
   const licenseeView = access.actsAsLicensee;
   const defaultTab = (tab && TAB_KEYS.has(tab) ? tab : "licence") as
     | "licence" | "insurance" | "gifts" | "complaints" | "breaches";
@@ -54,6 +61,7 @@ export default async function RegistersPage({
     { data: propertyRows },
     { data: breachRows },
     { data: reminderRows },
+    people,
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
@@ -66,11 +74,24 @@ export default async function RegistersPage({
     // without sorting per card. Read-only (0019_licence_reminders.sql grants
     // select and nothing else) — these are written by the daily cron.
     supabase.from("licence_reminders").select("*").order("sent_at", { ascending: false }),
+    // Names only, for showing who an entry is about (lib/data/people.ts).
+    agencyPeople(supabase),
   ]);
 
   // An agent logs a gift or breach against themselves, so their pickers show
-  // only them.
-  const staff = licenseeView ? ((staffRows ?? []) as Profile[]) : [profile];
+  // only them, and the Licences tab holds only their own card.
+  //
+  // People who have left (archived in Team) are not on this register (check
+  // of 10 Oct 2026). The reminder job already skips them, so their cards
+  // promised a "Next reminder" that never came, and a former employee's
+  // lapsed licence kept the tab and the sidebar red for good. Their entries
+  // in the other registers still show their name, from the names list below.
+  const staff = licenseeView
+    ? ((staffRows ?? []) as Profile[]).filter((s) => !s.archived_at)
+    : [profile];
+  const nameOf: Record<string, string> = {};
+  for (const p of people) if (p.full_name) nameOf[p.id] = p.full_name;
+  for (const s of (staffRows ?? []) as Profile[]) nameOf[s.id] ??= s.full_name ?? s.email;
   const agency = agencyRow as Agency | null;
   const gifts = (giftRows ?? []) as Gift[];
   const complaints = (complaintRows ?? []) as Complaint[];
@@ -141,8 +162,9 @@ export default async function RegistersPage({
   // Licences and certificates had no badge at all, which was the odd one out —
   // the register that carries the hardest deadline in the office was the only
   // tab that said nothing.
+  // An agent's tab holds only their own card, so only their own date counts.
   const licenceStatuses = staff.map((p) => expiryStatus(p.licence_expiry));
-  if (agency?.corporation_licence_expiry) {
+  if (licenseeView && agency?.corporation_licence_expiry) {
     licenceStatuses.push(expiryStatus(agency.corporation_licence_expiry));
   }
   const licenceBadge = {
@@ -159,7 +181,7 @@ export default async function RegistersPage({
             <p className="mt-1 text-sm text-rc-muted">
               {licenseeView
                 ? `Agency-level records the licensee must keep — ${cpdYear.label} CPD year.`
-                : "The gifts and breaches you have logged. The licensee sees the whole register."}
+                : "Your own licence, and the gifts and breaches you have logged. The licensee sees the whole register."}
             </p>
           </div>
           <div className="flex gap-4 text-sm font-medium">
@@ -187,7 +209,7 @@ export default async function RegistersPage({
               breachesBadge={breachesBadge}
               defaultTab={defaultTab}
               licence={
-                !licenseeView ? null : <LicencePanel
+                <LicencePanel
                   staff={staff}
                   cpdByProfile={cpdByProfile}
                   viewerProfile={profile}
@@ -195,15 +217,17 @@ export default async function RegistersPage({
                   agency={agency}
                   reminderInfoByProfile={reminderInfoByProfile}
                   corporationReminderInfo={corporationReminderInfo}
+                  nameOf={nameOf}
                 />
               }
-              insurance={licenseeView ? <InsurancePanel agency={agency} viewerProfile={profile} /> : null}
+              insurance={licenseeView ? <InsurancePanel agency={agency} /> : null}
               gifts={
                 <GiftsPanel
                   gifts={gifts}
                   staff={staff}
                   threshold={agency.gift_threshold}
                   viewerProfile={profile}
+                  nameOf={nameOf}
                   autoOpenAdd={add === "1"}
                 />
               }
@@ -213,6 +237,7 @@ export default async function RegistersPage({
                   staff={staff}
                   properties={properties}
                   viewerProfile={profile}
+                  nameOf={nameOf}
                   resolutionTargetDays={agency.complaint_resolution_target_days}
                 />
               }
@@ -221,7 +246,7 @@ export default async function RegistersPage({
                   breaches={breaches}
                   staff={staff}
                   properties={properties}
-                  viewerProfile={profile}
+                  nameOf={nameOf}
                 />
               }
             />

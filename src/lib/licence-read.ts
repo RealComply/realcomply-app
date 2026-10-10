@@ -217,7 +217,11 @@ export function decideLicenceRead(input: {
     at,
     by,
     fileName,
-    nameOnDocument,
+    // Only a document that went on the record keeps the name printed on it.
+    // A refused one is usually someone else's licence, and their name has no
+    // business in this person's record (10 Oct 2026). The one-off message
+    // in the uploader's browser still says whose it was.
+    nameOnDocument: status === "read" ? nameOnDocument : null,
     nameChecked,
   });
 

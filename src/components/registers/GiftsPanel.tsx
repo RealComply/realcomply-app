@@ -2,6 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { addGift, markGiftReviewed, deleteGift, updateGiftThreshold, type ActionState } from "@/lib/actions/registers";
+import { useViewerAccess } from "@/components/ViewerAccess";
+import { useOnSaved } from "@/lib/use-on-saved";
 import type { Gift, Profile } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
@@ -22,19 +24,27 @@ export function GiftsPanel({
   staff,
   threshold,
   viewerProfile,
+  nameOf = {},
   autoOpenAdd = false,
 }: {
   gifts: Gift[];
   staff: Profile[];
   threshold: number;
   viewerProfile: Profile;
+  /** Everyone's display name (agencyPeople), for the Agent column. */
+  nameOf?: Record<string, string>;
   // Opens the "Record a gift / benefit" form straight away — used by the
   // Home page's "+ Log a gift" shortcut (?tab=gifts&add=1) so an agent
   // coming from there lands on a ready-to-fill form, not just the tab.
   autoOpenAdd?: boolean;
 }) {
+  // The licensee's controls go to the agent on their own plan too
+  // (lib/access.ts), not only to whoever has the licensee-in-charge flag
+  // (check of 10 Oct 2026).
+  const { actsAsLicensee } = useViewerAccess();
   const [adding, setAdding] = useState(autoOpenAdd);
   const [state, formAction, pending] = useActionState(addGift, initialState);
+  useOnSaved(pending, state.error, () => setAdding(false));
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdState, thresholdAction, thresholdPending] = useActionState(updateGiftThreshold, initialState);
 
@@ -42,7 +52,11 @@ export function GiftsPanel({
   const overThresholdCount = gifts.filter((g) => g.value !== null && g.value > threshold).length;
   const clearedCount = gifts.filter((g) => g.status !== "flagged").length;
 
-  const nameFor = (id: string) => staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "Unknown";
+  // Names come from the names-only list, not the picker. An agent's picker
+  // holds only themself, but a gift they logged for a colleague before 0058 is
+  // still theirs to see, and it read "Unknown" (check of 10 Oct 2026).
+  const nameFor = (id: string) =>
+    nameOf[id] ?? staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "Unknown";
 
   return (
     <div>
@@ -76,7 +90,7 @@ export function GiftsPanel({
             )
           }
           l="Disclosure threshold"
-          onClick={viewerProfile.is_licensee_in_charge && !editingThreshold ? () => setEditingThreshold(true) : undefined}
+          onClick={actsAsLicensee && !editingThreshold ? () => setEditingThreshold(true) : undefined}
         />
       </div>
       {thresholdState.error && <p className="mt-1 text-xs text-rc-amber-deep">{thresholdState.error}</p>}
@@ -99,13 +113,7 @@ export function GiftsPanel({
         </div>
 
         {adding && (
-          <form
-            action={async (fd) => {
-              await formAction(fd);
-              setAdding(false);
-            }}
-            className="mt-3 space-y-2 rounded-md border border-rc-border p-3"
-          >
+          <form action={formAction} className="mt-3 space-y-2 rounded-md border border-rc-border p-3">
             <div className="flex flex-wrap gap-2">
               <select name="profileId" defaultValue={viewerProfile.id} className="rounded-md border border-rc-border px-2 py-1 text-sm">
                 {staff.map((s) => (
@@ -186,7 +194,7 @@ export function GiftsPanel({
                       </span>
                     </td>
                     <td className="py-2 text-right">
-                      {viewerProfile.is_licensee_in_charge && (
+                      {actsAsLicensee && (
                         <div className="flex justify-end gap-2">
                           {g.status === "flagged" && (
                             <form action={markGiftReviewed.bind(null, g.id)}>

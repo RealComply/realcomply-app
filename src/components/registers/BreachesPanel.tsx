@@ -10,6 +10,9 @@ import {
   deleteBreach,
   type ActionState,
 } from "@/lib/actions/registers";
+import { useViewerAccess } from "@/components/ViewerAccess";
+import { useOnSaved } from "@/lib/use-on-saved";
+import { BREACH_CATEGORY_LABELS as CATEGORY_LABELS } from "@/lib/types";
 import type { Breach, Profile, Property } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
@@ -39,18 +42,6 @@ const SEVERITY_STYLES: Record<string, string> = {
   serious: "bg-red-100 text-red-700",
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  pricing: "Pricing / underquoting",
-  agency_agreement: "Agency agreement",
-  material_facts: "Material facts",
-  trust_account: "Trust account",
-  advertising: "Advertising",
-  record_keeping: "Record keeping",
-  conduct: "Conduct",
-  supervision: "Supervision",
-  other: "Other",
-};
-
 function daysSince(dateStr: string): number {
   const then = new Date(`${dateStr}T00:00:00Z`);
   const now = new Date();
@@ -62,15 +53,17 @@ export function BreachesPanel({
   breaches,
   staff,
   properties,
-  viewerProfile,
+  nameOf = {},
 }: {
   breaches: Breach[];
   staff: Profile[];
   properties: Property[];
-  viewerProfile: Profile;
+  /** Everyone's display name (agencyPeople), for "· <agent>" on each row. */
+  nameOf?: Record<string, string>;
 }) {
   const [adding, setAdding] = useState(false);
   const [state, formAction, pending] = useActionState(addBreach, initialState);
+  useOnSaved(pending, state.error, () => setAdding(false));
 
   const open = breaches.filter((b) => b.status !== "closed");
   const awaitingAction = breaches.filter((b) => !b.corrective_action && b.status !== "closed");
@@ -79,8 +72,13 @@ export function BreachesPanel({
     (b) => daysSince(b.identified_date) > NOTIFICATION_DEADLINE_DAYS,
   );
 
+  // From the names-only list, not the picker (which holds only an agent
+  // themself). A breach an agent logged against a colleague before 0058 read
+  // "· —", the same as no agent at all (check of 10 Oct 2026).
   const nameFor = (id: string | null) =>
-    id ? staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "—" : "—";
+    id
+      ? nameOf[id] ?? staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "—"
+      : "—";
   const addressFor = (id: string | null) => (id ? properties.find((p) => p.id === id)?.address ?? null : null);
 
   return (
@@ -127,13 +125,7 @@ export function BreachesPanel({
         </div>
 
         {adding && (
-          <form
-            action={async (fd) => {
-              await formAction(fd);
-              setAdding(false);
-            }}
-            className="mt-3 space-y-2 rounded-md border border-rc-border p-3"
-          >
+          <form action={formAction} className="mt-3 space-y-2 rounded-md border border-rc-border p-3">
             <div className="flex flex-wrap gap-2">
               <input
                 type="date"
@@ -213,7 +205,6 @@ export function BreachesPanel({
                 breach={b}
                 agentName={nameFor(b.agent_id)}
                 address={addressFor(b.property_id)}
-                viewerProfile={viewerProfile}
               />
             ))
           )}
@@ -227,18 +218,21 @@ function BreachRow({
   breach: b,
   agentName,
   address,
-  viewerProfile,
 }: {
   breach: Breach;
   agentName: string;
   address: string | null;
-  viewerProfile: Profile;
 }) {
+  // Close and Remove are the licensee's, which includes the agent on their own
+  // plan (lib/access.ts; 0058 lets them). They checked the raw flag, so that
+  // agent could never close a breach (check of 10 Oct 2026).
+  const { actsAsLicensee } = useViewerAccess();
   const [actioning, setActioning] = useState(false);
   const [actionState, actionForm, actionPending] = useActionState(
     recordCorrectiveAction.bind(null, b.id),
     initialState,
   );
+  useOnSaved(actionPending, actionState.error, () => setActioning(false));
   const [notifyState, notifyForm, notifyPending] = useActionState(
     recordBreachNotification.bind(null, b.id),
     initialState,
@@ -298,14 +292,14 @@ function BreachRow({
               {actioning ? "Cancel" : "Record action"}
             </button>
           )}
-          {b.status === "action_taken" && viewerProfile.is_licensee_in_charge && (
+          {b.status === "action_taken" && actsAsLicensee && (
             <form action={closeBreach.bind(null, b.id)}>
               <button type="submit" className="text-xs text-rc-green-deep hover:underline">
                 Close
               </button>
             </form>
           )}
-          {viewerProfile.is_licensee_in_charge && (
+          {actsAsLicensee && (
             <form action={deleteBreach.bind(null, b.id)}>
               <button type="submit" className="text-xs text-rc-faint hover:text-rc-amber-deep">
                 Remove
@@ -324,13 +318,7 @@ function BreachRow({
       )}
 
       {actioning && (
-        <form
-          action={async (fd) => {
-            await actionForm(fd);
-            setActioning(false);
-          }}
-          className="mt-2 space-y-2 rounded-md border border-rc-border p-3"
-        >
+        <form action={actionForm} className="mt-2 space-y-2 rounded-md border border-rc-border p-3">
           <textarea
             name="correctiveAction"
             placeholder="What was done about it? (the remedy, and anything put in place to stop it recurring)"
