@@ -38,6 +38,9 @@ export default async function NewPropertyPage() {
         .from("profiles")
         .select("*")
         .in("id", agentIds)
+        // Not an agent who has left: a listing filed to them would sit on
+        // nobody's list (10 Oct 2026).
+        .is("archived_at", null)
         .order("full_name", { ascending: true });
       agents = (agentRows ?? []) as Profile[];
     }
