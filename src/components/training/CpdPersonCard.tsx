@@ -47,7 +47,11 @@ export function CpdPersonCard({
   cpdYearStart: string;
   cpdYearLabel: string;
 }) {
-  const canEdit = viewerProfile.id === subject.id || Boolean(viewerProfile.is_licensee_in_charge);
+  // Someone who has left keeps their card as history, read only: nothing
+  // to attach or tick for a person no longer in the office (browser
+  // re-check, 10 Oct 2026).
+  const left = Boolean(subject.archived_at);
+  const canEdit = !left && (viewerProfile.id === subject.id || Boolean(viewerProfile.is_licensee_in_charge));
   const { actsAsLicensee } = useViewerAccess();
   const done = Boolean(signoff);
 
@@ -102,6 +106,11 @@ export function CpdPersonCard({
             {subject.is_licensee_in_charge && (
               <span className="rounded-full bg-rc-green/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rc-green-deep">
                 Licensee
+              </span>
+            )}
+            {left && (
+              <span className="rounded-full bg-rc-border/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rc-muted">
+                Left the office
               </span>
             )}
           </div>

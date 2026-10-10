@@ -98,7 +98,8 @@ export default async function CpdPage() {
         {staff.length === 0 ? (
           <p className="text-sm text-rc-muted">No team members on file yet.</p>
         ) : (
-          staff.map((s) => (
+          // People still here first; anyone who has left after them, as history.
+          [...current, ...staff.filter((s) => s.archived_at)].map((s) => (
             <CpdPersonCard
               key={s.id}
               subject={s}

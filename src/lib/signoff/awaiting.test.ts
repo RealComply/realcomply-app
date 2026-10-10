@@ -86,6 +86,14 @@ test("the card's count for a licensee-only document one licensee signed is 1 of 
   assert.deepEqual(signoffTally(rows, "licensee_only", new Set(), 0), { signedCount: 1, total: 1, allSigned: true });
 });
 
+test("the card's count for a licensee-only document nobody has signed is 0 of 1", () => {
+  const rows = [
+    { document_id: "rec", signer_id: "lic1", signed_at: null },
+    { document_id: "rec", signer_id: "lic2", signed_at: null },
+  ];
+  assert.deepEqual(signoffTally(rows, "licensee_only", new Set(), 0), { signedCount: 0, total: 1, allSigned: false });
+});
+
 test("the card's count includes staff never asked: 1 signed and 4 not asked is 1 of 5", () => {
   const rows = [{ document_id: "sg", signer_id: "lic", signed_at: SIGNED }];
   assert.deepEqual(signoffTally(rows, "all_staff", new Set(), 4), { signedCount: 1, total: 5, allSigned: false });

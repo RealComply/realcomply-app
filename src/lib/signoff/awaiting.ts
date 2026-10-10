@@ -92,6 +92,13 @@ export function signoffTally(
   leftIds: ReadonlySet<string>,
   notAskedCount: number,
 ): { signedCount: number; total: number; allSigned: boolean } {
+  // A licensee-only document needs one licensee's signature, however many
+  // licensees were listed: "0 of 2" before anyone signs read as if both
+  // were needed (browser re-check, 10 Oct 2026).
+  if (scope === "licensee_only") {
+    const signedCount = rows.some((r) => r.signed_at) ? 1 : 0;
+    return { signedCount, total: 1, allSigned: signedCount === 1 };
+  }
   const counted = rows.filter((r) => notNeededReason(r, scope, rows, leftIds) === null);
   const signedCount = counted.filter((r) => r.signed_at).length;
   const total = counted.length + notAskedCount;
