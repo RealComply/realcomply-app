@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
-import { loadPmProperty, pmAgencySettings } from "@/lib/data/pm";
+import { requireAccess } from "@/lib/data/current-profile";
+import { loadPmProperty, pmAgencySettings, pmPeople, type PmPerson } from "@/lib/data/pm";
 import { agencyPeople } from "@/lib/data/people";
 import { PM_COPY, pmGroupLabel, pmStage } from "@/lib/rules/nsw-pm";
 import { pmBlockedLine, pmMoveCheck, pmStageCountLabel, pmStageViews, type PmStageView } from "@/lib/rules/pm-engine";
@@ -10,6 +10,7 @@ import { PmStageOvals } from "@/components/pm/PmStageOvals";
 import { PmStageSection } from "@/components/pm/PmStageSection";
 import { PmItemRow } from "@/components/pm/PmItemRow";
 import { PmMoveControl } from "@/components/pm/PmMoveControl";
+import { PmManagerControl } from "@/components/pm/PmManagerControl";
 
 // One PM property (brief A5 to A9): the pinned header, one oval per stage, the
 // move button, then one section per stage with its ticks.
@@ -23,7 +24,7 @@ function stageCount(view: PmStageView): string {
 
 export default async function PmPropertyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   const settings = await pmAgencySettings(supabase, profile.agency_id);
   if (!settings.enabled) notFound();
@@ -31,7 +32,14 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
   // Names only (agency_people, 0058). Since 7 Oct an agent cannot read the
   // licensee's or a colleague's profile, so their ticks read "Someone" where
   // the who-confirmed-it stamp is the whole record (check, 10 Oct 2026).
-  const [loaded, people] = await Promise.all([loadPmProperty(supabase, id), agencyPeople(supabase)]);
+  //
+  // The licensee also gets "Change property manager" (10 Oct 2026), offering
+  // the same people as their "+ Add property" picker: anyone active.
+  const [loaded, people, managers] = await Promise.all([
+    loadPmProperty(supabase, id),
+    agencyPeople(supabase),
+    access.actsAsLicensee ? pmPeople(supabase) : Promise.resolve([] as PmPerson[]),
+  ]);
   if (!loaded) notFound();
 
   const { property, input } = loaded;
@@ -66,6 +74,13 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
         Property manager: {nameOf.get(property.manager_id) ?? "not set"}. Records are kept in{" "}
         <b className="font-semibold text-rc-ink">{recordsIn}</b>.
       </p>
+      {access.actsAsLicensee && (
+        <PmManagerControl
+          propertyId={property.id}
+          currentManagerId={property.manager_id}
+          people={managers.filter((p) => !p.archived)}
+        />
+      )}
 
       <div className="mt-3 md:hidden">
         <PmStageOvals stages={views} />
