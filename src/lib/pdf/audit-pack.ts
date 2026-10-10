@@ -5,6 +5,7 @@ import { buildComplianceRecordPdf, complianceRecordFilename, type Attachment } f
 import { comparablesFor } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
+import { linkRequestNeedingTime, listingSignature } from "@/lib/rules/listing-signature";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem } from "@/lib/types";
@@ -96,10 +97,20 @@ export async function buildAuditPack(
     return n && n.length > 0 ? n : null;
   };
 
-  const signatureOf = (key: string) => {
-    const d = byKey[key]?.data as { typedName?: string; signedAt?: string } | undefined;
-    return d?.typedName ? { typedName: d.typedName, signedAt: d.signedAt ?? null } : null;
+  // Either way it was given: in the app, or through the emailed sign-off link,
+  // whose time is on the request (lib/rules/listing-signature.ts).
+  const linkSignedAt = async (key: string): Promise<string | null> => {
+    const requestId = linkRequestNeedingTime(byKey[key]?.data);
+    if (!requestId) return null;
+    const { data: request } = await supabase
+      .from("property_signoff_requests")
+      .select("signed_at")
+      .eq("id", requestId)
+      .eq("agency_id", agencyId)
+      .maybeSingle();
+    return (request as { signed_at?: string | null } | null)?.signed_at ?? null;
   };
+  const signatureOf = async (key: string) => listingSignature(byKey[key]?.data, await linkSignedAt(key));
 
   // Whether this pack is a draft, decided here as well as inside the PDF —
   // because the FILENAME has to know too, and the filename is set out here.
@@ -111,8 +122,8 @@ export async function buildAuditPack(
   // record". Both halves of that are now fixed, and the filename matters most
   // of the two — a file attached to an email is judged by its name long before
   // anybody opens page one.
-  const agentSignature = signatureOf("sign_agent");
-  const licenseeSignature = signatureOf("sign_licensee");
+  const agentSignature = await signatureOf("sign_agent");
+  const licenseeSignature = await signatureOf("sign_licensee");
   const isDraft = !agentSignature || !licenseeSignature;
 
   // Deliberately NOT the contract for sale. Adam named the DATE it was

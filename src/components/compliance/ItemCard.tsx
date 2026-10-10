@@ -63,6 +63,7 @@ import type { EspDraftInput } from "@/lib/data/esp-draft";
 import type { NoneOnMarketRecord, ReasoningAdoptionRecord } from "@/lib/rules/esp-reasoning-adoption";
 import { Disclaimer, ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import { espReasoningMissing } from "@/lib/rules/esp-reasoning-gate";
+import { linkRequestNeedingTime, listingSignature } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
 const initialState: ActionState = { error: null };
@@ -2700,24 +2701,33 @@ function SignItem({
   current,
   profile,
   listingAgentId,
+  signoffLinks = [],
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   profile: Profile;
   listingAgentId?: string;
+  signoffLinks?: SignoffLink[];
 }) {
   const boundAction = signItem.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const data = (current?.data ?? {}) as { typedName?: string; signedAt?: string };
 
   // Signed comes first: whoever is looking, a signature on file is the answer.
-  if (data.signedAt) {
+  // Given in the app or through the emailed link, whose time is on the link
+  // (10 Oct 2026; see lib/rules/listing-signature.ts).
+  const linkId = linkRequestNeedingTime(current?.data);
+  const signature = listingSignature(
+    current?.data,
+    linkId ? (signoffLinks.find((l) => l.id === linkId)?.signedAt ?? null) : null,
+  );
+  if (signature) {
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
         <p className="text-sm text-rc-muted">
-          Signed <span className="font-medium text-rc-ink">{data.typedName}</span> on{" "}
-          {new Date(data.signedAt).toLocaleString("en-AU")}
+          Signed <span className="font-medium text-rc-ink">{signature.typedName}</span>
+          {signature.signedAt && <> on {new Date(signature.signedAt).toLocaleString("en-AU")}</>}
         </p>
       </ItemShell>
     );
@@ -3421,7 +3431,14 @@ export function ItemCard({
       return <SaleItem item={item} propertyId={propertyId} current={current} />;
     case "sign":
       return (
-        <SignItem item={item} propertyId={propertyId} current={current} profile={profile} listingAgentId={listingAgentId} />
+        <SignItem
+          item={item}
+          propertyId={propertyId}
+          current={current}
+          profile={profile}
+          listingAgentId={listingAgentId}
+          signoffLinks={signoffLinks}
+        />
       );
     case "send":
       return <SendItem item={item} propertyId={propertyId} current={current} signoffLinks={signoffLinks} />;
