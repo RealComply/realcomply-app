@@ -452,6 +452,8 @@ export type AgencyInvite = {
   email: string;
   full_name: string | null;
   is_licensee_in_charge: boolean;
+  /** Invited as an assistant (0025). Neither flag set means invited as an agent. */
+  is_assistant: boolean;
   token: string;
   status: InviteStatus;
   invited_by: string | null;
