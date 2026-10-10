@@ -14,7 +14,7 @@ import { listingsFor } from "@/lib/subscription-end/records";
 import { createServiceClient } from "@/lib/supabase/service";
 import { RecordsView } from "@/components/records/RecordsView";
 import { TrialStartView } from "@/components/billing/TrialStartView";
-import { needsTrialStart } from "@/lib/billing/entitlement";
+import { needsTrialStart, PLANS, type Plan } from "@/lib/billing/entitlement";
 import { isAccountHolder } from "@/lib/subscription-end/access";
 
 // Shared across every /dashboard/* page. Now owns the whole application
@@ -56,14 +56,30 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // trial (Adam, 9 Oct 2026). See TrialStartView.
   const { data: billingRow } = await supabase
     .from("agencies")
-    .select("name, status, stripe_subscription_id")
+    .select("name, plan, status, stripe_subscription_id")
     .eq("id", profile.agency_id)
     .maybeSingle();
-  const billing = billingRow as { name: string; status: string | null; stripe_subscription_id: string | null } | null;
+  const billing = billingRow as {
+    name: string;
+    plan: string | null;
+    status: string | null;
+    stripe_subscription_id: string | null;
+  } | null;
   if (billing && needsTrialStart(billing)) {
     const mayStart =
       profile.is_licensee_in_charge === true || (await isAccountHolder(supabase));
-    return <TrialStartView profile={profile} agencyName={billing.name} mayStart={mayStart} />;
+    // The master switch comes too (10 Oct 2026). "Put on a 14-day trial" on a
+    // free account lands here with no subscription, and this page replaces
+    // Billing, where the switch lives, so nothing could put it back.
+    const masterPlan: Plan | null =
+      profile.is_platform_admin !== true
+        ? null
+        : billing.plan && billing.plan in PLANS
+          ? (billing.plan as Plan)
+          : "office_1";
+    return (
+      <TrialStartView profile={profile} agencyName={billing.name} mayStart={mayStart} masterPlan={masterPlan} />
+    );
   }
   // The sidebar badges. Computed here rather than fetched from the browser so
   // the number is correct in the first paint — a count that appears a second

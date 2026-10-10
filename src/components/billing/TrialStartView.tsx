@@ -1,7 +1,8 @@
 import { logout } from "@/lib/actions/auth";
+import { MasterSwitch } from "@/components/billing/MasterSwitch";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { TrialStartWatcher } from "@/components/billing/TrialStartWatcher";
-import { TRIAL_DAYS } from "@/lib/billing/entitlement";
+import { TRIAL_DAYS, type Plan } from "@/lib/billing/entitlement";
 import type { Profile } from "@/lib/types";
 
 // What a new office sees until its card is in (Adam, 9 Oct 2026: "A new
@@ -15,14 +16,21 @@ import type { Profile } from "@/lib/types";
 //
 // Only the licensee in charge or the account holder can start it. Anyone
 // invited before it starts is told who to ask.
+//
+// A RealComply platform admin also gets the master switch here (10 Oct 2026):
+// putting a free account on a trial from Billing brings this page up in place
+// of Billing, and without the switch there was no way back to free.
 export function TrialStartView({
   profile,
   agencyName,
   mayStart,
+  masterPlan = null,
 }: {
   profile: Profile;
   agencyName: string;
   mayStart: boolean;
+  /** The agency's plan, for a platform admin only; null hides the switch. */
+  masterPlan?: Plan | null;
 }) {
   return (
     <div className="min-h-screen bg-rc-bg-alt">
@@ -62,6 +70,7 @@ export function TrialStartView({
             agency starts it by entering card details. Once they have, you&rsquo;ll have full access.
           </p>
         )}
+        {masterPlan && <MasterSwitch currentPlan={masterPlan} currentStatus="trialing" />}
       </main>
     </div>
   );

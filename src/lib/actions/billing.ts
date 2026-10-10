@@ -355,6 +355,9 @@ export async function setAgencyBillingAsMaster(
     return { error: "Choose what to set it to." };
   }
 
-  revalidatePath("/dashboard/billing");
+  // The whole dashboard, not just Billing (10 Oct 2026): the switch is also on
+  // the start-your-trial page, which the layout shows in place of any page,
+  // and that has to lift (or appear) wherever the admin is.
+  revalidatePath("/dashboard", "layout");
   return { error: null };
 }
