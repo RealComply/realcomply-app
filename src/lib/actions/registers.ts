@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
+import { attendanceChanges } from "@/lib/attendance-changes";
 import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -377,11 +378,14 @@ export async function deleteTrainingSession(sessionId: string): Promise<void> {
   revalidatePath("/dashboard/training");
 }
 
-// Replaces attendance for a session with whatever's checked on the form, and
-// keeps each attendee's auto-logged CPD record in sync: delete-then-reinsert
-// both attendance and the linked cpd_records rows (source_session_id) so
-// re-saving attendance is safe to run any number of times, never doubling up
-// hours. Only fires the CPD write for sessions actually marked CPD-eligible.
+// Makes attendance for a session match whatever's checked on the form, and
+// keeps each attendee's auto-logged CPD record (source_session_id) in step,
+// so re-saving attendance is safe to run any number of times, never doubling
+// up hours. Only fires the CPD write for sessions actually marked CPD-eligible.
+//
+// Changes only what changed (check, 10 Oct 2026; was delete-everything-then-
+// reinsert, which since 0058 logged every attendee's records as deleted on
+// each save and undid their corrections). See lib/attendance-changes.ts.
 export async function recordAttendance(sessionId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   const { supabase, profile, access } = await requireAuthContext();
   // Rewriting attendance replaces other people's session CPD records, so it
@@ -406,44 +410,58 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
 
   const attendeeIds = formData.getAll("attendee").filter((v): v is string => typeof v === "string");
 
-  await supabase.from("training_attendance").delete().eq("session_id", sessionId);
-  await supabase.from("cpd_records").delete().eq("source_session_id", sessionId);
+  const [{ data: attendanceRows, error: readError }, { data: cpdRows, error: cpdReadError }] = await Promise.all([
+    supabase.from("training_attendance").select("profile_id").eq("session_id", sessionId),
+    supabase.from("cpd_records").select("profile_id").eq("source_session_id", sessionId),
+  ]);
+  if (readError || cpdReadError) return { error: "Couldn't save attendance — try again." };
 
-  if (attendeeIds.length > 0) {
+  const { unticked, ticked, needCpd } = attendanceChanges({
+    recorded: ((attendanceRows ?? []) as { profile_id: string }[]).map((r) => r.profile_id),
+    withCpd: ((cpdRows ?? []) as { profile_id: string }[]).map((r) => r.profile_id),
+    wanted: attendeeIds,
+  });
+
+  if (unticked.length > 0) {
+    await supabase.from("training_attendance").delete().eq("session_id", sessionId).in("profile_id", unticked);
+    await supabase.from("cpd_records").delete().eq("source_session_id", sessionId).in("profile_id", unticked);
+  }
+
+  if (ticked.length > 0) {
     const { error: attendanceError } = await supabase.from("training_attendance").insert(
-      attendeeIds.map((profileId) => ({
+      ticked.map((profileId) => ({
         agency_id: session.agency_id,
         session_id: sessionId,
         profile_id: profileId,
       })),
     );
     if (attendanceError) return { error: "Couldn't save attendance — try again." };
+  }
 
-    // The provider is the gate, not the tick-box. NSW CPD can only be
-    // delivered by a Fair Trading approved provider, and for 2026–27 every
-    // published hour is a compulsory topic — there is no elective or
-    // self-directed category to absorb an internal session. So a session with
-    // no named provider records attendance and nothing else, however it was
-    // ticked. (The venue is irrelevant: an approved provider delivering in
-    // your own office does count, which is why this checks the provider
-    // rather than is_external.)
-    if (session.is_cpd_eligible && session.cpd_hours && session.cpd_provider) {
-      const { error: cpdError } = await supabase.from("cpd_records").insert(
-        attendeeIds.map((profileId) => ({
-          agency_id: session.agency_id,
-          profile_id: profileId,
-          activity_name: session.title,
-          category: "general",
-          hours: session.cpd_hours,
-          completed_date: session.session_date,
-          // Recorded in its own column so the record shows who delivered it.
-          provider: session.cpd_provider,
-          source_session_id: sessionId,
-          created_by: profile.id,
-        })),
-      );
-      if (cpdError) return { error: "Attendance saved, but couldn't auto-log CPD hours — add them manually." };
-    }
+  // The provider is the gate, not the tick-box. NSW CPD can only be
+  // delivered by a Fair Trading approved provider, and for 2026–27 every
+  // published hour is a compulsory topic — there is no elective or
+  // self-directed category to absorb an internal session. So a session with
+  // no named provider records attendance and nothing else, however it was
+  // ticked. (The venue is irrelevant: an approved provider delivering in
+  // your own office does count, which is why this checks the provider
+  // rather than is_external.)
+  if (needCpd.length > 0 && session.is_cpd_eligible && session.cpd_hours && session.cpd_provider) {
+    const { error: cpdError } = await supabase.from("cpd_records").insert(
+      needCpd.map((profileId) => ({
+        agency_id: session.agency_id,
+        profile_id: profileId,
+        activity_name: session.title,
+        category: "general",
+        hours: session.cpd_hours,
+        completed_date: session.session_date,
+        // Recorded in its own column so the record shows who delivered it.
+        provider: session.cpd_provider,
+        source_session_id: sessionId,
+        created_by: profile.id,
+      })),
+    );
+    if (cpdError) return { error: "Attendance saved, but couldn't auto-log CPD hours — add them manually." };
   }
 
   revalidatePath("/dashboard/training");

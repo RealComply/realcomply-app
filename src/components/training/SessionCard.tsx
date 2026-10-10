@@ -22,8 +22,13 @@ export function SessionCard({
   ownOnly?: boolean;
 }) {
   const [editingAttendance, setEditingAttendance] = useState(false);
-  const boundAction = recordAttendance.bind(null, session.id);
-  const [state, formAction, pending] = useActionState(boundAction, initialState);
+  // Closes once attendance has saved, and stays open with the message when it
+  // hasn't (check, 10 Oct 2026; the ticks stayed open after a good save).
+  const [state, formAction, pending] = useActionState(async (prev: ActionState, fd: FormData) => {
+    const result = await recordAttendance(session.id, prev, fd);
+    if (!result.error) setEditingAttendance(false);
+    return result;
+  }, initialState);
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
