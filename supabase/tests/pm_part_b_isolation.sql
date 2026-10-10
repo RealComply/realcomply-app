@@ -22,6 +22,7 @@ declare
   b_user uuid := gen_random_uuid();
   a_lic uuid := gen_random_uuid();   -- licensee in charge of office A
   a_ag2 uuid := gen_random_uuid();   -- another agent in office A
+  a_asst uuid := gen_random_uuid();  -- person A's assistant
   a_pet2 uuid;
   a_prop uuid;
   b_prop uuid;
@@ -40,18 +41,21 @@ begin
     (a_user, 'pm-b-test-a@example.invalid'),
     (b_user, 'pm-b-test-b@example.invalid'),
     (a_lic, 'pm-b-test-a-lic@example.invalid'),
-    (a_ag2, 'pm-b-test-a-ag2@example.invalid');
+    (a_ag2, 'pm-b-test-a-ag2@example.invalid'),
+    (a_asst, 'pm-b-test-a-asst@example.invalid');
   insert into public.agencies (id, name, status, plan) values
     (a_agency, 'PM Part B isolation test A', 'active', 'office_1');
   insert into public.agencies (id, name, status) values
     (b_agency, 'PM Part B isolation test B', 'active');
-  insert into public.profiles (id, agency_id, full_name, email, is_licensee_in_charge, is_agent) values
-    (a_lic, a_agency, 'Test A Licensee', 'pm-b-test-a-lic@example.invalid', true, true),
-    (a_user, a_agency, 'Test A', 'pm-b-test-a@example.invalid', false, true),
-    (a_ag2, a_agency, 'Test A Agent Two', 'pm-b-test-a-ag2@example.invalid', false, true),
-    (b_user, b_agency, 'Test B', 'pm-b-test-b@example.invalid', false, true);
+  insert into public.profiles (id, agency_id, full_name, email, is_licensee_in_charge, is_assistant, is_agent) values
+    (a_lic, a_agency, 'Test A Licensee', 'pm-b-test-a-lic@example.invalid', true, false, true),
+    (a_user, a_agency, 'Test A', 'pm-b-test-a@example.invalid', false, false, true),
+    (a_ag2, a_agency, 'Test A Agent Two', 'pm-b-test-a-ag2@example.invalid', false, false, true),
+    (a_asst, a_agency, 'Test A Assistant', 'pm-b-test-a-asst@example.invalid', false, true, false),
+    (b_user, b_agency, 'Test B', 'pm-b-test-b@example.invalid', false, false, true);
+  insert into public.assistant_agents (agency_id, assistant_id, agent_id) values (a_agency, a_asst, a_user);
   -- The licensee joined first, so they hold the account (0059).
-  update public.profiles set created_at = now() + interval '1 minute' where id in (a_user, a_ag2);
+  update public.profiles set created_at = now() + interval '1 minute' where id in (a_user, a_ag2, a_asst);
 
   -- One made-up tenanted property in each agency, each with a pet request.
   insert into public.pm_properties (agency_id, address, manager_id, origin, grp, created_by)
@@ -173,7 +177,8 @@ begin
   end;
 
   -- 8. Inside office A, another agent sees none of A's records, cannot add
-  --    one and cannot mark a pet request answered (0058). The licensee sees them.
+  --    one and cannot mark a pet request answered (0058). Person A's
+  --    assistant and the licensee see them, and the assistant can add one.
   perform set_config('request.jwt.claims', json_build_object('sub', a_ag2, 'role', 'authenticated')::text, true);
   select count(*) into n from public.pm_records where property_id = a_prop;
   if n <> 0 then raise exception 'FAIL 8: another agent in the office can see the property manager''s records'; end if;
@@ -194,9 +199,19 @@ begin
   exception when others then blocked := true;
   end;
   if blocked then raise exception 'FAIL 8: another agent in the office can reach the property manager''s records to change them'; end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', a_asst, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.pm_records where property_id = a_prop;
+  if n < 3 then raise exception 'FAIL 8: the property manager''s assistant cannot see their records'; end if;
+  blocked := false;
+  begin
+    insert into public.pm_records (agency_id, property_id, tenancy_id, kind)
+      values (a_agency, a_prop, a_ten, 'advertising_photos');
+  exception when others then blocked := true;
+  end;
+  if blocked then raise exception 'FAIL 8: the property manager''s assistant cannot add a record'; end if;
   perform set_config('request.jwt.claims', json_build_object('sub', a_lic, 'role', 'authenticated')::text, true);
   select count(*) into n from public.pm_records where property_id = a_prop;
-  if n < 3 then raise exception 'FAIL 8: the licensee cannot see the office''s records'; end if;
+  if n < 4 then raise exception 'FAIL 8: the licensee cannot see the office''s records'; end if;
   select count(*) into n from public.pm_records where property_id = b_prop;
   if n <> 0 then raise exception 'FAIL 8: the licensee can see another agency''s records'; end if;
 
