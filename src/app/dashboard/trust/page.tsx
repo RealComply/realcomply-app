@@ -6,11 +6,13 @@ import { TrustAccountPanel } from "@/components/registers/TrustAccountPanel";
 import { formatAuDate } from "@/lib/format-date";
 import {
   auditDueOn,
+  auditOwed,
   auditPeriodEndFor,
   buildMonths,
   daysUntil,
   previousAuditPeriodEnd,
   reconciliationRecordsFor,
+  sydneyToday,
 } from "@/lib/trust-account";
 import type {
   Profile, SignoffDocument, SignoffSignature, TrustAccount, TrustAudit,
@@ -52,6 +54,10 @@ export default async function TrustAccountsPage({
   // Archived accounts leave the switcher but stay reachable by direct link, so
   // an old reconciliation is never orphaned from the page that explains it.
   const accounts = allAccounts.filter((a) => !a.archived_at || a.id === requestedAccount);
+  // And that link is listed under the switcher (10 Oct 2026). Nothing in the
+  // app produced it, so closing an account — one unconfirmed click — took its
+  // months, its audit and the Reopen button out of reach for good.
+  const closedAccounts = allAccounts.filter((a) => a.archived_at && a.id !== requestedAccount);
   const docs = (docRows ?? []) as SignoffDocument[];
   const sigs = (sigRows ?? []) as SignoffSignature[];
   const audits = (auditRows ?? []) as TrustAudit[];
@@ -59,7 +65,8 @@ export default async function TrustAccountsPage({
   const nameOf = (id: string | null) =>
     id ? staff.find((p) => p.id === id)?.full_name ?? null : null;
 
-  const today = new Date();
+  // Sydney's date: the month is overdue from the 22nd in NSW, not from 10am.
+  const today = sydneyToday();
   const currentPeriod = auditPeriodEndFor(today);
   const auditPeriod = previousAuditPeriodEnd(today);
   const auditDue = auditDueOn(auditPeriod);
@@ -71,18 +78,20 @@ export default async function TrustAccountsPage({
   for (const acct of allAccounts) {
     // Same helper the reminder emails use, so the email and this page agree.
     const records = reconciliationRecordsFor(acct.id, docs, sigs, nameOf);
-    monthsByAccount.set(acct.id, buildMonths(currentPeriod, records, today));
+    monthsByAccount.set(acct.id, buildMonths(currentPeriod, records, today, acct.opened_on ?? null));
   }
 
   const toneOf: Record<string, "red" | "amber" | null> = {};
   for (const acct of allAccounts) {
     const months = monthsByAccount.get(acct.id) ?? [];
     const audit = audits.find((a) => a.trust_account_id === acct.id && a.period_end === auditPeriod);
-    const auditLate = !audit?.confirmed_at && daysUntil(auditDue, today) < 0;
+    // Not owed for a year that ended before the account opened.
+    const auditDone = Boolean(audit?.confirmed_at) || !auditOwed(auditPeriod, acct.opened_on);
+    const auditLate = !auditDone && daysUntil(auditDue, today) < 0;
     toneOf[acct.id] = months.some((m) => m.status === "overdue") || auditLate
       ? "red"
       : months.some((m) => m.status === "awaiting_signature" || m.status === "awaiting_upload") ||
-          !audit?.confirmed_at
+          !auditDone
         ? "amber"
         : null;
   }
@@ -118,6 +127,7 @@ export default async function TrustAccountsPage({
           activeId={active?.id ?? ""}
           canManage={Boolean(profile.is_licensee_in_charge)}
           toneOf={toneOf}
+          closedAccounts={closedAccounts}
         />
 
         {active ? (
@@ -133,9 +143,8 @@ export default async function TrustAccountsPage({
               agencyId={profile.agency_id}
               trustAccountId={active.id}
               accountName={active.name}
-              canUpload={Boolean(
-                !active.archived_at && (profile.is_licensee_in_charge || profile.is_assistant),
-              )}
+              // No assistant since Adam's 7 Oct reversal: this page refuses them.
+              canUpload={Boolean(!active.archived_at && profile.is_licensee_in_charge)}
               canSign={Boolean(!active.archived_at && profile.is_licensee_in_charge)}
               signerName={profile.full_name ?? ""}
               auditPeriodEnd={auditPeriod}
@@ -144,6 +153,8 @@ export default async function TrustAccountsPage({
               audit={activeAudit}
               auditConfirmedByName={nameOf(activeAudit?.confirmed_by ?? null)}
               auditYearLabel={`Year ending ${formatAuDate(currentPeriod)}`}
+              auditIsOwed={Boolean(activeAudit) || auditOwed(auditPeriod, active.opened_on)}
+              openedOn={active.opened_on ?? null}
             />
           </div>
         ) : (

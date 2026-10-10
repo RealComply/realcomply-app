@@ -77,15 +77,26 @@ export async function createSignoffDocument(params: {
     return { error: "Couldn't save that document — try again." };
   }
 
+  // Present staff only (10 Oct 2026). Someone who has left keeps their
+  // agency_id (0035), so they were being listed as a signer who can never
+  // sign — and with no way to remove the row, the version sat at "N of N+1
+  // signed" for good.
   const signers =
     signerScope === "all_staff"
-      ? (await supabase.from("profiles").select("id").eq("agency_id", profile.agency_id)).data ?? []
+      ? (
+          await supabase
+            .from("profiles")
+            .select("id")
+            .eq("agency_id", profile.agency_id)
+            .is("archived_at", null)
+        ).data ?? []
       : (
           await supabase
             .from("profiles")
             .select("id")
             .eq("agency_id", profile.agency_id)
             .eq("is_licensee_in_charge", true)
+            .is("archived_at", null)
         ).data ?? [];
 
   if (signers.length > 0) {
@@ -116,6 +127,12 @@ export async function createSignoffDocument(params: {
 // sign_agent/sign_licensee on a compliance file. Upsert rather than a plain
 // update so this still works even if a signer's row didn't exist yet (e.g.
 // someone added to the agency after the document was published).
+// 10 Oct 2026: that case never got this far — since 0058 someone with no row
+// cannot see the document at all. The database now gives each person who
+// joins a row on the current SG Manual version (see
+// supabase/migrations/pending/G4b.sql), so a new starter is asked to sign it
+// and the licensee sees them as outstanding.
+//
 // A TICK, NOT A TYPED NAME (Adam, 8 Sep 2026): "we can just add a tick box
 // stating that the licensee has reviewed the document and only the licensee
 // can tick that box."
@@ -162,6 +179,26 @@ export async function signDocument(documentId: string, _prev: ActionState, _form
   const typedName = String(profile.full_name ?? profile.email ?? "").trim();
   if (!typedName) {
     return { error: "Add your name in Settings before signing this off." };
+  }
+
+  // ALREADY SIGNED IS DONE, NOT AN ERROR (10 Oct 2026). Since 0058 a signed
+  // row is locked, so pressing Sign off on a page opened before the signature
+  // went in elsewhere (another tab, another device) was refused, shown as
+  // "Couldn't record that signature — try again", and every retry failed the
+  // same way because nothing refreshed the page. The signature they wanted is
+  // on record; refresh the page to show it.
+  const { data: existing } = await supabase
+    .from("signoff_signatures")
+    .select("signed_at")
+    .eq("document_id", documentId)
+    .eq("signer_id", profile.id)
+    .maybeSingle();
+  if ((existing as { signed_at: string | null } | null)?.signed_at) {
+    revalidatePath("/dashboard/trust");
+    revalidatePath("/dashboard/document-signoffs");
+    revalidatePath("/dashboard/sg-manual");
+    revalidatePath("/dashboard/registers");
+    return ok;
   }
 
   const signedAt = new Date().toISOString();
@@ -400,6 +437,7 @@ async function stampSignedCopy(
           // typed-signature flow recorded and is the fallback for rows written
           // before the tick box replaced it on 8 Sep 2026.
           name: who?.full_name ?? r.typed_name ?? who?.email ?? "Unknown",
+          email: who?.email ?? null,
           role: who?.is_licensee_in_charge ? "Licensee in charge" : "Staff member",
           signedAt: r.signed_at,
         };

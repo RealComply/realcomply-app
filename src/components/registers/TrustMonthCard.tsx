@@ -22,6 +22,10 @@ import type { ReconciliationMonth } from "@/lib/trust-account";
 // exporting a report out of Property Tree and putting it on file. The
 // signature is the licensee's alone, and the server enforces both; the props
 // below only decide what is worth rendering.
+//
+// REVERSAL (Adam, 7 Oct 2026): trust accounts are the licensee's only, and an
+// assistant no longer reaches this page at all, so the upload is the
+// licensee's too (10 Oct 2026: the copy below still offered the assistant).
 
 const initial: ActionState = { error: null };
 
@@ -445,7 +449,7 @@ export function TrustMonthCard({
 
       {!month.documentId && !canUpload && (
         <p className="mt-3 text-xs text-rc-muted">
-          Waiting on the licensee in charge or their assistant to upload it.
+          Waiting on the licensee in charge to upload it.
         </p>
       )}
 

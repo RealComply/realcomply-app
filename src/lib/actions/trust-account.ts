@@ -5,6 +5,14 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 
 export type ActionState = { error: string | null; saved?: boolean };
 
+// The day the account opened, if the licensee gave one (10 Oct 2026). Months
+// and audit years that ended before it are not asked for — see
+// monthBeforeOpening in lib/trust-account.ts. Blank means it was already open.
+function openedOnFrom(formData: FormData): string | null {
+  const value = String(formData.get("openedOn") ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
 // ── The accounts themselves ───────────────────────────────────────────────
 //
 // Licensee-only, all three. An assistant can upload a reconciliation into an
@@ -21,9 +29,10 @@ export async function createTrustAccount(_prev: ActionState, formData: FormData)
   if (!name) return { error: "Give the account a name — whatever you call it in the office." };
   if (name.length > 80) return { error: "That name is too long. Eighty characters is the limit." };
 
+  const openedOn = openedOnFrom(formData);
   const { error } = await supabase
     .from("trust_accounts")
-    .insert({ agency_id: profile.agency_id, name });
+    .insert({ agency_id: profile.agency_id, name, ...(openedOn ? { opened_on: openedOn } : {}) });
 
   if (error) return { error: "Couldn't add that account — try again." };
   revalidatePath("/dashboard/trust");
@@ -40,8 +49,14 @@ export async function renameTrustAccount(_prev: ActionState, formData: FormData)
   const name = String(formData.get("name") ?? "").trim();
   if (!id || !name) return { error: "Give the account a name." };
 
-  const { error } = await supabase.from("trust_accounts").update({ name }).eq("id", id);
-  if (error) return { error: "Couldn't rename that account — try again." };
+  // Written only when it changed, so a plain rename never touches it.
+  const openedOn = openedOnFrom(formData);
+  const openedOnWas = String(formData.get("openedOnWas") ?? "").trim() || null;
+  const { error } = await supabase
+    .from("trust_accounts")
+    .update(openedOn === openedOnWas ? { name } : { name, opened_on: openedOn })
+    .eq("id", id);
+  if (error) return { error: "Couldn't save that account — try again." };
   revalidatePath("/dashboard/trust");
   return { error: null, saved: true };
 }
@@ -135,7 +150,11 @@ export async function saveTrustAudit(
     file_path: filePath ?? existing?.file_path ?? null,
     file_name: fileName ?? existing?.file_name ?? null,
     notes,
-    confirmed_by: confirmed ? profile.id : null,
+    // Kept with its date (10 Oct 2026). A second licensee re-saving a confirmed
+    // audit to add the report date was rewriting who confirmed it while the
+    // original date stayed, so the record said they confirmed it on a day they
+    // did not. Who and when are one fact; they change together or not at all.
+    confirmed_by: confirmed ? (existing?.confirmed_at ? existing.confirmed_by : profile.id) : null,
     // Keep the original timestamp when a confirmation is merely being re-saved
     // alongside another field. The date on a confirmation is part of it.
     confirmed_at: confirmed ? existing?.confirmed_at ?? new Date().toISOString() : null,
