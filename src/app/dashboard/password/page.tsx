@@ -11,6 +11,10 @@ import { ChangePasswordForm } from "@/components/account/ChangePasswordForm";
 // have a session by the time they get here, and the layout's requireProfile is
 // what makes "no session" fall back to /login instead of rendering a form that
 // could never save.
+//
+// Since 10 Oct 2026 a reset link lands on /reset-password instead (arrival 1
+// above), outside the dashboard layout, whose trial, records and terms checks
+// could take the place of this form. This page is now the avatar menu's.
 export default async function PasswordPage({
   searchParams,
 }: {

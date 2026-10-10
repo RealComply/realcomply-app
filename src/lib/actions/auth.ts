@@ -318,7 +318,8 @@ export async function requestPasswordReset(
     // falls back to /auth/callback and the old browser-bound flow, which is
     // worse but is not nothing. Two lines of insurance against a one-click
     // mistake in a console.
-    redirectTo: `${origin}/auth/callback?next=${encodeURIComponent("/dashboard/password?reset=1")}`,
+    // /reset-password, not /dashboard/password: see that page (10 Oct 2026).
+    redirectTo: `${origin}/auth/callback?next=${encodeURIComponent("/reset-password")}`,
   });
 
   // The same answer whether or not that address has an account. Anything else

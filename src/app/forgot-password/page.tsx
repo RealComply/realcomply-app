@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import { requestPasswordReset, type ResetRequestState } from "@/lib/actions/auth";
 import { Logo } from "@/components/Logo";
@@ -14,7 +14,16 @@ const initialState: ResetRequestState = { error: null, sent: false };
 // Deliberately its own page rather than a panel on /login. Somebody reaching
 // for this has already failed to sign in once, and a form that swaps itself
 // out underneath them is the wrong thing to meet at that moment.
+//
+// "Ask again" starts a fresh attempt by changing the key below (10 Oct 2026).
+// It was a link to this same page, and following a link to the page you are
+// on keeps the page, and with it "Check your email", so it did nothing.
 export default function ForgotPasswordPage() {
+  const [attempt, setAttempt] = useState(0);
+  return <ResetRequest key={attempt} onAskAgain={() => setAttempt((n) => n + 1)} />;
+}
+
+function ResetRequest({ onAskAgain }: { onAskAgain: () => void }) {
   const [state, formAction, pending] = useActionState(requestPasswordReset, initialState);
 
   return (
@@ -49,9 +58,13 @@ export default function ForgotPasswordPage() {
             </p>
             <p className="mt-4 text-sm text-rc-muted">
               Nothing after a few minutes? Check junk mail, then{" "}
-              <Link href="/forgot-password" className="font-medium text-rc-green-deep hover:underline">
+              <button
+                type="button"
+                onClick={onAskAgain}
+                className="cursor-pointer font-medium text-rc-green-deep hover:underline"
+              >
                 ask again
-              </Link>
+              </button>
               .
             </p>
             <p className="mt-6 text-sm text-rc-muted">
