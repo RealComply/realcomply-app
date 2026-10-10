@@ -369,8 +369,10 @@ export async function addTrainingSession(_prev: ActionState, formData: FormData)
 }
 
 export async function deleteTrainingSession(sessionId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  // access, not the raw flag, like adding a session and recording attendance:
+  // the agent on their own plan saw Delete and it did nothing (check, 10 Oct 2026).
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase.from("training_sessions").delete().eq("id", sessionId);
   revalidatePath("/dashboard/training");
 }
