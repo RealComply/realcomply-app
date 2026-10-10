@@ -22,8 +22,17 @@ export function SessionCard({
   ownOnly?: boolean;
 }) {
   const [editingAttendance, setEditingAttendance] = useState(false);
-  const boundAction = recordAttendance.bind(null, session.id);
-  const [state, formAction, pending] = useActionState(boundAction, initialState);
+  // Closes once attendance has saved, and stays open with the message when it
+  // hasn't (check, 10 Oct 2026; the ticks stayed open after a good save).
+  const [state, formAction, pending] = useActionState(async (prev: ActionState, fd: FormData) => {
+    const result = await recordAttendance(session.id, prev, fd);
+    if (!result.error) setEditingAttendance(false);
+    return result;
+  }, initialState);
+  // Someone archived (they've left) isn't offered for a session, but stays
+  // ticked where already recorded, since an unticked name is removed on save
+  // (check, 10 Oct 2026).
+  const checklist = staff.filter((s) => !s.archived_at || attendeeIds.includes(s.id));
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
@@ -80,7 +89,7 @@ export function SessionCard({
         {editingAttendance && (
           <form action={formAction} className="mt-2 space-y-2 rounded-md border border-rc-border p-2">
             <div className="flex flex-wrap gap-3">
-              {staff.map((s) => (
+              {checklist.map((s) => (
                 <label key={s.id} className="flex items-center gap-1.5 text-xs text-rc-muted">
                   <input type="checkbox" name="attendee" value={s.id} defaultChecked={attendeeIds.includes(s.id)} />
                   {s.full_name ?? s.email}

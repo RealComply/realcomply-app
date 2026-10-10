@@ -735,39 +735,49 @@ export async function extractCpdCertificate(
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-5",
-    max_tokens: 1024,
-    system:
-      "You are reading a continuing professional development record of completion, or a statement of " +
-      "attainment, for a NSW licensed real estate agent's CPD register (RealComply). Record only what the " +
-      "document explicitly and literally states. Never infer, estimate or convert — if it gives a start and " +
-      "end time but no duration, do not calculate hours. If it does not name a provider, do not guess one from " +
-      "a logo or a filename. You have been shown the complete content available to you; do not assume further " +
-      "pages exist. You must call record_cpd_certificate exactly once, but calling it with few fields set is a " +
-      "completely normal and successful outcome — the agent reviews and completes it, you do not.",
-    messages: [
-      {
-        role: "user",
-        content: [
-          documentBlock,
-          {
-            type: "text",
-            text: `This was uploaded as "${fileName}" for a CPD register. Call record_cpd_certificate with whatever it explicitly states.`,
-          },
-        ],
-      },
-    ],
-    tools: [CPD_CERTIFICATE_TOOL],
-    tool_choice: { type: "tool", name: "record_cpd_certificate" },
-  });
+  // Caught, as the licence read is (check, 10 Oct 2026). An overloaded API, a
+  // timeout or a photo too big to send threw straight through
+  // addCpdFromCertificate, so no entry was made and the card sat on "Reading
+  // certificate…" until a reload. A failed read is a read of nothing: the
+  // entry is still made from the file, and the card asks for the rest.
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 1024,
+      system:
+        "You are reading a continuing professional development record of completion, or a statement of " +
+        "attainment, for a NSW licensed real estate agent's CPD register (RealComply). Record only what the " +
+        "document explicitly and literally states. Never infer, estimate or convert — if it gives a start and " +
+        "end time but no duration, do not calculate hours. If it does not name a provider, do not guess one from " +
+        "a logo or a filename. You have been shown the complete content available to you; do not assume further " +
+        "pages exist. You must call record_cpd_certificate exactly once, but calling it with few fields set is a " +
+        "completely normal and successful outcome — the agent reviews and completes it, you do not.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            documentBlock,
+            {
+              type: "text",
+              text: `This was uploaded as "${fileName}" for a CPD register. Call record_cpd_certificate with whatever it explicitly states.`,
+            },
+          ],
+        },
+      ],
+      tools: [CPD_CERTIFICATE_TOOL],
+      tool_choice: { type: "tool", name: "record_cpd_certificate" },
+    });
 
-  const toolUse = response.content.find(
-    (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
-  );
-  if (!toolUse) return { error: null, fields: {} };
+    const toolUse = response.content.find(
+      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+    );
+    if (!toolUse) return { error: null, fields: {} };
 
-  return { error: null, fields: toolUse.input as CpdCertificateFields };
+    return { error: null, fields: toolUse.input as CpdCertificateFields };
+  } catch (e) {
+    console.error("extractCpdCertificate failed", { fileName, error: e });
+    return { error: "Couldn't read the certificate just now.", fields: {} };
+  }
 }
 
 // ── Licences and certificates of registration ──────────────────────────────

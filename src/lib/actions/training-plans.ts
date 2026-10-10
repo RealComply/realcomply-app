@@ -234,7 +234,10 @@ export async function completeTrainingPlanItem(
         profile_id: plan.profile_id,
         activity_name: item.program_name,
         category: isAssistant ? "assistant_unit" : "general",
-        hours: isAssistant ? 1 : (item.training_hours ?? 0),
+        // Blank stays blank (0051; check, 10 Oct 2026): a plan item with no
+        // hours was logged as 0, which the CPD card never asks about and the
+        // year's totals quietly added. Left empty, the card asks for them.
+        hours: isAssistant ? 1 : (item.training_hours ?? null),
         completed_date: completedDate,
         // The provider is what makes a record count (lib/cpd-hours.ts), so it
         // goes in its own column, not only in the notes.
