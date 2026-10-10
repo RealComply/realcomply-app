@@ -19,6 +19,11 @@ import { priceIdFor, stripeRequest, type Interval } from "@/lib/billing/stripe";
 // and the licensee in charge is the person who answers for both. An agent
 // finding a "start subscription" button on a page they can see is a support
 // call at best.
+//
+// Widened to whoever pays (9-10 Oct 2026): the licensee in charge, the agent
+// on their own plan, or the account holder. The same people the Billing page
+// lets in. Starting checkout was widened on 9 Oct and the billing portal was
+// not, so the person whose card it was could subscribe but never cancel.
 
 export type BillingActionState = { error: string | null };
 
@@ -173,10 +178,13 @@ export async function startCheckout(
 // The portal takes no input — everything it needs is on the agency row.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function openBillingPortal(_prev: BillingActionState, _formData: FormData): Promise<BillingActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can manage billing." };
+  // Same rule as the Billing page (10 Oct 2026). Licensee only left the agent
+  // on their own plan, and an office founder who is not the licensee, with a
+  // subscription they had started and no way to cancel it or change the card.
+  if (!access.actsAsLicensee && !(await isAccountHolder(supabase))) {
+    return { error: "Only the licensee in charge or the account holder can manage billing." };
   }
 
   const { data: agencyRow } = await supabase

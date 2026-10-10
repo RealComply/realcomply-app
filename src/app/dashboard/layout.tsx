@@ -68,11 +68,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // The sidebar badges. Computed here rather than fetched from the browser so
   // the number is correct in the first paint — a count that appears a second
   // late reads as the page changing its mind.
-  const [counts, pm] = await Promise.all([
+  const [counts, pm, accountHolder] = await Promise.all([
     navCountsFor(supabase, profile),
     // Whether this agency has property management switched on (0052), for
     // the "Property management" entry beside sales.
     pmAgencySettings(supabase, profile.agency_id),
+    // The Billing link for an office founder who is not the licensee: the
+    // Billing page lets them in, so the menu and search show it (10 Oct
+    // 2026). Only asked when it could change anything.
+    access.actsAsLicensee ? Promise.resolve(false) : isAccountHolder(supabase),
   ]);
 
   return (
@@ -86,6 +90,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <StrayDropGuard />
       <Sidebar
         actsAsLicensee={access.actsAsLicensee}
+        isAccountHolder={accountHolder}
         isPlatformAdmin={profile.is_platform_admin === true}
         pmEnabled={pm.enabled}
         counts={counts}
@@ -96,7 +101,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
           sideways just above the md breakpoint instead of scrolling in its
           own box. */}
       <div className="flex min-h-screen min-w-0 flex-col">
-        <UserBar profile={profile} pmEnabled={pm.enabled} actsAsLicensee={access.actsAsLicensee} />
+        <UserBar
+          profile={profile}
+          pmEnabled={pm.enabled}
+          actsAsLicensee={access.actsAsLicensee}
+          isAccountHolder={accountHolder}
+        />
         <ViewerAccessProvider
           value={{ actsAsLicensee: access.actsAsLicensee, officeLicensee: access.officeLicensee }}
         >

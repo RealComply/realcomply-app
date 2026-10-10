@@ -87,11 +87,14 @@ function toggleListings(button: HTMLButtonElement) {
 
 export function Sidebar({
   actsAsLicensee = false,
+  isAccountHolder = false,
   isPlatformAdmin = false,
   pmEnabled = false,
   counts = EMPTY_NAV_COUNTS,
 }: {
   actsAsLicensee?: boolean;
+  /** For the Billing link only (lib/nav.ts). */
+  isAccountHolder?: boolean;
   isPlatformAdmin?: boolean;
   pmEnabled?: boolean;
   counts?: NavCounts;
@@ -138,7 +141,7 @@ export function Sidebar({
           empty. */}
       {NAV_GROUPS.map((g) => ({
         ...g,
-        links: g.links.filter((l) => visibleNavLink(l, { actsAsLicensee, pmEnabled })),
+        links: g.links.filter((l) => visibleNavLink(l, { actsAsLicensee, pmEnabled, isAccountHolder })),
       }))
         .filter((group) => group.links.length > 0)
         .map((group, gi) => (

@@ -45,10 +45,12 @@ export function UserBar({
   profile,
   pmEnabled = false,
   actsAsLicensee = false,
+  isAccountHolder = false,
 }: {
   profile: Profile;
   pmEnabled?: boolean;
   actsAsLicensee?: boolean;
+  isAccountHolder?: boolean;
 }) {
   const name = profile.full_name ?? profile.email;
   const role = roleLabel(profile);
@@ -60,7 +62,7 @@ export function UserBar({
       id="rc-userbar"
       className="rc-app-chrome sticky top-0 z-20 flex items-center gap-3 border-b border-rc-border bg-white/85 py-3 pl-16 pr-4 backdrop-blur-md md:pl-6 md:pr-6">
       <UserBarHeight targetId="rc-userbar" />
-      <GlobalSearch actsAsLicensee={actsAsLicensee} pmEnabled={pmEnabled} />
+      <GlobalSearch actsAsLicensee={actsAsLicensee} pmEnabled={pmEnabled} isAccountHolder={isAccountHolder} />
 
       <Link
         href="/dashboard/new"

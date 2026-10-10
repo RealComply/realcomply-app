@@ -40,7 +40,8 @@ export type NavLink = {
   assistantSees?: boolean;
   /** Billing follows who pays, not the role (Adam, 8 Oct 2026): the agent on
    *  their own plan is the paying customer and gets it; an agent invited into
-   *  an office does not. Shown to whoever acts as the licensee. */
+   *  an office does not. Shown to whoever acts as the licensee, and to the
+   *  account holder, whom the Billing page also lets in (10 Oct 2026). */
   payerOnly?: boolean;
   /** Which nav count, if any, shows as a badge on this row. */
   countKey?: NavCountKey;
@@ -184,10 +185,14 @@ export const NAV_LINKS: NavLink[] = NAV_GROUPS.flatMap((g) => g.links);
  */
 export function visibleNavLink(
   link: NavLink,
-  viewer: { actsAsLicensee: boolean; pmEnabled: boolean },
+  viewer: { actsAsLicensee: boolean; pmEnabled: boolean; isAccountHolder?: boolean },
 ): boolean {
   if (link.pmOnly && !viewer.pmEnabled) return false;
   if (viewer.actsAsLicensee) return true;
-  if (link.payerOnly) return false;
+  // The founder of an office who answered "not the licensee" at sign-up pays
+  // for it, and the Billing page lets them in (actsAsLicensee or account
+  // holder). Hiding the link left them no way back to it after checkout
+  // (10 Oct 2026).
+  if (link.payerOnly) return viewer.isAccountHolder === true;
   return link.assistantSees === true;
 }
