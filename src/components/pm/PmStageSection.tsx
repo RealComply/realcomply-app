@@ -25,10 +25,12 @@ export function PmStageSection({
   locked,
   before,
   startOpen,
+  anchorId,
   children,
 }: {
   stage: number;
-  number: number;
+  /** Shown before the title. Null for a section that is not one of the five stages (the outgoing tenant). */
+  number: number | null;
   title: string;
   cadence: string;
   countLabel: string;
@@ -36,6 +38,8 @@ export function PmStageSection({
   locked: boolean;
   before: boolean;
   startOpen: boolean;
+  /** Overrides the "stage-N" anchor. */
+  anchorId?: string;
   children: ReactNode;
 }) {
   const shut = locked || before;
@@ -52,7 +56,7 @@ export function PmStageSection({
   const isOpen = open && !shut;
 
   return (
-    <section id={`stage-${stage}`} className="mt-4 scroll-mt-48 overflow-hidden rounded-card border border-rc-border bg-white shadow-card">
+    <section id={anchorId ?? `stage-${stage}`} className="mt-4 scroll-mt-48 overflow-hidden rounded-card border border-rc-border bg-white shadow-card">
       <h2>
         <button
           type="button"
@@ -64,7 +68,8 @@ export function PmStageSection({
           } ${shut ? "cursor-not-allowed opacity-50" : "hover:brightness-[0.98]"}`}
         >
           <span>
-            {number}. {title}
+            {number !== null ? `${number}. ` : ""}
+            {title}
           </span>
           <span className="hidden text-xs font-medium text-rc-muted sm:inline">{cadence}</span>
           <span className="ml-auto whitespace-nowrap text-[13px] font-semibold tabular-nums text-rc-ink/80">
