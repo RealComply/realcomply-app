@@ -731,6 +731,8 @@ function ChecklistItem({
     preCommencement?: boolean;
     preCommencementAgreementDate?: string;
     preCommencementRevokedOn?: string;
+    /** Why setItemStatus flagged the card (b6, b1a/c0 dates; the a4 spread). */
+    flagReason?: string;
     aiDraft?: {
       note?: string;
       espLow?: number;
@@ -1422,6 +1424,12 @@ function ChecklistItem({
         </div>
       </form>
       <FieldError error={state.error} />
+      {/* Why it is flagged (10 Oct 2026). The reason was saved (an inspection
+          dated after the agreement, a contract after the launch) but never
+          shown, so the card said "Flagged" and nothing else. */}
+      {status === "flagged" && data.flagReason && (
+        <p className="mt-2 text-sm text-rc-amber-deep">{data.flagReason}</p>
+      )}
     </ItemShell>
   );
 }
