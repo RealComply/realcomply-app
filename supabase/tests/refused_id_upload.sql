@@ -5,6 +5,10 @@
 -- who deletes files (0058). Run after 0060. Safe on the live database:
 -- everything happens inside one transaction that is rolled back at the end.
 --
+-- A file that was on a card and was replaced or taken off it, or that was
+-- moved into a1, is never the uploader's to delete: checks 2a to 2d in
+-- check_fixes.sql (10 Oct 2026).
+--
 -- Pass: the last line says "Refused ID document: all checks passed".
 -- Fail: it stops with an error naming the check that failed.
 

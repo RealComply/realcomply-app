@@ -9,17 +9,29 @@
 --      (someone else's licence), and the refusals already stored with another
 --      person's name are cleared. (Section G1a)
 --   2. The person who uploaded an ID document that RealComply refused can
---      delete it, so the vendor's licence or passport copy isn't kept.
---      (Section G2)
+--      delete it, so the vendor's licence or passport copy isn't kept. Only a
+--      file that was never on a record. (Section G2)
 --   3. Starting checkout records the agency's Stripe customer, so a second
---      attempt doesn't make a second customer. (Section G3)
+--      attempt doesn't make a second customer. A customer recorded on one
+--      agency can't be put on another. (Section G3)
 --   4. Someone who joins after an SG Manual version is published is asked to
 --      sign it; a trust account can say when it opened. (Section G4b)
+--   5. Someone can add their own sign-off row only to a document they may
+--      sign. (Section H4a)
+--   6. my_profile_is_archived(), for the screen a removed person sees.
+--      (Section H4b)
 --
--- Nothing here touches Cass Property's data. The one data change (clearing a
--- stored refusal) matches a single row, on Comply Real Estate.
+-- Nothing here touches Cass Property's data. The only data changes are the
+-- two that clear stored refusals (section G1a), and both leave Cass Property
+-- out, by its id and by its name, so they cannot touch it even if Cass
+-- stores a refusal before this runs (10 Oct 2026). When this was checked they matched a single row,
+-- on Comply Real Estate. Everything else adds or replaces rules, functions
+-- and a column, and changes no rows.
 --
--- Tests: supabase/tests/check_fixes.sql.
+-- Safe to run while the app now live is in use: it only refuses what that
+-- app never does.
+--
+-- Tests: supabase/tests/check_fixes.sql and supabase/tests/refused_id_upload.sql.
 
 begin;
 
@@ -62,6 +74,12 @@ begin;
 --    clears the ones already saved, the same way a typed correction clears
 --    them (recordTypedChanges in lib/licence-read.ts): lastRead goes back to
 --    null and the rest of the read state is untouched.
+--
+--    Cass Property is left out (10 Oct 2026). Cass gets no data changes from
+--    any SQL, and until the new app is live the old one still stores a
+--    refusal whenever someone uploads the wrong licence, at Cass as anywhere.
+--    By the id 0054 protects, which survives a rename, and by name as well,
+--    so a mistake in either one still leaves Cass out.
 
 
 drop policy if exists "compliance-evidence: own refused licence upload can be removed" on storage.objects;
@@ -83,18 +101,23 @@ create policy "compliance-evidence: own refused licence upload can be removed" o
 
 update public.profiles
    set licence_read = jsonb_set(licence_read, '{lastRead}', 'null'::jsonb)
- where licence_read -> 'lastRead' ->> 'status' in ('name_mismatch', 'not_a_licence');
+ where licence_read -> 'lastRead' ->> 'status' in ('name_mismatch', 'not_a_licence')
+   and agency_id is distinct from 'b4763dfb-b33e-43bb-94ca-702a7e989a27'::uuid  -- Cass Property
+   and not exists (select 1 from public.agencies cass
+                    where cass.id = profiles.agency_id and cass.name = 'Cass Property');
 
 update public.agencies
    set corporation_licence_read = jsonb_set(corporation_licence_read, '{lastRead}', 'null'::jsonb)
- where corporation_licence_read -> 'lastRead' ->> 'status' in ('name_mismatch', 'not_a_licence');
+ where corporation_licence_read -> 'lastRead' ->> 'status' in ('name_mismatch', 'not_a_licence')
+   and id <> 'b4763dfb-b33e-43bb-94ca-702a7e989a27'::uuid  -- Cass Property
+   and name is distinct from 'Cass Property';
 
 -- ======================================================================
 -- Section G2
 -- ======================================================================
 -- ===== Pending (G2): the person who uploaded an ID document RealComply refused can delete it, 10 October 2026 =====
 --
--- Run after 0059. Safe to run more than once. Changes nothing else.
+-- Run after 0059. Safe to run more than once. Changes no rows.
 --
 -- Found in the check of 10 Oct. Adam, 20 Aug 2026: "if the AI can detect any
 -- ID documents, then it rejects them". The browser puts the file in storage
@@ -118,13 +141,102 @@ update public.agencies
 --     (rejectIdDocuments in src/lib/rules/nsw-sales.ts; add a card here if
 --     another one gets it),
 --   - they may file to that listing (evidence_path_writable, 0058),
---   - and it is not attached to the card.
+--   - it is not attached to any card of that listing,
+--   - and it never was, and it never arrived by a move (below).
 -- Anything attached, anything older, anyone else's file and every other
 -- folder stay the licensee's to delete, as 0058 has them. The delete is
 -- written to deletion_log like any other (0058, section 12).
 --
+-- NEVER ON A RECORD, NOT JUST "NOT ATTACHED NOW" (10 Oct 2026). The review of
+-- the first version found three ways an agent could use this to delete a
+-- compliance record inside its 15 minutes:
+--   - attach VOI certificate A, then B: A is kept as the replaced record
+--     (finalizeEvidenceRecord's remove of A is refused for them, as it should
+--     be), and was deletable straight after;
+--   - clear the card's evidence_path through the API (the listing's
+--     update rule allows it), then delete what was attached;
+--   - detach the licensee's fresh contract from b1 and move it into a1:
+--     a Storage move renames the file and makes the mover its owner.
+-- So every file that leaves a card (replaced, cleared, or its row deleted)
+-- and every file moved to a new name in the bucket is written down in
+-- evidence_files_once_on_record, and the check refuses anything listed there.
+-- A refused upload is never attached and never moved: uploadEvidence checks
+-- it before anything records it, and deletes it where it landed. The a1
+-- card's data holds no other file references (only the display name,
+-- evidenceFileName, and the AI's draft), so the path is the whole record.
+--
+-- Nobody reads or writes the list but the database itself: row level
+-- security on and no rules, and no grants. It holds paths, which carry file
+-- names, so it goes with the agency (on delete cascade) like the files do,
+-- and is never copied into the 7-year record.
+--
 -- Until this has run, the app says the copy could not be deleted rather than
 -- saying it was.
+
+create table if not exists public.evidence_files_once_on_record (
+  name text primary key,
+  agency_id uuid not null references public.agencies(id) on delete cascade,
+  recorded_at timestamptz not null default now()
+);
+create index if not exists evidence_files_once_on_record_agency_idx
+  on public.evidence_files_once_on_record(agency_id);
+alter table public.evidence_files_once_on_record enable row level security;
+revoke all on table public.evidence_files_once_on_record from public, anon, authenticated;
+
+-- A card's file replaced, cleared, or its row deleted.
+create or replace function public.record_evidence_leaving_card()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.evidence_path is null
+     or (tg_op = 'UPDATE' and new.evidence_path is not distinct from old.evidence_path) then
+    return null;
+  end if;
+  -- The agency's own deletion cascades through here too; by then its row is
+  -- gone and there is nothing to keep.
+  insert into public.evidence_files_once_on_record (name, agency_id)
+  select old.evidence_path, a.id from public.agencies a where a.id = old.agency_id
+  on conflict (name) do nothing;
+  return null;
+end
+$$;
+revoke execute on function public.record_evidence_leaving_card() from public, anon, authenticated;
+drop trigger if exists property_items_record_evidence_leaving on public.property_items;
+create trigger property_items_record_evidence_leaving
+  after update of evidence_path or delete on public.property_items
+  for each row execute function public.record_evidence_leaving_card();
+
+-- A file moved to a new name in the bucket (a Storage move: one update of
+-- the row's name, which keeps its created_at). Whoever did it, since the
+-- Storage service makes the change itself once the person's rules allow it.
+create or replace function public.record_evidence_moved()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_seg text[] := storage.foldername(new.name);
+begin
+  if new.bucket_id is distinct from 'compliance-evidence'
+     or (new.name is not distinct from old.name and new.bucket_id is not distinct from old.bucket_id)
+     or coalesce(v_seg[1], '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    return null;
+  end if;
+  insert into public.evidence_files_once_on_record (name, agency_id)
+  select new.name, a.id from public.agencies a where a.id = v_seg[1]::uuid
+  on conflict (name) do nothing;
+  return null;
+end
+$$;
+revoke execute on function public.record_evidence_moved() from public, anon, authenticated;
+drop trigger if exists compliance_evidence_record_moved on storage.objects;
+create trigger compliance_evidence_record_moved
+  after update of name, bucket_id on storage.objects
+  for each row execute function public.record_evidence_moved();
 
 create or replace function public.evidence_refused_upload_deletable(
   p_name text,
@@ -155,7 +267,9 @@ begin
   end if;
   return not exists (select 1 from public.property_items i
                       where i.property_id = v_seg[2]::uuid
-                        and i.evidence_path = p_name);
+                        and i.evidence_path = p_name)
+     and not exists (select 1 from public.evidence_files_once_on_record r
+                      where r.name = p_name);
 end
 $$;
 revoke execute on function public.evidence_refused_upload_deletable(text, text, timestamptz) from public, anon;
@@ -175,6 +289,10 @@ create policy "compliance-evidence: uploader can delete a refused ID document" o
 -- Safe to run twice: it replaces one function and adds another, and changes
 -- no rows.
 --
+-- Changed after review, 10 Oct 2026: a customer already recorded on another
+-- agency is refused, and an agency's customer can be replaced until it has a
+-- subscription. See below.
+--
 -- THE BUG. Starting checkout creates a Stripe customer and then writes its id
 -- to agencies.stripe_customer_id, so the next attempt reuses it (see
 -- createCustomer in src/lib/actions/billing.ts). That write has been refused
@@ -193,20 +311,29 @@ create policy "compliance-evidence: uploader can delete a refused ID document" o
 --     (acts_as_licensee(), 0058/0059) or the account holder
 --     (is_account_holder(), 0059), the same people the app lets start
 --     checkout;
---   - only while the agency has no customer id yet. If it already has one,
---     nothing changes and that id comes back, so a second person who started
---     at the same moment carries on with the first person's customer;
+--   - only a customer that no other agency has. The id is no secret inside
+--     an agency: every member can read their agency's row, assistants
+--     included. Without this, someone who left an office could put that
+--     office's customer on their own new agent plan and open its billing
+--     page from there: cancel its subscription, change its card, read its
+--     invoices. Refused, whoever asks;
+--   - only until the agency has a subscription. Before that, a new customer
+--     replaces the one recorded (a stale id, say one made in Stripe's test
+--     mode, has to be replaceable or checkout can never start). Once the
+--     webhook has recorded a subscription, nothing changes and the recorded
+--     id comes back. The price: two people who start checkout in the same
+--     moment, before anything is recorded, are no longer put on one
+--     customer; the later one is kept;
 --   - only something shaped like a Stripe customer id.
 -- The billing guard keeps refusing everything else from signed-in users.
 -- It lets this one change through only inside the function: the function
 -- sets a flag for the length of its own statement, and the guard accepts a
--- change to stripe_customer_id alone, from empty, while the flag is set. A
--- signed-in user cannot set that flag themselves (the API runs no SET).
+-- change to stripe_customer_id alone, while there is no subscription, while
+-- the flag is set. A signed-in user cannot set that flag themselves (the API
+-- runs no SET).
 --
--- WHAT IT DOES NOT DO. The app still never shows a customer id to anyone, so
--- someone would have to know another agency's id to put it on their own row,
--- and could do it once at most. The webhook and the master switch are
--- unchanged: the service key and platform admins pass the guard as before.
+-- The webhook and the master switch are unchanged: the service key and
+-- platform admins pass the guard as before.
 --
 -- The guard below is 0054's, word for word, with the one exception added.
 
@@ -228,9 +355,9 @@ begin
   end if;
 
   -- set_agency_stripe_customer() (0060, 10 Oct 2026): the customer id,
-  -- from empty, and nothing else.
+  -- before there is a subscription, and nothing else.
   if current_setting('realcomply.set_stripe_customer', true) = 'on'
-     and old.stripe_customer_id is null
+     and (old.stripe_customer_id is null or old.stripe_subscription_id is null)
      and new.stripe_customer_id is not null
      and new.plan is not distinct from old.plan
      and new.status is not distinct from old.status
@@ -280,6 +407,7 @@ as $$
 declare
   v_agency uuid := public.current_agency_id();
   v_existing text;
+  v_subscription text;
 begin
   if auth.uid() is null or v_agency is null then
     raise exception 'Not signed in.' using errcode = '42501';
@@ -294,13 +422,24 @@ begin
     raise exception 'That is not a Stripe customer id.' using errcode = '22023';
   end if;
 
-  -- Locked, so two people starting checkout at once cannot both write.
-  select stripe_customer_id into v_existing
+  -- Locked, so two people starting checkout at once write one after the other.
+  select stripe_customer_id, stripe_subscription_id into v_existing, v_subscription
     from public.agencies
    where id = v_agency
    for update;
 
-  if v_existing is not null then
+  -- One customer, one agency (10 Oct 2026): see above.
+  if exists (select 1 from public.agencies other
+              where other.stripe_customer_id = p_customer_id and other.id <> v_agency) then
+    raise exception 'That Stripe customer belongs to another agency.' using errcode = '23505';
+  end if;
+
+  -- Once there is a subscription, its customer stays.
+  if v_existing is not null and v_subscription is not null then
+    return v_existing;
+  end if;
+
+  if v_existing is not distinct from p_customer_id then
     return v_existing;
   end if;
 
@@ -422,5 +561,83 @@ alter table public.trust_accounts
 
 comment on column public.trust_accounts.opened_on is
   'The day the account opened, when it opened part way through a year. Months and audit periods that ended before it are not owed (src/lib/trust-account.ts monthBeforeOpening, auditOwed). Null: already open, everything owed.';
+
+-- ======================================================================
+-- Section H4a
+-- ======================================================================
+-- ===== H4a: a sign-off row of your own only on a document you may sign, 10 October 2026 =====
+--
+-- Found in the browser check of 10 Oct, proved on a test database. 0058 let
+-- anyone add a sign-off row with themselves as the signer, on any document
+-- id, signed or not. The row is what lets a person see a document (the
+-- signoff_documents rule, evidence_path_readable), and lets them attach a
+-- signed copy to it. So an agent could add themselves to the licensee's
+-- trust reconciliation and then read it, and the file, though trust
+-- accounts are the licensee's alone (Adam, 7 Oct).
+--
+-- Now a row of your own needs a document in your agency that you may sign:
+-- one for all staff, or one for the licensee only when you act as the
+-- licensee. Everything that adds rows today still works:
+--   - publishing a document: the licensee adds unsigned rows for the people
+--     who have to sign (unchanged);
+--   - signing: signDocument (src/lib/actions/signoffs.ts) upserts the
+--     signer's own row with the signature on it. Postgres checks an upsert's
+--     row against this rule even when the row is already there, so a signed
+--     row of your own has to stay allowed; the guard trigger (0058) still
+--     sets the time and the name;
+--   - someone joining: the definer trigger in section G4b;
+--   - the licensee asking people who are missing a row: unsigned rows, as
+--     when publishing.
+-- No rows are changed. A self-added row that is already there stays; the
+-- licensee can see every row and delete one.
+
+create or replace function public.may_sign_signoff_document(p_document_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.signoff_documents d
+     where d.id = p_document_id
+       and d.agency_id = public.current_agency_id()
+       and (d.signer_scope = 'all_staff'
+            or (d.signer_scope = 'licensee_only' and public.acts_as_licensee())));
+$$;
+revoke execute on function public.may_sign_signoff_document(uuid) from public, anon;
+grant execute on function public.may_sign_signoff_document(uuid) to authenticated;
+
+drop policy if exists "signoff_signatures: licensee lists signers, signer signs own" on public.signoff_signatures;
+create policy "signoff_signatures: licensee lists signers, signer signs own" on public.signoff_signatures
+  for insert with check (
+    agency_id = public.current_agency_id()
+    and ((public.acts_as_licensee() and signed_at is null)
+         or (signer_id = auth.uid() and public.may_sign_signoff_document(document_id))));
+
+-- ======================================================================
+-- Section H4b
+-- ======================================================================
+-- ===== H4b: is my profile archived?, 10 October 2026 =====
+--
+-- For the screen someone sees after the licensee has removed them from the
+-- agency. Since 0058 a removed person can read nothing, their own profile
+-- included (current_agency_id() is null for them), so the app could not tell
+-- "removed" from "never finished signing up" and sent them to set up a new
+-- agency. This answers only that one question, only about the person asking.
+
+create or replace function public.my_profile_is_archived()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.profiles me
+     where me.id = auth.uid() and me.archived_at is not null);
+$$;
+revoke execute on function public.my_profile_is_archived() from public, anon;
+grant execute on function public.my_profile_is_archived() to authenticated;
 
 commit;
