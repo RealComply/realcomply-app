@@ -579,7 +579,10 @@ export async function setItemStatus(
     if (espLow && espHigh && espLow > 0) {
       const spreadPct = ((espHigh - espLow) / espLow) * 100;
       data.spreadPct = Math.round(spreadPct * 10) / 10;
-      if (spreadPct > 10) {
+      // Only on Mark done, like the b6 and c0 checks above (10 Oct 2026).
+      // Reopen sends the figures too, so a flagged a4 went straight back to
+      // Flagged and could not be reopened while the range was over 10%.
+      if (spreadPct > 10 && status === "done") {
         const { error } = await upsertItem(supabase, {
           agencyId: profile.agency_id,
           propertyId,
