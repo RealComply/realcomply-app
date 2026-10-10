@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { agencyPeople } from "@/lib/data/people";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
-import type { Profile, SignoffDocument, SignoffSignature } from "@/lib/types";
+import type { SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // Document sign-offs — the generic register for "upload a document, the
 // right people sign it in RealComply" (Adam, 9 Aug 2026). Currently feeds
@@ -12,18 +13,17 @@ import type { Profile, SignoffDocument, SignoffSignature } from "@/lib/types";
 // on Registers → Trust account since 25 Aug 2026, licensee signs). Both show
 // up in the list below. See signoffs.ts and 0009_document_signoffs.sql.
 export default async function DocumentSignoffsPage() {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
-  const [{ data: docRows }, { data: sigRows }, { data: staffRows }] = await Promise.all([
+  const [{ data: docRows }, { data: sigRows }, staff] = await Promise.all([
     supabase.from("signoff_documents").select("*").order("created_at", { ascending: false }),
     supabase.from("signoff_signatures").select("*"),
-    supabase.from("profiles").select("*"),
+    agencyPeople(supabase),
   ]);
 
   const documents = (docRows ?? []) as SignoffDocument[];
   const signatures = (sigRows ?? []) as SignoffSignature[];
-  const staff = (staffRows ?? []) as Profile[];
 
   const signedUrls = await Promise.all(
     // The signed copy where there is one — the document plus its signature
@@ -65,7 +65,7 @@ export default async function DocumentSignoffsPage() {
             second way in would keep producing undated rows that the calendar
             there cannot place. Signed reconciliations still appear in the list
             below like any other document. */}
-        {(profile.is_licensee_in_charge || profile.is_assistant) && (
+        {profile.is_licensee_in_charge && (
           <div className="mt-6 rounded-card border border-rc-border bg-rc-bg-alt px-4 py-3 text-sm text-rc-muted">
             Trust account reconciliations are now uploaded and signed on the{" "}
             <Link
@@ -79,7 +79,12 @@ export default async function DocumentSignoffsPage() {
         )}
 
         <div className="mt-8 space-y-4">
-          {documents.length === 0 && (
+          {/* An agent or assistant sees only the documents they sign (0058),
+              so "nothing here yet" would wrongly say the office has none. */}
+          {documents.length === 0 && !access.actsAsLicensee && (
+            <p className="text-sm text-rc-muted">Nothing waiting on your signature.</p>
+          )}
+          {documents.length === 0 && access.actsAsLicensee && (
             <p className="text-sm text-rc-muted">
               Nothing here yet. Publishing a new{" "}
               <Link href="/dashboard/sg-manual" className="text-rc-green-deep hover:underline">
@@ -95,6 +100,7 @@ export default async function DocumentSignoffsPage() {
               signatures={signatures.filter((s) => s.document_id === doc.id)}
               profiles={staff}
               currentProfile={profile}
+              ownOnly={!access.actsAsLicensee}
               fileUrl={signedUrls[i]?.data?.signedUrl ?? null}
             />
           ))}

@@ -6,6 +6,13 @@ import { formatAuDate } from "@/lib/format-date";
 import { FounderInvites, type FounderInvite } from "@/components/admin/FounderInvites";
 import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyAccessQueue";
 import { storageBackupConfigured, countEvidenceObjects } from "@/lib/backup/storage-backup";
+import {
+  DeleteNowForm,
+  DryRunButton,
+  LegalHoldForm,
+  SendOwedEmailsButton,
+} from "@/components/admin/EndedSubscriptionControls";
+import { deletionDate, longDate, sydneyDate } from "@/lib/subscription-end/dates";
 
 // Who is on RealComply — the only screen that looks across every agency.
 //
@@ -35,6 +42,10 @@ import { storageBackupConfigured, countEvidenceObjects } from "@/lib/backup/stor
 // that CHANGES another agency — comping, suspending, deleting — is a different
 // kind of screen with a different standard of care, and there is exactly one
 // agency today that anybody would want to change.
+//
+// ONE EXCEPTION, 8 Oct 2026: the legal hold switch under "Ended
+// subscriptions". It can only ever STOP a deletion, never cause one, and Data
+// Retention Policy section 6 needs a place to record it.
 
 export const dynamic = "force-dynamic";
 
@@ -120,7 +131,47 @@ export default async function AdminPage() {
         .order("created_at", { ascending: false }),
     ]);
 
+  const [{ data: endedRows }, { data: runRows }, { data: certRows }] = await Promise.all([
+    supabase
+      .from("agencies")
+      .select("id, name, ended_at, ended_notice_sent_at, ended_reminder_sent_at, legal_hold, legal_hold_reason")
+      .not("ended_at", "is", null)
+      .order("ended_at", { ascending: true }),
+    supabase
+      .from("deletion_runs")
+      .select("id, agency_ref, dry_run, status, step, reason, counts, certificate_number, started_at")
+      .order("started_at", { ascending: false })
+      .limit(30),
+    supabase.from("deletion_certificates").select("agency_ref, subscriber_name"),
+  ]);
+  const ended = (endedRows ?? []) as Array<{
+    id: string;
+    name: string;
+    ended_at: string;
+    ended_notice_sent_at: string | null;
+    ended_reminder_sent_at: string | null;
+    legal_hold: boolean;
+    legal_hold_reason: string | null;
+  }>;
+  const runs = (runRows ?? []) as Array<{
+    id: number;
+    agency_ref: string;
+    dry_run: boolean;
+    status: string;
+    step: string | null;
+    reason: string | null;
+    counts: Record<string, number> | null;
+    certificate_number: string | null;
+    started_at: string;
+  }>;
+
   const agencies = (agencyRows ?? []) as AgencyRow[];
+  // A deleted agency is named from its certificate; its row is gone.
+  const nameFor = (ref: string) =>
+    agencies.find((a) => a.id === ref)?.name ??
+    ((certRows ?? []) as Array<{ agency_ref: string; subscriber_name: string }>).find((c) => c.agency_ref === ref)
+      ?.subscriber_name ??
+    ref.slice(0, 8);
   const profiles = (profileRows ?? []) as ProfileRow[];
   const invites = (inviteRows ?? []) as InviteRow[];
   const properties = (propertyRows ?? []) as Array<{ id: string; agency_id: string; created_at: string }>;
@@ -339,6 +390,62 @@ export default async function AdminPage() {
           );
         })}
       </div>
+
+      {/* ENDED SUBSCRIPTIONS (8 Oct 2026). Every agency in its 14-day records
+          window, the legal hold switch (Data Retention Policy section 6), and
+          the deletion log, so a deletion can be seen to have happened. The
+          one place on this page that changes another agency: the hold only
+          ever stops a deletion, it never causes one. */}
+      <h2 className="mt-9 text-sm font-bold text-rc-ink">Ended subscriptions</h2>
+      <p className="mt-1 text-xs text-rc-muted">
+        Records are deleted on the date shown, in the daily run. An agency on legal hold is skipped until the hold is
+        lifted. Cass Property, Comply Real Estate, comped agencies and your own are never picked up.
+      </p>
+      <div className="mt-3 space-y-3">
+        {ended.length === 0 && <p className="text-xs text-rc-muted">None right now.</p>}
+        {ended.map((a) => (
+          <section key={a.id} className="rounded-card border border-rc-border bg-white p-4 shadow-card">
+            <p className="text-sm font-bold text-rc-ink">{a.name}</p>
+            <p className="mt-0.5 text-xs text-rc-muted">
+              Ended {longDate(sydneyDate(new Date(a.ended_at)))} · deleted on {longDate(deletionDate(new Date(a.ended_at)))}
+              {" · "}day 0 email {a.ended_notice_sent_at ? "sent" : "not sent"} · day 7 email{" "}
+              {a.ended_reminder_sent_at ? "sent" : "not sent"}
+            </p>
+            <LegalHoldForm agencyId={a.id} held={a.legal_hold} reason={a.legal_hold_reason} />
+            {/* Testing on a throwaway agency. Never rendered on the live site,
+                and the action refuses there too. */}
+            {process.env.VERCEL_ENV !== "production" && <DeleteNowForm agencyId={a.id} name={a.name} />}
+          </section>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-3">
+        <DryRunButton />
+        <SendOwedEmailsButton />
+      </div>
+      <h3 className="mt-5 text-xs font-bold uppercase tracking-wide text-rc-faint">Deletion log</h3>
+      <ul className="mt-2 divide-y divide-rc-border rounded-card border border-rc-border bg-white text-xs shadow-card">
+        {runs.length === 0 && <li className="p-3 text-rc-muted">No runs yet.</li>}
+        {runs.map((r) => (
+          <li key={r.id} className="p-3">
+            <span className="font-semibold text-rc-ink">
+              {r.dry_run ? "Dry run" : "Deletion"}: {r.status}
+              {r.step && r.status === "started" ? ` (waiting at ${r.step})` : ""}
+            </span>{" "}
+            <span className="text-rc-muted">
+              {nameFor(r.agency_ref)} · {new Date(r.started_at).toLocaleString("en-AU", { timeZone: "Australia/Sydney" })}
+              {r.certificate_number ? ` · certificate ${r.certificate_number}` : ""}
+            </span>
+            {r.reason && <p className="mt-0.5 text-rc-amber-deep">{r.reason}</p>}
+            {r.counts && (
+              <p className="mt-0.5 text-rc-muted">
+                {Object.entries(r.counts)
+                  .map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`)
+                  .join(" · ")}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
 
       {/* EARLY ACCESS. Above founder invites deliberately: this is the queue
           with work in it, and the invites below are mostly its output. Adam,

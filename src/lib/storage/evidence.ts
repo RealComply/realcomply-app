@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fileForUpload } from "@/lib/documents/heic-in-the-browser";
 
+// REVERSAL 2 Oct 2026 (Adam): source documents are kept for the life of the subscription. Do NOT purge at settlement. They are deleted with everything else 14 days after the subscription ends.
 export const EVIDENCE_BUCKET = "compliance-evidence";
 // The cap on anything uploaded as evidence.
 //

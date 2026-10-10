@@ -38,6 +38,10 @@ export type NavLink = {
    *  queue, the SG manual, the staff roster — and an assistant is attached to
    *  particular agents, not to the office (Adam, 20 Aug 2026). */
   assistantSees?: boolean;
+  /** Billing follows who pays, not the role (Adam, 8 Oct 2026): the agent on
+   *  their own plan is the paying customer and gets it; an agent invited into
+   *  an office does not. Shown to whoever acts as the licensee. */
+  payerOnly?: boolean;
   /** Which nav count, if any, shows as a badge on this row. */
   countKey?: NavCountKey;
   /** Extra search terms. Never rendered. */
@@ -89,6 +93,9 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/registers",
         label: "Registers",
         Icon: FileText,
+        // Agents and assistants keep Registers for the gifts and breaches
+        // they log themselves (Adam, 9 Oct 2026); the rest is the licensee's.
+        assistantSees: true,
         countKey: "registers",
         keywords: ["gifts", "benefits", "complaints", "breaches", "insurance", "licence", "license", "trust"],
       },
@@ -128,6 +135,8 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/document-signoffs",
         label: "Sign-offs",
         Icon: PenLine,
+        // Only those waiting on them, for anyone but the licensee.
+        assistantSees: true,
         countKey: "signoffs",
         keywords: ["signatures", "reconciliation", "trust account"],
       },
@@ -140,6 +149,8 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/sg-manual",
         label: "SG Manual",
         Icon: BookOpen,
+        // Read only for anyone but the licensee.
+        assistantSees: true,
         keywords: ["supervision guidelines", "policies", "manual"],
       },
       { href: "/dashboard/team", label: "Team", Icon: Users, keywords: ["staff", "agents", "invite"] },
@@ -151,6 +162,7 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/billing",
         label: "Billing",
         Icon: CreditCard,
+        payerOnly: true,
         keywords: ["subscription", "plan", "invoice", "invoices", "payment", "card", "price", "pricing", "cancel", "upgrade"],
       },
     ],
@@ -160,9 +172,22 @@ export const NAV_GROUPS: NavGroup[] = [
 /** Flat list, for search. */
 export const NAV_LINKS: NavLink[] = NAV_GROUPS.flatMap((g) => g.links);
 
-/** The links this viewer gets: assistants see a subset, and PM only where it is on. */
-export function visibleNavLink(link: NavLink, viewer: { isAssistant: boolean; pmEnabled: boolean }): boolean {
-  if (viewer.isAssistant && !link.assistantSees) return false;
+/**
+ * The links this viewer gets.
+ *
+ * REVERSAL (Adam, 7 Oct 2026). Was: only an assistant had a reduced menu, and
+ * an agent saw the whole office's pages. Now an agent and an assistant get
+ * the same menu (the links marked assistantSees), and Office overview, Trust
+ * accounts and Team are the licensee's. Each of those pages also refuses a
+ * typed address (requireLicenseePage), and the database rules (0058) are what
+ * actually keep the records out of reach.
+ */
+export function visibleNavLink(
+  link: NavLink,
+  viewer: { actsAsLicensee: boolean; pmEnabled: boolean },
+): boolean {
   if (link.pmOnly && !viewer.pmEnabled) return false;
-  return true;
+  if (viewer.actsAsLicensee) return true;
+  if (link.payerOnly) return false;
+  return link.assistantSees === true;
 }

@@ -29,9 +29,9 @@ begin
     (a_user, 'pm-test-a@example.invalid'),
     (b_user, 'pm-test-b@example.invalid'),
     (gone_user, 'pm-test-gone@example.invalid');
-  insert into public.agencies (id, name) values
-    (a_agency, 'PM isolation test A'),
-    (b_agency, 'PM isolation test B');
+  insert into public.agencies (id, name, status) values
+    (a_agency, 'PM isolation test A', 'active'),
+    (b_agency, 'PM isolation test B', 'active');
   insert into public.profiles (id, agency_id, full_name, email) values
     (a_user, a_agency, 'Test A', 'pm-test-a@example.invalid'),
     (b_user, b_agency, 'Test B', 'pm-test-b@example.invalid'),

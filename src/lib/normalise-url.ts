@@ -60,7 +60,7 @@ export function normaliseWebsiteUrl(raw: string | null | undefined): NormalisedU
   }
 
   // A hostname with no dot is either localhost or a typo. Neither is an
-  // agency website, and accepting it would send the weekly scan nowhere.
+  // agency website, and accepting it would send the daily scan nowhere.
   if (!parsed.hostname.includes(".")) {
     return { ok: false, error: "That doesn't look like a website address. Something like cassproperty.com.au is fine." };
   }

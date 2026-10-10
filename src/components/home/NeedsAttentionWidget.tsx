@@ -10,15 +10,33 @@ export type NeedsAttentionItem = {
   badges: string[];
 };
 
-export function NeedsAttentionWidget({ items }: { items: NeedsAttentionItem[] }) {
+// The licensee's version links to the Office overview. An agent's version
+// (Adam, 7 Oct 2026: an agent's Home is their own work) links to Listings,
+// which the agent can open, and its count is their own to-dos.
+export function NeedsAttentionWidget({
+  items,
+  scope = "office",
+}: {
+  items: NeedsAttentionItem[];
+  scope?: "office" | "own";
+}) {
+  const own = scope === "own";
   return (
     <WidgetCard
       icon={ClipboardList}
       title="Needs your attention"
-      href="/dashboard/portfolio"
-      hrefLabel="Office overview →"
+      href={own ? "/dashboard" : "/dashboard/portfolio"}
+      hrefLabel={own ? "Listings →" : "Office overview →"}
       metric={items.length}
-      caption={items.length === 0 ? "Nothing pending across the portfolio" : "files awaiting sign-off or with open flags"}
+      caption={
+        items.length === 0
+          ? own
+            ? "No listings need anything right now"
+            : "Nothing pending across the portfolio"
+          : own
+            ? "listings with something to do"
+            : "files awaiting sign-off or with open flags"
+      }
       tone={items.length > 0 ? "warn" : "ok"}
       className="sm:col-span-2"
     >
@@ -42,7 +60,9 @@ export function NeedsAttentionWidget({ items }: { items: NeedsAttentionItem[] })
             </li>
           ))}
           {items.length > 5 && (
-            <li className="px-3 py-2 text-xs text-neutral-400">+{items.length - 5} more on the Office overview page →</li>
+            <li className="px-3 py-2 text-xs text-neutral-400">
+              +{items.length - 5} more on the {own ? "Listings" : "Office overview"} page →
+            </li>
           )}
         </ul>
       )}

@@ -1,5 +1,6 @@
 "use server";
 
+import { createServiceClient } from "@/lib/supabase/service";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuthContext } from "@/lib/actions/compliance";
@@ -21,13 +22,29 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com
 // given, per the audit-trail principle in the website IA doc.
 const RULESET_VERSION = "NSW Sales Ruleset 2026.2";
 
+// No token in the result (Adam, 9 Oct 2026): the link goes only to the
+// licensee, by email, so nobody else can open it and sign in their name.
 export type IssueResult = {
   error: string | null;
-  token?: string;
   sentTo?: string;
-  /** Whether the email actually went. False means the link exists, uncopied and undelivered. */
+  /** Whether the email actually went. False means the link exists and was not delivered; send again. */
   emailed?: boolean;
 };
+
+/**
+ * The link's token, read with the server's own access. Signed-in people
+ * cannot read it (0058). Only called after the caller's own read of the
+ * request has succeeded, so the database rules have already decided they
+ * may act on this listing.
+ */
+async function tokenFor(requestId: string): Promise<string | null> {
+  const { data } = await createServiceClient()
+    .from("property_signoff_requests")
+    .select("token")
+    .eq("id", requestId)
+    .maybeSingle();
+  return (data as { token?: string } | null)?.token ?? null;
+}
 
 /**
  * Sends the link, and records honestly whether it went.
@@ -40,7 +57,6 @@ async function deliverSignoffEmail(
   supabase: Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
   args: {
     requestId: string;
-    token: string;
     sentTo: string;
     agentName: string;
     agentEmail: string | null;
@@ -53,11 +69,13 @@ async function deliverSignoffEmail(
     priorAttempts: number;
   },
 ): Promise<boolean> {
+  const token = await tokenFor(args.requestId);
+  if (!token) return false;
   const { subject, text, html } = buildSignoffRequestEmail({
     agentName: args.agentName,
     agencyName: args.agencyName,
     propertyAddress: args.propertyAddress,
-    url: `${SITE_URL}/signoff/${args.token}`,
+    url: `${SITE_URL}/signoff/${token}`,
     expiresAt: formatAuDate(args.expiresAt.slice(0, 10)),
     agreementDate: args.agreementDate ? formatAuDate(args.agreementDate.slice(0, 10)) : null,
     espLow: args.espLow,
@@ -82,7 +100,7 @@ async function deliverSignoffEmail(
       email_sent_at: ok ? new Date().toISOString() : null,
       email_error: ok
         ? null
-        : "The email could not be sent. The link is still valid — copy it and send it yourself.",
+        : "The email could not be sent. Try sending it again.",
     })
     .eq("id", args.requestId);
 
@@ -108,10 +126,11 @@ async function deliverSignoffEmail(
  * against whether the reason still holds. This one outlived its cause by
  * three weeks purely because the note was confidently written.
  *
- * The copy path stays, as a second option rather than the only one. Some
- * agents will want to send it themselves with their own note, and a link that
- * arrives from a person the licensee knows is likelier to be opened than one
- * from software they have never heard of.
+ * REVERSAL (Adam, 9 Oct 2026). The copy path was kept as a second option
+ * ("some agents will want to send it themselves"). It is gone: an agent
+ * holding the link could open it and sign as the licensee. The link now goes
+ * only by email to the agency's licensee email, which only the licensee can
+ * change (0058).
  */
 export async function issueSignoffLink(propertyId: string): Promise<IssueResult> {
   const { supabase, profile } = await requireAuthContext();
@@ -129,7 +148,6 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
   if (outstanding) {
     return {
       error: null,
-      token: outstanding.token,
       sentTo: outstanding.sentTo,
       emailed: outstanding.emailSentAt !== null,
     };
@@ -197,18 +215,17 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
       ruleset_version: RULESET_VERSION,
       created_by: profile.id,
     })
-    .select("id, token, expires_at")
+    .select("id, expires_at")
     .single();
 
   if (error || !inserted) {
     return { error: "Couldn't create the sign-off link. Try again." };
   }
 
-  const row = inserted as { id: string; token: string; expires_at: string };
+  const row = inserted as { id: string; expires_at: string };
 
   const emailed = await deliverSignoffEmail(supabase, {
     requestId: row.id,
-    token: row.token,
     sentTo: licenseeEmail,
     agentName: (profile as { full_name?: string | null }).full_name || "Your agent",
     agentEmail: (profile as { email?: string | null }).email ?? null,
@@ -222,7 +239,7 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
   });
 
   revalidatePath(`/dashboard/${propertyId}`);
-  return { error: null, token: row.token, sentTo: licenseeEmail, emailed };
+  return { error: null, sentTo: licenseeEmail, emailed };
 }
 
 /**
@@ -267,7 +284,6 @@ export async function resendSignoffLink(propertyId: string): Promise<IssueResult
 
   const emailed = await deliverSignoffEmail(supabase, {
     requestId: outstanding.id,
-    token: outstanding.token,
     sentTo: outstanding.sentTo,
     agentName: (profile as { full_name?: string | null }).full_name || "Your agent",
     agentEmail: (profile as { email?: string | null }).email ?? null,
@@ -282,8 +298,7 @@ export async function resendSignoffLink(propertyId: string): Promise<IssueResult
 
   revalidatePath(`/dashboard/${propertyId}`);
   return {
-    error: emailed ? null : "Couldn't send that email. The link is still valid — copy it and send it yourself.",
-    token: outstanding.token,
+    error: emailed ? null : "Couldn't send that email. Try again in a moment.",
     sentTo: outstanding.sentTo,
     emailed,
   };

@@ -99,7 +99,11 @@ export async function addListing(
  * listing doesn't belong (Adam, 29 Sep 2026) — there is no "not comparable".
  */
 export async function removeListing(propertyId: string, listingId: string): Promise<ListingActionState> {
-  const { supabase } = await requireAuthContext();
+  const { supabase, access } = await requireAuthContext();
+  // Only the licensee deletes compliance records, and the delete is logged
+  // (REVERSAL, Adam, 9 Oct 2026; was any member). The database refuses it
+  // too (0058); this gives a plain message instead of a silent no-op.
+  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can remove a listing." };
 
   const { error } = await supabase
     .from("property_market_listings")

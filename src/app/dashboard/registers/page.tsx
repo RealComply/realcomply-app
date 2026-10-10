@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { RegistersTabs } from "@/components/registers/RegistersTabs";
 import { LicencePanel } from "@/components/registers/LicencePanel";
 import { InsurancePanel } from "@/components/registers/InsurancePanel";
@@ -31,9 +31,15 @@ export default async function RegistersPage({
 }: {
   searchParams: Promise<{ tab?: string; add?: string }>;
 }) {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   const { tab, add } = await searchParams;
+  // REVERSAL (Adam, 7 and 9 Oct 2026). Was: every member saw every register.
+  // Now an agent or assistant sees the gifts and breaches they logged
+  // themselves, and nothing else here; complaints are the licensee in
+  // charge's only, even for an agent on their own plan. The database rules
+  // (0058) return only those rows; this decides which tabs show.
+  const licenseeView = access.actsAsLicensee;
   const defaultTab = (tab && TAB_KEYS.has(tab) ? tab : "licence") as
     | "licence" | "insurance" | "gifts" | "complaints" | "breaches";
 
@@ -62,7 +68,9 @@ export default async function RegistersPage({
     supabase.from("licence_reminders").select("*").order("sent_at", { ascending: false }),
   ]);
 
-  const staff = (staffRows ?? []) as Profile[];
+  // An agent logs a gift or breach against themselves, so their pickers show
+  // only them.
+  const staff = licenseeView ? ((staffRows ?? []) as Profile[]) : [profile];
   const agency = agencyRow as Agency | null;
   const gifts = (giftRows ?? []) as Gift[];
   const complaints = (complaintRows ?? []) as Complaint[];
@@ -149,13 +157,17 @@ export default async function RegistersPage({
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Registers</h1>
             <p className="mt-1 text-sm text-rc-muted">
-              Agency-level records the licensee must keep — {cpdYear.label} CPD year.
+              {licenseeView
+                ? `Agency-level records the licensee must keep — ${cpdYear.label} CPD year.`
+                : "The gifts and breaches you have logged. The licensee sees the whole register."}
             </p>
           </div>
           <div className="flex gap-4 text-sm font-medium">
-            <Link href="/dashboard/registers/export" className="text-rc-muted transition hover:text-rc-green-deep">
-              Export register
-            </Link>
+            {licenseeView && (
+              <Link href="/dashboard/registers/export" className="text-rc-muted transition hover:text-rc-green-deep">
+                Export register
+              </Link>
+            )}
             <Link href="/dashboard/training" className="text-rc-muted transition hover:text-rc-green-deep">
               Training log →
             </Link>
@@ -175,7 +187,7 @@ export default async function RegistersPage({
               breachesBadge={breachesBadge}
               defaultTab={defaultTab}
               licence={
-                <LicencePanel
+                !licenseeView ? null : <LicencePanel
                   staff={staff}
                   cpdByProfile={cpdByProfile}
                   viewerProfile={profile}
@@ -185,7 +197,7 @@ export default async function RegistersPage({
                   corporationReminderInfo={corporationReminderInfo}
                 />
               }
-              insurance={<InsurancePanel agency={agency} viewerProfile={profile} />}
+              insurance={licenseeView ? <InsurancePanel agency={agency} viewerProfile={profile} /> : null}
               gifts={
                 <GiftsPanel
                   gifts={gifts}
@@ -196,7 +208,7 @@ export default async function RegistersPage({
                 />
               }
               complaints={
-                <ComplaintsPanel
+                !access.officeLicensee ? null : <ComplaintsPanel
                   complaints={complaints}
                   staff={staff}
                   properties={properties}

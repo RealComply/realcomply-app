@@ -134,8 +134,9 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
       {founderOk && <input type="hidden" name="founderToken" value={founderToken ?? ""} />}
       {founderOk && (
         <p className="rounded-2xl border border-rc-green-deep/30 bg-rc-green-soft px-3 py-2 text-sm text-rc-green-deep">
-          You&rsquo;ve been invited to set up your own agency on RealComply. It&rsquo;s a{" "}
-          <span className="font-semibold">free account</span> — no card needed.
+          You&rsquo;ve been invited to set up your own agency on RealComply. It starts with a{" "}
+          <span className="font-semibold">14-day free trial</span>. You&rsquo;ll enter card details on Stripe&rsquo;s
+          page to start it, and nothing is charged until the trial ends.
         </p>
       )}
       {invite && (
@@ -333,7 +334,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
         <span>
           I&rsquo;ve read and accept the{" "}
           <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-rc-green-deep hover:underline">
-            Terms of Service
+            Terms and Conditions
           </a>{" "}
           and{" "}
           <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-rc-green-deep hover:underline">

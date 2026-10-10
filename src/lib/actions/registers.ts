@@ -219,13 +219,18 @@ export async function setCpdYearComplete(
   cpdYearStart: string,
   complete: boolean,
 ): Promise<{ error: string | null }> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   if (profile.id !== profileId && !profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can confirm this for someone else." };
   }
 
   if (!complete) {
+    // Un-ticking a year removes its sign-off record, and only the licensee
+    // deletes compliance records (Adam, 9 Oct 2026).
+    if (!access.actsAsLicensee) {
+      return { error: "Only the licensee in charge can reopen a confirmed CPD year." };
+    }
     await supabase
       .from("cpd_year_signoffs")
       .delete()
@@ -289,7 +294,7 @@ export async function removeCpdEvidence(recordId: string): Promise<void> {
 }
 
 export async function deleteCpdRecord(recordId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, access } = await requireAuthContext();
 
   const { data: record } = await supabase
     .from("cpd_records")
@@ -298,18 +303,20 @@ export async function deleteCpdRecord(recordId: string): Promise<void> {
     .maybeSingle();
 
   if (!record) return;
-  const owned = (record as { profile_id: string }).profile_id === profile.id;
-  if (!owned && !profile.is_licensee_in_charge) return;
+  // REVERSAL (Adam, 9 Oct 2026): was the owner or the licensee; now only the
+  // licensee deletes a compliance record, and the delete is logged (0058).
+  if (!access.actsAsLicensee) return;
 
   await supabase.from("cpd_records").delete().eq("id", recordId);
   revalidatePath("/dashboard/registers");
 }
 
 // ── Training sessions — the office training log (s32: outcome-based, no
-// prescribed cadence; the agency sets and evidences its own). Any agency
-// member can log one, same trust model as the rest of this app. ───────────
+// prescribed cadence; the agency sets and evidences its own). The licensee
+// runs the office's training log (Adam, 7 Oct 2026; was any member). ───────
 export async function addTrainingSession(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can add to the training log." };
 
   const title = str(formData, "title");
   const sessionDate = str(formData, "sessionDate");
@@ -374,7 +381,10 @@ export async function deleteTrainingSession(sessionId: string): Promise<void> {
 // re-saving attendance is safe to run any number of times, never doubling up
 // hours. Only fires the CPD write for sessions actually marked CPD-eligible.
 export async function recordAttendance(sessionId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
+  // Rewriting attendance replaces other people's session CPD records, so it
+  // is the licensee's alone (Adam, 7 and 9 Oct 2026; was any member).
+  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can record attendance." };
 
   const { data: sessionRow } = await supabase
     .from("training_sessions")
@@ -443,7 +453,7 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
 // Anything over the agency's threshold is auto-flagged for licensee review,
 // same "flag, don't silently pass" principle as the rest of the app. ──────
 export async function addGift(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   const { data: agencyRow } = await supabase
     .from("agencies")
@@ -464,6 +474,10 @@ export async function addGift(_prev: ActionState, formData: FormData): Promise<A
   const agentId = str(formData, "profileId") ?? profile.id;
   const notes = str(formData, "notes");
 
+  // An agent logs their own gifts; the licensee can log one for anyone.
+  if (agentId !== profile.id && !access.actsAsLicensee) {
+    return { error: "You can log your own gifts. Ask the licensee to log one for someone else." };
+  }
   if (!giftDate) return { error: "Enter the date." };
   if (!description) return { error: "Describe the gift or benefit." };
   const value = valueRaw ? Number(valueRaw) : null;
@@ -523,7 +537,10 @@ export async function updateGiftThreshold(_prev: ActionState, formData: FormData
 // ── Complaints register — tracked to resolution, optionally cross-linked to
 // a property file. ─────────────────────────────────────────────────────────
 export async function addComplaint(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
+  // REVERSAL (Adam, 9 Oct 2026): complaints are the licensee in charge's
+  // only, for everyone. "Complaints should go directly to a licensee."
+  if (!access.officeLicensee) return { error: "Complaints go to the licensee in charge." };
 
   const receivedDate = str(formData, "receivedDate");
   const complainant = str(formData, "complainant");
@@ -557,7 +574,8 @@ export async function updateComplaintStatus(
   complaintId: string,
   status: "open" | "under_review" | "resolved",
 ): Promise<void> {
-  const { supabase } = await requireAuthContext();
+  const { supabase, access } = await requireAuthContext();
+  if (!access.officeLicensee) return;
   await supabase
     .from("complaints")
     .update({
@@ -569,8 +587,8 @@ export async function updateComplaintStatus(
 }
 
 export async function deleteComplaint(complaintId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, access } = await requireAuthContext();
+  if (!access.officeLicensee) return;
   await supabase.from("complaints").delete().eq("id", complaintId);
   revalidatePath("/dashboard/registers");
 }
@@ -627,7 +645,7 @@ export async function addSgManualVersion(
 // supabase/migrations/0012_breach_register.sql for the s89 notification
 // clock behind `notifiable` / `notified_date`.
 export async function addBreach(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   const identifiedDate = str(formData, "identifiedDate");
   const description = str(formData, "description");
@@ -640,6 +658,11 @@ export async function addBreach(_prev: ActionState, formData: FormData): Promise
 
   if (!identifiedDate) return { error: "Enter the date this was identified." };
   if (!description) return { error: "Describe what happened." };
+  // Anyone can log their own breach and sees only those they logged (Adam,
+  // 9 Oct 2026); only the licensee records one against someone else.
+  if (agentId && agentId !== profile.id && !access.actsAsLicensee) {
+    return { error: "You can log your own breaches. The licensee records one against someone else." };
+  }
 
   const { error } = await supabase.from("breaches").insert({
     agency_id: profile.agency_id,

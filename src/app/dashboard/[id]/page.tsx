@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { agencyPeople } from "@/lib/data/people";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { EditPropertyDetails } from "@/components/property/EditPropertyDetails";
@@ -64,7 +65,7 @@ export default async function PropertyPage({
 
   const p = property as Property;
 
-  const [{ data: propertyItemRows }, { data: agencyRow }, { data: peopleRows }, signoffLinks, comparables, marketListings] = await Promise.all([
+  const [{ data: propertyItemRows }, { data: agencyRow }, peopleRows, signoffLinks, comparables, marketListings] = await Promise.all([
     supabase.from("property_items").select("*").eq("property_id", id),
     // One lookup for the page, passed down to every card, rather than each
     // card asking. Only amv ever uses it.
@@ -78,7 +79,9 @@ export default async function PropertyPage({
     // assistants out of the list. An assistant prepares files for an agent and
     // cannot sign one, so a listing sitting on their name could never be
     // completed by anybody.
-    supabase.from("profiles").select("id, full_name, email, is_assistant"),
+    // Names only (agency_people, 0058): since 7 Oct an agent cannot read a
+    // colleague's profile, but the card still has to say who handed a file over.
+    agencyPeople(supabase),
     // Licensee sign-off links for this file. Read here rather than in the card
     // so the send_licensee card knows on first paint whether a link is already
     // out and whether it has been signed — see lib/data/signoff-links.ts.
@@ -144,22 +147,18 @@ export default async function PropertyPage({
   const isCurrentStage = viewedStage === currentStage;
   const countdown = auctionCountdown(p.auction_date);
 
-  const people = (peopleRows ?? []) as {
-    id: string;
-    full_name: string | null;
-    email: string;
-    is_assistant: boolean | null;
-  }[];
+  const people = peopleRows;
   const personName = (id: string | null) => {
     const found = people.find((x) => x.id === id);
-    return found?.full_name ?? found?.email ?? "the agent";
+    return found?.full_name ?? "the agent";
   };
 
-  // Everyone this listing could move to: the agency's agents, minus assistants
-  // and minus whoever already holds it.
+  // Everyone this listing could move to: the agency's current agents, minus
+  // assistants, minus anyone archived (a listing moved onto someone who has
+  // left is one nobody works on), and minus whoever already holds it.
   const transferCandidates = people
-    .filter((x) => !x.is_assistant && x.id !== p.created_by)
-    .map((x) => ({ id: x.id, name: x.full_name ?? x.email }));
+    .filter((x) => !x.is_assistant && !x.archived_at && x.id !== p.created_by)
+    .map((x) => ({ id: x.id, name: x.full_name ?? "Unnamed" }));
 
   // The auction-day items are pulled out of the Campaign list and shown
   // together under one heading, in the order they happen. They are ordinary
@@ -307,6 +306,7 @@ export default async function PropertyPage({
                   propertyId={p.id}
                   current={allItems[item.key]}
                   profile={profile}
+                  listingAgentId={p.created_by}
                   allItems={allItems}
                   amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
                   signoffLinks={signoffLinks}
@@ -327,6 +327,7 @@ export default async function PropertyPage({
               propertyId={p.id}
               current={allItems[item.key]}
               profile={profile}
+              listingAgentId={p.created_by}
               allItems={allItems}
               amlPreCommencementEnabled={Boolean(agencyRow?.aml_precommencement_enabled)}
               signoffLinks={signoffLinks}

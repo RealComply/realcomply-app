@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/listing-scan",
-      "schedule": "0 20 * * 0"
+      "schedule": "0 20,21 * * *"
     },
     {
       "path": "/api/cron/weekly-digest",
@@ -24,6 +24,10 @@
     {
       "path": "/api/cron/backup-storage",
       "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/subscription-end",
+      "schedule": "0 15 * * *"
     }
   ]
 }

@@ -163,7 +163,7 @@ export function EditPropertyDetails({ property, canDelete = false }: { property:
             />
           </div>
 
-          {/* The page the weekly advertised-price check reads. Optional: a listing
+          {/* The page the daily advertised-price check reads. Optional: a listing
               that is not advertised anywhere yet has no page to check, and the
               check simply skips it. */}
           <label htmlFor="listingUrl" className="mt-3 block text-xs font-medium text-rc-muted">
@@ -185,7 +185,7 @@ export function EditPropertyDetails({ property, canDelete = false }: { property:
             className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
           <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-            Your own listing page for this property. Checked weekly against the ESP on file.
+            Your own listing page for this property. Checked against the ESP on file every Monday, and every morning from 1 November.
           </p>
 
           <div className="mt-4">

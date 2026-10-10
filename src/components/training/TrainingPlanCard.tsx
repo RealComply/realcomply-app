@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerAccess } from "@/components/ViewerAccess";
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import { CheckCircle2, CircleAlert, Trash2 } from "lucide-react";
@@ -263,6 +264,8 @@ function Consultation({ plan, canEdit }: { plan: TrainingPlan; canEdit: boolean 
 }
 
 function PlanItemRow({ item, canEdit, locked }: { item: TrainingPlanItem; canEdit: boolean; locked: boolean }) {
+  // Removing a plan item is a delete, which is the licensee's only (Adam, 9 Oct 2026).
+  const { actsAsLicensee } = useViewerAccess();
   const [state, action, pending] = useActionState(completeTrainingPlanItem.bind(null, item.id), initial);
   const [completing, setCompleting] = useState(false);
   const done = Boolean(item.completed_date);
@@ -293,7 +296,7 @@ function PlanItemRow({ item, canEdit, locked }: { item: TrainingPlanItem; canEdi
               {completing ? "Cancel" : "Mark done"}
             </button>
           )}
-          {canEdit && !done && !locked && (
+          {canEdit && actsAsLicensee && !done && !locked && (
             <button
               type="button"
               onClick={() => deleteTrainingPlanItem(item.id)}

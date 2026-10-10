@@ -33,7 +33,7 @@ function matchesPage(link: NavLink, term: string): boolean {
   return haystack.includes(term);
 }
 
-export function GlobalSearch({ isAssistant = false, pmEnabled = false }: { isAssistant?: boolean; pmEnabled?: boolean }) {
+export function GlobalSearch({ actsAsLicensee = false, pmEnabled = false }: { actsAsLicensee?: boolean; pmEnabled?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
@@ -42,7 +42,7 @@ export function GlobalSearch({ isAssistant = false, pmEnabled = false }: { isAss
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const pages = NAV_LINKS.filter((l) => visibleNavLink(l, { isAssistant, pmEnabled }));
+  const pages = NAV_LINKS.filter((l) => visibleNavLink(l, { actsAsLicensee, pmEnabled }));
   const trimmed = term.trim().toLowerCase();
 
   const rows: Row[] = [

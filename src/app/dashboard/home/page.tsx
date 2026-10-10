@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Building2, FileWarning, ShieldCheck, MessageSquareWarning, Gift as GiftIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
+import { agencyPeople } from "@/lib/data/people";
+import { AgentHome } from "./AgentHome";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
@@ -36,8 +38,14 @@ import { countableCpdHours } from "@/lib/cpd-hours";
 // + card grid of metric/breakdown widgets, colour-coded by status) is
 // borrowed, not the look.
 export default async function HomeDashboardPage() {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
+
+  // REVERSAL (Adam, 7 Oct 2026): an agent's and an assistant's Home is their
+  // own work. Everything below this line is the licensee's office view.
+  if (!access.actsAsLicensee) {
+    return <AgentHome supabase={supabase} profile={profile} />;
+  }
 
   const cpdYear = currentCpdYear();
 
@@ -106,11 +114,7 @@ export default async function HomeDashboardPage() {
   }
   // Who counts as a licensee in charge, for the Settled-stage split between
   // "Send to licensee" and "Licensee signature". One query, not one per file.
-  const { data: licenseeRows } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("is_licensee_in_charge", true);
-  const licenseeIds = new Set(((licenseeRows ?? []) as { id: string }[]).map((r) => r.id));
+  const licenseeIds = new Set((await agencyPeople(supabase)).filter((r) => r.is_licensee_in_charge).map((r) => r.id));
 
   const digests = computePropertyDigests(propertyList, itemsByProperty, licenseeIds);
   const needsYouDigests = digests.filter((d) => d.pendingSignoff.length > 0 || d.flagged.length > 0);

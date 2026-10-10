@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerAccess } from "@/components/ViewerAccess";
 import { useActionState, useState, useTransition } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { DictateButton, appendDictated } from "@/components/Dictate";
@@ -160,6 +161,7 @@ function ListingRow({
     });
   }
 
+  const { actsAsLicensee } = useViewerAccess();
   function remove() {
     setError(null);
     startTransition(async () => {
@@ -190,16 +192,19 @@ function ListingRow({
             <p className="mt-0.5 text-[11px] text-rc-faint">Added by you, not from the report.</p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={remove}
-          disabled={pending}
-          aria-label={`Remove ${listing.address}`}
-          title="Remove this listing — if it isn't comparable, it doesn't belong on the list."
-          className="shrink-0 rounded-full p-1 text-rc-faint transition hover:bg-rc-bg-alt hover:text-rc-ink disabled:opacity-50"
-        >
-          <X size={13} aria-hidden="true" />
-        </button>
+        {/* Only the licensee removes a row (Adam, 9 Oct 2026). */}
+        {actsAsLicensee && (
+          <button
+            type="button"
+            onClick={remove}
+            disabled={pending}
+            aria-label={`Remove ${listing.address}`}
+            title="Remove this listing — if it isn't comparable, it doesn't belong on the list."
+            className="shrink-0 rounded-full p-1 text-rc-faint transition hover:bg-rc-bg-alt hover:text-rc-ink disabled:opacity-50"
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       {canCompare ? (

@@ -7,8 +7,9 @@ import {
   verifyStripeSignature,
 } from "@/lib/billing/stripe";
 import { sendTrialEndingEmail } from "@/lib/email/trial-ending";
-import { handleTrialWillEnd, type TrialSubscription } from "@/lib/billing/trial-reminder";
+import { handleTrialWillEnd, willCancelAtTrialEnd, type TrialSubscription } from "@/lib/billing/trial-reminder";
 import type { Plan } from "@/lib/billing/entitlement";
+import { sendEndedEmail } from "@/lib/subscription-end/emails";
 
 // Stripe's side of the conversation.
 //
@@ -116,7 +117,31 @@ async function handle(event: StripeEvent): Promise<void> {
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
-      await applySubscription(event.data.object as StripeSubscription, null);
+      const subscription = event.data.object as StripeSubscription;
+
+      // CANCELLING A FREE TRIAL ENDS IT NOW (Adam, 8 Oct 2026): "If during
+      // the free period they cancel, then access should be cut off
+      // immediately. They aren't paying for it."
+      //
+      // Stripe's cancel screen cannot tell a trial from a paid plan, and paid
+      // monthly subscribers keep access to the end of the month they paid
+      // for (Terms v.4). So the screen books every cancellation for the end
+      // of the period, and a trial that has been booked to cancel is ended
+      // here instead. Stripe then sends customer.subscription.deleted, the
+      // agency ends, and its 14 days on the records page start (DPA cl 4.8).
+      if (subscription.status === "trialing" && willCancelAtTrialEnd(subscription as unknown as TrialSubscription)) {
+        try {
+          await stripeRequest("DELETE", `/subscriptions/${subscription.id}`);
+          return;
+        } catch (e) {
+          // Already cancelled (a replayed event, say), or Stripe refused.
+          // Fall through and record what Stripe says rather than failing the
+          // event, which would only make Stripe retry it.
+          console.error("Stripe webhook: could not end cancelled trial", subscription.id, e instanceof Error ? e.message : e);
+        }
+      }
+
+      await applySubscription(subscription, null);
       return;
     }
 
@@ -197,6 +222,19 @@ async function applySubscription(
   const { error } = await supabase.from("agencies").update(update).eq("id", agencyId);
   if (error) {
     throw new Error(`agencies update failed: ${error.message}`);
+  }
+
+  // The subscription has ended. The database has just set ended_at (0054),
+  // unless the agency is protected, in which case this sends nothing. The
+  // day 0 email goes now rather than at the next daily run; if it fails, the
+  // daily run sends it. Never thrown: a 500 here would make Stripe retry an
+  // update that has already succeeded.
+  if (update.status === "canceled") {
+    try {
+      await sendEndedEmail(supabase, agencyId, "day0");
+    } catch (e) {
+      console.error("Stripe webhook: day 0 email failed", agencyId, e instanceof Error ? e.message : e);
+    }
   }
 }
 

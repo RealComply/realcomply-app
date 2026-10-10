@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireLicenseePage } from "@/lib/data/current-profile";
 import { TrustAccountSwitcher } from "@/components/registers/TrustAccountSwitcher";
 import { TrustAccountPanel } from "@/components/registers/TrustAccountPanel";
 import { formatAuDate } from "@/lib/format-date";
@@ -29,7 +29,9 @@ export default async function TrustAccountsPage({
 }: {
   searchParams: Promise<{ account?: string }>;
 }) {
-  const profile = await requireProfile();
+  // Licensee only (Adam, 7 Oct 2026): a typed address refuses, not just a
+  // hidden link.
+  const { profile } = await requireLicenseePage();
   const supabase = await createClient();
   const { account: requestedAccount } = await searchParams;
 

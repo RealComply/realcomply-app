@@ -17,12 +17,17 @@ export function DocumentSignoffCard({
   profiles,
   currentProfile,
   fileUrl,
+  ownOnly = false,
 }: {
   document: SignoffDocument;
   signatures: SignoffSignature[];
-  profiles: Profile[];
+  /** Names only (agency_people): an agent cannot read colleagues' profiles. */
+  profiles: Array<{ id: string; full_name: string | null; email?: string | null }>;
   currentProfile: Profile;
   fileUrl: string | null;
+  /** An agent or assistant reads their own signature only (0058), so "1 of 1
+   *  signed" would read as everyone done. They see their own status. */
+  ownOnly?: boolean;
 }) {
   const nameFor = (id: string) =>
     profiles.find((p) => p.id === id)?.full_name ?? profiles.find((p) => p.id === id)?.email ?? "Unknown";
@@ -64,27 +69,44 @@ export function DocumentSignoffCard({
           )}
           {document.notes && <p className="mt-1 text-xs text-rc-muted">{document.notes}</p>}
         </div>
-        <span
-          className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${
-            allSigned ? "bg-rc-green-soft text-rc-green-deep" : "bg-rc-amber/15 text-rc-amber-deep"
-          }`}
-        >
-          {signedCount} of {total} signed
-        </span>
+        {ownOnly ? (
+          mine && (
+            <span
+              className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${
+                mine.signed_at ? "bg-rc-green-soft text-rc-green-deep" : "bg-rc-amber/15 text-rc-amber-deep"
+              }`}
+            >
+              {mine.signed_at ? "You signed" : "Awaiting your signature"}
+            </span>
+          )
+        ) : (
+          <span
+            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${
+              allSigned ? "bg-rc-green-soft text-rc-green-deep" : "bg-rc-amber/15 text-rc-amber-deep"
+            }`}
+          >
+            {signedCount} of {total} signed
+          </span>
+        )}
       </div>
 
-      <ul className="mt-3 divide-y divide-rc-border border-t border-rc-border text-sm">
-        {signatures.map((sig) => (
-          <li key={sig.id} className="flex items-center justify-between py-1.5">
-            <span className="text-rc-ink">{nameFor(sig.signer_id)}</span>
-            {sig.signed_at ? (
-              <span className="text-xs text-rc-muted">Signed {new Date(sig.signed_at).toLocaleDateString("en-AU")}</span>
-            ) : (
-              <span className="text-xs font-medium text-rc-amber-deep">Outstanding</span>
-            )}
-          </li>
-        ))}
-      </ul>
+      {!ownOnly && (
+        <ul className="mt-3 divide-y divide-rc-border border-t border-rc-border text-sm">
+          {signatures.map((sig) => (
+            <li key={sig.id} className="flex items-center justify-between py-1.5">
+              <span className="text-rc-ink">{nameFor(sig.signer_id)}</span>
+              {sig.signed_at ? (
+                <span className="text-xs text-rc-muted">Signed {new Date(sig.signed_at).toLocaleDateString("en-AU")}</span>
+              ) : (
+                <span className="text-xs font-medium text-rc-amber-deep">Outstanding</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {ownOnly && mine?.signed_at && (
+        <p className="mt-2 text-xs text-rc-muted">Signed {new Date(mine.signed_at).toLocaleDateString("en-AU")}</p>
+      )}
 
       {needsMySignature && <SignatureBox documentId={document.id} />}
     </div>

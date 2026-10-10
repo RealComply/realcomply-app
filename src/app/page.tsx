@@ -106,7 +106,7 @@ const AI_FEATURES = [
   },
   {
     title: "It watches your live advertising.",
-    body: "Your own listing pages are checked against the estimated selling price every week, and again the moment you revise a price. If what's advertised slips below where it should be, we'll let you know.",
+    body: "Your own listing pages are checked against the estimated selling price every morning, and again the moment you revise a price. If what's advertised slips below where it should be, we'll let you know.",
   },
   {
     title: "It answers questions about the Act.",
@@ -497,7 +497,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
             </Link>
             <span className="px-2 text-rc-ink-muted/50">·</span>
             <Link href="/terms" className="hover:text-white hover:underline">
-              Terms of Service
+              Terms and Conditions
             </Link>
           </p>
         </div>

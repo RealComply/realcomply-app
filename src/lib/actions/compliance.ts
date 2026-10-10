@@ -13,6 +13,7 @@ import { draftEspReasoning } from "@/lib/data/esp-draft";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { redirect } from "next/navigation";
+import { accessFrom } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
@@ -48,6 +49,12 @@ function assistantBlocked(itemKey: string, profile: { is_assistant?: boolean }):
   return ASSISTANT_BLOCKED_ITEMS.has(itemKey) || Boolean(getItem(itemKey)?.licenseeOnly);
 }
 
+// What setItemStatus keeps from a card's existing record, by card: the parts
+// with their own controls outside the Mark done form.
+const CARRIED_BY_ITEM: Record<string, string[]> = {
+  f4: ["entries", "loggedElsewhere", "loggedElsewhereWhere"],
+};
+
 const ASSISTANT_BLOCKED_MESSAGE =
   "Assistants can prepare a file but not sign it. Hand it to the agent to review and sign.";
 
@@ -71,7 +78,26 @@ export async function requireAuthContext() {
     redirect("/signup");
   }
 
-  return { supabase, user, profile };
+  // Once a subscription has ended, nothing can be added or changed and AI
+  // features are off (brief of 8 Oct 2026). The database refuses the writes
+  // on its own (0054); this stops every action before it starts, including
+  // the ones that would call Anthropic first and write afterwards. Back to
+  // the dashboard, which for an ended agency is the records page.
+  const { data: agency } = await supabase
+    .from("agencies")
+    .select("ended_at, plan")
+    .eq("id", (profile as { agency_id: string }).agency_id)
+    .maybeSingle();
+  if ((agency as { ended_at?: string | null } | null)?.ended_at) {
+    redirect("/dashboard/records");
+  }
+
+  // Who may do what (lib/access.ts; the database rules in 0058 are the ones
+  // that count). Every action that is the licensee's checks access, not the
+  // raw flag, so the agent on their own plan counts as the licensee.
+  const access = accessFrom(profile as { is_licensee_in_charge: boolean; is_assistant: boolean; archived_at?: string | null }, (agency as { plan?: string } | null)?.plan);
+
+  return { supabase, user, profile, access };
 }
 
 async function loadProperty(supabase: Awaited<ReturnType<typeof createClient>>, propertyId: string) {
@@ -328,6 +354,31 @@ export async function setItemStatus(
   }
 
   const data: Record<string, unknown> = { note };
+
+  // Parts of a card's record that have their own controls and are not in this
+  // form: the f4 buyer list (entries) and its "recorded somewhere else". This
+  // form used to save the note alone, so Mark done or Reopen on f4 erased the
+  // buyer list, for anyone and with no licensee check (review of agent
+  // access, 9 Oct 2026). Removing a buyer is the licensee's, through
+  // removeBuyerEntry; marking the card done keeps them. Not a4c: its
+  // "recorded elsewhere" was retired on 2 Oct, and saving the reasoning here
+  // is what clears an old mark. d2 (offers) has its own actions.
+  const carried = CARRIED_BY_ITEM[itemKey] ?? [];
+  if (carried.length > 0) {
+    const { data: existingRow } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+    const existingData = ((existingRow as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<
+      string,
+      unknown
+    >;
+    for (const key of carried) {
+      if (key in existingData) data[key] = existingData[key];
+    }
+  }
 
   // amv — closing the vendor AML item by pre-commencement rather than by CDD.
   //
@@ -1408,7 +1459,10 @@ export async function markNoReports(propertyId: string): Promise<void> {
 // card shows before anything has ever been logged, so re-answering (Yes/No)
 // still works cleanly afterwards.
 export async function removeReportEntry(propertyId: string, recordedAt: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
+  // Only the licensee removes an entry from the file (REVERSAL, Adam, 9 Oct
+  // 2026; was anyone on the file). Found still open in the preview check.
+  if (!access.actsAsLicensee) return;
 
   const { data: existing } = await supabase
     .from("property_items")
@@ -1498,9 +1552,11 @@ export async function addBuyerEntry(
     return { error: "Enter the buyer's name." };
   }
 
+  // status too: it is kept below, and without it here a done list went back
+  // to open whenever a buyer was added (preview check, 9 Oct 2026).
   const { data: existing } = await supabase
     .from("property_items")
-    .select("data")
+    .select("data, status")
     .eq("property_id", propertyId)
     .eq("item_key", "f4")
     .maybeSingle();
@@ -1537,7 +1593,10 @@ export async function addBuyerEntry(
 // trusting — and a misspelt buyer name is exactly the kind of thing spotted
 // one line after typing it.
 export async function removeBuyerEntry(propertyId: string, index: number): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
+  // Only the licensee removes an entry from the file (REVERSAL, Adam, 9 Oct
+  // 2026; was anyone on the file). Found still open in the preview check.
+  if (!access.actsAsLicensee) return;
 
   const { data: existing } = await supabase
     .from("property_items")
@@ -1865,6 +1924,16 @@ export async function signItem(
     return { error: "Only the licensee in charge can sign here." };
   }
 
+  // An agent sign-off is the listing's own agent's (Adam, 9 Oct 2026). The
+  // database refuses anyone else and stamps who and when from the login
+  // (0058); this is the plain message.
+  if (itemKey === "sign_agent") {
+    const property = await loadProperty(supabase, propertyId);
+    if (!property || property.created_by !== user.id) {
+      return { error: "Only the listing's agent can sign here." };
+    }
+  }
+
   const typedName = String(formData.get("typedName") ?? "").trim();
   if (!typedName) {
     return { error: "Type your name to adopt it as your signature." };
@@ -2056,7 +2125,11 @@ export async function uploadEvidence(
 // on the item row) without touching the item's status, note, or any other
 // data — evidence is supporting material, not the record of completion.
 export async function removeEvidence(propertyId: string, itemKey: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
+  // Only the licensee deletes compliance records, and the delete is logged
+  // (REVERSAL, Adam, 9 Oct 2026; was any member). The database refuses it
+  // too (0058); this gives a plain message instead of a silent no-op.
+  if (!access.actsAsLicensee) return;
 
   const { data: existingRow } = await supabase
     .from("property_items")
