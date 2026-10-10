@@ -253,13 +253,16 @@ export function StaffRow({
                 <div className="space-y-2">
                   {/* Says what archiveStaff does (10 Oct 2026). It used to
                       promise the listings weren't touched, while their open
-                      ones passed to the licensee and Bring back returns none. */}
+                      ones passed to the licensee and Bring back returns none.
+                      A settled listing they haven't signed passes too: only
+                      the listing's agent can give that signature. */}
                   <p className="text-xs leading-relaxed text-rc-ink">
                     Remove <span className="font-semibold">{person.fullName ?? person.email}</span>? They lose access
-                    immediately. Their listings that haven&rsquo;t settled, and the properties they manage, pass to
-                    you to reassign. Everything they did stays — their signatures, CPD records and settled listings
-                    are the compliance record and stay in their name. You can bring them back at any time, but the
-                    work that passed to you stays with you until you move it.
+                    immediately. Their listings that haven&rsquo;t settled, any settled listing they haven&rsquo;t
+                    signed, and the properties they manage pass to you to reassign. Everything they did stays — their
+                    signatures, CPD records and the settled listings they signed are the compliance record and stay
+                    in their name. You can bring them back at any time, but the work that passed to you stays with
+                    you until you move it.
                   </p>
                   <div className="flex items-center gap-2">
                     <button
