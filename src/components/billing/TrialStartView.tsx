@@ -1,5 +1,6 @@
 import { logout } from "@/lib/actions/auth";
 import { PlanPicker } from "@/components/billing/PlanPicker";
+import { TrialStartWatcher } from "@/components/billing/TrialStartWatcher";
 import { TRIAL_DAYS } from "@/lib/billing/entitlement";
 import type { Profile } from "@/lib/types";
 
@@ -48,10 +49,12 @@ export function TrialStartView({
               {TRIAL_DAYS} days, and you&rsquo;ll get a reminder three days before the first payment. Cancel any time
               before then and you won&rsquo;t be charged.
             </p>
-            <PlanPicker suggested="office_1" listingCount={0} />
-            <p className="mt-4 text-xs text-rc-faint">
-              Just entered your card? This page updates within a minute of Stripe confirming it.
-            </p>
+            <TrialStartWatcher>
+              <PlanPicker suggested="office_1" listingCount={0} />
+              <p className="mt-4 text-xs text-rc-faint">
+                Just entered your card? This page updates within a minute of Stripe confirming it.
+              </p>
+            </TrialStartWatcher>
           </>
         ) : (
           <p className="mt-4 rounded-xl border border-rc-border bg-white px-4 py-3 text-sm text-rc-muted">
