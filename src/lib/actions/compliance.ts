@@ -1494,16 +1494,16 @@ export async function removeReportEntry(propertyId: string, recordedAt: string):
 
   const { data: existing } = await supabase
     .from("property_items")
-    .select("data, completed_by")
+    .select("data, completed_by, evidence_path")
     .eq("property_id", propertyId)
     .eq("item_key", "f3")
     .maybeSingle();
 
-  const entries = ((existing?.data as { entries?: Array<{ recordedAt: string }> } | null)?.entries ?? []).filter(
-    (e) => e.recordedAt !== recordedAt,
-  );
+  const all = ((existing?.data as { entries?: Array<{ recordedAt: string; evidencePath?: string | null }> } | null)
+    ?.entries ?? []);
+  const entries = all.filter((e) => e.recordedAt !== recordedAt);
 
-  await upsertItem(supabase, {
+  const { error } = await upsertItem(supabase, {
     agencyId: profile.agency_id,
     propertyId,
     itemKey: "f3",
@@ -1513,6 +1513,23 @@ export async function removeReportEntry(propertyId: string, recordedAt: string):
     // removing an entry is an edit to the register, not a fresh completion.
     completedBy: entries.length > 0 ? ((existing as { completed_by?: string | null } | null)?.completed_by ?? null) : null,
   });
+
+  // The entry's report goes with it (10 Oct 2026). It was left in storage
+  // with nothing pointing at it. Only once the entry is gone, and only a
+  // file in this listing's f3 folder that nothing else on f3 still uses: the
+  // path was written by whoever logged the entry.
+  if (!error) {
+    const folder = `${profile.agency_id}/${propertyId}/f3/`;
+    const stillUsed = new Set([existing?.evidence_path, ...entries.map((e) => e.evidencePath)]);
+    const files = all
+      .filter((e) => e.recordedAt === recordedAt)
+      .map((e) => e.evidencePath)
+      .filter(
+        (p): p is string =>
+          typeof p === "string" && p.startsWith(folder) && !p.slice(folder.length).includes("/") && !stillUsed.has(p),
+      );
+    if (files.length > 0) await supabase.storage.from(EVIDENCE_BUCKET).remove(files);
+  }
 
   revalidatePath(`/dashboard/${propertyId}`);
 }

@@ -4,7 +4,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuthContext } from "@/lib/actions/compliance";
-import { buildEvidencePath, finalizeEvidenceRecord, moveStagedEvidence, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import {
+  buildEvidencePath,
+  finalizeEvidenceRecord,
+  listPropertyEvidencePaths,
+  moveStagedEvidence,
+  EVIDENCE_BUCKET,
+} from "@/lib/storage/evidence";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import type { ActionState } from "@/lib/actions/auth";
 
@@ -385,7 +391,7 @@ export async function deleteProperty(
 
   const { data: property } = await supabase
     .from("properties")
-    .select("id, address")
+    .select("id, address, agency_id")
     .eq("id", propertyId)
     .maybeSingle();
 
@@ -402,15 +408,30 @@ export async function deleteProperty(
     .select("evidence_path")
     .eq("property_id", propertyId);
 
-  const evidencePaths = (items ?? [])
-    .map((item) => item.evidence_path)
-    .filter((path): path is string => !!path);
+  // Every file in the listing's folder as well as the ones the evidence_path
+  // column names (preview check, 10 Oct 2026: two were left behind). f3's
+  // report files are named only in its entries, and a file an agent replaced
+  // stays in the folder with nothing pointing at it, since only the licensee
+  // can delete one.
+  const evidencePaths = new Set(
+    (items ?? []).map((item) => item.evidence_path).filter((path): path is string => !!path),
+  );
+  try {
+    for (const path of await listPropertyEvidencePaths(supabase, property.agency_id, propertyId)) {
+      evidencePaths.add(path);
+    }
+  } catch (e) {
+    console.error("listing folder not read before delete:", propertyId, e instanceof Error ? e.message : e);
+  }
 
-  if (evidencePaths.length > 0) {
+  if (evidencePaths.size > 0) {
     // Best-effort — a Storage cleanup failure shouldn't block the delete
     // itself; an orphaned file with nothing pointing at it is a much
     // smaller problem than a property the licensee can no longer remove.
-    await supabase.storage.from(EVIDENCE_BUCKET).remove(evidencePaths);
+    const paths = [...evidencePaths];
+    for (let i = 0; i < paths.length; i += 100) {
+      await supabase.storage.from(EVIDENCE_BUCKET).remove(paths.slice(i, i + 100));
+    }
   }
 
   const { error } = await supabase.from("properties").delete().eq("id", propertyId);
