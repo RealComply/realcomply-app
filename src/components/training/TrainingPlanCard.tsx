@@ -2,7 +2,7 @@
 
 import { useViewerAccess } from "@/components/ViewerAccess";
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { CheckCircle2, CircleAlert, Trash2 } from "lucide-react";
 import {
   addTrainingPlanItem,
@@ -136,6 +136,13 @@ export function TrainingPlanCard({
 
           {open && (
             <div className="mt-3 space-y-4 border-t border-rc-border pt-3">
+              {/* Said before it happens (check, 10 Oct 2026): a change to an
+                  accepted plan takes the acceptance back (actions/training-plans.ts). */}
+              {canEdit && !approved && plan.staff_signed_at && (
+                <p className="text-[11px] text-rc-amber-deep">
+                  Changing this plan will ask {isSelf ? "you" : (subject.full_name ?? subject.email)} to accept it again.
+                </p>
+              )}
               <Consultation plan={plan} canEdit={canEdit && !approved} />
 
               <div>
@@ -349,6 +356,15 @@ function AddItemForm({ planId, onDone }: { planId: string; onDone: () => void })
   // The browser asks for what the server would refuse without, because React
   // clears the typed fields after any submit, refused or not.
   const [countsTowardCpd, setCountsTowardCpd] = useState(false);
+  // That clearing also unticks the box on screen while this state stays
+  // ticked (review of 10 Oct 2026): Provider stayed required under an empty
+  // box, and the next submit sent what the box showed, not what the state
+  // said. So the state is what is sent (the hidden field), and the box is put
+  // back to match it after each submit.
+  const cpdBox = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (cpdBox.current) cpdBox.current.checked = countsTowardCpd;
+  }, [state, countsTowardCpd]);
 
   return (
     <form action={action} className="mt-2 space-y-2 rounded-md border border-rc-border p-2">
@@ -397,10 +413,11 @@ function AddItemForm({ planId, onDone }: { planId: string; onDone: () => void })
       </div>
       {/* Off by default. Internal coaching belongs on the plan — Requirement
           2.4 is broader than CPD — but it must never accrue CPD hours. */}
+      <input type="hidden" name="countsTowardCpd" value={countsTowardCpd ? "on" : ""} />
       <label className="flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-muted">
         <input
+          ref={cpdBox}
           type="checkbox"
-          name="countsTowardCpd"
           checked={countsTowardCpd}
           onChange={(e) => setCountsTowardCpd(e.target.checked)}
           className="mt-0.5"
