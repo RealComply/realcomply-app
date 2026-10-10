@@ -49,6 +49,18 @@ export type SendEmailInput = {
    */
   replyTo?: string;
   /**
+   * A blind copy. Added 10 Oct 2026 for the early access invitation and
+   * welcome, which are copied to admin@realcomply.com.au so there is a record
+   * of exactly what each person was sent.
+   */
+  bcc?: string;
+  /**
+   * The name shown as the sender, in front of the EMAIL_FROM address. Added
+   * 10 Oct 2026 so the early access emails read "RealComply" whatever name
+   * EMAIL_FROM happens to carry. The address itself never changes.
+   */
+  fromName?: string;
+  /**
    * Files sent with the message. Added 8 Oct 2026 for the deletion
    * certificate, which goes out as a PDF.
    */
@@ -91,6 +103,7 @@ async function sendViaSes(from: string, input: SendEmailInput): Promise<void> {
     text: input.text,
     html: input.html,
     ...(input.replyTo ? { replyTo: input.replyTo } : {}),
+    ...(input.bcc ? { bcc: input.bcc } : {}),
     ...(input.attachments
       ? {
           attachments: input.attachments.map((a) => ({
@@ -132,6 +145,7 @@ async function sendViaResend(from: string, input: SendEmailInput): Promise<void>
       // Resend spells it reply_to; nodemailer spells it replyTo. The seam is
       // here rather than at every call site.
       ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+      ...(input.bcc ? { bcc: [input.bcc] } : {}),
       ...(input.attachments
         ? {
             attachments: input.attachments.map((a) => ({
@@ -158,7 +172,8 @@ async function sendViaResend(from: string, input: SendEmailInput): Promise<void>
 // signup or a cron run because a provider had a bad moment. Callers that
 // genuinely need to know whether the send succeeded get the boolean back.
 export async function sendEmail(input: SendEmailInput): Promise<boolean> {
-  const from = process.env.EMAIL_FROM;
+  const configuredFrom = process.env.EMAIL_FROM;
+  const from = configuredFrom && input.fromName ? withSenderName(configuredFrom, input.fromName) : configuredFrom;
   if (!from) {
     console.error("sendEmail: EMAIL_FROM is not set — skipping send.", { subject: input.subject });
     return false;
@@ -185,6 +200,16 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
     });
     return false;
   }
+}
+
+/**
+ * `"RealComply <hello@x>"` or a bare `"hello@x"`, re-labelled with `name`.
+ * The address is taken from inside the angle brackets when there are any, so
+ * the sending domain the provider has verified is never touched.
+ */
+export function withSenderName(from: string, name: string): string {
+  const address = /<([^>]+)>/.exec(from)?.[1] ?? from.trim();
+  return `"${name.replace(/"/g, "")}" <${address}>`;
 }
 
 /**
