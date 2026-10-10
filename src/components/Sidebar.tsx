@@ -87,11 +87,14 @@ function toggleListings(button: HTMLButtonElement) {
 
 export function Sidebar({
   actsAsLicensee = false,
+  isAccountHolder = false,
   isPlatformAdmin = false,
   pmEnabled = false,
   counts = EMPTY_NAV_COUNTS,
 }: {
   actsAsLicensee?: boolean;
+  /** For the Billing link only (lib/nav.ts). */
+  isAccountHolder?: boolean;
   isPlatformAdmin?: boolean;
   pmEnabled?: boolean;
   counts?: NavCounts;
@@ -101,13 +104,31 @@ export function Sidebar({
 
   // Escape closes the mobile drawer, matching what a keyboard user expects of
   // any overlay. No-op on desktop, where the drawer is never open.
+  //
+  // The page behind is held still while the drawer is open (10 Oct 2026), so
+  // a swipe on the menu scrolls the menu and not the listing underneath it.
+  // Turning a phone to landscape can cross the md breakpoint, which hides the
+  // drawer without closing it; it is closed then, or the page would stay
+  // locked with nothing on screen to unlock it.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const desktop = window.matchMedia("(min-width: 48rem)");
+    const onResize = () => {
+      if (desktop.matches) setOpen(false);
+    };
+    desktop.addEventListener("change", onResize);
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      desktop.removeEventListener("change", onResize);
+      root.style.overflow = previousOverflow;
+    };
   }, [open]);
 
   // One markup tree serves both the desktop column and the mobile drawer.
@@ -138,7 +159,7 @@ export function Sidebar({
           empty. */}
       {NAV_GROUPS.map((g) => ({
         ...g,
-        links: g.links.filter((l) => visibleNavLink(l, { actsAsLicensee, pmEnabled })),
+        links: g.links.filter((l) => visibleNavLink(l, { actsAsLicensee, pmEnabled, isAccountHolder })),
       }))
         .filter((group) => group.links.length > 0)
         .map((group, gi) => (
@@ -488,7 +509,14 @@ export function Sidebar({
             >
               <X size={16} aria-hidden="true" />
             </button>
-            {panel}
+            {/* Its own scroller (10 Oct 2026): on a phone the menu is taller
+                than the screen, and the rows past the bottom could not be
+                reached. Same as the desktop column's wrapper. overscroll-
+                contain keeps a swipe at the end from moving the page behind;
+                the background is here because rows past the panel's own box
+                would otherwise draw over the dimmed backdrop. The close
+                button stays outside it, pinned at the top. */}
+            <div className="h-full overflow-y-auto overscroll-contain bg-rc-nav-bg">{panel}</div>
           </div>
         </div>
       )}

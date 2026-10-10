@@ -19,6 +19,11 @@ import { priceIdFor, stripeRequest, type Interval } from "@/lib/billing/stripe";
 // and the licensee in charge is the person who answers for both. An agent
 // finding a "start subscription" button on a page they can see is a support
 // call at best.
+//
+// Widened to whoever pays (9-10 Oct 2026): the licensee in charge, the agent
+// on their own plan, or the account holder. The same people the Billing page
+// lets in. Starting checkout was widened on 9 Oct and the billing portal was
+// not, so the person whose card it was could subscribe but never cancel.
 
 export type BillingActionState = { error: string | null };
 
@@ -93,6 +98,17 @@ export async function startCheckout(
   let checkoutUrl: string;
 
   try {
+    // Stripe's redirect back can beat its webhook, and until the webhook
+    // lands stripe_subscription_id above is still empty. A second press in
+    // that gap started a second checkout on the same customer: two trials,
+    // then two charges (10 Oct 2026). Stripe already knows, so ask it.
+    if (agency.stripe_customer_id && (await hasLiveSubscription(agency.stripe_customer_id))) {
+      return {
+        error:
+          "Stripe already has a subscription for this agency and is still confirming it. Reload this page in a minute, and email admin@realcomply.com.au if it doesn't clear.",
+      };
+    }
+
     const priceId = await priceIdFor(plan, interval);
     const customerId = agency.stripe_customer_id ?? (await createCustomer(supabase, agency, profile.email));
 
@@ -173,10 +189,13 @@ export async function startCheckout(
 // The portal takes no input — everything it needs is on the agency row.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function openBillingPortal(_prev: BillingActionState, _formData: FormData): Promise<BillingActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can manage billing." };
+  // Same rule as the Billing page (10 Oct 2026). Licensee only left the agent
+  // on their own plan, and an office founder who is not the licensee, with a
+  // subscription they had started and no way to cancel it or change the card.
+  if (!access.actsAsLicensee && !(await isAccountHolder(supabase))) {
+    return { error: "Only the licensee in charge or the account holder can manage billing." };
   }
 
   const { data: agencyRow } = await supabase
@@ -223,9 +242,36 @@ async function createCustomer(
   // update were left until the webhook, a licensee who started checkout and
   // abandoned it would get a fresh Stripe customer on every attempt, and the
   // dashboard would fill with duplicates of the same agency.
-  await supabase.from("agencies").update({ stripe_customer_id: customer.id }).eq("id", agency.id);
+  //
+  // THROUGH set_agency_stripe_customer, NOT AN UPDATE (10 Oct 2026). The
+  // update was refused every time: the billing-column guard (0044, 0054)
+  // lets nobody but a platform admin change stripe_customer_id, and the
+  // error was never read, so every attempt made a new customer. The function
+  // sets it only while it is empty, and hands back the one already there if
+  // someone else got in first; that one is used, so both people end up on
+  // the same customer. Until it has run in the database this logs and goes
+  // on as before.
+  const { data, error } = await supabase.rpc("set_agency_stripe_customer", { p_customer_id: customer.id });
+  if (error) {
+    console.error("createCustomer could not record the Stripe customer:", error.message);
+    return customer.id;
+  }
+  return typeof data === "string" && data ? data : customer.id;
+}
 
-  return customer.id;
+/**
+ * Whether the Stripe customer already has a subscription that is running:
+ * trialing, active, behind on payment, or paused. A cancelled or expired one
+ * does not count, so an agency can subscribe again.
+ */
+async function hasLiveSubscription(customerId: string): Promise<boolean> {
+  const list = await stripeRequest<{ data?: Array<{ status?: string }> }>(
+    "GET",
+    `/subscriptions?customer=${encodeURIComponent(customerId)}&status=all&limit=20`,
+  );
+  return (list.data ?? []).some((sub) =>
+    ["trialing", "active", "past_due", "unpaid", "paused"].includes(sub.status ?? ""),
+  );
 }
 
 // ── The RealComply master switch ────────────────────────────────────────
@@ -309,6 +355,9 @@ export async function setAgencyBillingAsMaster(
     return { error: "Choose what to set it to." };
   }
 
-  revalidatePath("/dashboard/billing");
+  // The whole dashboard, not just Billing (10 Oct 2026): the switch is also on
+  // the start-your-trial page, which the layout shows in place of any page,
+  // and that has to lift (or appear) wherever the admin is.
+  revalidatePath("/dashboard", "layout");
   return { error: null };
 }

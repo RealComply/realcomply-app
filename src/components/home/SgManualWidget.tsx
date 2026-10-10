@@ -15,7 +15,7 @@ export function SgManualWidget({
       icon={BookOpen}
       title="Supervision Guidelines"
       href="/dashboard/sg-manual"
-      hrefLabel="SG Manual →"
+      hrefLabel="SG Manual"
       metric={hasVersion ? "On file" : "Not uploaded"}
       caption={
         hasVersion

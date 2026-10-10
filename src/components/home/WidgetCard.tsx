@@ -25,6 +25,8 @@ export function WidgetCard({
   icon: LucideIcon;
   title: string;
   href?: string;
+  /** Without an arrow: the card adds one. Callers ending theirs in "→" gave
+   *  "Registers → →" on Home (10 Oct 2026). */
   hrefLabel?: string;
   metric?: string | number;
   caption?: string;

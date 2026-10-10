@@ -134,7 +134,10 @@ export default async function BillingPage({
           </p>
         )}
 
-        {subscribed && profile.is_licensee_in_charge && (
+        {/* Whoever the page lets in, not only the licensee in charge (10 Oct
+            2026): the agent on their own plan, or the founder who is not the
+            licensee, subscribed here and then had no way to cancel. */}
+        {subscribed && mayManageBilling && (
           <div className="mt-5">
             <ManageBillingButton />
             <p className="mt-2 text-xs text-rc-faint">

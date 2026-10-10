@@ -78,6 +78,18 @@ describe("visibleNavLink", () => {
     assert.equal(menu.length, NAV_LINKS.length);
   });
 
+  it("the account holder who is not the licensee gets Billing, and nothing else of the licensee's", () => {
+    const menu = NAV_LINKS.filter((l) =>
+      visibleNavLink(l, { actsAsLicensee: false, pmEnabled: true, isAccountHolder: true }),
+    ).map((l) => l.label);
+    assert.deepEqual(menu, [...menuFor(false), "Billing"]);
+  });
+
+  it("an agent who is not the account holder does not get Billing", () => {
+    const billing = NAV_LINKS.find((l) => l.label === "Billing")!;
+    assert.equal(visibleNavLink(billing, { actsAsLicensee: false, pmEnabled: true, isAccountHolder: false }), false);
+  });
+
   it("property management only shows where it is switched on", () => {
     const pm = NAV_LINKS.find((l) => l.label === "Property management")!;
     assert.equal(visibleNavLink(pm, { actsAsLicensee: true, pmEnabled: false }), false);
