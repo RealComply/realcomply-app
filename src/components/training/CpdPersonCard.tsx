@@ -192,7 +192,14 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
   const { actsAsLicensee } = useViewerAccess();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [state, action, pending] = useActionState(updateCpdRecord.bind(null, record.id), initial);
+  // Closes once the save has gone through, not as soon as it is sent (check,
+  // 10 Oct 2026): a refused save ("Give the activity a name.") closed the form
+  // and its message with it, so nothing was saved and nothing said so.
+  const [state, action, pending] = useActionState(async (prev: ActionState, fd: FormData) => {
+    const result = await updateCpdRecord(record.id, prev, fd);
+    if (!result.error) setEditing(false);
+    return result;
+  }, initial);
 
   useEffect(() => {
     if (!record.evidence_path) return;
@@ -219,10 +226,7 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
   if (editing) {
     return (
       <form
-        action={async (fd) => {
-          await action(fd);
-          setEditing(false);
-        }}
+        action={action}
         className="mt-3 space-y-2 rounded-xl border border-rc-border bg-neutral-50 p-3"
       >
         <p className="text-[11px] text-rc-muted">Fix anything the reading got wrong. The certificate stays attached.</p>
@@ -292,7 +296,7 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
         <p className="mt-0.5 text-[11px] text-rc-faint">
           {amount !== null && (
             <>
-              {amount} {isUnit ? (amount === 1 ? "unit" : "units") : "hours"} ·{" "}
+              {amount} {isUnit ? (amount === 1 ? "unit" : "units") : amount === 1 ? "hour" : "hours"} ·{" "}
             </>
           )}
           {record.completed_date ? <>completed {formatAuDate(record.completed_date)}</> : "completion date not read"}

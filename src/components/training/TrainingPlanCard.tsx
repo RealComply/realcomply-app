@@ -188,8 +188,14 @@ function StatusPill({ plan }: { plan: TrainingPlan | null }) {
 }
 
 function Consultation({ plan, canEdit }: { plan: TrainingPlan; canEdit: boolean }) {
-  const [state, action, pending] = useActionState(saveTrainingPlanConsultation.bind(null, plan.id), initial);
   const [editing, setEditing] = useState(false);
+  // Closes once the save has gone through, not as soon as it is sent, so a
+  // refusal stays on screen (check, 10 Oct 2026; see AddItemForm).
+  const [state, action, pending] = useActionState(async (prev: ActionState, fd: FormData) => {
+    const result = await saveTrainingPlanConsultation(plan.id, prev, fd);
+    if (!result.error) setEditing(false);
+    return result;
+  }, initial);
 
   if (!editing) {
     return (
@@ -219,13 +225,7 @@ function Consultation({ plan, canEdit }: { plan: TrainingPlan; canEdit: boolean 
   }
 
   return (
-    <form
-      action={async (fd) => {
-        await action(fd);
-        setEditing(false);
-      }}
-      className="space-y-2 rounded-md bg-neutral-50 px-3 py-2"
-    >
+    <form action={action} className="space-y-2 rounded-md bg-neutral-50 px-3 py-2">
       <label className="block text-xs text-rc-muted">
         Date you met
         <input
@@ -336,24 +336,32 @@ function PlanItemRow({ item, canEdit, locked }: { item: TrainingPlanItem; canEdi
 }
 
 function AddItemForm({ planId, onDone }: { planId: string; onDone: () => void }) {
-  const [state, action, pending] = useActionState(addTrainingPlanItem.bind(null, planId), initial);
+  // Closes once the server has added it, not as soon as it is sent (check,
+  // 10 Oct 2026). Awaiting the dispatch from useActionState doesn't wait for
+  // the server, so the form closed at once and a refusal ("Note the gap…",
+  // "Name the approved provider…") landed on a form that was gone: nothing
+  // added, and nothing said.
+  const [state, action, pending] = useActionState(async (prev: ActionState, fd: FormData) => {
+    const result = await addTrainingPlanItem(planId, prev, fd);
+    if (!result.error) onDone();
+    return result;
+  }, initial);
+  // The browser asks for what the server would refuse without, because React
+  // clears the typed fields after any submit, refused or not.
+  const [countsTowardCpd, setCountsTowardCpd] = useState(false);
 
   return (
-    <form
-      action={async (fd) => {
-        await action(fd);
-        onDone();
-      }}
-      className="mt-2 space-y-2 rounded-md border border-rc-border p-2"
-    >
+    <form action={action} className="mt-2 space-y-2 rounded-md border border-rc-border p-2">
       <input
         type="text"
         name="programName"
+        required
         placeholder="Training program name"
         className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
       />
       <textarea
         name="gapReason"
+        required
         rows={2}
         placeholder="Gap this addresses — why it's on the plan (required)"
         className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
@@ -378,13 +386,25 @@ function AddItemForm({ planId, onDone }: { planId: string; onDone: () => void })
           placeholder="Hours"
           className="w-24 rounded-md border border-rc-border px-2 py-1 text-sm"
         />
-        <input type="text" name="provider" placeholder="Provider" className="w-36 rounded-md border border-rc-border px-2 py-1 text-sm" />
+        <input
+          type="text"
+          name="provider"
+          required={countsTowardCpd}
+          placeholder="Provider"
+          className="w-36 rounded-md border border-rc-border px-2 py-1 text-sm"
+        />
         <input type="date" name="dueDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
       </div>
       {/* Off by default. Internal coaching belongs on the plan — Requirement
           2.4 is broader than CPD — but it must never accrue CPD hours. */}
       <label className="flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-muted">
-        <input type="checkbox" name="countsTowardCpd" className="mt-0.5" />
+        <input
+          type="checkbox"
+          name="countsTowardCpd"
+          checked={countsTowardCpd}
+          onChange={(e) => setCountsTowardCpd(e.target.checked)}
+          className="mt-0.5"
+        />
         <span>
           Counts toward CPD — only if a Fair Trading approved provider delivers it (an RTO statement of attainment for
           an assistant agent). Internal training goes on the plan but earns no CPD hours.
