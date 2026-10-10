@@ -18,7 +18,7 @@ export function GiftsWidget({
       icon={GiftIcon}
       title="Gifts & benefits"
       href="/dashboard/registers?tab=gifts"
-      hrefLabel="Registers →"
+      hrefLabel="Registers"
       metric={total}
       caption="on file"
       tone={flagged > 0 ? "warn" : "ok"}

@@ -29,6 +29,9 @@ import type { Profile } from "@/lib/types";
 // everywhere else in the app.
 function roleLabel(profile: Profile): string {
   if (profile.is_licensee_in_charge) return "Licensee in charge";
+  // An assistant is not an agent, so it fell through to "Team member" (10 Oct
+  // 2026). Same order as the people results in global search.
+  if (profile.is_assistant) return "Assistant";
   switch (profile.licence_type) {
     case "class_1":
       return "Class 1 agent";
