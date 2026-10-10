@@ -67,17 +67,23 @@ export function CpdPersonCard({
   async function upload(file: File) {
     setError(null);
     setUploading(true);
-    const supabase = createBrowserClient();
-    const path = buildCpdDocPath(subject.agency_id, subject.id, file.name);
-    const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
-    if (uploadError) {
-      setError(uploadError);
+    // Always cleared, and a thrown save says so (check, 10 Oct 2026): it left
+    // the card on "Reading certificate…" with the drop zone off until a reload.
+    try {
+      const supabase = createBrowserClient();
+      const path = buildCpdDocPath(subject.agency_id, subject.id, file.name);
+      const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
+      if (uploadError) {
+        setError(uploadError);
+        return;
+      }
+      const { error: saveError } = await addCpdFromCertificate(subject.id, path, stored.name);
+      if (saveError) setError(saveError);
+    } catch {
+      setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");
+    } finally {
       setUploading(false);
-      return;
     }
-    const { error: saveError } = await addCpdFromCertificate(subject.id, path, stored.name);
-    setUploading(false);
-    if (saveError) setError(saveError);
   }
 
   async function toggleDone() {
