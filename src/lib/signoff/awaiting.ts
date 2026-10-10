@@ -78,3 +78,22 @@ export function notAskedToSign<P extends { id: string; archived_at: string | nul
   const asked = new Set(documentRows.map((r) => r.signer_id));
   return people.filter((p) => !p.archived_at && !asked.has(p.id));
 }
+
+/**
+ * The count a sign-off card shows: signatures given out of signatures owed.
+ * Rows nobody is waiting on any more (someone who left, or a licensee-only
+ * document another licensee has signed) are not counted at all, and staff
+ * never asked are owed a signature, so a five-person office never reads
+ * "1 of 1" (10 Oct 2026).
+ */
+export function signoffTally(
+  rows: readonly SignatureRow[],
+  scope: SignerScope,
+  leftIds: ReadonlySet<string>,
+  notAskedCount: number,
+): { signedCount: number; total: number; allSigned: boolean } {
+  const counted = rows.filter((r) => notNeededReason(r, scope, rows, leftIds) === null);
+  const signedCount = counted.filter((r) => r.signed_at).length;
+  const total = counted.length + notAskedCount;
+  return { signedCount, total, allSigned: total > 0 && signedCount === total };
+}

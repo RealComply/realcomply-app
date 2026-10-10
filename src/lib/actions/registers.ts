@@ -5,7 +5,7 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
 import { attendanceChanges } from "@/lib/attendance-changes";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { cpdFolder, isInFolder, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -143,6 +143,12 @@ export async function addCpdFromCertificate(
   if (profile.id !== profileId && !profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can add CPD for someone else." };
   }
+  // The browser says where it put the certificate; it must be that person's
+  // CPD folder, since the licensee's delete later removes whatever file the
+  // record names (review of these fixes, 10 Oct 2026).
+  if (!isInFolder(path, cpdFolder(profile.agency_id, profileId))) {
+    return { error: "Couldn't save that certificate — try again." };
+  }
 
   const { extractCpdCertificate } = await import("@/lib/actions/extraction");
   const { fields } = await extractCpdCertificate(path, fileName);
@@ -268,11 +274,15 @@ export async function setCpdYearComplete(
 export async function finalizeCpdEvidence(recordId: string, path: string, fileName: string): Promise<{ error: string | null }> {
   const { supabase, profile } = await requireAuthContext();
 
-  const { data: row } = await supabase.from("cpd_records").select("profile_id").eq("id", recordId).maybeSingle();
+  const { data: row } = await supabase.from("cpd_records").select("profile_id, agency_id").eq("id", recordId).maybeSingle();
   const ownerId = (row as { profile_id: string } | null)?.profile_id;
   if (!ownerId) return { error: "Couldn't find that CPD record." };
   if (ownerId !== profile.id && !profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can attach a certificate for someone else." };
+  }
+  // Only a file in that person's CPD folder (see addCpdFromCertificate).
+  if (!isInFolder(path, cpdFolder((row as { agency_id: string }).agency_id, ownerId))) {
+    return { error: "Couldn't save the certificate — try again." };
   }
 
   const { error } = await supabase
@@ -302,7 +312,7 @@ export async function deleteCpdRecord(recordId: string): Promise<void> {
 
   const { data: record } = await supabase
     .from("cpd_records")
-    .select("profile_id, evidence_path")
+    .select("profile_id, agency_id, evidence_path")
     .eq("id", recordId)
     .maybeSingle();
 
@@ -317,8 +327,16 @@ export async function deleteCpdRecord(recordId: string): Promise<void> {
   // could remove it. Only once the record has actually gone, and on the
   // licensee's own access, the one person who may delete files (0058); that
   // delete is logged too.
-  const evidencePath = (record as { evidence_path: string | null }).evidence_path;
-  if (deleted && deleted.length > 0 && evidencePath) {
+  //
+  // Only a file in that person's CPD folder: the record's path is written by
+  // whoever may change the record, and this removes it with the licensee's
+  // access (review of these fixes, 10 Oct 2026).
+  const { evidence_path: evidencePath, agency_id: agencyId, profile_id: profileId } = record as {
+    evidence_path: string | null;
+    agency_id: string;
+    profile_id: string;
+  };
+  if (deleted && deleted.length > 0 && evidencePath && isInFolder(evidencePath, cpdFolder(agencyId, profileId))) {
     const { error } = await supabase.storage.from(EVIDENCE_BUCKET).remove([evidencePath]);
     // The folder only, never the file name.
     if (error) console.error("CPD certificate not deleted:", evidencePath.split("/").slice(0, 3).join("/"), error.message);

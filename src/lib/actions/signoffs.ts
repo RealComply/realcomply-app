@@ -467,6 +467,10 @@ async function stampSignedCopy(
       .from("signoff_signatures")
       .select("signer_id, typed_name, signed_at")
       .eq("document_id", p.documentId)
+      // Only this office's rows: this reads with full rights, and a row from
+      // anywhere else must never put a name on this office's page (review of
+      // these fixes, 10 Oct 2026; the database also stops rows being moved).
+      .eq("agency_id", p.agencyId)
       .not("signed_at", "is", null)
       .order("signed_at", { ascending: true });
 

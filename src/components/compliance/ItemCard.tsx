@@ -3087,7 +3087,7 @@ function AuctioneerItem({
           </button>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="space-y-2">
+        <form method="post" onSubmit={onSubmit} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3167,7 +3167,7 @@ function ReserveItem({
           </button>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="space-y-2">
+        <form method="post" onSubmit={onSubmit} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3279,7 +3279,7 @@ function AuctionOutcomeItem({
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form onSubmit={onSubmit} className="space-y-3">
+      <form method="post" onSubmit={onSubmit} className="space-y-3">
         <input type="hidden" name="outcome" value={choice ?? ""} />
         <div className="flex flex-wrap gap-2">
           {OUTCOME_CHOICES.map((c) => (

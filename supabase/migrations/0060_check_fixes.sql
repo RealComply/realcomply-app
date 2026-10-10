@@ -22,6 +22,8 @@
 --      (Section H4b)
 --   7. Only the licensee moves or overwrites a filed document; anyone else
 --      moves only their own unsaved upload into its new listing. (Section H6)
+--   8. A checklist card or a CPD record can only name a file in its own
+--      folder, and a card cannot be moved to another listing. (Section H7)
 --
 -- Nothing here touches Cass Property's data. The only data changes are the
 -- two that clear stored refusals (section G1a), and both leave Cass Property
@@ -197,6 +199,14 @@ begin
      or (tg_op = 'UPDATE' and new.evidence_path is not distinct from old.evidence_path) then
     return null;
   end if;
+  -- A value that cannot name a stored file (longer than Storage allows, or
+  -- not in this agency's folder) is not kept: it could never be deleted as a
+  -- refused upload anyway, and a very long one would not fit the list's
+  -- index and would make the card, and the listing, impossible to change or
+  -- delete (review of these fixes, 10 Oct 2026).
+  if length(old.evidence_path) > 1024 or not starts_with(old.evidence_path, old.agency_id::text || '/') then
+    return null;
+  end if;
   -- The agency's own deletion cascades through here too; by then its row is
   -- gone and there is nothing to keep.
   insert into public.evidence_files_once_on_record (name, agency_id)
@@ -225,7 +235,8 @@ declare
 begin
   if new.bucket_id is distinct from 'compliance-evidence'
      or (new.name is not distinct from old.name and new.bucket_id is not distinct from old.bucket_id)
-     or coalesce(v_seg[1], '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+     or coalesce(v_seg[1], '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     or length(new.name) > 1024 then
     return null;
   end if;
   insert into public.evidence_files_once_on_record (name, agency_id)
@@ -267,8 +278,10 @@ begin
   if not public.evidence_path_writable(p_name) then
     return false;
   end if;
+  -- Any card in the agency, not only the listing the path names: a card on
+  -- another listing could point at this file (review, 10 Oct 2026).
   return not exists (select 1 from public.property_items i
-                      where i.property_id = v_seg[2]::uuid
+                      where i.agency_id = public.current_agency_id()
                         and i.evidence_path = p_name)
      and not exists (select 1 from public.evidence_files_once_on_record r
                       where r.name = p_name);
@@ -614,8 +627,37 @@ drop policy if exists "signoff_signatures: licensee lists signers, signer signs 
 create policy "signoff_signatures: licensee lists signers, signer signs own" on public.signoff_signatures
   for insert with check (
     agency_id = public.current_agency_id()
-    and ((public.acts_as_licensee() and signed_at is null)
+    and ((public.acts_as_licensee() and signed_at is null and public.may_sign_signoff_document(document_id))
          or (signer_id = auth.uid() and public.may_sign_signoff_document(document_id))));
+
+-- A row cannot be moved to another document or person afterwards. Without
+-- this, someone with an unsigned row on the SG Manual could repoint it at a
+-- licensee-only trust reconciliation, or another office's document, and
+-- then read and sign that (review of these fixes, 10 Oct 2026). Signing
+-- through signDocument's upsert sends the same three values, so it passes.
+-- Its own small guard, so 0058's guard_signoff_signature stays as it ran.
+create or replace function public.guard_signoff_signature_keys()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $f$
+begin
+  -- Security invoker on purpose: current_user is then the caller's role.
+  if current_user in ('authenticated', 'anon')
+     and (new.document_id is distinct from old.document_id
+          or new.agency_id is distinct from old.agency_id
+          or new.signer_id is distinct from old.signer_id) then
+    raise exception 'This change is not allowed.';
+  end if;
+  return new;
+end
+$f$;
+revoke execute on function public.guard_signoff_signature_keys() from public, anon, authenticated;
+drop trigger if exists signoff_signatures_keys_guard on public.signoff_signatures;
+create trigger signoff_signatures_keys_guard
+  before update on public.signoff_signatures
+  for each row execute function public.guard_signoff_signature_keys();
 
 -- ======================================================================
 -- Section H4b
@@ -669,5 +711,85 @@ create policy "compliance-evidence: whoever may file it can update" on storage.o
          or ((storage.foldername(name))[2] = '_pending'
              and coalesce(owner_id, owner::text) = auth.uid()::text)))
   with check (bucket_id = 'compliance-evidence' and public.evidence_path_writable(name));
+
+-- ======================================================================
+-- Section H7
+-- ======================================================================
+-- ===== H7: a record names only a file in its own folder, 10 October 2026 =====
+--
+-- Found in the review of these fixes. Only the licensee deletes files, and
+-- when they delete a listing, remove a card's file, replace it, or delete a
+-- CPD record, the app removes the file that record names, with the
+-- licensee's own access. But the record's file path is written by whoever
+-- may change the record: an agent could, through the database directly (not
+-- the app), point their card or CPD record at another listing's contract or
+-- someone else's licence, and the licensee's next delete would remove that
+-- file instead. So:
+--   - a checklist card's file must be in its own listing's folder,
+--     {agency}/{listing}/..., and a card cannot be moved to another listing;
+--   - a CPD record's file must be in that person's CPD folder,
+--     {agency}/_cpd/{person}/...
+-- The app has only ever written paths like these: on 10 Oct every one of the
+-- 93 card files and both CPD files on the live database matched. Only new
+-- writes are checked, and only from signed-in people; the platform's own
+-- jobs are not affected. Safe while the app now live is in use: it never
+-- writes anything else.
+
+create or replace function public.guard_property_item_paths()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $f$
+begin
+  -- Security invoker on purpose: current_user is then the caller's role.
+  if current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  if tg_op = 'UPDATE'
+     and (new.property_id is distinct from old.property_id
+          or new.agency_id is distinct from old.agency_id
+          or new.item_key is distinct from old.item_key) then
+    raise exception 'This change is not allowed.';
+  end if;
+  if new.evidence_path is not null
+     and (tg_op = 'INSERT' or new.evidence_path is distinct from old.evidence_path)
+     and (length(new.evidence_path) > 1024
+          or not starts_with(new.evidence_path, new.agency_id::text || '/' || new.property_id::text || '/')) then
+    raise exception 'That file is not in this listing''s folder.';
+  end if;
+  return new;
+end
+$f$;
+revoke execute on function public.guard_property_item_paths() from public, anon, authenticated;
+drop trigger if exists property_items_paths_guard on public.property_items;
+create trigger property_items_paths_guard
+  before insert or update on public.property_items
+  for each row execute function public.guard_property_item_paths();
+
+create or replace function public.guard_cpd_record_paths()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $f$
+begin
+  if current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  if new.evidence_path is not null
+     and (tg_op = 'INSERT' or new.evidence_path is distinct from old.evidence_path)
+     and (length(new.evidence_path) > 1024
+          or not starts_with(new.evidence_path, new.agency_id::text || '/_cpd/' || new.profile_id::text || '/')) then
+    raise exception 'That file is not in this person''s CPD folder.';
+  end if;
+  return new;
+end
+$f$;
+revoke execute on function public.guard_cpd_record_paths() from public, anon, authenticated;
+drop trigger if exists cpd_records_paths_guard on public.cpd_records;
+create trigger cpd_records_paths_guard
+  before insert or update on public.cpd_records
+  for each row execute function public.guard_cpd_record_paths();
 
 commit;

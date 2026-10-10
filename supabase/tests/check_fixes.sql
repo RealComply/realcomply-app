@@ -23,7 +23,7 @@ declare
   newbie uuid := gen_random_uuid();   -- joins after the SG Manual is published
   solo_ag uuid := gen_random_uuid();  -- the agent on the agent plan (its account holder)
   solo_asst uuid := gen_random_uuid(); -- their assistant
-  p1 uuid; doc uuid; old_doc uuid; recon uuid; recon2 uuid; other_doc uuid;
+  p1 uuid; p2 uuid; doc uuid; old_doc uuid; recon uuid; recon2 uuid; other_doc uuid;
   n integer;
   blocked boolean;
   got text;
@@ -49,6 +49,8 @@ begin
   update public.profiles set created_at = now() + interval '1 minute' where id in (ag1, ag2, solo_asst);
 
   insert into public.properties (agency_id, created_by, address) values (office, ag1, '1 Test St') returning id into p1;
+  insert into public.properties (agency_id, created_by, address) values (office, ag1, '2 Test St') returning id into p2;
+  insert into public.property_items (agency_id, property_id, item_key, status) values (office, p2, 'a1', 'open');
   -- a1 holds the VOI certificate that is about to be replaced; b1 and a3 hold
   -- the licensee's fresh uploads.
   insert into public.property_items (agency_id, property_id, item_key, status, evidence_path) values
@@ -180,6 +182,55 @@ begin
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL 14: the agent overwrote a filed document'; end if;
 
+  -- 15. A card names only a file in its own listing's folder (H7): not another
+  --     listing's contract, not a path too long to be a file, and a card
+  --     cannot be moved to another listing.
+  blocked := false;
+  begin
+    update public.property_items set evidence_path = office || '/' || p1 || '/b1/9-contract.pdf'
+     where property_id = p2 and item_key = 'a1';
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 15: a card was pointed at another listing''s file'; end if;
+  blocked := false;
+  begin
+    update public.property_items set evidence_path = office || '/' || p2 || '/a1/' || repeat('x', 3200)
+     where property_id = p2 and item_key = 'a1';
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 15: a card took a path longer than any file'; end if;
+  blocked := false;
+  begin
+    update public.property_items set property_id = p2 where property_id = p1 and item_key = 'b1';
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 15: a card was moved to another listing'; end if;
+  -- ...while a file in its own folder is still fine.
+  update public.property_items set evidence_path = office || '/' || p2 || '/a1/13-own.pdf'
+   where property_id = p2 and item_key = 'a1';
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL 15: a card could not take a file in its own folder'; end if;
+
+  -- 15a. A CPD record names only a file in that person's CPD folder (H7).
+  blocked := false;
+  begin
+    insert into public.cpd_records (agency_id, profile_id, activity_name, evidence_path)
+      values (office, ag1, 'Test CPD', office || '/' || p1 || '/b1/9-contract.pdf');
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 15a: a CPD record was pointed at a listing''s file'; end if;
+  insert into public.cpd_records (agency_id, profile_id, activity_name, evidence_path)
+    values (office, ag1, 'Test CPD', office || '/_cpd/' || ag1 || '/14-cert.pdf');
+
+  -- 15b. A file another card points at is "on a record", even when the card is
+  --      on a different listing from the path (here written with full rights,
+  --      as old data might be).
+  reset role;
+  insert into storage.objects (bucket_id, name, owner_id, created_at) values
+    ('compliance-evidence', office || '/' || p1 || '/a1/15-fresh.pdf', ag1::text, now());
+  update public.property_items set evidence_path = office || '/' || p1 || '/a1/15-fresh.pdf'
+   where property_id = p2 and item_key = 'a1';
+  set local role authenticated;
+  delete from storage.objects where name like '%/a1/15-fresh.pdf';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL 15b: the agent deleted a file a card on another listing points at'; end if;
+
   -- 3. Their own refused licence upload can go; their licence document on record cannot.
   delete from storage.objects where name like '%/_licences/%/6-refused-licence.pdf';
   get diagnostics n = row_count;
@@ -229,6 +280,21 @@ begin
   select count(*) into n from public.signoff_signatures where document_id = doc and signer_id = ag1 and signed_at is not null;
   if n <> 1 then raise exception 'FAIL 11: the agent could not sign the SG Manual'; end if;
   insert into public.signoff_signatures (document_id, agency_id, signer_id) values (old_doc, office, ag1);
+
+  -- 16. That row cannot be repointed at the licensee's trust reconciliation or
+  --     another office's document (reading and signing it that way).
+  blocked := false;
+  begin
+    update public.signoff_signatures set document_id = recon2 where document_id = old_doc and signer_id = ag1;
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 16: the agent repointed their sign-off row at a reconciliation'; end if;
+  blocked := false;
+  begin
+    update public.signoff_signatures set document_id = other_doc where document_id = old_doc and signer_id = ag1;
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 16: the agent repointed their sign-off row at another office''s document'; end if;
+  select count(*) into n from public.signoff_documents where id = recon2;
+  if n <> 0 then raise exception 'FAIL 16: the agent can see the reconciliation'; end if;
 
   -- ══════════════ As the assistant on the agent plan ══════════════
   reset role;
@@ -311,6 +377,25 @@ begin
    where (document_id = recon2 and signer_id = lic and signed_at is not null)
       or (document_id = old_doc and signer_id = ag2 and signed_at is null);
   if n <> 2 then raise exception 'FAIL 10a: the licensee could not sign or list a signer'; end if;
+
+  -- 16a. But not on another office's document.
+  blocked := false;
+  begin
+    insert into public.signoff_signatures (document_id, agency_id, signer_id) values (other_doc, office, ag2);
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 16a: the licensee listed a signer on another office''s document'; end if;
+
+  -- 17. A listing whose card holds a path too long to be a file (old data,
+  --     written here with full rights) can still be deleted.
+  reset role;
+  -- (random characters: a repeated one compresses and would fit the index)
+  update public.property_items
+     set evidence_path = office || '/' || p2 || '/a1/' || (select string_agg(md5(g::text || clock_timestamp()::text), '') from generate_series(1, 100) g)
+   where property_id = p2 and item_key = 'a1';
+  set local role authenticated;
+  delete from public.properties where id = p2;
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL 17: the licensee could not delete a listing with a very long card path'; end if;
 
   -- ══════════════ The webhook records a subscription ══════════════
   reset role;

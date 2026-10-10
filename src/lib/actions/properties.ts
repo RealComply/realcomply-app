@@ -7,6 +7,8 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import {
   buildEvidencePath,
   finalizeEvidenceRecord,
+  isInFolder,
+  listingFolder,
   listPropertyEvidencePaths,
   moveStagedEvidence,
   EVIDENCE_BUCKET,
@@ -413,8 +415,14 @@ export async function deleteProperty(
   // report files are named only in its entries, and a file an agent replaced
   // stays in the folder with nothing pointing at it, since only the licensee
   // can delete one.
+  // Only paths inside this listing's folder: a card's path is written by
+  // whoever may change the card, and this removes files with the licensee's
+  // access (review of these fixes, 10 Oct 2026).
+  const folder = listingFolder(property.agency_id, propertyId);
   const evidencePaths = new Set(
-    (items ?? []).map((item) => item.evidence_path).filter((path): path is string => !!path),
+    (items ?? [])
+      .map((item) => item.evidence_path)
+      .filter((path): path is string => !!path && isInFolder(path, folder)),
   );
   try {
     for (const path of await listPropertyEvidencePaths(supabase, property.agency_id, propertyId)) {

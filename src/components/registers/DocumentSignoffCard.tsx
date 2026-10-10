@@ -1,7 +1,7 @@
 import { Paperclip } from "lucide-react";
 import { SignatureBox } from "@/components/registers/SignatureBox";
 import { AskToSignButton } from "@/components/registers/AskToSignButton";
-import { notNeededReason } from "@/lib/signoff/awaiting";
+import { notNeededReason, signoffTally } from "@/lib/signoff/awaiting";
 import type { Profile, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -44,13 +44,9 @@ export function DocumentSignoffCard({
   const leftIds = new Set(profiles.filter((p) => p.archived_at).map((p) => p.id));
   const reasonFor = (sig: SignoffSignature) =>
     notNeededReason(sig, document.signer_scope, signatures, leftIds);
-  const counted = signatures.filter((s) => reasonFor(s) === null);
-
-  const signedCount = counted.filter((s) => s.signed_at).length;
   // Staff never asked to sign are owed a signature too, so they count against
   // "all signed" rather than letting a five-person office read "1 of 1".
-  const total = counted.length + notAsked.length;
-  const allSigned = total > 0 && signedCount === total;
+  const { signedCount, total, allSigned } = signoffTally(signatures, document.signer_scope, leftIds, notAsked.length);
   const mine = signatures.find((s) => s.signer_id === currentProfile.id);
   const needsMySignature = !!mine && !mine.signed_at && reasonFor(mine) === null;
 

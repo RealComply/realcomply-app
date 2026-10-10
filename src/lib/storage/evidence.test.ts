@@ -1,7 +1,7 @@
-import { describe, it } from "node:test";
+import { describe, it, test } from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { EVIDENCE_BUCKET, listPropertyEvidencePaths } from "./evidence";
+import { EVIDENCE_BUCKET, cpdFolder, isInFolder, listingFolder, listPropertyEvidencePaths } from "./evidence";
 
 // A bucket as storage.list() shows it: one level at a time, a folder with no
 // id, paged by limit/offset.
@@ -63,4 +63,16 @@ describe("listPropertyEvidencePaths", () => {
     const { client } = fakeClient(["ag/p1/a3/1.pdf"], "ag/p1/a3");
     await assert.rejects(() => listPropertyEvidencePaths(client, "ag", "p1"), /could not list ag\/p1\/a3/);
   });
+});
+
+test("isInFolder: only a path inside the record's own folder", () => {
+  const folder = listingFolder("ag", "p1");
+  assert.equal(isInFolder("ag/p1/a1/1-voi.pdf", folder), true);
+  assert.equal(isInFolder("ag/p2/b1/9-contract.pdf", folder), false);
+  assert.equal(isInFolder("ag/p1", folder), false);
+  assert.equal(isInFolder("ag/p10/a1/x.pdf", folder), false);
+  assert.equal(isInFolder("ag/p1/../p2/b1/x.pdf", folder), false);
+  assert.equal(isInFolder("ag/p1/a1/" + "x".repeat(1100), folder), false);
+  assert.equal(isInFolder("ag/_cpd/me/1-cert.pdf", cpdFolder("ag", "me")), true);
+  assert.equal(isInFolder("ag/_cpd/you/1-cert.pdf", cpdFolder("ag", "me")), false);
 });

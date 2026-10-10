@@ -40,6 +40,27 @@ export function buildEvidencePath(agencyId: string, propertyId: string, itemKey:
 // Same bucket, same RLS (only the agency_id first segment is checked — see
 // 0002_evidence_storage.sql), different second segment so these don't
 // collide with per-property evidence paths.
+/**
+ * Whether a stored path is inside the folder its record says it belongs to.
+ * A record's path is written by whoever may change the record, but the files
+ * it names are removed with the licensee's access (deleting a listing or a
+ * CPD record, removing or replacing a card's file). So a path anywhere else
+ * is left alone rather than trusted (review of the 10 Oct 2026 fixes; the
+ * database refuses such paths from 0060 too).
+ */
+export function isInFolder(path: string, folder: string): boolean {
+  const prefix = folder.endsWith("/") ? folder : `${folder}/`;
+  return path.length <= 1024 && path.startsWith(prefix) && !path.slice(prefix.length).split("/").includes("..");
+}
+
+export function listingFolder(agencyId: string, propertyId: string): string {
+  return `${agencyId}/${propertyId}/`;
+}
+
+export function cpdFolder(agencyId: string, profileId: string): string {
+  return `${agencyId}/_cpd/${profileId}/`;
+}
+
 export function buildLicenceDocPath(agencyId: string, profileId: string, fileName: string): string {
   return `${agencyId}/_licences/${profileId}/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
@@ -166,7 +187,11 @@ export async function finalizeEvidenceRecord(
   // database quietly refuses this and the old file stays in the listing's
   // folder with nothing pointing at it. Deleting the listing sweeps the whole
   // folder (listPropertyEvidencePaths), which is where it goes (10 Oct 2026).
-  if (existingRow?.evidence_path && existingRow.evidence_path !== path) {
+  if (
+    existingRow?.evidence_path &&
+    existingRow.evidence_path !== path &&
+    isInFolder(existingRow.evidence_path, listingFolder(agencyId, propertyId))
+  ) {
     await supabase.storage.from(EVIDENCE_BUCKET).remove([existingRow.evidence_path]);
   }
 
