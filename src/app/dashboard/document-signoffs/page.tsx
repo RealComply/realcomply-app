@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { documentsWaitingOn, notAskedToSign } from "@/lib/signoff/awaiting";
 import type { SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // Document sign-offs — the generic register for "upload a document, the
@@ -34,9 +35,22 @@ export default async function DocumentSignoffsPage() {
     ),
   );
 
-  const outstandingForMe = documents.filter((d) =>
-    signatures.some((s) => s.document_id === d.id && s.signer_id === profile.id && !s.signed_at),
-  ).length;
+  // Not a licensee-only document a fellow licensee has already signed off
+  // (10 Oct 2026): it needs one licensee's signature, not each of theirs.
+  const outstandingForMe = documentsWaitingOn(
+    profile.id,
+    signatures,
+    new Set(documents.filter((d) => d.signer_scope === "licensee_only").map((d) => d.id)),
+  );
+
+  // The current SG Manual version is the newest all-staff one (the one 0060
+  // gives new starters a row on). Its card shows the licensee who in the
+  // office was never asked to sign it, as the SG Manual page does.
+  const currentSg = documents.find((d) => d.category === "sg_manual" && d.signer_scope === "all_staff");
+  const notAskedOnCurrentSg =
+    access.actsAsLicensee && currentSg
+      ? notAskedToSign(staff, signatures.filter((s) => s.document_id === currentSg.id))
+      : [];
 
   return (
     <>
@@ -69,7 +83,7 @@ export default async function DocumentSignoffsPage() {
           <div className="mt-6 rounded-card border border-rc-border bg-rc-bg-alt px-4 py-3 text-sm text-rc-muted">
             Trust account reconciliations are now uploaded and signed on the{" "}
             <Link
-              href="/dashboard/registers?tab=trust"
+              href="/dashboard/trust"
               className="font-medium text-rc-green-deep hover:underline"
             >
               Trust account register
@@ -102,6 +116,7 @@ export default async function DocumentSignoffsPage() {
               currentProfile={profile}
               ownOnly={!access.actsAsLicensee}
               fileUrl={signedUrls[i]?.data?.signedUrl ?? null}
+              notAsked={doc.id === currentSg?.id ? notAskedOnCurrentSg : []}
             />
           ))}
         </div>

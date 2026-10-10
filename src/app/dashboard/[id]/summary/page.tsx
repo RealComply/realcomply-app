@@ -9,6 +9,7 @@ import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { formatAuDate } from "@/lib/format-date";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
+import { listingSignature } from "@/lib/rules/listing-signature";
 
 
 
@@ -42,11 +43,12 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   // Signed off, or not. Same test as the PDF route and the PDF itself — see the
   // note in lib/pdf/compliance-record.ts for why an unsigned pack has to say so
   // on its own face rather than relying on somebody noticing a missing section.
-  const signedName = (key: string) =>
-    (allItems[key]?.data as { typedName?: string } | undefined)?.typedName ?? null;
+  // A licensee who signed through the emailed link counts too (10 Oct 2026):
+  // see lib/rules/listing-signature.ts.
+  const signed = (key: string) => listingSignature(allItems[key]?.data) !== null;
   const missingSignatures = [
-    signedName("sign_agent") ? null : "the agent",
-    signedName("sign_licensee") ? null : "the licensee in charge",
+    signed("sign_agent") ? null : "the agent",
+    signed("sign_licensee") ? null : "the licensee in charge",
   ].filter((s): s is string => s !== null);
   const isDraft = missingSignatures.length > 0;
 

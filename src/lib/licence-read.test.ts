@@ -38,6 +38,8 @@ test("clear read: every field is saved and marked as read from the document", ()
   if (d.kind !== "save") return;
   assert.deepEqual(d.values, { holderName: null, licenceType: "class_2", licenceNumber: "20123456", expiry: "2027-08-14" });
   assert.deepEqual(d.state.missing, []);
+  // A document that went on the record keeps the name it was checked against.
+  assert.equal(d.state.lastRead?.nameOnDocument, "SMITH, Jane Maree");
   assert.equal(d.state.fields.expiry?.source, "document");
   assert.equal(d.state.lastRead?.status, "read");
   assert.equal(d.state.lastRead?.nameChecked, true);
@@ -70,7 +72,7 @@ test("a date that isn't a real date is treated as unreadable, never guessed", ()
   }
 });
 
-test("name mismatch: nothing is saved and the state carries the warning", () => {
+test("name mismatch: nothing is saved, and the other person's name is not kept", () => {
   const d = decide({
     documentIs: "licence",
     holderName: "Robert Chen",
@@ -80,9 +82,36 @@ test("name mismatch: nothing is saved and the state carries the warning", () => 
   });
   assert.equal(d.kind, "name_mismatch");
   if (d.kind !== "name_mismatch") return;
+  // For the one-off message in the uploader's browser only.
   assert.equal(d.nameOnDocument, "Robert Chen");
   assert.equal(d.state.lastRead?.status, "name_mismatch");
+  assert.equal(d.state.lastRead?.nameOnDocument, null);
   assert.deepEqual(d.state.fields, {});
+});
+
+test("a refusal never carries the name on the document into the state, whatever came before", () => {
+  const previous = decide({ documentIs: "licence", holderName: "Jane Smith", licenceType: "class_2", licenceNumber: "1", expiryDate: "2027-08-14" });
+  assert.equal(previous.kind, "save");
+  const refusals = [
+    { documentIs: "licence", holderName: "Robert Chen", expiryDate: "2027-08-14" },
+    { documentIs: "other", holderName: "Robert Chen", expiryDate: "2027-08-14" },
+  ].map((raw) =>
+    decideLicenceRead({
+      read: sanitiseLicenceRead(raw),
+      subject: "person",
+      expectedNames: ["Jane Smith"],
+      previous: previous.state,
+      by: "jane",
+      at: AT,
+      fileName: "robert.pdf",
+      today: TODAY,
+    }),
+  );
+  assert.deepEqual(refusals.map((d) => d.kind), ["name_mismatch", "not_a_licence"]);
+  for (const d of refusals) {
+    assert.equal(d.state.lastRead?.nameOnDocument, null);
+    assert.ok(!JSON.stringify(d.state).includes("Robert Chen"));
+  }
 });
 
 test("expired date: saved and flagged as expired, not blocked", () => {
@@ -93,9 +122,10 @@ test("expired date: saved and flagged as expired, not blocked", () => {
   assert.equal(d.expired, true);
 });
 
-test("not a licence: nothing saved", () => {
-  const d = decide({ documentIs: "other", holderName: "Jane Smith", expiryDate: "2027-01-01" });
+test("not a licence: nothing saved, and no name kept", () => {
+  const d = decide({ documentIs: "other", holderName: "Robert Chen", expiryDate: "2027-01-01" });
   assert.equal(d.kind, "not_a_licence");
+  assert.equal(d.state.lastRead?.nameOnDocument, null);
 });
 
 test("corporation licence: holder, number and expiry are kept; the type is not", () => {

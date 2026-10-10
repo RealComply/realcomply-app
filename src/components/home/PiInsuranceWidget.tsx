@@ -17,7 +17,7 @@ export function PiInsuranceWidget({
       icon={ShieldCheck}
       title="PI insurance"
       href="/dashboard/registers"
-      hrefLabel="Registers →"
+      hrefLabel="Registers"
       metric={EXPIRY_STATUS_LABELS[status]}
       caption={
         expiry

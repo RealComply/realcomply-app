@@ -27,6 +27,26 @@ function revalidate() {
   for (const p of PATHS) revalidatePath(p);
 }
 
+// A plan the staff member accepted must not change underneath them (check of
+// 10 Oct 2026). The licensee added and removed training after the staff
+// member had accepted, the acceptance still stood beside content they never
+// saw, and the licensee could approve it. So any change to what the plan says
+// (the consultation, adding or removing training) before approval takes the
+// acceptance back, and they accept again before the licensee can approve.
+// Marking training done is progress against the plan, not a change to it, and
+// leaves the acceptance alone. The staff member may clear their own, and the
+// licensee anyone's (guard_training_plan_signatures, 0058).
+const ACCEPTANCE_WITHDRAWN = { staff_signed_name: null, staff_signed_at: null };
+
+async function withdrawAcceptance(supabase: SupabaseClient, plan: TrainingPlan): Promise<boolean> {
+  if (!plan.staff_signed_at) return true;
+  const { error } = await supabase
+    .from("training_plans")
+    .update({ ...ACCEPTANCE_WITHDRAWN, updated_at: new Date().toISOString() })
+    .eq("id", plan.id);
+  return !error;
+}
+
 /**
  * Creates this CPD year's plan for a person.
  *
@@ -101,11 +121,18 @@ export async function saveTrainingPlanConsultation(
     return { error: "This plan has been approved. Reopen it before changing the consultation notes." };
   }
 
+  const consultationDate = str(formData, "consultationDate");
+  const identifiedGaps = str(formData, "identifiedGaps");
+  // A real change takes back the staff member's acceptance in the same write
+  // (see ACCEPTANCE_WITHDRAWN). Saving the notes unchanged leaves it.
+  const changed = consultationDate !== plan.consultation_date || identifiedGaps !== plan.identified_gaps;
+
   const { error } = await supabase
     .from("training_plans")
     .update({
-      consultation_date: str(formData, "consultationDate"),
-      identified_gaps: str(formData, "identifiedGaps"),
+      consultation_date: consultationDate,
+      identified_gaps: identifiedGaps,
+      ...(changed ? ACCEPTANCE_WITHDRAWN : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", planId);
@@ -159,6 +186,10 @@ export async function addTrainingPlanItem(planId: string, _prev: ActionState, fo
     .from("training_plan_items")
     .select("id", { count: "exact", head: true })
     .eq("plan_id", planId);
+
+  // Before the insert, so an accepted plan never holds training the staff
+  // member hasn't seen (ACCEPTANCE_WITHDRAWN above).
+  if (!(await withdrawAcceptance(supabase, plan))) return { error: "Couldn't add that training — try again." };
 
   const { error } = await supabase.from("training_plan_items").insert({
     agency_id: plan.agency_id,
@@ -234,7 +265,10 @@ export async function completeTrainingPlanItem(
         profile_id: plan.profile_id,
         activity_name: item.program_name,
         category: isAssistant ? "assistant_unit" : "general",
-        hours: isAssistant ? 1 : (item.training_hours ?? 0),
+        // Blank stays blank (0051; check, 10 Oct 2026): a plan item with no
+        // hours was logged as 0, which the CPD card never asks about and the
+        // year's totals quietly added. Left empty, the card asks for them.
+        hours: isAssistant ? 1 : (item.training_hours ?? null),
         completed_date: completedDate,
         // The provider is what makes a record count (lib/cpd-hours.ts), so it
         // goes in its own column, not only in the notes.
@@ -280,6 +314,8 @@ export async function deleteTrainingPlanItem(itemId: string): Promise<void> {
   // plan's owner or the licensee). Logged by the database (0058).
   if (!access.actsAsLicensee) return;
   if (plan.principal_signed_at) return;
+  // Removing training changes the plan too (ACCEPTANCE_WITHDRAWN above).
+  if (!(await withdrawAcceptance(supabase, plan))) return;
 
   await supabase.from("training_plan_items").delete().eq("id", itemId);
   revalidate();

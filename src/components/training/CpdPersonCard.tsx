@@ -47,7 +47,11 @@ export function CpdPersonCard({
   cpdYearStart: string;
   cpdYearLabel: string;
 }) {
-  const canEdit = viewerProfile.id === subject.id || Boolean(viewerProfile.is_licensee_in_charge);
+  // Someone who has left keeps their card as history, read only: nothing
+  // to attach or tick for a person no longer in the office (browser
+  // re-check, 10 Oct 2026).
+  const left = Boolean(subject.archived_at);
+  const canEdit = !left && (viewerProfile.id === subject.id || Boolean(viewerProfile.is_licensee_in_charge));
   const { actsAsLicensee } = useViewerAccess();
   const done = Boolean(signoff);
 
@@ -67,17 +71,23 @@ export function CpdPersonCard({
   async function upload(file: File) {
     setError(null);
     setUploading(true);
-    const supabase = createBrowserClient();
-    const path = buildCpdDocPath(subject.agency_id, subject.id, file.name);
-    const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
-    if (uploadError) {
-      setError(uploadError);
+    // Always cleared, and a thrown save says so (check, 10 Oct 2026): it left
+    // the card on "Reading certificate…" with the drop zone off until a reload.
+    try {
+      const supabase = createBrowserClient();
+      const path = buildCpdDocPath(subject.agency_id, subject.id, file.name);
+      const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
+      if (uploadError) {
+        setError(uploadError);
+        return;
+      }
+      const { error: saveError } = await addCpdFromCertificate(subject.id, path, stored.name);
+      if (saveError) setError(saveError);
+    } catch {
+      setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");
+    } finally {
       setUploading(false);
-      return;
     }
-    const { error: saveError } = await addCpdFromCertificate(subject.id, path, stored.name);
-    setUploading(false);
-    if (saveError) setError(saveError);
   }
 
   async function toggleDone() {
@@ -96,6 +106,11 @@ export function CpdPersonCard({
             {subject.is_licensee_in_charge && (
               <span className="rounded-full bg-rc-green/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rc-green-deep">
                 Licensee
+              </span>
+            )}
+            {left && (
+              <span className="rounded-full bg-rc-border/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rc-muted">
+                Left the office
               </span>
             )}
           </div>
@@ -186,7 +201,14 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
   const { actsAsLicensee } = useViewerAccess();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [state, action, pending] = useActionState(updateCpdRecord.bind(null, record.id), initial);
+  // Closes once the save has gone through, not as soon as it is sent (check,
+  // 10 Oct 2026): a refused save ("Give the activity a name.") closed the form
+  // and its message with it, so nothing was saved and nothing said so.
+  const [state, action, pending] = useActionState(async (prev: ActionState, fd: FormData) => {
+    const result = await updateCpdRecord(record.id, prev, fd);
+    if (!result.error) setEditing(false);
+    return result;
+  }, initial);
 
   useEffect(() => {
     if (!record.evidence_path) return;
@@ -213,10 +235,7 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
   if (editing) {
     return (
       <form
-        action={async (fd) => {
-          await action(fd);
-          setEditing(false);
-        }}
+        action={action}
         className="mt-3 space-y-2 rounded-xl border border-rc-border bg-neutral-50 p-3"
       >
         <p className="text-[11px] text-rc-muted">Fix anything the reading got wrong. The certificate stays attached.</p>
@@ -286,7 +305,7 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
         <p className="mt-0.5 text-[11px] text-rc-faint">
           {amount !== null && (
             <>
-              {amount} {isUnit ? (amount === 1 ? "unit" : "units") : "hours"} ·{" "}
+              {amount} {isUnit ? (amount === 1 ? "unit" : "units") : amount === 1 ? "hour" : "hours"} ·{" "}
             </>
           )}
           {record.completed_date ? <>completed {formatAuDate(record.completed_date)}</> : "completion date not read"}

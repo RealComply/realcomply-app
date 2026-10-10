@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { addPmProperty } from "@/lib/actions/pm";
 import type { ActionState } from "@/lib/actions/auth";
 import { AddressAutocomplete } from "@/components/property/NewPropertyForm";
@@ -17,13 +17,27 @@ const initial: ActionState = { error: null };
 
 export function AddPmPropertyForm({
   people,
-  viewerId,
+  defaultManagerId,
 }: {
   people: { id: string; name: string }[];
-  viewerId: string;
+  defaultManagerId: string;
 }) {
   const [state, formAction, pending] = useActionState(addPmProperty, initial);
   const [origin, setOrigin] = useState<PmOrigin | null>(null);
+  // Held in state, not left to the select (check, 10 Oct 2026). React resets
+  // a form's own fields after every submit, refused or not, so a failed add
+  // put the picker back on the default and the retry filed the property under
+  // the wrong person, where its real manager can't see it (0058).
+  //
+  // A controlled select is reset all the same (review of 10 Oct 2026): the
+  // state kept the person picked while the picker showed someone else, and
+  // the retry sent what the picker showed. So the state is what is sent (the
+  // hidden field), and the picker is put back to match it after each submit.
+  const [managerId, setManagerId] = useState(defaultManagerId);
+  const picker = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (picker.current) picker.current.value = managerId;
+  }, [state, managerId]);
 
   return (
     <form action={formAction} className="rounded-card border border-rc-border bg-white px-4 py-4 shadow-card sm:px-5">
@@ -34,10 +48,12 @@ export function AddPmPropertyForm({
           <label htmlFor="pm-manager" className="block text-sm font-medium text-rc-ink">
             Property manager
           </label>
+          <input type="hidden" name="managerId" value={managerId} />
           <select
+            ref={picker}
             id="pm-manager"
-            name="managerId"
-            defaultValue={viewerId}
+            value={managerId}
+            onChange={(e) => setManagerId(e.target.value)}
             className="mt-1 w-full rounded-lg border border-rc-border bg-white px-3 py-2 text-sm focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           >
             {people.map((p) => (

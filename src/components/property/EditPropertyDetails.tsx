@@ -50,7 +50,8 @@ function YesNo({ name, label, value }: { name: string; label: string; value: boo
   );
 }
 
-// canDelete: the licensee in charge only. Delete property lives at the foot of
+// canDelete: whoever acts as the licensee (lib/access.ts), which on an agent
+// plan is the agent themself. Delete property lives at the foot of
 // this box since 3 Oct 2026 (it used to be a box at the bottom of the property
 // page — see DeletePropertySection). It sits outside the details <form>
 // because it is a form of its own and forms cannot nest.

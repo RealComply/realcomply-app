@@ -26,7 +26,7 @@ export function NeedsAttentionWidget({
       icon={ClipboardList}
       title="Needs your attention"
       href={own ? "/dashboard" : "/dashboard/portfolio"}
-      hrefLabel={own ? "Listings →" : "Office overview →"}
+      hrefLabel={own ? "Listings" : "Office overview"}
       metric={items.length}
       caption={
         items.length === 0

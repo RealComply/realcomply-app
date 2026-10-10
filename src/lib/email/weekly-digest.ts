@@ -17,6 +17,7 @@ import {
 import { expiryStatus } from "@/lib/expiry-status";
 import { credentialLabel } from "@/lib/licence-reminders";
 import { currentCpdYear } from "@/lib/cpd-year";
+import { accessFrom } from "@/lib/access";
 import {
   STAGE_LABELS,
   type Agency,
@@ -44,7 +45,11 @@ const TRAINING_REMINDER_DAYS = 90;
 type AgencyBundle = {
   agency: Agency;
   properties: Property[];
+  /** Everyone, removed people included: only for putting a name to an id. */
   profiles: Profile[];
+  /** The people still at the agency. Who is emailed, and whose licence and
+   *  training plan the licensee is told about. */
+  activeProfiles: Profile[];
   digests: PropertyDigest[];
   lastTrainingSessionDate: string | null;
   trainingPlans: TrainingPlan[];
@@ -100,6 +105,11 @@ async function loadAgencyBundle(
     agency,
     properties: propertyList,
     profiles: profileList,
+    // Removing someone sets archived_at and leaves their role flags alone, so
+    // a removed licensee was still emailed the whole agency's digest every
+    // Monday, and removed staff were listed as expiring or without a plan
+    // (10 Oct 2026). The licence and trust reminders already left them out.
+    activeProfiles: profileList.filter((p) => !p.archived_at),
     digests,
     lastTrainingSessionDate,
     trainingPlans: (planRows ?? []) as TrainingPlan[],
@@ -353,11 +363,20 @@ function renderTrainingSection(
 }
 
 const PORTFOLIO_URL = "https://www.realcomply.com.au/dashboard/portfolio";
+const LISTINGS_URL = "https://www.realcomply.com.au/dashboard";
 
-const DIGEST_FOOTER = [
-  DILIGENCE_LINE,
-  `<a href="${PORTFOLIO_URL}" style="color:#8a9a93">View the live picture any time</a>`,
-];
+// Office overview is the licensee's page since 7 Oct 2026 and answers "not
+// found" to anyone else, and every agent's digest sent them there (10 Oct
+// 2026). An agent gets their own Listings, which is what their email is about.
+export function digestLink(actsAsLicensee: boolean): { label: string; href: string } {
+  return actsAsLicensee
+    ? { label: "Open the portfolio", href: PORTFOLIO_URL }
+    : { label: "Open your listings", href: LISTINGS_URL };
+}
+
+function digestFooter(href: string): string[] {
+  return [DILIGENCE_LINE, `<a href="${href}" style="color:#8a9a93">View the live picture any time</a>`];
+}
 
 // Runs the whole weekly digest: one pass per agency, one email per
 // recipient. A profile with both is_agent and is_licensee_in_charge (a
@@ -376,15 +395,15 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
   // it can act on, and its own emails already say what happens next.
   for (const agency of ((agencies ?? []) as Agency[]).filter((a) => !a.ended_at)) {
     const bundle = await loadAgencyBundle(supabase, agency);
-    const licenceSection = renderLicenceAndPiSection(bundle.agency, bundle.profiles);
+    const licenceSection = renderLicenceAndPiSection(bundle.agency, bundle.activeProfiles);
     const trainingSection = renderTrainingSection(
       bundle.lastTrainingSessionDate,
-      bundle.profiles,
+      bundle.activeProfiles,
       bundle.trainingPlans,
       currentCpdYear().label,
     );
 
-    for (const profile of bundle.profiles) {
+    for (const profile of bundle.activeProfiles) {
       if (!profile.is_agent && !profile.is_licensee_in_charge) {
         skipped += 1;
         continue;
@@ -422,7 +441,8 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
         sections.push(...trainingSection);
       }
 
-      sections.push({ kind: "button", label: "Open the portfolio", href: PORTFOLIO_URL });
+      const link = digestLink(accessFrom(profile, bundle.agency.plan).actsAsLicensee);
+      sections.push({ kind: "button", label: link.label, href: link.href });
 
       const doc: EmailDocument = {
         // Written rather than inherited: left alone the client would fill the
@@ -440,7 +460,7 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
           timeZone: "Australia/Sydney",
         })}`,
         sections,
-        footer: DIGEST_FOOTER,
+        footer: digestFooter(link.href),
       };
 
       const subject = profile.is_licensee_in_charge

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import type { ActionState } from "@/lib/actions/auth";
 import { loadPmProperty, pmAgencySettings } from "@/lib/data/pm";
+import { agencyPeople } from "@/lib/data/people";
 import {
   PM_EVENT_RECORDS,
   PM_PET_APPLICATION,
@@ -119,6 +120,41 @@ export async function addPmProperty(_prev: ActionState, formData: FormData): Pro
 
   revalidatePath("/dashboard/pm");
   redirect(`/dashboard/pm/${created.id}`);
+}
+
+/**
+ * Hands a property to another property manager. The licensee's alone.
+ *
+ * There was no way to do this (check, 10 Oct 2026). A property is filed
+ * under one manager when it is added, and archiving someone hands theirs to
+ * the licensee (team.ts), where they stayed for good: moving one on to the
+ * agent now looking after it, or back to someone brought back, meant editing
+ * the database. Same people as the "+ Add property" picker offers the
+ * licensee: anyone active in the office.
+ *
+ * Not written to a history table: PM keeps one for ticks (pm_item_events)
+ * and one for group moves (pm_group_moves), and neither is for this.
+ */
+export async function changePmManager(propertyId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { supabase, pmEnabled, access } = await requirePm();
+  if (!pmEnabled) return { error: PM_OFF };
+  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can change the property manager." };
+
+  const managerId = String(formData.get("managerId") ?? "");
+  // Names and whether they have left, for everyone in the office (0058).
+  const person = (await agencyPeople(supabase)).find((p) => p.id === managerId);
+  if (!person || person.archived_at) return { error: "Choose a property manager from your office." };
+
+  const { data: changed, error } = await supabase
+    .from("pm_properties")
+    .update({ manager_id: managerId })
+    .eq("id", propertyId)
+    .select("id");
+  if (error || !changed || changed.length === 0) return { error: "Couldn't change the property manager. Try again." };
+
+  revalidatePath(`/dashboard/pm/${propertyId}`);
+  revalidatePath("/dashboard/pm");
+  return { error: null };
 }
 
 /** The tenancy a per-tenancy tick belongs to, writing the first one if it is missing. */

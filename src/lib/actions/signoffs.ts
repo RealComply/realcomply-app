@@ -77,15 +77,26 @@ export async function createSignoffDocument(params: {
     return { error: "Couldn't save that document — try again." };
   }
 
+  // Present staff only (10 Oct 2026). Someone who has left keeps their
+  // agency_id (0035), so they were being listed as a signer who can never
+  // sign — and with no way to remove the row, the version sat at "N of N+1
+  // signed" for good.
   const signers =
     signerScope === "all_staff"
-      ? (await supabase.from("profiles").select("id").eq("agency_id", profile.agency_id)).data ?? []
+      ? (
+          await supabase
+            .from("profiles")
+            .select("id")
+            .eq("agency_id", profile.agency_id)
+            .is("archived_at", null)
+        ).data ?? []
       : (
           await supabase
             .from("profiles")
             .select("id")
             .eq("agency_id", profile.agency_id)
             .eq("is_licensee_in_charge", true)
+            .is("archived_at", null)
         ).data ?? [];
 
   if (signers.length > 0) {
@@ -110,12 +121,79 @@ export async function createSignoffDocument(params: {
   return ok;
 }
 
+// ── Asking staff who were never asked to sign the current SG Manual ───────
+//
+// 10 Oct 2026. Signer rows are made when a version is published, and since
+// 0060 when someone joins. Anyone who joined between the two has no row: they
+// cannot see the version, nothing asks them to sign it, and the licensee's
+// card read "1 of 1 signed" in green for a five-person office. The SG Manual
+// page now lists them for the licensee; this gives each an unsigned row on
+// the current version, with the licensee's own access (the 0058 rules let the
+// licensee add unsigned rows). No email: they see it next time they sign in.
+//
+// Present staff only, and the current version only. Re-publishing would also
+// have worked, but it asks everyone who already signed to sign again.
+export async function askStaffToSign(documentId: string, _prev: ActionState, _formData: FormData): Promise<ActionState> {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) {
+    return { error: "Only the licensee in charge can ask staff to sign." };
+  }
+
+  // The newest all-staff SG Manual version, the same one the page shows and
+  // the one 0060 gives new starters a row on.
+  const { data: current } = await supabase
+    .from("signoff_documents")
+    .select("id")
+    .eq("agency_id", profile.agency_id)
+    .eq("category", "sg_manual")
+    .eq("signer_scope", "all_staff")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if ((current as { id: string } | null)?.id !== documentId) {
+    return { error: "A newer version has been published since this page opened. Reload it and try again." };
+  }
+
+  const [{ data: staff }, { data: rows }] = await Promise.all([
+    supabase.from("profiles").select("id").eq("agency_id", profile.agency_id).is("archived_at", null),
+    supabase.from("signoff_signatures").select("signer_id").eq("document_id", documentId),
+  ]);
+  const asked = new Set(((rows ?? []) as Array<{ signer_id: string }>).map((r) => r.signer_id));
+  const missing = ((staff ?? []) as Array<{ id: string }>).filter((s) => !asked.has(s.id));
+
+  if (missing.length > 0) {
+    const { error } = await supabase.from("signoff_signatures").upsert(
+      missing.map((s) => ({ document_id: documentId, agency_id: profile.agency_id, signer_id: s.id })),
+      // Someone who joined a moment ago already has their row; leave it be.
+      { onConflict: "document_id,signer_id", ignoreDuplicates: true },
+    );
+    if (error) {
+      console.error("askStaffToSign failed:", documentId, error.message);
+      return { error: "Couldn't add them to this version — try again." };
+    }
+  }
+
+  revalidatePath("/dashboard/document-signoffs");
+  revalidatePath("/dashboard/sg-manual");
+  revalidatePath("/dashboard/registers");
+  return ok;
+}
+
 // ── Signing your own row ────────────────────────────────────────────────
 // RLS (0009_document_signoffs.sql) already restricts this to the caller's
 // own signer_id — the is-it-really-them check is the auth session, same as
 // sign_agent/sign_licensee on a compliance file. Upsert rather than a plain
 // update so this still works even if a signer's row didn't exist yet (e.g.
 // someone added to the agency after the document was published).
+// 10 Oct 2026: that case never got this far — since 0058 someone with no row
+// cannot see the document at all. The database now gives each person who
+// joins from 0060 on a row on the current SG Manual version (see
+// supabase/migrations/0060_check_fixes.sql), so a new starter is asked to sign it
+// and the licensee sees them as outstanding. Only from then: there is no
+// catch-up for anyone who joined before it, because that would change every
+// agency's records at once. The licensee asks those people from the SG Manual
+// page instead — see askStaffToSign below.
+//
 // A TICK, NOT A TYPED NAME (Adam, 8 Sep 2026): "we can just add a tick box
 // stating that the licensee has reviewed the document and only the licensee
 // can tick that box."
@@ -164,6 +242,26 @@ export async function signDocument(documentId: string, _prev: ActionState, _form
     return { error: "Add your name in Settings before signing this off." };
   }
 
+  // ALREADY SIGNED IS DONE, NOT AN ERROR (10 Oct 2026). Since 0058 a signed
+  // row is locked, so pressing Sign off on a page opened before the signature
+  // went in elsewhere (another tab, another device) was refused, shown as
+  // "Couldn't record that signature — try again", and every retry failed the
+  // same way because nothing refreshed the page. The signature they wanted is
+  // on record; refresh the page to show it.
+  const { data: existing } = await supabase
+    .from("signoff_signatures")
+    .select("signed_at")
+    .eq("document_id", documentId)
+    .eq("signer_id", profile.id)
+    .maybeSingle();
+  if ((existing as { signed_at: string | null } | null)?.signed_at) {
+    revalidatePath("/dashboard/trust");
+    revalidatePath("/dashboard/document-signoffs");
+    revalidatePath("/dashboard/sg-manual");
+    revalidatePath("/dashboard/registers");
+    return ok;
+  }
+
   const signedAt = new Date().toISOString();
 
   const { error } = await supabase.from("signoff_signatures").upsert(
@@ -193,7 +291,12 @@ export async function signDocument(documentId: string, _prev: ActionState, _form
   // people see only their own signature rows now). The signature itself has
   // already gone through the signer's own rules above; this only redraws the
   // document from what the database holds, for a document in their agency.
-  await stampSignedCopy(createServiceClient(), {
+  // Passed as a function, not a client (10 Oct 2026): createServiceClient
+  // throws when the server key is missing, and called here it threw before
+  // the guard in stampSignedCopy, so a signature already on record came back
+  // as a crashed page. Made inside the guard, a missing key is one more
+  // stamping failure: logged, and the sign-off still succeeds.
+  await stampSignedCopy(createServiceClient, {
     documentId,
     agencyId: profile.agency_id,
     title: (doc as { title: string }).title,
@@ -273,7 +376,7 @@ export async function restampSignedDocument(documentId: string): Promise<ActionS
     return { error: "This document hasn't been signed off yet, so there's no signature to add." };
   }
 
-  await stampSignedCopy(supabase, {
+  await stampSignedCopy(() => supabase, {
     documentId,
     agencyId: profile.agency_id,
     title: (doc as { title: string }).title,
@@ -332,7 +435,7 @@ const SIGNED_BASIS: Record<string, string> = {
 };
 
 async function stampSignedCopy(
-  supabase: Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
+  client: () => Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
   p: {
     documentId: string;
     agencyId: string;
@@ -343,6 +446,7 @@ async function stampSignedCopy(
   },
 ): Promise<void> {
   try {
+    const supabase = client();
     // The agency's own name, off the agency row rather than the profile —
     // profiles do not carry it. This is the agency's record and the page says
     // so at the top; falling back to a generic label would produce a signature
@@ -363,6 +467,10 @@ async function stampSignedCopy(
       .from("signoff_signatures")
       .select("signer_id, typed_name, signed_at")
       .eq("document_id", p.documentId)
+      // Only this office's rows: this reads with full rights, and a row from
+      // anywhere else must never put a name on this office's page (review of
+      // these fixes, 10 Oct 2026; the database also stops rows being moved).
+      .eq("agency_id", p.agencyId)
       .not("signed_at", "is", null)
       .order("signed_at", { ascending: true });
 
@@ -400,6 +508,7 @@ async function stampSignedCopy(
           // typed-signature flow recorded and is the fallback for rows written
           // before the tick box replaced it on 8 Sep 2026.
           name: who?.full_name ?? r.typed_name ?? who?.email ?? "Unknown",
+          email: who?.email ?? null,
           role: who?.is_licensee_in_charge ? "Licensee in charge" : "Staff member",
           signedAt: r.signed_at,
         };

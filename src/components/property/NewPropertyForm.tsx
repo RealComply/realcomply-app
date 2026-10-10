@@ -98,6 +98,16 @@ function listOut(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
+// Named, not counted. "Attach all three documents" makes the person audit
+// their own form to work out which one they are being told about.
+function missingDocsMessage(missing: typeof DOC_FIELDS): string {
+  return missing.length === DOC_FIELDS.length
+    ? "All three documents are needed to create the listing."
+    : `Still to attach: ${listOut(missing.map((m) => m.label.toLowerCase()))}.`;
+}
+
+const UPLOAD_FAILED = "One of the documents didn't upload.";
+
 // Plain text field, but as the agent types it debounces a call out to
 // Google Places (via the searchAddress Server Action — the API key stays
 // server-side, see src/lib/actions/places.ts) and offers a dropdown of
@@ -226,16 +236,10 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
 
     const missing = DOC_FIELDS.filter(({ field }) => !files[field]);
     if (missing.length > 0) {
-      // Named, not counted. "Attach all three documents" makes the person
-      // audit their own form to work out which one they are being told about.
       setDocErrors(
         Object.fromEntries(missing.map(({ field }) => [field, "This document is needed to create the listing."])),
       );
-      setUploadError(
-        missing.length === DOC_FIELDS.length
-          ? "All three documents are needed to create the listing."
-          : `Still to attach: ${listOut(missing.map((m) => m.label.toLowerCase()))}.`,
-      );
+      setUploadError(missingDocsMessage(missing));
       goTo(docAnchorId(missing[0].field));
       return;
     }
@@ -255,7 +259,7 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
         // Against the field that failed. The filename is already on screen
         // there, so repeating it in the message adds nothing.
         setDocErrors({ [field]: error });
-        setUploadError("One of the documents didn't upload.");
+        setUploadError(UPLOAD_FAILED);
         setUploading(false);
         goTo(docAnchorId(field));
         return;
@@ -392,6 +396,21 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
                     delete next[field];
                     return next;
                   });
+                  // The banner follows the slots (10 Oct 2026). It was only
+                  // ever set on Create, so with all three documents attached
+                  // it still said "Still to attach: contract for sale and
+                  // comparable sales report" until Create was pressed again.
+                  // It now names only the documents still flagged, and goes
+                  // once none are. An upload failure's banner stays while its
+                  // document is still flagged.
+                  const stillFlagged = DOC_FIELDS.filter((d) => d.field !== field && docErrors[d.field]);
+                  setUploadError((prev) =>
+                    prev === null || stillFlagged.length === 0
+                      ? null
+                      : prev === UPLOAD_FAILED
+                        ? prev
+                        : missingDocsMessage(stillFlagged),
+                  );
                 }}
               />
             ))}

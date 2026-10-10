@@ -22,6 +22,8 @@
 // the audit is due 30 September. s111(3): the auditor's report is kept at
 // least 3 years.
 
+import { sydneyDate } from "@/lib/subscription-end/dates";
+
 export const RECONCILIATION_DUE_DAYS = 21;
 export const AUDIT_DUE_MONTHS = 3;
 
@@ -34,7 +36,9 @@ export type MonthStatus =
   | "awaiting_signature"
   | "signed"
   /** Past the 21-day mark and still not signed. */
-  | "overdue";
+  | "overdue"
+  /** Ended before the account was opened, so nothing was ever owed on it. */
+  | "not_applicable";
 
 export type ReconciliationMonth = {
   /** First day of the month it covers, as YYYY-MM-DD. */
@@ -75,6 +79,22 @@ function iso(d: Date): string {
 
 function startOfUtcDay(today: Date): Date {
   return utc(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+}
+
+/**
+ * Today's calendar date in Sydney, as UTC midnight of that day — the form
+ * every helper here reads. Pass this, not new Date(), as their `today`.
+ *
+ * 10 Oct 2026: the helpers read the UTC calendar date, and the reminder job
+ * runs at 21:40 UTC, which is already the next morning in Sydney. So the
+ * "1st, 7th and 18th" emails arrived on the 2nd, 8th and 19th, the 18th one
+ * said three days were left when two were, and until about 10am on the 22nd
+ * the page and the badge still showed a month due on the 21st as not overdue.
+ * The obligation runs on NSW days, so the date is Sydney's.
+ */
+export function sydneyToday(now: Date = new Date()): Date {
+  const [y, m, d] = sydneyDate(now).split("-").map(Number);
+  return utc(y, m - 1, d);
 }
 
 const MONTH_NAMES = [
@@ -145,6 +165,33 @@ export function daysUntil(dateIso: string, today: Date = new Date()): number {
 export function lastCompletedMonth(today: Date = new Date()): string {
   const d = startOfUtcDay(today);
   return iso(utc(d.getUTCFullYear(), d.getUTCMonth() - 1, 1));
+}
+
+// ── When the account opened ────────────────────────────────────────────────
+//
+// 10 Oct 2026: an account added in October for a trust account opened on
+// 1 October showed July, August and September as overdue straight away, and
+// asked for the audit of a year it never existed in — red that could only be
+// cleared by filing reconciliations for months the account did not exist.
+//
+// The cut-off is the date the licensee says the account OPENED, not the day
+// it was added here. Those differ for every agency that joins part way through
+// a year, and for every account 0032 created on 25 Aug 2026 for the agencies
+// already here: their July reconciliations and their 2025-26 audit were owed
+// all the same, and going quiet about them would hide a real obligation. No
+// date given means it was already open, and everything is owed as before.
+
+/** Did the month end before the account opened? Nothing was owed on it. */
+export function monthBeforeOpening(monthIso: string, openedOn: string | null | undefined): boolean {
+  if (!openedOn) return false;
+  const [y, m] = monthIso.split("-").map(Number);
+  // Day 0 of the next month is the last day of this one.
+  return iso(utc(y, m, 0)) < openedOn;
+}
+
+/** An audit period is owed if the account was open at any point in it. */
+export function auditOwed(periodEnd: string, openedOn: string | null | undefined): boolean {
+  return !openedOn || openedOn <= periodEnd;
 }
 
 // ── Status ────────────────────────────────────────────────────────────────
@@ -244,8 +291,11 @@ export function statusFor(
   monthIso: string,
   record: ReconciliationRecord | undefined,
   today: Date = new Date(),
+  openedOn: string | null = null,
 ): MonthStatus {
   if (!monthHasEnded(monthIso, today)) return "future";
+  // Anything filed for it still shows as filed.
+  if (!record && monthBeforeOpening(monthIso, openedOn)) return "not_applicable";
   const progress = reconciliationProgress(record);
   if (progress === "signed") return "signed";
   const late = daysUntil(reconciliationDueOn(monthIso), today) < 0;
@@ -257,14 +307,17 @@ export function buildMonths(
   periodEnd: string,
   records: Map<string, ReconciliationRecord>,
   today: Date = new Date(),
+  /** trust_accounts.opened_on. Months that ended before it are not_applicable. */
+  openedOn: string | null = null,
 ): ReconciliationMonth[] {
   return monthsInAuditYear(periodEnd).map((month) => {
     const record = records.get(month);
+    const status = statusFor(month, record, today, openedOn);
     return {
       month,
       label: monthLabel(month),
-      dueOn: monthHasEnded(month, today) ? reconciliationDueOn(month) : null,
-      status: statusFor(month, record, today),
+      dueOn: monthHasEnded(month, today) && status !== "not_applicable" ? reconciliationDueOn(month) : null,
+      status,
       documentId: record?.documentId ?? null,
       fileName: record?.fileName ?? null,
       filePath: record?.filePath ?? null,
@@ -284,6 +337,7 @@ export const MONTH_STATUS_LABELS: Record<MonthStatus, string> = {
   awaiting_signature: "Waiting on you",
   signed: "Signed",
   overdue: "Overdue",
+  not_applicable: "Before it opened",
 };
 
 // ── Reminders ─────────────────────────────────────────────────────────────

@@ -40,6 +40,57 @@ export function buildEvidencePath(agencyId: string, propertyId: string, itemKey:
 // Same bucket, same RLS (only the agency_id first segment is checked — see
 // 0002_evidence_storage.sql), different second segment so these don't
 // collide with per-property evidence paths.
+/**
+ * Whether a stored path is inside the folder its record says it belongs to.
+ * A record's path is written by whoever may change the record, but the files
+ * it names are removed with the licensee's access (deleting a listing or a
+ * CPD record, removing or replacing a card's file). So a path anywhere else
+ * is left alone rather than trusted (review of the 10 Oct 2026 fixes; the
+ * database refuses such paths from 0060 too).
+ */
+export function isInFolder(path: string, folder: string): boolean {
+  const prefix = folder.endsWith("/") ? folder : `${folder}/`;
+  return (
+    new TextEncoder().encode(path).length <= 1024 &&
+    path.startsWith(prefix) &&
+    !path.slice(prefix.length).split("/").includes("..")
+  );
+}
+
+/**
+ * Whether the licensee replacing or removing a card's file may delete the
+ * old one: only when it is in that card's own folder and no other card in
+ * the agency still names it. A card's path is written by whoever may change
+ * the card, so an agent could point one card at another card's filed
+ * document on the same listing (review of the 10 Oct 2026 fixes). Anything
+ * else is just taken off the card; it stays in the listing's folder, which
+ * deleting the listing sweeps.
+ */
+export async function cardFileRemovable(
+  supabase: SupabaseClient,
+  card: { agencyId: string; propertyId: string; itemKey: string; path: string },
+): Promise<boolean> {
+  if (!isInFolder(card.path, `${listingFolder(card.agencyId, card.propertyId)}${card.itemKey}/`)) return false;
+  const { data, error } = await supabase
+    .from("property_items")
+    .select("property_id, item_key")
+    .eq("agency_id", card.agencyId)
+    .eq("evidence_path", card.path);
+  if (error) return false;
+  return !(data ?? []).some(
+    (row: { property_id: string; item_key: string }) =>
+      row.property_id !== card.propertyId || row.item_key !== card.itemKey,
+  );
+}
+
+export function listingFolder(agencyId: string, propertyId: string): string {
+  return `${agencyId}/${propertyId}/`;
+}
+
+export function cpdFolder(agencyId: string, profileId: string): string {
+  return `${agencyId}/_cpd/${profileId}/`;
+}
+
 export function buildLicenceDocPath(agencyId: string, profileId: string, fileName: string): string {
   return `${agencyId}/_licences/${profileId}/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
@@ -161,7 +212,16 @@ export async function finalizeEvidenceRecord(
 
   // Only remove the old file once the new one is confirmed in place, so a
   // problem here never leaves an item with no evidence at all.
-  if (existingRow?.evidence_path && existingRow.evidence_path !== path) {
+  //
+  // Since 0058 only the licensee deletes files, so for anyone else the
+  // database quietly refuses this and the old file stays in the listing's
+  // folder with nothing pointing at it. Deleting the listing sweeps the whole
+  // folder (listPropertyEvidencePaths), which is where it goes (10 Oct 2026).
+  if (
+    existingRow?.evidence_path &&
+    existingRow.evidence_path !== path &&
+    (await cardFileRemovable(supabase, { agencyId, propertyId, itemKey, path: existingRow.evidence_path }))
+  ) {
     await supabase.storage.from(EVIDENCE_BUCKET).remove([existingRow.evidence_path]);
   }
 
@@ -180,6 +240,40 @@ export async function finalizeEvidenceRecord(
   );
 
   return { error: error?.message ?? null };
+}
+
+// Every object in one listing's folder, {agency}/{property}/{item}/{file}.
+//
+// For deleting a listing (10 Oct 2026). The evidence_path column does not
+// name every file a listing has: f3's reports are in its entries, and a file
+// an agent replaced is still there, because only the licensee can delete
+// one. Reading the folder finds them all.
+//
+// list() returns one level at a time, and a folder comes back with no id, so
+// this walks down. Throws if a level cannot be read, rather than calling an
+// unreadable folder empty.
+export async function listPropertyEvidencePaths(
+  supabase: SupabaseClient,
+  agencyId: string,
+  propertyId: string,
+): Promise<string[]> {
+  const PAGE = 100;
+  const walk = async (prefix: string, depth: number): Promise<string[]> => {
+    if (depth > 4) return [];
+    const out: string[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await supabase.storage.from(EVIDENCE_BUCKET).list(prefix, { limit: PAGE, offset });
+      if (error) throw new Error(`could not list ${prefix}: ${error.message}`);
+      for (const entry of data ?? []) {
+        const path = `${prefix}/${entry.name}`;
+        if (entry.id) out.push(path);
+        else out.push(...(await walk(path, depth + 1)));
+      }
+      if (!data || data.length < PAGE) break;
+    }
+    return out;
+  };
+  return walk(`${agencyId}/${propertyId}`, 0);
 }
 
 // Relocates a staged (pre-property-creation) upload to its permanent,

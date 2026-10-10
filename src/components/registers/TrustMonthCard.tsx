@@ -22,8 +22,15 @@ import type { ReconciliationMonth } from "@/lib/trust-account";
 // exporting a report out of Property Tree and putting it on file. The
 // signature is the licensee's alone, and the server enforces both; the props
 // below only decide what is worth rendering.
+//
+// REVERSAL (Adam, 7 Oct 2026): trust accounts are the licensee's only, and an
+// assistant no longer reaches this page at all, so the upload is the
+// licensee's too (10 Oct 2026: the copy below still offered the assistant).
 
 const initial: ActionState = { error: null };
+
+// The day signing started putting the signature page on the document.
+const SIGNATURE_PAGE_SHIPPED = "2026-09-08";
 
 export function TrustMonthCard({
   month,
@@ -326,10 +333,15 @@ export function TrustMonthCard({
       )}
 
       {/* Signed, but the file has no signature page on it.
-          Only ever true of months signed before 8 September 2026, when the
-          signature page shipped. Offered as its own amber row rather than a
-          quiet button because until it is pressed, this month's report leaves
-          the building looking unsigned — and the register says otherwise.
+          Mostly months signed before 8 September 2026, when the signature
+          page shipped. Not only those (10 Oct 2026): building the page is
+          allowed to fail without failing the sign-off, and a month signed
+          since then that lands here was being told it predated the page,
+          which it did not. The date decides which reason it is given.
+
+          Offered as its own amber row rather than a quiet button because
+          until it is pressed, this month's report leaves the building
+          looking unsigned — and the register says otherwise.
 
           Deliberately NOT "replace and re-sign", which is the other button on
           this card and would destroy the date the licensee actually reviewed
@@ -338,8 +350,10 @@ export function TrustMonthCard({
         <div className="mt-3 rounded-lg border border-rc-amber/40 bg-rc-amber/5 p-3">
           <p className="text-xs font-bold text-rc-ink">This one has no signature page yet</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
-            You signed it off before RealComply started adding the signature page to the document
-            itself, so the file still opens as an unsigned report. Adding it now doesn&rsquo;t change
+            {month.signedAt && month.signedAt.slice(0, 10) < SIGNATURE_PAGE_SHIPPED
+              ? "You signed it off before RealComply started adding the signature page to the document itself"
+              : "The signature page couldn’t be added to the document when you signed it off"}
+            , so the file still opens as an unsigned report. Adding it now doesn&rsquo;t change
             your sign-off or its date
             {month.signedAt ? ` — the page will read ${formatAuDate(month.signedAt.slice(0, 10))}` : ""}.
           </p>
@@ -445,7 +459,7 @@ export function TrustMonthCard({
 
       {!month.documentId && !canUpload && (
         <p className="mt-3 text-xs text-rc-muted">
-          Waiting on the licensee in charge or their assistant to upload it.
+          Waiting on the licensee in charge to upload it.
         </p>
       )}
 

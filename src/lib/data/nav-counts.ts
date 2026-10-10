@@ -1,15 +1,19 @@
 import { cache } from "react";
+import { accessFrom } from "@/lib/access";
 import { agencyPeople } from "@/lib/data/people";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computePropertyDigests } from "@/lib/property-digest";
+import { documentsWaitingOn } from "@/lib/signoff/awaiting";
 import { expiryStatus } from "@/lib/expiry-status";
 import {
   auditDueOn,
+  auditOwed,
   buildMonths,
   daysUntil,
   previousAuditPeriodEnd,
   auditPeriodEndFor,
   reconciliationRecordsFor,
+  sydneyToday,
 } from "@/lib/trust-account";
 import type {
   Agency, Breach, Profile, Property, PropertyItem, PropertyStage,
@@ -110,6 +114,36 @@ export type NavCounts = {
   trustAmber: number;
 };
 
+/**
+ * The expiry dates behind the Registers dot, for this viewer (10 Oct 2026).
+ *
+ * The dot has to match the page it opens. An agent or assistant's Registers
+ * page shows their own licence, gifts and breaches, so for them only their
+ * own licence date counts. Before this, the office's insurance, the
+ * corporation licence and their assistant's (or agent's) licence all lit
+ * their dot, and they could open Registers and find nothing to act on.
+ *
+ * People who have left (archived) never count: their licence is no longer
+ * the agency's to watch, and the reminder job skips them too.
+ */
+export function registerExpiryDates(
+  staff: Pick<Profile, "id" | "licence_expiry" | "archived_at">[],
+  agency: Pick<Agency, "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry"> | null,
+  viewer: { id: string; licenseeView: boolean },
+): (string | null)[] {
+  const dates = staff
+    .filter((s) => !s.archived_at && (viewer.licenseeView || s.id === viewer.id))
+    .map((s) => s.licence_expiry);
+  if (!viewer.licenseeView || !agency) return dates;
+  return [
+    ...dates,
+    agency.corporation_licence_expiry,
+    agency.pi_expiry,
+    agency.cyber_expiry,
+    agency.icare_expiry,
+  ];
+}
+
 export const EMPTY_NAV_COUNTS: NavCounts = {
   listings: 0,
   listingsFlagged: 0,
@@ -161,6 +195,7 @@ export const navCountsFor = cache(async function navCountsFor(
   const [
     { data: itemRows },
     { data: signatureRows },
+    { data: licenseeOnlyDocRows },
     { data: staffRows },
     { data: agencyRow },
     { count: giftCount },
@@ -178,20 +213,26 @@ export const navCountsFor = cache(async function navCountsFor(
     // what is waiting on ME, and which trust reconciliations have been signed
     // by anyone. The table is small — one row per signer per document.
     supabase.from("signoff_signatures").select("document_id, signer_id, signed_at"),
+    // Documents that want one licensee's signature, not each licensee's
+    // (10 Oct 2026): once one has signed, the others are not waited on.
+    supabase.from("signoff_documents").select("id").eq("signer_scope", "licensee_only"),
     // One query answers two questions: who the licensees are (the rules layer
     // needs it to decide whether a settled file wants "Send to licensee" or
     // "Licensee signature") and whose licence is lapsing.
-    supabase.from("profiles").select("id, is_licensee_in_charge, licence_expiry"),
-    // A single row by primary key — the cheapest query in the batch.
+    supabase.from("profiles").select("id, is_licensee_in_charge, licence_expiry, archived_at"),
+    // A single row by primary key — the cheapest query in the batch. The plan
+    // says whether this viewer acts as the licensee (lib/access.ts).
     supabase
       .from("agencies")
-      .select("pi_expiry, cyber_expiry, icare_expiry, corporation_licence_expiry")
+      .select("pi_expiry, cyber_expiry, icare_expiry, corporation_licence_expiry, plan")
       .eq("id", profile.agency_id)
       .maybeSingle(),
     supabase.from("gifts").select("id", { count: "exact", head: true }).eq("status", "flagged"),
     supabase.from("complaints").select("id", { count: "exact", head: true }).neq("status", "resolved"),
     supabase.from("breaches").select("status, notifiable, notified_date"),
-    supabase.from("trust_accounts").select("id, archived_at"),
+    // Every column, so opened_on comes through once 0060 has added it and
+    // nothing breaks before then. A handful of rows per agency.
+    supabase.from("trust_accounts").select("*"),
     supabase
       .from("signoff_documents")
       .select("id, period_month, trust_account_id, created_at")
@@ -209,7 +250,7 @@ export const navCountsFor = cache(async function navCountsFor(
     itemsByProperty.get(row.property_id)!.set(row.item_key, row);
   }
 
-  const staff = (staffRows ?? []) as Pick<Profile, "id" | "is_licensee_in_charge" | "licence_expiry">[];
+  const staff = (staffRows ?? []) as Pick<Profile, "id" | "is_licensee_in_charge" | "licence_expiry" | "archived_at">[];
   const licenseeIds = new Set(people.filter((s) => s.is_licensee_in_charge).map((s) => s.id));
 
   // The same rollup the Portfolio page and the Monday digest use, rather than
@@ -242,17 +283,15 @@ export const navCountsFor = cache(async function navCountsFor(
   // ── The registers rollup ────────────────────────────────────────────────
   const agency = agencyRow as Pick<
     Agency,
-    "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry"
+    "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry" | "plan"
   > | null;
+  const licenseeView = accessFrom(profile, agency?.plan).actsAsLicensee;
 
-  const credentialStatuses = staff.map((s) => expiryStatus(s.licence_expiry));
-  if (agency?.corporation_licence_expiry) {
-    credentialStatuses.push(expiryStatus(agency.corporation_licence_expiry));
-  }
-  const insuranceStatuses = agency
-    ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry].map((d) => expiryStatus(d))
-    : [];
-  const allExpiries = [...credentialStatuses, ...insuranceStatuses];
+  // Gifts, breaches and complaints need no such filter: the database returns
+  // an agent only the ones they logged (0058), the same rows their page shows.
+  const allExpiries = registerExpiryDates(staff, agency, { id: profile.id, licenseeView }).map((d) =>
+    expiryStatus(d),
+  );
 
   const breachRowsTyped = (breachRows ?? []) as Pick<Breach, "status" | "notifiable" | "notified_date">[];
   // s89 gives five days to notify. A notifiable breach that has not been
@@ -263,9 +302,10 @@ export const navCountsFor = cache(async function navCountsFor(
 
   // Trust accounts, per account. Reuses the same helpers the Trust accounts
   // screen uses, so the dot and the page can never disagree about whether
-  // something is late.
-  const auditPeriod = previousAuditPeriodEnd(today);
-  const auditLateAt = daysUntil(auditDueOn(auditPeriod), today) < 0;
+  // something is late. On Sydney's date, as the page is (10 Oct 2026).
+  const trustToday = sydneyToday(today);
+  const auditPeriod = previousAuditPeriodEnd(trustToday);
+  const auditLateAt = daysUntil(auditDueOn(auditPeriod), trustToday) < 0;
   const audits = (trustAuditRows ?? []) as Pick<
     TrustAudit,
     "period_end" | "confirmed_at" | "trust_account_id"
@@ -277,13 +317,17 @@ export const navCountsFor = cache(async function navCountsFor(
 
   let trustOverdue = 0;
   let trustPending = 0;
-  for (const acct of (trustAccountRows ?? []) as { id: string; archived_at: string | null }[]) {
+  for (const acct of (trustAccountRows ?? []) as {
+    id: string;
+    archived_at: string | null;
+    opened_on?: string | null;
+  }[]) {
     // A closed account still holds records worth reading, but nothing new is
     // owed on it, so it cannot be outstanding.
     if (acct.archived_at) continue;
 
     const records = reconciliationRecordsFor(acct.id, docs, signatures);
-    const months = buildMonths(auditPeriodEndFor(today), records, today);
+    const months = buildMonths(auditPeriodEndFor(trustToday), records, trustToday, acct.opened_on ?? null);
     trustOverdue += months.filter((m) => m.status === "overdue").length;
     trustPending += months.filter(
       (m) => m.status === "awaiting_signature" || m.status === "awaiting_upload",
@@ -291,7 +335,8 @@ export const navCountsFor = cache(async function navCountsFor(
 
     // One audit per account per year (Adam, 25 Aug 2026).
     const audit = audits.find((a) => a.trust_account_id === acct.id && a.period_end === auditPeriod);
-    if (!audit?.confirmed_at) {
+    // Not owed for a year that ended before the account opened.
+    if (!audit?.confirmed_at && auditOwed(auditPeriod, acct.opened_on)) {
       if (auditLateAt) trustOverdue += 1;
       else trustPending += 1;
     }
@@ -318,7 +363,11 @@ export const navCountsFor = cache(async function navCountsFor(
     // three months out is a reminder, not a badge — the licence reminder emails
     // already cover that cadence, and a dot that never goes out stops meaning
     // anything.
-    signoffs: signatures.filter((sig) => sig.signer_id === profile.id && !sig.signed_at).length,
+    signoffs: documentsWaitingOn(
+      profile.id,
+      signatures,
+      new Set(((licenseeOnlyDocRows ?? []) as Array<{ id: string }>).map((d) => d.id)),
+    ),
     registersRed,
     registersAmber,
     trustRed: trustOverdue,

@@ -227,6 +227,11 @@ export function trialEndingMessage(
  * party to the contract at all. So the fallback is not defensive tidying, it
  * is the normal path for the highest-volume tier — and without it every
  * individual subscriber would silently miss a reminder the terms promise them.
+ *
+ * Only people still at the agency (10 Oct 2026). Removing someone leaves
+ * their licensee flag set, so after a handover the old licensee could come
+ * back first and the cl 2.10(b) reminder went to someone who had left. In
+ * created order, so the same person is chosen every time.
  */
 async function billingEmailFor(
   supabase: ReturnType<typeof createServiceClient>,
@@ -237,6 +242,8 @@ async function billingEmailFor(
     .select("email")
     .eq("agency_id", agencyId)
     .eq("is_licensee_in_charge", true)
+    .is("archived_at", null)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
@@ -247,6 +254,7 @@ async function billingEmailFor(
     .from("profiles")
     .select("email")
     .eq("agency_id", agencyId)
+    .is("archived_at", null)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
