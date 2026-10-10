@@ -60,7 +60,11 @@ export default async function CpdPage() {
   }
   const signoffByProfile = new Map(signoffs.map((s) => [s.profile_id, s]));
 
-  const outstanding = staff.filter((s) => !signoffByProfile.has(s.id)).length;
+  // Someone archived has left: their card stays as history, but they aren't
+  // counted as still to confirm (check, 10 Oct 2026). The only way to clear
+  // them was to tick a year they never finished.
+  const current = staff.filter((s) => !s.archived_at);
+  const outstanding = current.filter((s) => !signoffByProfile.has(s.id)).length;
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
@@ -81,10 +85,10 @@ export default async function CpdPage() {
 
       {/* One line, only when there's something to say. A banner that appears
           on every visit stops being read by the third one. */}
-      {staff.length > 0 && outstanding > 0 && (
+      {current.length > 0 && outstanding > 0 && (
         <p className="mt-4 text-sm text-rc-muted">
           <span className="font-semibold text-rc-amber-deep">
-            {outstanding} of {staff.length}
+            {outstanding} of {current.length}
           </span>{" "}
           not confirmed for {year.label} yet.
         </p>
