@@ -1,6 +1,15 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
 import { selfManaged } from "@/lib/rules/nsw-sales";
 import { formatAuDate } from "@/lib/format-date";
@@ -731,6 +740,8 @@ function ChecklistItem({
     preCommencement?: boolean;
     preCommencementAgreementDate?: string;
     preCommencementRevokedOn?: string;
+    /** Why setItemStatus flagged the card (b6, b1a/c0 dates; the a4 spread). */
+    flagReason?: string;
     aiDraft?: {
       note?: string;
       espLow?: number;
@@ -1422,6 +1433,12 @@ function ChecklistItem({
         </div>
       </form>
       <FieldError error={state.error} />
+      {/* Why it is flagged (10 Oct 2026). The reason was saved (an inspection
+          dated after the agreement, a contract after the launch) but never
+          shown, so the card said "Flagged" and nothing else. */}
+      {status === "flagged" && data.flagReason && (
+        <p className="mt-2 text-sm text-rc-amber-deep">{data.flagReason}</p>
+      )}
     </ItemShell>
   );
 }
@@ -1896,6 +1913,15 @@ function ReportEvidenceLink({ path, fileName }: { path: string; fileName: string
   );
 }
 
+// What a logged report's document did not state, by the rule addReportEntry
+// applies since 10 Oct 2026: the date and the preparer's name, and only where
+// a document was read. Entries saved before then carry the old list, which
+// also flagged the details cl 37(4) does not require, on typed entries too.
+function reportEntryGaps(e: { evidencePath: string | null; missingFields?: string[] }): string[] {
+  if (!e.evidencePath) return [];
+  return (e.missingFields ?? []).filter((f) => f === "inspection date" || f === "preparer's name");
+}
+
 // f3 — the cl 37 report register. The agent just uploads the report; every
 // cl 37 field is read straight from it via extractReportDetails, shown
 // read-only (same "Findings, not a form" idea as b1) so there's nothing left
@@ -2230,9 +2256,10 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
                   <ReportEvidenceLink path={e.evidencePath} fileName={e.evidenceFileName} />
                 </>
               )}
-              {e.missingFields && e.missingFields.length > 0 && (
+              {reportEntryGaps(e).length > 0 && (
                 <p className="mt-1 flex items-center gap-1 text-rc-amber-deep">
-                  <AlertTriangle size={12} className="shrink-0" /> Not stated in the document: {e.missingFields.join(", ")}
+                  <AlertTriangle size={12} className="shrink-0" /> Not stated in the document:{" "}
+                  {reportEntryGaps(e).join(", ")}
                 </p>
               )}
             </li>
@@ -3005,15 +3032,27 @@ const money = (n: number) => `$${n.toLocaleString("en-AU")}`;
 // and only then (10 Oct 2026). They used to close the moment Save was pressed,
 // before the server answered, so a refusal (no licence number, "Sold" with no
 // price) went to a form that was already gone and the card read as saved.
+//
+// Sent from onSubmit rather than <form action> (review, 10 Oct 2026): React
+// resets a form once its action has run, refused or not, so a refusal kept
+// the editor open with what had been typed wiped (a first-time auctioneer's
+// name and address, for want of a licence number). Dispatching it here
+// leaves the fields alone; a save that succeeds closes the editor anyway.
 function useSaveThenClose(
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>,
   setEditing: (editing: boolean) => void,
 ) {
-  return useActionState(async (prev: ActionState, formData: FormData) => {
+  const [state, dispatch, pending] = useActionState(async (prev: ActionState, formData: FormData) => {
     const result = await action(prev, formData);
     if (!result.error) setEditing(false);
     return result;
   }, initialState);
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => dispatch(formData));
+  };
+  return [state, onSubmit, pending] as const;
 }
 
 // x1 — the auctioneer. Three typed fields, shown as a plain line once saved.
@@ -3028,7 +3067,7 @@ function AuctioneerItem({
 }) {
   const saved = (current?.data ?? {}) as { name?: string; licenceNumber?: string; businessAddress?: string };
   const [editing, setEditing] = useState(!saved.name);
-  const [state, formAction, pending] = useSaveThenClose(setAuctioneerDetails.bind(null, propertyId), setEditing);
+  const [state, onSubmit, pending] = useSaveThenClose(setAuctioneerDetails.bind(null, propertyId), setEditing);
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -3048,7 +3087,7 @@ function AuctioneerItem({
           </button>
         </div>
       ) : (
-        <form action={formAction} className="space-y-2">
+        <form onSubmit={onSubmit} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3109,7 +3148,7 @@ function ReserveItem({
 }) {
   const saved = (current?.data ?? {}) as { reserve?: number; givenAt?: string };
   const [editing, setEditing] = useState(saved.reserve == null);
-  const [state, formAction, pending] = useSaveThenClose(setReserve.bind(null, propertyId), setEditing);
+  const [state, onSubmit, pending] = useSaveThenClose(setReserve.bind(null, propertyId), setEditing);
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -3128,7 +3167,7 @@ function ReserveItem({
           </button>
         </div>
       ) : (
-        <form action={formAction} className="space-y-2">
+        <form onSubmit={onSubmit} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3193,7 +3232,7 @@ function AuctionOutcomeItem({
   const [choice, setChoice] = useState<AuctionOutcomeKind | null>(saved.outcome ?? null);
   const [vendorBid, setVendorBid] = useState(Boolean(saved.vendorBid));
   const [editing, setEditing] = useState(!saved.outcome);
-  const [state, formAction, pending] = useSaveThenClose(recordAuctionOutcome.bind(null, propertyId), setEditing);
+  const [state, onSubmit, pending] = useSaveThenClose(recordAuctionOutcome.bind(null, propertyId), setEditing);
 
   if (!editing) {
     const chosen = OUTCOME_CHOICES.find((c) => c.value === saved.outcome);
@@ -3240,7 +3279,7 @@ function AuctionOutcomeItem({
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form action={formAction} className="space-y-3">
+      <form onSubmit={onSubmit} className="space-y-3">
         <input type="hidden" name="outcome" value={choice ?? ""} />
         <div className="flex flex-wrap gap-2">
           {OUTCOME_CHOICES.map((c) => (

@@ -340,7 +340,9 @@ export default async function PropertyPage({
 
         {/* Held: no Continue button. Completing the held stage's cards is
             what releases the file, back to its own stage. */}
-        {isCurrentStage && !held && p.stage < 5 && <CompleteStageButton propertyId={p.id} stage={p.stage} />}
+        {isCurrentStage && !held && p.stage < 5 && (
+          <CompleteStageButton propertyId={p.id} stage={p.stage} stageInUrl={stageParam !== undefined} />
+        )}
 
         {/* The way on from a stage you are looking back at (Adam, 3 Oct 2026):
             "at the bottom of the page of each stage, we should have a button

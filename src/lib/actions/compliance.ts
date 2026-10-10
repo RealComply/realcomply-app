@@ -227,6 +227,23 @@ async function upsertItem(
     }
   }
 
+  // The attached file's name, kept through every save (review, 10 Oct 2026).
+  // The upsert replaces the whole record but leaves evidence_path alone, so
+  // a caller writing a fresh record (the reserve, the auction outcome, the
+  // sale price) dropped the name and the file showed as "View file". Only
+  // setItemStatus carried it. Here unless the caller set it themselves.
+  let data = params.data;
+  if (!("evidenceFileName" in data)) {
+    const { data: existingRow } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", params.propertyId)
+      .eq("item_key", params.itemKey)
+      .maybeSingle();
+    const fileName = (existingRow as { data?: { evidenceFileName?: unknown } | null } | null)?.data?.evidenceFileName;
+    if (fileName !== undefined) data = { ...data, evidenceFileName: fileName };
+  }
+
   return supabase
     .from("property_items")
     .upsert(
@@ -235,7 +252,7 @@ async function upsertItem(
         property_id: params.propertyId,
         item_key: params.itemKey,
         status: params.status,
-        data: params.data,
+        data,
         event_date: params.eventDate ?? null,
         completed_by: params.completedBy ?? null,
       },
@@ -579,7 +596,10 @@ export async function setItemStatus(
     if (espLow && espHigh && espLow > 0) {
       const spreadPct = ((espHigh - espLow) / espLow) * 100;
       data.spreadPct = Math.round(spreadPct * 10) / 10;
-      if (spreadPct > 10) {
+      // Only on Mark done, like the b6 and c0 checks above (10 Oct 2026).
+      // Reopen sends the figures too, so a flagged a4 went straight back to
+      // Flagged and could not be reopened while the range was over 10%.
+      if (spreadPct > 10 && status === "done") {
         const { error } = await upsertItem(supabase, {
           agencyId: profile.agency_id,
           propertyId,
@@ -718,12 +738,18 @@ export async function addReportEntry(
     };
   }
 
+  // What the document did not state, kept to what cl 37(4) still asks for
+  // (10 Oct 2026). The card stopped flagging the preparer's contact, PI
+  // insurance and repurchase on 3 Sep, because the Regulation does not require
+  // particulars that are not known or reasonably obtainable; this list was
+  // never changed with it, so every saved entry still showed them in amber.
+  // Only a read document is checked: an entry typed without a copy has the
+  // type and date it needs (required above) and nowhere to state a preparer.
   const missingFields: string[] = [];
-  if (!inspectionDate) missingFields.push("inspection date");
-  if (!preparerName) missingFields.push("preparer's name");
-  if (!preparerContact) missingFields.push("preparer's business address/phone");
-  if (!preparerInsured) missingFields.push("whether the preparer holds PI insurance");
-  if (!availableForRepurchase) missingFields.push("whether it's available for repurchase");
+  if (evidencePath) {
+    if (!inspectionDate) missingFields.push("inspection date");
+    if (!preparerName) missingFields.push("preparer's name");
+  }
 
   const { data: existing } = await supabase
     .from("property_items")
@@ -1485,16 +1511,16 @@ export async function removeReportEntry(propertyId: string, recordedAt: string):
 
   const { data: existing } = await supabase
     .from("property_items")
-    .select("data, completed_by")
+    .select("data, completed_by, evidence_path")
     .eq("property_id", propertyId)
     .eq("item_key", "f3")
     .maybeSingle();
 
-  const entries = ((existing?.data as { entries?: Array<{ recordedAt: string }> } | null)?.entries ?? []).filter(
-    (e) => e.recordedAt !== recordedAt,
-  );
+  const all = ((existing?.data as { entries?: Array<{ recordedAt: string; evidencePath?: string | null }> } | null)
+    ?.entries ?? []);
+  const entries = all.filter((e) => e.recordedAt !== recordedAt);
 
-  await upsertItem(supabase, {
+  const { error } = await upsertItem(supabase, {
     agencyId: profile.agency_id,
     propertyId,
     itemKey: "f3",
@@ -1504,6 +1530,23 @@ export async function removeReportEntry(propertyId: string, recordedAt: string):
     // removing an entry is an edit to the register, not a fresh completion.
     completedBy: entries.length > 0 ? ((existing as { completed_by?: string | null } | null)?.completed_by ?? null) : null,
   });
+
+  // The entry's report goes with it (10 Oct 2026). It was left in storage
+  // with nothing pointing at it. Only once the entry is gone, and only a
+  // file in this listing's f3 folder that nothing else on f3 still uses: the
+  // path was written by whoever logged the entry.
+  if (!error) {
+    const folder = `${profile.agency_id}/${propertyId}/f3/`;
+    const stillUsed = new Set([existing?.evidence_path, ...entries.map((e) => e.evidencePath)]);
+    const files = all
+      .filter((e) => e.recordedAt === recordedAt)
+      .map((e) => e.evidencePath)
+      .filter(
+        (p): p is string =>
+          typeof p === "string" && p.startsWith(folder) && !p.slice(folder.length).includes("/") && !stillUsed.has(p),
+      );
+    if (files.length > 0) await supabase.storage.from(EVIDENCE_BUCKET).remove(files);
+  }
 
   revalidatePath(`/dashboard/${propertyId}`);
 }

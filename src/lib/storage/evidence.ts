@@ -161,6 +161,11 @@ export async function finalizeEvidenceRecord(
 
   // Only remove the old file once the new one is confirmed in place, so a
   // problem here never leaves an item with no evidence at all.
+  //
+  // Since 0058 only the licensee deletes files, so for anyone else the
+  // database quietly refuses this and the old file stays in the listing's
+  // folder with nothing pointing at it. Deleting the listing sweeps the whole
+  // folder (listPropertyEvidencePaths), which is where it goes (10 Oct 2026).
   if (existingRow?.evidence_path && existingRow.evidence_path !== path) {
     await supabase.storage.from(EVIDENCE_BUCKET).remove([existingRow.evidence_path]);
   }
@@ -180,6 +185,40 @@ export async function finalizeEvidenceRecord(
   );
 
   return { error: error?.message ?? null };
+}
+
+// Every object in one listing's folder, {agency}/{property}/{item}/{file}.
+//
+// For deleting a listing (10 Oct 2026). The evidence_path column does not
+// name every file a listing has: f3's reports are in its entries, and a file
+// an agent replaced is still there, because only the licensee can delete
+// one. Reading the folder finds them all.
+//
+// list() returns one level at a time, and a folder comes back with no id, so
+// this walks down. Throws if a level cannot be read, rather than calling an
+// unreadable folder empty.
+export async function listPropertyEvidencePaths(
+  supabase: SupabaseClient,
+  agencyId: string,
+  propertyId: string,
+): Promise<string[]> {
+  const PAGE = 100;
+  const walk = async (prefix: string, depth: number): Promise<string[]> => {
+    if (depth > 4) return [];
+    const out: string[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await supabase.storage.from(EVIDENCE_BUCKET).list(prefix, { limit: PAGE, offset });
+      if (error) throw new Error(`could not list ${prefix}: ${error.message}`);
+      for (const entry of data ?? []) {
+        const path = `${prefix}/${entry.name}`;
+        if (entry.id) out.push(path);
+        else out.push(...(await walk(path, depth + 1)));
+      }
+      if (!data || data.length < PAGE) break;
+    }
+    return out;
+  };
+  return walk(`${agencyId}/${propertyId}`, 0);
 }
 
 // Relocates a staged (pre-property-creation) upload to its permanent,
