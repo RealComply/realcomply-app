@@ -17,13 +17,18 @@ const initial: ActionState = { error: null };
 
 export function AddPmPropertyForm({
   people,
-  viewerId,
+  defaultManagerId,
 }: {
   people: { id: string; name: string }[];
-  viewerId: string;
+  defaultManagerId: string;
 }) {
   const [state, formAction, pending] = useActionState(addPmProperty, initial);
   const [origin, setOrigin] = useState<PmOrigin | null>(null);
+  // Held in state, not left to the select (check, 10 Oct 2026). React resets
+  // a form's own fields after every submit, refused or not, so a failed add
+  // put the picker back on the default and the retry filed the property under
+  // the wrong person, where its real manager can't see it (0058).
+  const [managerId, setManagerId] = useState(defaultManagerId);
 
   return (
     <form action={formAction} className="rounded-card border border-rc-border bg-white px-4 py-4 shadow-card sm:px-5">
@@ -37,7 +42,8 @@ export function AddPmPropertyForm({
           <select
             id="pm-manager"
             name="managerId"
-            defaultValue={viewerId}
+            value={managerId}
+            onChange={(e) => setManagerId(e.target.value)}
             className="mt-1 w-full rounded-lg border border-rc-border bg-white px-3 py-2 text-sm focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           >
             {people.map((p) => (

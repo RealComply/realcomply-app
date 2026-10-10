@@ -112,6 +112,13 @@ export default async function PmDashboardPage({
     }
   }
   const activePeople = people.filter((p) => !p.archived && (!mayFileFor || mayFileFor.has(p.id)));
+  // An assistant files for the agents they assist, so the picker starts on an
+  // agent, not on the assistant (check, 10 Oct 2026). Left on themself, the
+  // property was the assistant's, and the agent it was for never saw it (0058).
+  const defaultManagerId =
+    profile.is_assistant && mayFileFor
+      ? (activePeople.find((p) => p.id !== profile.id)?.id ?? profile.id)
+      : profile.id;
 
   const navItems: { key: PmGroup | null; label: string; count: number }[] = [
     { key: null, label: "All properties", count: totalAll.count ?? 0 },
@@ -128,7 +135,7 @@ export default async function PmDashboardPage({
       />
 
       <div className="mt-5">
-        <AddPmPropertyForm people={activePeople} viewerId={profile.id} />
+        <AddPmPropertyForm people={activePeople} defaultManagerId={defaultManagerId} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-[190px_minmax(0,1fr)]">
