@@ -17,7 +17,8 @@
 --   4. Someone who joins after an SG Manual version is published is asked to
 --      sign it; a trust account can say when it opened. (Section G4b)
 --   5. Someone can add their own sign-off row only to a document they may
---      sign. (Section H4a)
+--      sign, the licensee lists signers only on their own office's
+--      documents, and no row can be moved to another document. (Section H4a)
 --   6. my_profile_is_archived(), for the screen a removed person sees.
 --      (Section H4b)
 --   7. Only the licensee moves or overwrites a filed document; anyone else
@@ -28,8 +29,8 @@
 -- Nothing here touches Cass Property's data. The only data changes are the
 -- two that clear stored refusals (section G1a), and both leave Cass Property
 -- out, by its id and by its name, so they cannot touch it even if Cass
--- stores a refusal before this runs (10 Oct 2026). When this was checked they matched a single row,
--- on Comply Real Estate. Everything else adds or replaces rules, functions
+-- stores a refusal before this runs (10 Oct 2026). When this was last checked
+-- (10 Oct, afternoon) they matched a single row, on Comply Real Estate. Everything else adds or replaces rules, functions
 -- and a column, and changes no rows.
 --
 -- Safe to run while the app now live is in use: it only refuses what that
