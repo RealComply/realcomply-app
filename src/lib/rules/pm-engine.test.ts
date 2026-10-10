@@ -3,12 +3,19 @@ import assert from "node:assert/strict";
 import { PM_STAGES, pmStage, type PmGroup, type PmOrigin } from "./nsw-pm";
 import {
   pmBlockedLine,
+  pmCanAnswerWater,
+  pmCanRecord,
   pmCanSetItem,
   pmCardSummary,
   pmMoveCheck,
+  pmMoveChecks,
+  pmOutgoing,
   pmStageCountLabel,
+  pmStageItems,
   pmStageViews,
+  pmTenancyFiled,
   type PmEngineInput,
+  type PmTenancyInput,
   type PmTick,
 } from "./pm-engine";
 
@@ -151,33 +158,180 @@ describe("PM locking (enforced on the server through pmCanSetItem)", () => {
 });
 
 describe("PM moves between groups", () => {
+  const first = (i: PmEngineInput) => pmMoveChecks(i)[0];
+
   it("Put up for lease waits for Management onboarding", () => {
-    const check = pmMoveCheck(input())!;
+    const check = first(input());
     assert.equal(check.move.label, "Put up for lease");
     assert.deepEqual(check.blockedBy, ["Management onboarding"]);
+    assert.equal(check.line, "Complete Management onboarding first.");
     assert.equal(pmBlockedLine(check.blockedBy), "Complete Management onboarding first.");
-    assert.deepEqual(pmMoveCheck(input({ ticks: allDone(1) }))!.blockedBy, []);
+    assert.equal(first(input({ ticks: allDone(1) })).line, "");
   });
 
   it("Tenant has moved in waits for Stages 2 and 3, and asks for the move-in date", () => {
-    const check = pmMoveCheck(input({ group: "for_lease", ticks: allDone(1) }))!;
+    const check = first(input({ group: "for_lease", ticks: allDone(1) }));
     assert.equal(check.move.date?.field, "move_in_date");
-    assert.equal(pmBlockedLine(check.blockedBy), "Complete Getting a tenant in and Money and move-in first.");
-    assert.deepEqual(pmMoveCheck(input({ group: "for_lease", ticks: allDone(1, 2, 3) }))!.blockedBy, []);
+    assert.equal(check.line, "Complete Getting a tenant in and Money and move-in first.");
+    assert.equal(first(input({ group: "for_lease", ticks: allDone(1, 2, 3) })).line, "");
   });
 
-  it("Tenant is vacating and Tenant has moved out ask for a date and are never blocked", () => {
-    const vacating = pmMoveCheck(input({ group: "tenanted", ticks: allDone(1, 2, 3) }))!;
+  it("Tenant is vacating asks for the date and who is ending it, and is never blocked", () => {
+    const vacating = first(input({ group: "tenanted", ticks: allDone(1, 2, 3) }));
+    assert.equal(vacating.move.asks, "vacating");
     assert.equal(vacating.move.date?.field, "vacate_date");
-    assert.deepEqual(vacating.blockedBy, []);
-    const out = pmMoveCheck(input({ group: "tenant_vacating", ticks: allDone(1, 2, 3) }))!;
-    assert.equal(out.move.date?.field, "move_out_date");
-    assert.deepEqual(out.blockedBy, []);
+    assert.equal(vacating.line, "");
   });
 
-  it("Vacant and Archived have no Part A move", () => {
-    assert.equal(pmMoveCheck(input({ group: "vacant" })), null);
-    assert.equal(pmMoveCheck(input({ group: "archived" })), null);
+  it("Tenant vacating offers Tenant has moved out, then Put up for lease now", () => {
+    const checks = pmMoveChecks(input({ group: "tenant_vacating", ticks: allDone(1, 2, 3) }));
+    assert.deepEqual(checks.map((c) => c.move.label), ["Tenant has moved out", "Put up for lease now"]);
+    assert.equal(checks[0].move.date?.field, "move_out_date");
+    assert.equal(checks[1].move.newTenancy, true);
+    assert.ok(checks.every((c) => c.line === ""));
+  });
+
+  it("Vacant offers Put back up for lease and Management has ended; Archived offers nothing", () => {
+    const checks = pmMoveChecks(input({ group: "vacant" }));
+    assert.deepEqual(checks.map((c) => c.move.label), ["Put back up for lease", "Management has ended"]);
+    assert.equal(checks[1].move.asks, "managementEnded");
+    assert.deepEqual(pmMoveChecks(input({ group: "archived" })), []);
+  });
+
+  it("pmMoveCheck finds one move by its key, only from the right group", () => {
+    assert.equal(pmMoveCheck(input({ group: "vacant" }), "management_ended")?.move.to, "archived");
+    assert.equal(pmMoveCheck(input({ group: "tenanted" }), "management_ended"), null);
+  });
+});
+
+describe("PM Part B: who ended the tenancy (brief B1)", () => {
+  const vacating = (tenancy: Partial<PmTenancyInput>, ticks: Record<string, PmTick> = {}) =>
+    input({
+      group: "tenant_vacating",
+      ticks: { ...allDone(1, 2, 3), ...ticks },
+      tenancy: { beforeStages: [], moveInDate: "2026-01-01", moveOutDate: null, ...tenancy },
+    });
+  const items = (i: PmEngineInput) => pmStageItems(pmStage(5), i.tenancy);
+  const exitItem = (i: PmEngineInput, key: string) => items(i).find((x) => x.key === key)!;
+
+  it("the tenant ending it marks the three termination items and the exclusion N/A, noted Tenant ended it", () => {
+    const i = vacating({ endedBy: "tenant" });
+    for (const key of ["termination_ground", "notice_period", "termination_statement", "reletting_exclusion"]) {
+      assert.equal(exitItem(i, key).auto?.note, "Tenant ended it", key);
+    }
+    const v = view(i, 5);
+    assert.deepEqual([v.done, v.total, v.na], [0, 5, 4]);
+    assert.match(pmCanSetItem(i, "termination_ground", "done")!, /marked that N\/A/);
+    assert.equal(pmCanSetItem(i, "final_inspection", "done"), null);
+  });
+
+  it("the landlord ending it on Renovation words each item for the ground", () => {
+    const i = vacating({ endedBy: "landlord", ground: "renovation" });
+    assert.equal(exitItem(i, "termination_ground").title, "Termination notice given to the tenant");
+    assert.equal(exitItem(i, "termination_ground").help, "In writing and signed, on the ground: Renovation");
+    assert.equal(exitItem(i, "notice_period").help, "Minimum notice: 90 days, or 60 if the fixed term is 6 months or less");
+    assert.equal(
+      exitItem(i, "termination_statement").help,
+      "The termination information statement, plus the landlord's signed statement on the works and why the property must be vacant",
+    );
+    assert.equal(
+      exitItem(i, "reletting_exclusion").help,
+      "Cannot be re-let for 4 weeks after the termination date, without Fair Trading approval",
+    );
+    // No N/A once the landlord has ended it on a ground.
+    assert.match(pmCanSetItem(i, "notice_period", "na")!, /N\/A is not offered/);
+    const v = view(i, 5);
+    assert.deepEqual([v.done, v.total, v.na], [0, 9, 0]);
+  });
+
+  it("a ground with no exclusion period marks the exclusion N/A", () => {
+    for (const ground of ["sold_vacant_possession", "breach"] as const) {
+      const i = vacating({ endedBy: "landlord", ground });
+      assert.equal(exitItem(i, "reletting_exclusion").auto?.note, "No exclusion period for this ground", ground);
+    }
+    assert.equal(exitItem(vacating({ endedBy: "landlord", ground: "breach" }), "termination_statement").help, "The termination information statement");
+    assert.equal(exitItem(vacating({ endedBy: "landlord", ground: "sold_vacant_possession" }), "notice_period").help, "Minimum notice: 30 days");
+  });
+
+  it("Another listed ground leaves the exclusion for the agent, with N/A offered", () => {
+    const i = vacating({ endedBy: "landlord", ground: "other_ground" });
+    assert.equal(exitItem(i, "reletting_exclusion").auto, null);
+    assert.equal(exitItem(i, "reletting_exclusion").naAllowed, true);
+    assert.equal(exitItem(i, "notice_period").help, "Minimum notice: the minimum for that ground");
+  });
+
+  it("a tenancy recorded before this was asked keeps the fallback wording and N/A", () => {
+    const i = vacating({});
+    assert.equal(exitItem(i, "termination_ground").auto, null);
+    assert.equal(pmCanSetItem(i, "termination_ground", "na"), null);
+  });
+});
+
+describe("PM Part B: re-leasing and the outgoing tenant (brief B2)", () => {
+  const oldTenancy: PmTenancyInput = { seq: 1, beforeStages: [], moveInDate: "2025-01-01", moveOutDate: null, endedBy: "tenant" };
+  const newTenancy: PmTenancyInput = { seq: 2, beforeStages: [], moveInDate: null, moveOutDate: null };
+  const exitDone = { final_inspection: tick(), bond_claim: tick(), exit_survey: tick(), dv_termination: tick("na"), tenancy_db_listing: tick("na") };
+  const releasing = (oldOver: Partial<PmTenancyInput> = {}, oldTicks: Record<string, PmTick> = {}, ticks: Record<string, PmTick> = {}) =>
+    input({
+      group: "for_lease",
+      tenancy: newTenancy,
+      ticks: { ...allDone(1), ...ticks },
+      previous: [{ tenancyId: "t1", tenancy: { ...oldTenancy, ...oldOver }, ticks: oldTicks }],
+    });
+
+  it("Stage 1 is not shown again once the property has had a tenancy", () => {
+    assert.deepEqual(pmStageViews(releasing()).map((v) => v.stage), [2, 3, 4, 5]);
+    assert.equal(view(releasing(), 2).locked, false, "Stage 2 opens for the new tenant");
+  });
+
+  it("the old tenant's unfinished Exit shows as an outgoing section, never locked", () => {
+    const out = pmOutgoing(releasing());
+    assert.equal(out.length, 1);
+    assert.equal(out[0].movedOut, false);
+    assert.equal(pmCanSetItem(releasing(), "final_inspection", "done", "t1"), null);
+    assert.match(pmCanSetItem(releasing(), "fixed_rent", "done", "t1")!, /Only the Exit items/);
+  });
+
+  it("the new tenant cannot move in until the outgoing tenant has moved out", () => {
+    const ready = releasing({}, {}, allDone(2, 3));
+    assert.equal(pmMoveChecks(ready)[0].line, "The outgoing tenant has to move out first.");
+    const out = releasing({ moveOutDate: "2026-10-01" }, {}, allDone(2, 3));
+    assert.equal(pmMoveChecks(out)[0].line, "");
+  });
+
+  it("an outgoing tenancy is filed once it has moved out and its Exit is complete", () => {
+    assert.equal(pmTenancyFiled({ ...oldTenancy, moveOutDate: "2026-10-01" }, exitDone), true);
+    assert.equal(pmTenancyFiled(oldTenancy, exitDone), false, "not moved out yet");
+    assert.equal(pmTenancyFiled({ ...oldTenancy, moveOutDate: "2026-10-01" }, {}), false, "Exit still open");
+    assert.equal(pmOutgoing(releasing({ moveOutDate: "2026-10-01" }, exitDone)).length, 0);
+    assert.match(pmCanSetItem(releasing({ moveOutDate: "2026-10-01" }, exitDone), "final_inspection", "open", "t1")!, /filed/);
+  });
+
+  it("an existing vacant property's first tenancy is filed straight away (its Exit was before RealComply)", () => {
+    assert.equal(pmTenancyFiled({ seq: 1, beforeStages: [2, 3, 5], moveInDate: null, moveOutDate: null }, {}), true);
+  });
+});
+
+describe("PM Part B: water usage and records", () => {
+  it("water usage is one Stage 3 item, answered not ticked", () => {
+    const i = input({ group: "for_lease", ticks: allDone(1, 2) });
+    assert.match(pmCanSetItem(i, "water_usage", "done")!, /water usage questions/);
+    assert.equal(pmCanAnswerWater(i), null);
+    assert.match(pmCanAnswerWater(input({ group: "for_lease", ticks: allDone(1) }))!, /locked/);
+    const almost = input({ group: "for_lease", ticks: allDone(1, 2, 3) });
+    assert.equal(view(almost, 3).finished, true);
+    const { water_usage: _w, ...rest } = allDone(1, 2, 3);
+    void _w;
+    assert.equal(view(input({ group: "for_lease", ticks: rest }), 3).finished, false, "an open water item holds Stage 3");
+  });
+
+  it("a pet on the application follows Stage 2's lock; Stage 4 records run from move-in to move-out", () => {
+    assert.match(pmCanRecord(input({ ticks: allDone(1) }), "pet_application")!, /locked/);
+    assert.equal(pmCanRecord(input({ group: "for_lease", ticks: allDone(1) }), "pet_application"), null);
+    assert.match(pmCanRecord(input({ group: "for_lease" }), "ongoing")!, /while the tenant is in/);
+    assert.equal(pmCanRecord(input({ group: "tenanted", ticks: allDone(1, 2, 3) }), "ongoing"), null);
+    const movedOut = input({ group: "vacant", tenancy: { beforeStages: [], moveInDate: "2026-01-01", moveOutDate: "2026-09-01" } });
+    assert.match(pmCanRecord(movedOut, "ongoing")!, /while the tenant is in/);
   });
 });
 
@@ -219,8 +373,8 @@ describe("PM rules content", () => {
       }
   });
 
-  it("Part A item counts per stage match the brief (Water usage left out of Stage 3)", () => {
-    assert.deepEqual(PM_STAGES.map((s) => s.items.length), [4, 13, 8, 0, 9]);
+  it("item counts per stage match the brief (Water usage in Stage 3 from Part B)", () => {
+    assert.deepEqual(PM_STAGES.map((s) => s.items.length), [4, 13, 9, 0, 9]);
   });
 
   it("never says compliant", () => {

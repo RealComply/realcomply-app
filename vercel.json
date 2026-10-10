@@ -18,6 +18,10 @@
       "schedule": "40 21 * * *"
     },
     {
+      "path": "/api/cron/pm-retention",
+      "schedule": "50 21 * * *"
+    },
+    {
       "path": "/api/cron/backup-storage",
       "schedule": "15 * * * *"
     },

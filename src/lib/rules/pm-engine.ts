@@ -1,15 +1,20 @@
 import { fillPercent, type StageProgress } from "@/lib/rules/stage-progress";
 import {
+  PM_COPY,
   PM_STAGES,
+  pmExitItem,
   pmGroupOrder,
   pmItem,
   pmItemStage,
-  pmMoveFrom,
+  pmMovesFrom,
   pmOrigin,
   pmStage,
+  type PmEndedBy,
+  type PmGroundKey,
   type PmGroup,
   type PmMove,
   type PmOrigin,
+  type PmResolvedItem,
   type PmStage,
   type PmStageNumber,
 } from "@/lib/rules/nsw-pm";
@@ -37,21 +42,41 @@ export type PmTick = {
   changedAt: string;
 };
 
+export type PmTenancyInput = {
+  /** 1 for the first tenancy RealComply sees. Missing reads as 1. */
+  seq?: number;
+  beforeStages: number[];
+  moveInDate: string | null;
+  moveOutDate: string | null;
+  /** Who ended it, once "Tenant is vacating" has been pressed (brief B1). */
+  endedBy?: PmEndedBy | null;
+  /** The ground, when the landlord ended it. */
+  ground?: PmGroundKey | null;
+};
+
+export type PmTicks = Record<string, PmTick | undefined>;
+
+/** An earlier tenancy whose Exit may still be open (brief B2). */
+export type PmOutgoingInput = {
+  tenancyId: string;
+  tenancy: PmTenancyInput;
+  /** That tenancy's own ticks. */
+  ticks: PmTicks;
+};
+
 export type PmEngineInput = {
   origin: PmOrigin;
   group: PmGroup;
   /** The current tenancy. Every property has one from the day it is added. */
-  tenancy: {
-    beforeStages: number[];
-    moveInDate: string | null;
-    moveOutDate: string | null;
-  };
+  tenancy: PmTenancyInput;
   /**
    * Current state of each tick by item key: the property's onboarding ticks
    * and the current tenancy's ticks together. Keys never collide (nsw-pm.ts
    * keys are unique across stages; a test checks it).
    */
-  ticks: Record<string, PmTick | undefined>;
+  ticks: PmTicks;
+  /** Earlier tenancies, oldest first. Only those whose Exit is not filed show. */
+  previous?: PmOutgoingInput[];
 };
 
 export type PmOval =
@@ -87,8 +112,10 @@ export type PmStageView = {
   oval: PmOval;
 };
 
-function stagePresent(stage: PmStage, origin: PmOrigin): boolean {
-  if (stage.stage === 1) return pmOrigin(origin).hasOnboarding;
+function stagePresent(stage: PmStage, origin: PmOrigin, seq: number): boolean {
+  // Onboarding is done once. Once a property has had a tenancy it is never
+  // shown again; the record stays in History (brief B2).
+  if (stage.stage === 1) return pmOrigin(origin).hasOnboarding && seq === 1;
   return true;
 }
 
@@ -106,23 +133,37 @@ function stageReached(stage: PmStage, group: PmGroup): boolean {
   return pmGroupOrder(group) >= pmGroupOrder(stage.opensIn);
 }
 
-function tally(stage: PmStage, ticks: PmEngineInput["ticks"]) {
+/**
+ * The stage's items as they read for this tenancy: Exit items worded for who
+ * ended it and the ground (brief B1), everything else as written.
+ */
+export function pmStageItems(stage: PmStage, tenancy: PmTenancyInput): PmResolvedItem[] {
+  return stage.items.map((item) => pmExitItem(item, tenancy.endedBy ?? null, tenancy.ground ?? null));
+}
+
+function tally(items: PmResolvedItem[], ticks: PmTicks) {
   let done = 0;
   let na = 0;
-  for (const item of stage.items) {
+  for (const item of items) {
+    // Marked N/A by RealComply (the tenant ended it, or no exclusion period).
+    if (item.auto) {
+      na++;
+      continue;
+    }
     const t = ticks[item.key]?.state;
     if (t === "done") done++;
     else if (t === "na" && item.naAllowed) na++;
   }
-  return { done, na, total: stage.items.length - na };
+  return { done, na, total: items.length - na };
 }
 
 /** Every stage this property shows, in order, with its count and lock. */
 export function pmStageViews(input: PmEngineInput): PmStageView[] {
   const views: PmStageView[] = [];
   let earlierIncomplete = false;
+  const seq = input.tenancy.seq ?? 1;
   for (const stage of PM_STAGES) {
-    if (!stagePresent(stage, input.origin)) continue;
+    if (!stagePresent(stage, input.origin, seq)) continue;
     const before = stageIsBefore(stage.stage, input.tenancy.beforeStages);
     const reached = before || stageReached(stage, input.group);
 
@@ -149,7 +190,7 @@ export function pmStageViews(input: PmEngineInput): PmStageView[] {
       continue;
     }
 
-    const { done, na, total } = tally(stage, input.ticks);
+    const { done, na, total } = tally(pmStageItems(stage, input.tenancy), input.ticks);
     const finished = !before && done >= total;
     const complete = before || finished;
     const locked = !before && (!reached || earlierIncomplete);
@@ -184,39 +225,134 @@ export function pmStageCountLabel(view: PmStageView): string {
   return `${view.done} of ${view.total}${view.na > 0 ? ` (${view.na} N/A)` : ""}`;
 }
 
+// ── Earlier tenancies (brief B2) ───────────────────────────────────────────
+
+export type PmExitTally = {
+  /** Every Exit item ticked, N/A, or the Exit happened before RealComply. */
+  complete: boolean;
+  before: boolean;
+  done: number;
+  total: number;
+  na: number;
+};
+
+export function pmExitTally(tenancy: PmTenancyInput, ticks: PmTicks): PmExitTally {
+  if (stageIsBefore(5, tenancy.beforeStages)) return { complete: true, before: true, done: 0, total: 0, na: 0 };
+  const { done, na, total } = tally(pmStageItems(pmStage(5), tenancy), ticks);
+  return { complete: done >= total, before: false, done, total, na };
+}
+
+/**
+ * A tenancy is filed under History once its tenant has moved out and its Exit
+ * is complete. Until then an earlier tenancy shows at the top of the property
+ * as "Outgoing tenant: Exit".
+ */
+export function pmTenancyFiled(tenancy: PmTenancyInput, ticks: PmTicks): boolean {
+  const exit = pmExitTally(tenancy, ticks);
+  if (exit.before) return true;
+  return exit.complete && Boolean(tenancy.moveOutDate);
+}
+
+export type PmOutgoingView = {
+  tenancyId: string;
+  seq: number;
+  tenancy: PmTenancyInput;
+  ticks: PmTicks;
+  movedOut: boolean;
+  exit: PmExitTally;
+  items: PmResolvedItem[];
+};
+
+/** Earlier tenancies still finishing, oldest first. Never locked. */
+export function pmOutgoing(input: PmEngineInput): PmOutgoingView[] {
+  return (input.previous ?? [])
+    .filter((p) => !pmTenancyFiled(p.tenancy, p.ticks))
+    .map((p) => ({
+      tenancyId: p.tenancyId,
+      seq: p.tenancy.seq ?? 1,
+      tenancy: p.tenancy,
+      ticks: p.ticks,
+      movedOut: Boolean(p.tenancy.moveOutDate),
+      exit: pmExitTally(p.tenancy, p.ticks),
+      items: pmStageItems(pmStage(5), p.tenancy),
+    }));
+}
+
+// ── What may be ticked, answered and recorded ──────────────────────────────
+
 /**
  * Whether this tick, N/A or untick is allowed. Null when it is; otherwise the
- * reason, in words for the agent. The server action refuses on anything but null.
+ * reason, in words for the agent. The server action refuses on anything but
+ * null. `outgoingTenancyId` targets an earlier tenancy's Exit, which is never
+ * locked (brief B2).
  */
-export function pmCanSetItem(input: PmEngineInput, itemKey: string, next: PmTickState): string | null {
+export function pmCanSetItem(
+  input: PmEngineInput,
+  itemKey: string,
+  next: PmTickState,
+  outgoingTenancyId?: string | null,
+): string | null {
   const item = pmItem(itemKey);
   const stage = pmItemStage(itemKey);
   if (!item || !stage) return "That item is not on this checklist.";
+  if (item.kind === "water") return "Answer the water usage questions instead.";
+
+  if (outgoingTenancyId) {
+    const out = pmOutgoing(input).find((o) => o.tenancyId === outgoingTenancyId);
+    if (!out) return "That tenancy has been filed under History.";
+    if (stage.stage !== 5) return "Only the Exit items of an outgoing tenancy can be ticked.";
+    const resolved = out.items.find((i) => i.key === itemKey)!;
+    if (resolved.auto) return `RealComply has marked that N/A: ${resolved.auto.note.toLowerCase()}.`;
+    if (next === "na" && !resolved.naAllowed) return "N/A is not offered on that item.";
+    return null;
+  }
+
   const view = pmStageViews(input).find((v) => v.stage === stage.stage);
   if (!view) return "That stage does not apply to this property.";
   if (view.before) return "That happened before the property came to RealComply, so it cannot be ticked here.";
   if (view.locked) return "That stage is locked until the stages before it are complete.";
-  if (next === "na" && !item.naAllowed) return "N/A is not offered on that item.";
+  const resolved = pmStageItems(stage, input.tenancy).find((i) => i.key === itemKey)!;
+  if (resolved.auto) return `RealComply has marked that N/A: ${resolved.auto.note.toLowerCase()}.`;
+  if (next === "na" && !resolved.naAllowed) return "N/A is not offered on that item.";
   return null;
 }
 
+/** Whether the water usage questions can be answered for the current tenancy. */
+export function pmCanAnswerWater(input: PmEngineInput): string | null {
+  const view = pmStageViews(input).find((v) => v.stage === 3);
+  if (!view) return "That stage does not apply to this property.";
+  if (view.before) return "That happened before the property came to RealComply.";
+  if (view.locked) return "That stage is locked until the stages before it are complete.";
+  return null;
+}
+
+/**
+ * Whether a record can be added to the current tenancy. A pet on the
+ * application belongs to Getting a tenant in, and follows its lock. The
+ * Stage 4 records run while the tenant is in: from move-in to move-out.
+ */
+export function pmCanRecord(input: PmEngineInput, kind: "pet_application" | "ongoing"): string | null {
+  if (input.group === "archived") return "This management has ended.";
+  if (kind === "pet_application") {
+    const view = pmStageViews(input).find((v) => v.stage === 2);
+    if (!view || view.before) return "That happened before the property came to RealComply.";
+    if (view.locked) return "Getting a tenant in is locked until the stages before it are complete.";
+    return null;
+  }
+  const view = pmStageViews(input).find((v) => v.stage === 4);
+  if (!view || view.oval.kind !== "underWay") return "These are recorded while the tenant is in the property.";
+  return null;
+}
+
+// ── Moves ──────────────────────────────────────────────────────────────────
+
 export type PmMoveCheck = {
   move: PmMove;
-  /** Titles of the stages still to finish. Empty when the move can go ahead. */
+  /** Titles of the stages still to finish. */
   blockedBy: string[];
+  /** The one short line under a disabled button. Empty when the move can go ahead. */
+  line: string;
 };
-
-/** The move button for this property's group, and what is holding it back. */
-export function pmMoveCheck(input: PmEngineInput): PmMoveCheck | null {
-  const move = pmMoveFrom(input.group);
-  if (!move) return null;
-  const views = pmStageViews(input);
-  const blockedBy = move.needs
-    .map((n) => views.find((v) => v.stage === n))
-    .filter((v): v is PmStageView => Boolean(v) && !v!.complete)
-    .map((v) => v.title);
-  return { move, blockedBy };
-}
 
 /** "Complete Getting a tenant in and Money and move-in first." */
 export function pmBlockedLine(blockedBy: string[]): string {
@@ -224,6 +360,27 @@ export function pmBlockedLine(blockedBy: string[]): string {
   const list =
     blockedBy.length === 1 ? blockedBy[0] : `${blockedBy.slice(0, -1).join(", ")} and ${blockedBy[blockedBy.length - 1]}`;
   return `Complete ${list} first.`;
+}
+
+/** Every move button for this property's group, the main one first, and what holds each back. */
+export function pmMoveChecks(input: PmEngineInput): PmMoveCheck[] {
+  const views = pmStageViews(input);
+  const outgoingNotOut = pmOutgoing(input).some((o) => !o.movedOut);
+  return pmMovesFrom(input.group).map((move) => {
+    const blockedBy = move.needs
+      .map((n) => views.find((v) => v.stage === n))
+      .filter((v): v is PmStageView => Boolean(v) && !v!.complete)
+      .map((v) => v.title);
+    let line = pmBlockedLine(blockedBy);
+    // The new tenant cannot move in until the outgoing tenant has moved out (B2).
+    if (!line && move.to === "tenanted" && outgoingNotOut) line = PM_COPY.outgoingNotOut;
+    return { move, blockedBy, line };
+  });
+}
+
+/** The check for one move by its key, or null when it is not offered from this group. */
+export function pmMoveCheck(input: PmEngineInput, moveKey: string): PmMoveCheck | null {
+  return pmMoveChecks(input).find((c) => c.move.key === moveKey) ?? null;
 }
 
 export type PmCardSummary =
