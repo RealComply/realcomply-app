@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { earlyAccessStatus, hiddenFromList, isTestAddress, maySendTo, welcomeSwitchedOn } from "./rules";
+import { earlyAccessStatus, hiddenFromList, isTestAddress, maySendTo, sameInstant, welcomeSwitchedOn } from "./rules";
 
 const blank = { invitedAt: null, unsubscribedAt: null, declinedAt: null, signedUpAt: null };
 
@@ -54,5 +54,18 @@ describe("welcomeSwitchedOn", () => {
     assert.equal(welcomeSwitchedOn({}), false);
     assert.equal(welcomeSwitchedOn({ EARLY_ACCESS_WELCOME_EMAIL: "true" }), false);
     assert.equal(welcomeSwitchedOn({ EARLY_ACCESS_WELCOME_EMAIL: "on" }), true);
+  });
+});
+
+describe("sameInstant", () => {
+  it("matches the page's time against Postgres's spelling of the same time", () => {
+    assert.equal(sameInstant("2026-10-11T01:02:03.456+00:00", "2026-10-11T01:02:03.456Z"), true);
+    assert.equal(sameInstant("2026-10-11T01:02:03.456+00:00", "2026-10-11T01:02:04.000Z"), false);
+  });
+
+  it("never sent on both sides matches; one side only does not", () => {
+    assert.equal(sameInstant(null, ""), true);
+    assert.equal(sameInstant("2026-10-11T01:02:03Z", ""), false);
+    assert.equal(sameInstant(null, "2026-10-11T01:02:03Z"), false);
   });
 });

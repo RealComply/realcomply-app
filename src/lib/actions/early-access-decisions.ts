@@ -12,7 +12,7 @@ import {
   invitationUrl,
   greetingName,
 } from "@/lib/email/early-access-invite";
-import { maySendTo } from "@/lib/early-access/rules";
+import { maySendTo, sameInstant } from "@/lib/early-access/rules";
 
 // Working the early-access list: send an invitation, resend one, or decline.
 //
@@ -151,7 +151,7 @@ export async function sendEarlyAccessInvite(_prev: SendState, formData: FormData
   const blocked = cannotEmail(r);
   if (blocked) return { error: blocked };
 
-  if ((r.invited_at ?? "") !== seen) {
+  if (!sameInstant(r.invited_at, seen)) {
     return { error: "This invitation has already been sent. Reload the page to see the latest." };
   }
 

@@ -63,3 +63,15 @@ export function maySendTo(email: string, env: Record<string, string | undefined>
 export function welcomeSwitchedOn(env: Record<string, string | undefined> = process.env): boolean {
   return env.EARLY_ACCESS_WELCOME_EMAIL === "on";
 }
+
+/**
+ * Whether the invited_at the page showed is the one in the database. Compared
+ * as instants, not text: after a send the page holds the time as JavaScript
+ * wrote it ("...T01:02:03.456Z") while Postgres hands it back as
+ * "...T01:02:03.456+00:00". Compared as strings, an immediate Resend was
+ * refused as "already sent" (found testing on the preview, 11 Oct 2026).
+ */
+export function sameInstant(db: string | null, seen: string): boolean {
+  if (!db || !seen) return !db && !seen;
+  return new Date(db).getTime() === new Date(seen).getTime();
+}
