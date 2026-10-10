@@ -404,7 +404,12 @@ export async function updatePassword(
   return { error: null, saved: true };
 }
 
-export type InvitePreview = { agencyName: string; email: string; isLicenseeInCharge: boolean } | null;
+export type InvitePreview = {
+  agencyName: string;
+  email: string;
+  isLicenseeInCharge: boolean;
+  isAssistant: boolean;
+} | null;
 
 // Called from the (unauthenticated) signup page when it's reached via an
 // invite link, so it can show "you're joining <agency>" and lock the email
@@ -419,10 +424,22 @@ export async function getInvitePreview(token: string): Promise<InvitePreview> {
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("invite_preview", { p_token: trimmed }).maybeSingle();
-  const row = data as { agency_name: string; email: string; is_licensee_in_charge: boolean } | null;
+  const row = data as {
+    agency_name: string;
+    email: string;
+    is_licensee_in_charge: boolean;
+    is_assistant: boolean | null;
+  } | null;
 
   if (error || !row) return null;
-  return { agencyName: row.agency_name, email: row.email, isLicenseeInCharge: row.is_licensee_in_charge };
+  // is_assistant has come back from invite_preview since 0025 and was dropped
+  // here, so an assistant's invite said "join … as an agent" (10 Oct 2026).
+  return {
+    agencyName: row.agency_name,
+    email: row.email,
+    isLicenseeInCharge: row.is_licensee_in_charge,
+    isAssistant: row.is_assistant === true,
+  };
 }
 
 // Whether a founder invite link is still good, for the signup form to check
