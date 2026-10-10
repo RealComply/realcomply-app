@@ -230,7 +230,12 @@ export async function signDocument(documentId: string, _prev: ActionState, _form
   // people see only their own signature rows now). The signature itself has
   // already gone through the signer's own rules above; this only redraws the
   // document from what the database holds, for a document in their agency.
-  await stampSignedCopy(createServiceClient(), {
+  // Passed as a function, not a client (10 Oct 2026): createServiceClient
+  // throws when the server key is missing, and called here it threw before
+  // the guard in stampSignedCopy, so a signature already on record came back
+  // as a crashed page. Made inside the guard, a missing key is one more
+  // stamping failure: logged, and the sign-off still succeeds.
+  await stampSignedCopy(createServiceClient, {
     documentId,
     agencyId: profile.agency_id,
     title: (doc as { title: string }).title,
@@ -310,7 +315,7 @@ export async function restampSignedDocument(documentId: string): Promise<ActionS
     return { error: "This document hasn't been signed off yet, so there's no signature to add." };
   }
 
-  await stampSignedCopy(supabase, {
+  await stampSignedCopy(() => supabase, {
     documentId,
     agencyId: profile.agency_id,
     title: (doc as { title: string }).title,
@@ -369,7 +374,7 @@ const SIGNED_BASIS: Record<string, string> = {
 };
 
 async function stampSignedCopy(
-  supabase: Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
+  client: () => Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
   p: {
     documentId: string;
     agencyId: string;
@@ -380,6 +385,7 @@ async function stampSignedCopy(
   },
 ): Promise<void> {
   try {
+    const supabase = client();
     // The agency's own name, off the agency row rather than the profile —
     // profiles do not carry it. This is the agency's record and the page says
     // so at the top; falling back to a generic label would produce a signature
