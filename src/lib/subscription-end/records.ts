@@ -162,6 +162,10 @@ const TABLES: Array<{ table: string; file: string; order?: string }> = [
   { table: "trust_audits", file: "Trust account audits", order: "period_end" },
   { table: "signoff_documents", file: "Signed-off documents (incl. trust reconciliations)", order: "created_at" },
   { table: "signoff_signatures", file: "Signatures", order: "signed_at" },
+  // Added with 0058 and missed here until 10 Oct 2026: the signature kept when
+  // a signed document is replaced, and the record of what was deleted.
+  { table: "signoff_signature_voids", file: "Replaced signatures", order: "voided_at" },
+  { table: "deletion_log", file: "Deletions", order: "deleted_at" },
   { table: "sg_manual_versions", file: "Statement of generic matters versions", order: "created_at" },
   { table: "licence_history", file: "Licence history", order: "changed_at" },
   { table: "assistant_agents", file: "Assistants and their agents", order: "created_at" },
@@ -176,6 +180,7 @@ const PERSON_COLUMNS = new Set([
   "created_by", "completed_by", "profile_id", "agent_id", "uploaded_by", "signer_id", "confirmed_by",
   "moved_by", "from_agent", "to_agent", "changed_by", "manager_id", "recorded_by", "response_given_by",
   "assistant_id", "review_requested_by", "attributes_confirmed_by", "invited_by", "archived_by",
+  "voided_by", "deleted_by",
 ]);
 
 async function registersAsCsv(service: SupabaseClient, agencyId: string): Promise<Manifest["csv"]> {
