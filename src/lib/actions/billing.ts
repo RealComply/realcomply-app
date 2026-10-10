@@ -6,6 +6,7 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { PLANS, TRIAL_DAYS, type Plan } from "@/lib/billing/entitlement";
 import { isAccountHolder } from "@/lib/subscription-end/access";
 import { priceIdFor, stripeRequest, type Interval } from "@/lib/billing/stripe";
+import { checkStoredCustomer } from "@/lib/billing/customer";
 
 // Starting and managing a subscription.
 //
@@ -98,11 +99,31 @@ export async function startCheckout(
   let checkoutUrl: string;
 
   try {
+    // The stored customer is used only once Stripe confirms it is this
+    // agency's (10 Oct 2026); see checkStoredCustomer. One Stripe no longer
+    // has is replaced with a new one, which the database allows while there
+    // is no subscription (0060). One made for another agency is never used.
+    let customerId = agency.stripe_customer_id;
+    let staleId: string | null = null;
+    if (customerId) {
+      const stored = await checkStoredCustomer(customerId, agency.id);
+      if (stored === "not-ours") {
+        console.error(`startCheckout: agency ${agency.id} holds a Stripe customer made for another agency.`);
+        return {
+          error: "Couldn't start checkout. We've logged it. Email admin@realcomply.com.au and we'll sort it out.",
+        };
+      }
+      if (stored === "gone") {
+        staleId = customerId;
+        customerId = null;
+      }
+    }
+
     // Stripe's redirect back can beat its webhook, and until the webhook
     // lands stripe_subscription_id above is still empty. A second press in
     // that gap started a second checkout on the same customer: two trials,
     // then two charges (10 Oct 2026). Stripe already knows, so ask it.
-    if (agency.stripe_customer_id && (await hasLiveSubscription(agency.stripe_customer_id))) {
+    if (customerId && (await hasLiveSubscription(customerId))) {
       return {
         error:
           "Stripe already has a subscription for this agency and is still confirming it. Reload this page in a minute, and email admin@realcomply.com.au if it doesn't clear.",
@@ -110,7 +131,7 @@ export async function startCheckout(
     }
 
     const priceId = await priceIdFor(plan, interval);
-    const customerId = agency.stripe_customer_id ?? (await createCustomer(supabase, agency, profile.email));
+    customerId ??= await createCustomer(supabase, agency, profile.email, staleId);
 
     const session = await stripeRequest<{ url?: string | null }>("POST", "/checkout/sessions", {
       mode: "subscription",
@@ -211,6 +232,21 @@ export async function openBillingPortal(_prev: BillingActionState, _formData: Fo
 
   let portalUrl: string;
   try {
+    // Stripe is asked whose customer this is before its billing page opens
+    // (10 Oct 2026). Anyone in the office can read the id on the row, so on
+    // its own it does not show the customer is this agency's, and the portal
+    // can cancel a subscription, change the card and show the invoices.
+    const stored = await checkStoredCustomer(customerId, profile.agency_id);
+    if (stored === "gone") {
+      return {
+        error: "Stripe no longer has this account's billing details. Email admin@realcomply.com.au and we'll sort it out.",
+      };
+    }
+    if (stored === "not-ours") {
+      console.error(`openBillingPortal: agency ${profile.agency_id} holds a Stripe customer made for another agency.`);
+      return { error: "Couldn't open the billing page. We've logged it. Email admin@realcomply.com.au." };
+    }
+
     const session = await stripeRequest<{ url?: string | null }>("POST", "/billing_portal/sessions", {
       customer: customerId,
       return_url: `${siteUrl()}/dashboard/billing`,
@@ -231,6 +267,8 @@ async function createCustomer(
   supabase: Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
   agency: { id: string; name: string },
   email: string,
+  /** A stored id Stripe no longer has, which this one replaces. */
+  replacing: string | null = null,
 ): Promise<string> {
   const customer = await stripeRequest<{ id: string }>("POST", "/customers", {
     name: agency.name,
@@ -251,9 +289,17 @@ async function createCustomer(
   // someone else got in first; that one is used, so both people end up on
   // the same customer. Until it has run in the database this logs and goes
   // on as before.
+  //
+  // Replacing a customer Stripe no longer has (10 Oct 2026): the function
+  // swaps it for this one while there is no subscription. If it hands the
+  // dead one back instead, this checkout still goes ahead on the new one.
   const { data, error } = await supabase.rpc("set_agency_stripe_customer", { p_customer_id: customer.id });
   if (error) {
     console.error("createCustomer could not record the Stripe customer:", error.message);
+    return customer.id;
+  }
+  if (replacing && data === replacing) {
+    console.error("createCustomer could not replace a Stripe customer that no longer exists.");
     return customer.id;
   }
   return typeof data === "string" && data ? data : customer.id;
