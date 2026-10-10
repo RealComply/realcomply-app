@@ -213,12 +213,22 @@ export async function loadPmCards(
   return out;
 }
 
-/** The agency's people, for names on ticks and the property manager picker. */
+/** The agency's people, for names on ticks, records, the history and the property manager picker. */
 export type PmPerson = { id: string; name: string; archived: boolean };
 
 export async function pmPeople(supabase: SupabaseClient): Promise<PmPerson[]> {
-  const { data } = await supabase.from("profiles").select("id, full_name, email, archived_at").order("full_name");
-  return ((data ?? []) as { id: string; full_name: string | null; email: string; archived_at: string | null }[]).map(
-    (p) => ({ id: p.id, name: p.full_name?.trim() || p.email, archived: Boolean(p.archived_at) }),
-  );
+  // Names come from agency_people() (0058): since 7 Oct an agent can read
+  // only their own profile (and their assistant's), but the history still has
+  // to say who ticked what. Emails are only a fallback for a person with no
+  // name, and only where the viewer may already see that profile.
+  const [{ data: people }, { data: visible }] = await Promise.all([
+    supabase.rpc("agency_people"),
+    supabase.from("profiles").select("id, email"),
+  ]);
+  const emailOf = new Map(((visible ?? []) as { id: string; email: string }[]).map((p) => [p.id, p.email]));
+  return ((people ?? []) as { id: string; full_name: string | null; archived_at: string | null }[]).map((p) => ({
+    id: p.id,
+    name: p.full_name?.trim() || emailOf.get(p.id) || "Unnamed member",
+    archived: Boolean(p.archived_at),
+  }));
 }
