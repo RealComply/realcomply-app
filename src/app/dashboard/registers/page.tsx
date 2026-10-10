@@ -89,6 +89,13 @@ export default async function RegistersPage({
   const staff = licenseeView
     ? ((staffRows ?? []) as Profile[]).filter((s) => !s.archived_at)
     : [profile];
+  // ...but their licence stays on the record (review of 10 Oct 2026). Their
+  // card was the only place the licensee could open a departed agent's
+  // licence document, and an auditor can ask for it after they have gone. So
+  // the licensee sees them in a collapsed "Former staff" list on the Licences
+  // tab, read-only, and they still count toward nothing above (badge, tiles,
+  // reminders, pickers).
+  const formerStaff = licenseeView ? ((staffRows ?? []) as Profile[]).filter((s) => s.archived_at) : [];
   const nameOf: Record<string, string> = {};
   for (const p of people) if (p.full_name) nameOf[p.id] = p.full_name;
   for (const s of (staffRows ?? []) as Profile[]) nameOf[s.id] ??= s.full_name ?? s.email;
@@ -124,6 +131,10 @@ export default async function RegistersPage({
       next: s.licence_expiry ? nextReminderDate(s.licence_expiry) : null,
       last: lastReminderByProfile[s.id]?.sent_at ?? null,
     };
+  }
+  // No next reminder for someone who has left: the job skips them.
+  for (const s of formerStaff) {
+    reminderInfoByProfile[s.id] = { next: null, last: lastReminderByProfile[s.id]?.sent_at ?? null };
   }
   const corporationReminderInfo: ReminderInfo = {
     next: agency?.corporation_licence_expiry ? nextReminderDate(agency.corporation_licence_expiry) : null,
@@ -211,6 +222,7 @@ export default async function RegistersPage({
               licence={
                 <LicencePanel
                   staff={staff}
+                  formerStaff={formerStaff}
                   cpdByProfile={cpdByProfile}
                   viewerProfile={profile}
                   cpdYearLabel={cpdYear.label}

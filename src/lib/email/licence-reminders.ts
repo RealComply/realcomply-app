@@ -12,6 +12,7 @@ import {
   expiryPhrase,
   type ReminderThreshold,
 } from "@/lib/licence-reminders";
+import { accessFrom } from "@/lib/access";
 import type { Agency, LicenceReminder, Profile } from "@/lib/types";
 
 // Licence / certificate expiry reminders — the daily job.
@@ -89,7 +90,13 @@ function subjectsForAgency(agency: Agency, profiles: Profile[]): Subject[] {
   return subjects;
 }
 
-export function holderDocument(subject: Subject, days: number): EmailDocument {
+/**
+ * `licenseeCopied` is whether someone other than the holder gets this one.
+ * The note saying so is left out when nobody does (the holder IS the
+ * licensee), rather than telling them a copy went to a licensee who never
+ * got one (review of 10 Oct 2026).
+ */
+export function holderDocument(subject: Subject, days: number, licenseeCopied = true): EmailDocument {
   const expired = days < 0;
 
   // Fourteen days joined the schedule in Oct 2026, and "no rush today" is not
@@ -120,7 +127,7 @@ export function holderDocument(subject: Subject, days: number): EmailDocument {
         ],
       },
       { kind: "paragraph", text: advice },
-      { kind: "note", text: "Your licensee in charge has been sent a copy of this." },
+      ...(licenseeCopied ? [{ kind: "note" as const, text: "Your licensee in charge has been sent a copy of this." }] : []),
       { kind: "button", label: "Open the register", href: HOLDER_LICENCE_URL },
     ],
     footer: LICENCE_FOOTER,
@@ -205,7 +212,13 @@ export async function runLicenceReminders(
     // their licence is no longer the agency's to watch, and a former licensee
     // in charge is no longer the person to tell.
     const profiles = ((profileRows ?? []) as Profile[]).filter((p) => !p.archived_at);
-    const licensees = profiles.filter((p) => p.is_licensee_in_charge);
+    // "The licensee" the way the app works it out (lib/access.ts): the
+    // licensee in charge, or the agent on their own plan (review of 10 Oct
+    // 2026). The agent on an agent plan who said at signup they are not the
+    // licensee in charge keeps the corporation licence and gets the test
+    // reminder, but the job looked only at the flag: nobody was told about
+    // the corporation licence, and nobody about their assistant's certificate.
+    const licensees = profiles.filter((p) => accessFrom(p, agency.plan).actsAsLicensee);
 
     const subjects = subjectsForAgency(agency, profiles);
     if (subjects.length === 0) continue;
@@ -233,7 +246,7 @@ export async function runLicenceReminders(
 
       const days = daysUntil(subject.expiry, today);
 
-      // Who gets told. The holder, plus every licensee in charge — except
+      // Who gets told. The holder, plus every licensee (above) — except
       // where the holder IS the licensee, who gets one email in their own
       // voice rather than the same news twice from two angles. Same rule the
       // Monday digest already follows for sole principals.
@@ -261,10 +274,11 @@ export async function runLicenceReminders(
       }
 
       let anyFailed = false;
+      const licenseeCopied = recipients.some((to) => to !== subject.holderEmail);
       for (const to of recipients) {
         const isHolder = to === subject.holderEmail;
         const doc = isHolder
-          ? holderDocument(subject, days)
+          ? holderDocument(subject, days, licenseeCopied)
           : licenseeDocument(subject, days, agency);
         const ok = await send({
           to,
@@ -329,10 +343,15 @@ export async function sendLicenceReminderTest(
   });
 
   const messages: { to: string; subject: string; doc: EmailDocument }[] = [];
+  const licenseeCopied = Boolean(licensee.email && licensee.email !== member.email);
   if (member.email) {
-    messages.push({ to: member.email, subject: `[Test] ${subjectLine(subject, days, true)}`, doc: label(holderDocument(subject, days)) });
+    messages.push({
+      to: member.email,
+      subject: `[Test] ${subjectLine(subject, days, true)}`,
+      doc: label(holderDocument(subject, days, licenseeCopied)),
+    });
   }
-  if (licensee.email && licensee.email !== member.email) {
+  if (licenseeCopied) {
     messages.push({
       to: licensee.email,
       subject: `[Test] ${subjectLine(subject, days, false)}`,

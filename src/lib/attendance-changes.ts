@@ -15,10 +15,13 @@ export type AttendanceChanges = {
   /** Ticked, not yet recorded as attending. */
   ticked: string[];
   /**
-   * Ticked, with no session CPD record. Every ticked attendee, not only the
-   * newly ticked, so a save whose CPD write failed is mended by saving again,
-   * as it was when every save rewrote the lot. An existing record is left as
-   * it is, corrections and all.
+   * Newly ticked, with no session CPD record. Only the newly ticked (review
+   * of 10 Oct 2026): it was every ticked attendee without one, so that a save
+   * whose CPD write failed was mended by saving again, but that also put back
+   * a session record the licensee had deleted (a duplicate of the provider's
+   * certificate, say) on any later save, undoing a logged deletion without a
+   * trace. A failed CPD write already says to add the hours by hand. An
+   * existing record is left as it is, corrections and all.
    */
   needCpd: string[];
 };
@@ -35,9 +38,10 @@ export function attendanceChanges(input: {
   const wantedSet = new Set(wanted);
   const recorded = new Set(input.recorded);
   const withCpd = new Set(input.withCpd);
+  const ticked = wanted.filter((id) => !recorded.has(id));
   return {
     unticked: [...recorded].filter((id) => !wantedSet.has(id)),
-    ticked: wanted.filter((id) => !recorded.has(id)),
-    needCpd: wanted.filter((id) => !withCpd.has(id)),
+    ticked,
+    needCpd: ticked.filter((id) => !withCpd.has(id)),
   };
 }

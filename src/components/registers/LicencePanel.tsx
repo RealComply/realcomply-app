@@ -21,6 +21,7 @@ import type { Agency, CpdRecord, Profile } from "@/lib/types";
 // the licensee's. See the note in app/dashboard/registers/page.tsx.
 export function LicencePanel({
   staff,
+  formerStaff = [],
   cpdByProfile,
   viewerProfile,
   cpdYearLabel,
@@ -30,6 +31,8 @@ export function LicencePanel({
   nameOf: names = {},
 }: {
   staff: Profile[];
+  /** People who have left (archived), shown read-only below the rest, the licensee's view only. */
+  formerStaff?: Profile[];
   cpdByProfile: Record<string, CpdRecord[]>;
   viewerProfile: Profile;
   cpdYearLabel: string;
@@ -44,7 +47,7 @@ export function LicencePanel({
   const { actsAsLicensee } = useViewerAccess();
   const nameOf: Record<string, string> = {
     ...names,
-    ...Object.fromEntries(staff.map((s) => [s.id, s.full_name ?? s.email])),
+    ...Object.fromEntries([...staff, ...formerStaff].map((s) => [s.id, s.full_name ?? s.email])),
   };
   const statuses = staff.map((s) => expiryStatus(s.licence_expiry));
   const current = statuses.filter((s) => s === "ok" || s === "soon").length;
@@ -114,6 +117,32 @@ export function LicencePanel({
           />
         ))}
       </div>
+
+      {/* Former staff (review of 10 Oct 2026): read-only, collapsed, and
+          outside every count above. The licence the agency held on file for
+          someone who has left can still be opened here, with where its
+          details came from and the last reminder sent. */}
+      {formerStaff.length > 0 && (
+        <details className="mt-6">
+          <summary className="cursor-pointer text-xs font-medium text-rc-muted hover:text-rc-ink">
+            Former staff ({formerStaff.length})
+          </summary>
+          <div className="mt-3 space-y-4">
+            {formerStaff.map((s) => (
+              <StaffRegisterCard
+                key={s.id}
+                profile={s}
+                cpdRecords={cpdByProfile[s.id] ?? []}
+                viewerProfile={viewerProfile}
+                cpdYearLabel={cpdYearLabel}
+                reminderInfo={reminderInfoByProfile[s.id] ?? { next: null, last: null }}
+                nameOf={nameOf}
+                former
+              />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

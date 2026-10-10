@@ -5,6 +5,7 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
 import { attendanceChanges } from "@/lib/attendance-changes";
+import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -301,7 +302,7 @@ export async function deleteCpdRecord(recordId: string): Promise<void> {
 
   const { data: record } = await supabase
     .from("cpd_records")
-    .select("profile_id")
+    .select("profile_id, evidence_path")
     .eq("id", recordId)
     .maybeSingle();
 
@@ -310,7 +311,18 @@ export async function deleteCpdRecord(recordId: string): Promise<void> {
   // licensee deletes a compliance record, and the delete is logged (0058).
   if (!access.actsAsLicensee) return;
 
-  await supabase.from("cpd_records").delete().eq("id", recordId);
+  const { data: deleted } = await supabase.from("cpd_records").delete().eq("id", recordId).select("id");
+  // The certificate goes with its record (check, 10 Oct 2026). It was left in
+  // {agency}/_cpd/{person}/ with nothing pointing at it and no control that
+  // could remove it. Only once the record has actually gone, and on the
+  // licensee's own access, the one person who may delete files (0058); that
+  // delete is logged too.
+  const evidencePath = (record as { evidence_path: string | null }).evidence_path;
+  if (deleted && deleted.length > 0 && evidencePath) {
+    const { error } = await supabase.storage.from(EVIDENCE_BUCKET).remove([evidencePath]);
+    // The folder only, never the file name.
+    if (error) console.error("CPD certificate not deleted:", evidencePath.split("/").slice(0, 3).join("/"), error.message);
+  }
   revalidatePath("/dashboard/registers");
 }
 
@@ -424,6 +436,18 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
     wanted: attendeeIds,
   });
 
+  // From here on, every return refreshes the page first, a refusal included
+  // (review of 10 Oct 2026). The ticks start from the attendance on record,
+  // and the editor stays open on a message. When the CPD write failed after
+  // a latecomer's attendance was saved, the page still showed the old
+  // attendance, the latecomer's box went back to empty, and saving again
+  // "mended" it by removing them.
+  const settle = (result: ActionState): ActionState => {
+    revalidatePath("/dashboard/training");
+    revalidatePath("/dashboard/registers");
+    return result;
+  };
+
   if (unticked.length > 0) {
     await supabase.from("training_attendance").delete().eq("session_id", sessionId).in("profile_id", unticked);
     await supabase.from("cpd_records").delete().eq("source_session_id", sessionId).in("profile_id", unticked);
@@ -437,7 +461,7 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
         profile_id: profileId,
       })),
     );
-    if (attendanceError) return { error: "Couldn't save attendance — try again." };
+    if (attendanceError) return settle({ error: "Couldn't save attendance — try again." });
   }
 
   // The provider is the gate, not the tick-box. NSW CPD can only be
@@ -463,12 +487,10 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
         created_by: profile.id,
       })),
     );
-    if (cpdError) return { error: "Attendance saved, but couldn't auto-log CPD hours — add them manually." };
+    if (cpdError) return settle({ error: "Attendance saved, but couldn't auto-log CPD hours — add them manually." });
   }
 
-  revalidatePath("/dashboard/training");
-  revalidatePath("/dashboard/registers");
-  return ok;
+  return settle(ok);
 }
 
 // ── Gifts & benefits register — Rules of Conduct probity/conflicts control.

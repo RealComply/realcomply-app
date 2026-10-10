@@ -119,10 +119,27 @@ function joinAnd(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
-/** Removes a file just uploaded that is not going on the record. */
-async function discardUpload(supabase: Supabase, path: string): Promise<void> {
-  await supabase.storage.from(EVIDENCE_BUCKET).remove([path]);
+/**
+ * Removes a file just uploaded that is not going on the record, and says
+ * whether it went.
+ *
+ * Checked, not assumed (review of 10 Oct 2026). A delete the database refuses
+ * (an agent before 0060 has run) comes back empty, not as an error, so the
+ * other person's licence stayed in storage while the message said nothing was
+ * kept. Same check as the refused ID document in actions/compliance.ts.
+ */
+async function discardUpload(supabase: Supabase, path: string): Promise<boolean> {
+  const { data: removed, error } = await supabase.storage.from(EVIDENCE_BUCKET).remove([path]);
+  const deleted = !error && (removed?.length ?? 0) > 0;
+  if (!deleted) {
+    // The folder only, never the file name, which often carries a name.
+    console.error("refused licence upload not deleted:", path.split("/").slice(0, 3).join("/"), error?.message);
+  }
+  return deleted;
 }
+
+/** Added to a refusal when the file it refused is still in storage. */
+const NOT_DELETED = " RealComply couldn't delete the copy just now, so it is still stored, though not on this record.";
 
 // ── A person's licence or certificate ───────────────────────────────────────
 
@@ -198,19 +215,19 @@ async function readPersonLicence(
     // licence_read, which kept the other person's name in this person's
     // record. The warning is the message returned below, shown once in the
     // browser that uploaded it.
-    if (fresh) await discardUpload(supabase, path);
+    const kept = fresh && !(await discardUpload(supabase, path));
     revalidatePath("/dashboard/registers");
     const who = subject.full_name ?? subject.email;
     return decision.kind === "name_mismatch"
       ? {
           error: null,
           outcome: "name_mismatch",
-          message: `The name on this document is ${decision.nameOnDocument}, which doesn't match ${who}. Nothing was saved. Check it's the right person's licence.`,
+          message: `The name on this document is ${decision.nameOnDocument}, which doesn't match ${who}. Nothing was saved. Check it's the right person's licence.${kept ? NOT_DELETED : ""}`,
         }
       : {
           error: null,
           outcome: "not_a_licence",
-          message: "This doesn't look like a licence or certificate of registration. Nothing was saved.",
+          message: `This doesn't look like a licence or certificate of registration. Nothing was saved.${kept ? NOT_DELETED : ""}`,
         };
   }
 
@@ -429,18 +446,18 @@ async function readCorporationLicence(
 
   if (decision.kind !== "save") {
     // Saves nothing, the same as a person's licence above.
-    if (fresh) await discardUpload(supabase, path);
+    const kept = fresh && !(await discardUpload(supabase, path));
     revalidatePath("/dashboard/registers");
     return decision.kind === "name_mismatch"
       ? {
           error: null,
           outcome: "name_mismatch",
-          message: `The holder on this document is ${decision.nameOnDocument}, which doesn't match ${agency.corporation_licence_holder ?? agency.name}. Nothing was saved. Check it's this agency's corporation licence.`,
+          message: `The holder on this document is ${decision.nameOnDocument}, which doesn't match ${agency.corporation_licence_holder ?? agency.name}. Nothing was saved. Check it's this agency's corporation licence.${kept ? NOT_DELETED : ""}`,
         }
       : {
           error: null,
           outcome: "not_a_licence",
-          message: "This doesn't look like a corporation licence. Nothing was saved.",
+          message: `This doesn't look like a corporation licence. Nothing was saved.${kept ? NOT_DELETED : ""}`,
         };
   }
 
