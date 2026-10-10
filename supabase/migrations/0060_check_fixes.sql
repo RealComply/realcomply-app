@@ -199,12 +199,12 @@ begin
      or (tg_op = 'UPDATE' and new.evidence_path is not distinct from old.evidence_path) then
     return null;
   end if;
-  -- A value that cannot name a stored file (longer than Storage allows, or
-  -- not in this agency's folder) is not kept: it could never be deleted as a
+  -- A value that cannot name a stored file (longer than Storage allows, in
+  -- bytes, or not in this agency's folder) is not kept: it could never be deleted as a
   -- refused upload anyway, and a very long one would not fit the list's
   -- index and would make the card, and the listing, impossible to change or
   -- delete (review of these fixes, 10 Oct 2026).
-  if length(old.evidence_path) > 1024 or not starts_with(old.evidence_path, old.agency_id::text || '/') then
+  if octet_length(old.evidence_path) > 1024 or not starts_with(old.evidence_path, old.agency_id::text || '/') then
     return null;
   end if;
   -- The agency's own deletion cascades through here too; by then its row is
@@ -236,7 +236,7 @@ begin
   if new.bucket_id is distinct from 'compliance-evidence'
      or (new.name is not distinct from old.name and new.bucket_id is not distinct from old.bucket_id)
      or coalesce(v_seg[1], '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-     or length(new.name) > 1024 then
+     or octet_length(new.name) > 1024 then
     return null;
   end if;
   insert into public.evidence_files_once_on_record (name, agency_id)
@@ -754,7 +754,7 @@ begin
   end if;
   if new.evidence_path is not null
      and (tg_op = 'INSERT' or new.evidence_path is distinct from old.evidence_path)
-     and (length(new.evidence_path) > 1024
+     and (octet_length(new.evidence_path) > 1024
           or not starts_with(new.evidence_path, new.agency_id::text || '/' || new.property_id::text || '/')) then
     raise exception 'That file is not in this listing''s folder.';
   end if;
@@ -779,7 +779,7 @@ begin
   end if;
   if new.evidence_path is not null
      and (tg_op = 'INSERT' or new.evidence_path is distinct from old.evidence_path)
-     and (length(new.evidence_path) > 1024
+     and (octet_length(new.evidence_path) > 1024
           or not starts_with(new.evidence_path, new.agency_id::text || '/_cpd/' || new.profile_id::text || '/')) then
     raise exception 'That file is not in this person''s CPD folder.';
   end if;

@@ -1,7 +1,7 @@
 import { describe, it, test } from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { EVIDENCE_BUCKET, cpdFolder, isInFolder, listingFolder, listPropertyEvidencePaths } from "./evidence";
+import { EVIDENCE_BUCKET, cardFileRemovable, cpdFolder, isInFolder, listingFolder, listPropertyEvidencePaths } from "./evidence";
 
 // A bucket as storage.list() shows it: one level at a time, a folder with no
 // id, paged by limit/offset.
@@ -75,4 +75,49 @@ test("isInFolder: only a path inside the record's own folder", () => {
   assert.equal(isInFolder("ag/p1/a1/" + "x".repeat(1100), folder), false);
   assert.equal(isInFolder("ag/_cpd/me/1-cert.pdf", cpdFolder("ag", "me")), true);
   assert.equal(isInFolder("ag/_cpd/you/1-cert.pdf", cpdFolder("ag", "me")), false);
+});
+
+// property_items as cardFileRemovable reads it: select().eq().eq().
+function cardsClient(rows: { agency_id: string; property_id: string; item_key: string; evidence_path: string }[]) {
+  return {
+    from: () => ({
+      select: () => {
+        const filters: Record<string, string> = {};
+        const q = {
+          eq(col: string, val: string) {
+            filters[col] = val;
+            return Object.keys(filters).length >= 2
+              ? Promise.resolve({
+                  data: rows.filter((r) => Object.entries(filters).every(([k, v]) => r[k as keyof typeof r] === v)),
+                  error: null,
+                })
+              : q;
+          },
+        };
+        return q;
+      },
+    }),
+  } as unknown as SupabaseClient;
+}
+
+test("cardFileRemovable: the card's own file, named by no other card", async () => {
+  const rows = [{ agency_id: "ag", property_id: "p1", item_key: "a1", evidence_path: "ag/p1/a1/1-voi.pdf" }];
+  assert.equal(await cardFileRemovable(cardsClient(rows), { agencyId: "ag", propertyId: "p1", itemKey: "a1", path: "ag/p1/a1/1-voi.pdf" }), true);
+});
+
+test("cardFileRemovable: not another card's filed document on the same listing", async () => {
+  const rows = [
+    { agency_id: "ag", property_id: "p1", item_key: "b1", evidence_path: "ag/p1/b1/9-contract.pdf" },
+    { agency_id: "ag", property_id: "p1", item_key: "a1", evidence_path: "ag/p1/b1/9-contract.pdf" },
+  ];
+  // Outside a1's folder, and b1 still names it.
+  assert.equal(await cardFileRemovable(cardsClient(rows), { agencyId: "ag", propertyId: "p1", itemKey: "a1", path: "ag/p1/b1/9-contract.pdf" }), false);
+});
+
+test("cardFileRemovable: not a file in its own folder that another card also names", async () => {
+  const rows = [
+    { agency_id: "ag", property_id: "p1", item_key: "a4", evidence_path: "ag/p1/a4/2-esp.pdf" },
+    { agency_id: "ag", property_id: "p1", item_key: "a4b", evidence_path: "ag/p1/a4/2-esp.pdf" },
+  ];
+  assert.equal(await cardFileRemovable(cardsClient(rows), { agencyId: "ag", propertyId: "p1", itemKey: "a4", path: "ag/p1/a4/2-esp.pdf" }), false);
 });

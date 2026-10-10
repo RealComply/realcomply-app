@@ -197,6 +197,15 @@ begin
      where property_id = p2 and item_key = 'a1';
   exception when others then blocked := true; end;
   if not blocked then raise exception 'FAIL 15: a card took a path longer than any file'; end if;
+  -- (the limit is in bytes: about 1000 random CJK characters is under 1024
+  -- characters but nearly 3000 bytes)
+  blocked := false;
+  begin
+    update public.property_items
+       set evidence_path = office || '/' || p2 || '/a1/' || (select string_agg(chr(19968 + (random() * 20000)::int), '') from generate_series(1, 940))
+     where property_id = p2 and item_key = 'a1';
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'FAIL 15: a card took a path longer than any file, in bytes'; end if;
   blocked := false;
   begin
     update public.property_items set property_id = p2 where property_id = p1 and item_key = 'b1';
@@ -388,9 +397,10 @@ begin
   -- 17. A listing whose card holds a path too long to be a file (old data,
   --     written here with full rights) can still be deleted.
   reset role;
-  -- (random characters: a repeated one compresses and would fit the index)
+  -- (random CJK characters: under 1024 characters but nearly 3000 bytes, and
+  -- random so they do not compress to fit the index)
   update public.property_items
-     set evidence_path = office || '/' || p2 || '/a1/' || (select string_agg(md5(g::text || clock_timestamp()::text), '') from generate_series(1, 100) g)
+     set evidence_path = office || '/' || p2 || '/a1/' || (select string_agg(chr(19968 + (random() * 20000)::int), '') from generate_series(1, 940))
    where property_id = p2 and item_key = 'a1';
   set local role authenticated;
   delete from public.properties where id = p2;

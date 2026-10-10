@@ -50,7 +50,37 @@ export function buildEvidencePath(agencyId: string, propertyId: string, itemKey:
  */
 export function isInFolder(path: string, folder: string): boolean {
   const prefix = folder.endsWith("/") ? folder : `${folder}/`;
-  return path.length <= 1024 && path.startsWith(prefix) && !path.slice(prefix.length).split("/").includes("..");
+  return (
+    new TextEncoder().encode(path).length <= 1024 &&
+    path.startsWith(prefix) &&
+    !path.slice(prefix.length).split("/").includes("..")
+  );
+}
+
+/**
+ * Whether the licensee replacing or removing a card's file may delete the
+ * old one: only when it is in that card's own folder and no other card in
+ * the agency still names it. A card's path is written by whoever may change
+ * the card, so an agent could point one card at another card's filed
+ * document on the same listing (review of the 10 Oct 2026 fixes). Anything
+ * else is just taken off the card; it stays in the listing's folder, which
+ * deleting the listing sweeps.
+ */
+export async function cardFileRemovable(
+  supabase: SupabaseClient,
+  card: { agencyId: string; propertyId: string; itemKey: string; path: string },
+): Promise<boolean> {
+  if (!isInFolder(card.path, `${listingFolder(card.agencyId, card.propertyId)}${card.itemKey}/`)) return false;
+  const { data, error } = await supabase
+    .from("property_items")
+    .select("property_id, item_key")
+    .eq("agency_id", card.agencyId)
+    .eq("evidence_path", card.path);
+  if (error) return false;
+  return !(data ?? []).some(
+    (row: { property_id: string; item_key: string }) =>
+      row.property_id !== card.propertyId || row.item_key !== card.itemKey,
+  );
 }
 
 export function listingFolder(agencyId: string, propertyId: string): string {
@@ -190,7 +220,7 @@ export async function finalizeEvidenceRecord(
   if (
     existingRow?.evidence_path &&
     existingRow.evidence_path !== path &&
-    isInFolder(existingRow.evidence_path, listingFolder(agencyId, propertyId))
+    (await cardFileRemovable(supabase, { agencyId, propertyId, itemKey, path: existingRow.evidence_path }))
   ) {
     await supabase.storage.from(EVIDENCE_BUCKET).remove([existingRow.evidence_path]);
   }

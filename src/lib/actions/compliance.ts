@@ -21,7 +21,7 @@ import { stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
-import { finalizeEvidenceRecord, isInFolder, listingFolder, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { cardFileRemovable, finalizeEvidenceRecord, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type {
   AuctionOutcomeData,
   AuctionOutcomeKind,
@@ -2221,11 +2221,18 @@ export async function removeEvidence(propertyId: string, itemKey: string): Promi
     return;
   }
 
-  // Only a file in this listing's folder: the card's path is written by
-  // whoever may change the card, and this removes it with the licensee's
-  // access (review of these fixes, 10 Oct 2026). Anything else is taken off
-  // the card and left where it is.
-  if (isInFolder(existing.evidence_path, listingFolder(existing.agency_id, propertyId))) {
+  // Only a file in this card's own folder that no other card names: the
+  // card's path is written by whoever may change the card, and this removes
+  // it with the licensee's access (review of these fixes, 10 Oct 2026).
+  // Anything else is taken off the card and left where it is.
+  if (
+    await cardFileRemovable(supabase, {
+      agencyId: existing.agency_id,
+      propertyId,
+      itemKey,
+      path: existing.evidence_path,
+    })
+  ) {
     await supabase.storage.from(EVIDENCE_BUCKET).remove([existing.evidence_path]);
   }
 

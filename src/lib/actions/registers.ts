@@ -336,7 +336,19 @@ export async function deleteCpdRecord(recordId: string): Promise<void> {
     agency_id: string;
     profile_id: string;
   };
-  if (deleted && deleted.length > 0 && evidencePath && isInFolder(evidencePath, cpdFolder(agencyId, profileId))) {
+  // And not one another of their records still names (the same reasoning,
+  // one record to the next).
+  const { data: sharing } =
+    deleted && deleted.length > 0 && evidencePath
+      ? await supabase.from("cpd_records").select("id").eq("agency_id", agencyId).eq("evidence_path", evidencePath).limit(1)
+      : { data: [] };
+  if (
+    deleted &&
+    deleted.length > 0 &&
+    evidencePath &&
+    isInFolder(evidencePath, cpdFolder(agencyId, profileId)) &&
+    (sharing ?? []).length === 0
+  ) {
     const { error } = await supabase.storage.from(EVIDENCE_BUCKET).remove([evidencePath]);
     // The folder only, never the file name.
     if (error) console.error("CPD certificate not deleted:", evidencePath.split("/").slice(0, 3).join("/"), error.message);
