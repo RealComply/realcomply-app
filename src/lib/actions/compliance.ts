@@ -2091,10 +2091,23 @@ export async function uploadEvidence(
     const { screenForIdDocument } = await import("@/lib/actions/extraction");
     const looksLike = await screenForIdDocument(supabase, path, fileName);
     if (looksLike) {
-      await supabase.storage.from(EVIDENCE_BUCKET).remove([path]);
+      // Deleted on the uploader's own access: since 0058 only the licensee
+      // deletes files, and pending/G2.sql lets the person who uploaded a
+      // refused ID document delete it. Said only when it actually went (10 Oct
+      // 2026): a delete the database refuses comes back empty, not as an error,
+      // and the agent was being told "deleted" over a copy still in storage.
+      const { data: removed, error: removeError } = await supabase.storage.from(EVIDENCE_BUCKET).remove([path]);
+      const deleted = !removeError && (removed?.length ?? 0) > 0;
+      if (!deleted) {
+        // The folder only, never the file name, which often carries a name.
+        console.error("refused ID document not deleted:", path.split("/").slice(0, 3).join("/"), removeError?.message);
+      }
       return {
         error:
-          `That looks like ${looksLike}, so it hasn't been attached and has been deleted. ` +
+          `That looks like ${looksLike}, so it hasn't been attached` +
+          (deleted
+            ? " and has been deleted. "
+            : ". RealComply couldn't delete the copy just now, so it is still stored, though not on this file. ") +
           "RealComply doesn't keep the documents used to prove someone's identity, address or ownership — " +
           "licences, passports, rates notices, title searches and the like. Attach the verification record " +
           "instead: the VOI certificate or the signing audit trail, which shows the check was done without " +
