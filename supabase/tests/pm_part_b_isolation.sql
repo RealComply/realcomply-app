@@ -1,8 +1,10 @@
 -- ===== READ ONLY. PM Part B agency isolation test, 6 October 2026 =====
 --
 -- Proves one agency can never see or change another agency's PM Part B
--- records (migration 0053), and that the file reminder log is closed to
--- everyone signed in. Run it after 0053. It is safe on the live database:
+-- records (migration 0053), that inside one office only the property
+-- manager, their assistant and the licensee can (0058), and that the file
+-- reminder log is closed to everyone signed in. Run it after 0059. It is safe
+-- on the live database:
 -- everything happens inside one transaction that is rolled back at the end,
 -- so the two test agencies, people and properties it makes never exist
 -- outside it.
@@ -18,6 +20,9 @@ declare
   b_agency uuid := gen_random_uuid();
   a_user uuid := gen_random_uuid();
   b_user uuid := gen_random_uuid();
+  a_lic uuid := gen_random_uuid();   -- licensee in charge of office A
+  a_ag2 uuid := gen_random_uuid();   -- another agent in office A
+  a_pet2 uuid;
   a_prop uuid;
   b_prop uuid;
   a_ten uuid;
@@ -29,16 +34,24 @@ declare
   who uuid;
   blocked boolean;
 begin
-  -- Two made-up agencies, one person each.
+  -- Two made-up agencies. A is an office with a licensee and two agents;
+  -- person A manages A's property. B has one person.
   insert into auth.users (id, email) values
     (a_user, 'pm-b-test-a@example.invalid'),
-    (b_user, 'pm-b-test-b@example.invalid');
+    (b_user, 'pm-b-test-b@example.invalid'),
+    (a_lic, 'pm-b-test-a-lic@example.invalid'),
+    (a_ag2, 'pm-b-test-a-ag2@example.invalid');
+  insert into public.agencies (id, name, status, plan) values
+    (a_agency, 'PM Part B isolation test A', 'active', 'office_1');
   insert into public.agencies (id, name, status) values
-    (a_agency, 'PM Part B isolation test A', 'active'),
     (b_agency, 'PM Part B isolation test B', 'active');
-  insert into public.profiles (id, agency_id, full_name, email) values
-    (a_user, a_agency, 'Test A', 'pm-b-test-a@example.invalid'),
-    (b_user, b_agency, 'Test B', 'pm-b-test-b@example.invalid');
+  insert into public.profiles (id, agency_id, full_name, email, is_licensee_in_charge, is_agent) values
+    (a_lic, a_agency, 'Test A Licensee', 'pm-b-test-a-lic@example.invalid', true, true),
+    (a_user, a_agency, 'Test A', 'pm-b-test-a@example.invalid', false, true),
+    (a_ag2, a_agency, 'Test A Agent Two', 'pm-b-test-a-ag2@example.invalid', false, true),
+    (b_user, b_agency, 'Test B', 'pm-b-test-b@example.invalid', false, true);
+  -- The licensee joined first, so they hold the account (0059).
+  update public.profiles set created_at = now() + interval '1 minute' where id in (a_user, a_ag2);
 
   -- One made-up tenanted property in each agency, each with a pet request.
   insert into public.pm_properties (agency_id, address, manager_id, origin, grp, created_by)
@@ -52,6 +65,9 @@ begin
   insert into public.pm_records (agency_id, property_id, tenancy_id, kind, data, recorded_by)
     values (b_agency, b_prop, b_ten, 'pet_request', '{"received": "2026-10-01", "outcome": "consent"}', b_user)
     returning id into b_pet;
+  insert into public.pm_records (agency_id, property_id, tenancy_id, kind, data, recorded_by)
+    values (a_agency, a_prop, a_ten, 'pet_request', '{"received": "2026-10-02", "outcome": "consent"}', a_user)
+    returning id into a_pet2;
   -- One reminder already sent for A's own tenancy, written as the daily job would.
   insert into public.pm_retention_reminders (agency_id, subject_kind, subject_id, due_date)
     values (a_agency, 'tenancy', a_ten, date '2029-10-07');
@@ -156,7 +172,35 @@ begin
   exception when insufficient_privilege then null;
   end;
 
-  -- Back to the owner to check 4 did nothing.
+  -- 8. Inside office A, another agent sees none of A's records, cannot add
+  --    one and cannot mark a pet request answered (0058). The licensee sees them.
+  perform set_config('request.jwt.claims', json_build_object('sub', a_ag2, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.pm_records where property_id = a_prop;
+  if n <> 0 then raise exception 'FAIL 8: another agent in the office can see the property manager''s records'; end if;
+  blocked := false;
+  begin
+    insert into public.pm_records (agency_id, property_id, tenancy_id, kind)
+      values (a_agency, a_prop, a_ten, 'property_sold');
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'FAIL 8: another agent in the office added a record to the property manager''s property'; end if;
+  update public.pm_records set response_given_at = now() where id = a_pet2;
+  -- No filter on purpose, as in check 7: a write rule without a read rule
+  -- only shows on an unfiltered update. Here it reaches A's saved records,
+  -- which refuse the change. All of it is rolled back below.
+  blocked := false;
+  begin
+    update public.pm_records set response_given_at = now();
+  exception when others then blocked := true;
+  end;
+  if blocked then raise exception 'FAIL 8: another agent in the office can reach the property manager''s records to change them'; end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', a_lic, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.pm_records where property_id = a_prop;
+  if n < 3 then raise exception 'FAIL 8: the licensee cannot see the office''s records'; end if;
+  select count(*) into n from public.pm_records where property_id = b_prop;
+  if n <> 0 then raise exception 'FAIL 8: the licensee can see another agency''s records'; end if;
+
+  -- Back to the owner to check 4 and 8 did nothing.
   reset role;
   select count(*) into n from public.pm_records where id = b_pet and response_given_at is null;
   if n <> 1 then raise exception 'FAIL 4: person A marked agency B''s pet request as answered'; end if;
@@ -166,6 +210,8 @@ begin
   if n <> 1 then raise exception 'FAIL 4: person A ended agency B''s management'; end if;
   select count(*) into n from public.pm_retention_reminders where subject_id = a_ten and due_date = date '2029-10-07';
   if n <> 1 then raise exception 'FAIL 7: a signed-in person changed or removed the file reminder log'; end if;
+  select count(*) into n from public.pm_records where id = a_pet2 and response_given_at is null;
+  if n <> 1 then raise exception 'FAIL 8: another agent in the office marked the property manager''s pet request as answered'; end if;
 
   raise notice 'PM Part B isolation: all checks passed';
 end
