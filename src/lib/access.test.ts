@@ -67,12 +67,13 @@ describe("visibleNavLink", () => {
       "CPD",
       "Sign-offs",
       "SG Manual",
+      "Getting started",
     ]);
   });
 
   it("the licensee keeps the whole menu, Billing included", () => {
     const menu = menuFor(true);
-    for (const label of ["Office overview", "Trust accounts", "Team", "Billing"]) {
+    for (const label of ["Office overview", "Trust accounts", "Team", "Billing", "Getting started"]) {
       assert.ok(menu.includes(label), label);
     }
     assert.equal(menu.length, NAV_LINKS.length);

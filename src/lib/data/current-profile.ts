@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { accessFrom, type Access } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
+import { sendEarlyAccessWelcomeIfDue } from "@/lib/early-access/welcome";
 import type { Profile } from "@/lib/types";
 
 // Fetches the logged-in user's profile (agency + role), redirecting to
@@ -101,6 +102,7 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
             fullName: meta.full_name ?? "",
             email: user.email ?? "",
           });
+          await sendEarlyAccessWelcomeIfDue({ founderToken: meta.founder_token, signupEmail: user.email });
         }
         return healedProfile as Profile;
       }

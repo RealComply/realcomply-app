@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { formatAuDate } from "@/lib/format-date";
 import { FounderInvites, type FounderInvite } from "@/components/admin/FounderInvites";
 import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyAccessQueue";
+import { earlyAccessStatus, hiddenFromList } from "@/lib/early-access/rules";
 import { storageBackupConfigured, countEvidenceObjects } from "@/lib/backup/storage-backup";
 import {
   DeleteNowForm,
@@ -122,12 +123,14 @@ export default async function AdminPage() {
       // The early-access queue. Read with the service key because 0013 makes
       // this table insert-only to a browser session — deliberately, so the
       // anon key cannot read the list back.
+      // Unsubscribed rows are read too since 10 Oct 2026: the list has an
+      // Unsubscribed tab, and seeing them is what stops anyone asking why a
+      // name has gone missing.
       supabase
         .from("early_access")
         .select(
-          "id, email, first_name, agency_name, source, created_at, invited_at, invited_token, declined_at, declined_note",
+          "id, email, first_name, agency_name, created_at, invited_at, invited_token, declined_at, declined_note, unsubscribed_at, welcome_sent_at",
         )
-        .is("unsubscribed_at", null)
         .order("created_at", { ascending: false }),
     ]);
 
@@ -204,29 +207,43 @@ export default async function AdminPage() {
   // Whether an invited registrant has actually arrived. Read from the invite
   // itself rather than by matching email addresses: bootstrap_agency_v3 stamps
   // accepted_at on the token it consumed, so this is the authoritative record
-  // of arrival. Matching on email would be guesswork — people sign up with a
+  // of arrival. Matching on email would be guesswork: people sign up with a
   // different address from the one they registered with more often than not.
-  const acceptedTokens = new Set(
-    invites.filter((i) => i.accepted_at).map((i) => i.token),
+  const acceptedAt = new Map(
+    invites.filter((i) => i.accepted_at).map((i) => [i.token, i.accepted_at as string]),
   );
 
-  const earlyAccess: EarlyAccessRow[] = (
-    (earlyAccessRows ?? []) as Array<Record<string, string | null>>
-  ).map((row) => ({
-    id: String(row.id),
-    email: String(row.email),
-    firstName: row.first_name ?? null,
-    agencyName: row.agency_name ?? null,
-    source: row.source ?? null,
-    createdAt: String(row.created_at),
-    invitedAt: row.invited_at ?? null,
-    invitedToken: row.invited_token ?? null,
-    declinedAt: row.declined_at ?? null,
-    declinedNote: row.declined_note ?? null,
-    signedUp: row.invited_token ? acceptedTokens.has(row.invited_token) : false,
-  }));
+  const sydneyShort = (iso: string, withYear: boolean) =>
+    new Intl.DateTimeFormat("en-AU", {
+      timeZone: "Australia/Sydney",
+      day: "numeric",
+      month: "short",
+      ...(withYear ? { year: "numeric" } : {}),
+    }).format(new Date(iso));
 
-  const waitingOnDecision = earlyAccess.filter((r) => !r.invitedAt && !r.declinedAt).length;
+  const earlyAccess: EarlyAccessRow[] = ((earlyAccessRows ?? []) as Array<Record<string, string | null>>)
+    // Adam's own test addresses are left off (brief, 10 Oct 2026).
+    .filter((row) => !hiddenFromList(String(row.email)))
+    .map((row) => {
+      const signedUpAt = row.invited_token ? (acceptedAt.get(row.invited_token) ?? null) : null;
+      return {
+        id: String(row.id),
+        email: String(row.email),
+        firstName: row.first_name ?? null,
+        agencyName: row.agency_name ?? null,
+        registered: sydneyShort(String(row.created_at), true),
+        invitedAt: row.invited_at ?? null,
+        invitedLabel: row.invited_at ? sydneyShort(row.invited_at, false) : null,
+        unsubscribedAt: row.unsubscribed_at ?? null,
+        declinedAt: row.declined_at ?? null,
+        declinedNote: row.declined_note ?? null,
+        signedUpAt,
+        signedUpLabel: signedUpAt ? sydneyShort(signedUpAt, false) : null,
+        welcomeSent: Boolean(row.welcome_sent_at),
+      };
+    });
+
+  const waitingOnDecision = earlyAccess.filter((r) => earlyAccessStatus(r) === "not_invited").length;
 
   const backups = (backupRows ?? []) as Array<{
     path: string;
@@ -266,7 +283,7 @@ export default async function AdminPage() {
         <Stat icon={<Users size={14} />} label="People" value={profiles.length} />
         <Stat icon={<Ticket size={14} />} label="Invites left" value={unusedInvites.length} />
         {/* The one number on this page that is a to-do rather than a fact. */}
-        <Stat icon={<Inbox size={14} />} label="Awaiting a decision" value={waitingOnDecision} />
+        <Stat icon={<Inbox size={14} />} label="Not invited yet" value={waitingOnDecision} />
       </div>
 
       {/* DOCUMENT BACKUP.
@@ -453,13 +470,12 @@ export default async function AdminPage() {
           for early access." */}
       <h2 className="mt-9 text-sm font-bold text-rc-ink">Early access</h2>
       <p className="mt-1 text-xs text-rc-muted">
-        People who registered on the landing page. Sending an invitation mints a founder link and emails it
-        to them. Declining sends nothing — it just records the decision so the same name is recognised if it
-        comes back.
+        Everyone who registered at realcomply.com.au. Send each person their invitation when you&rsquo;re ready.
+        Each email is BCC&rsquo;d to admin@realcomply.com.au.
       </p>
 
       <div className="mt-3">
-        <EarlyAccessQueue rows={earlyAccess} siteUrl={siteUrl} />
+        <EarlyAccessQueue rows={earlyAccess} />
       </div>
 
       {/* INVITES. Making one lives here rather than in Team settings, which is

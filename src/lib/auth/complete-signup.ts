@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
+import { sendEarlyAccessWelcomeIfDue } from "@/lib/early-access/welcome";
 
 // Everything that has to happen the first time somebody arrives with a
 // confirmed email: record what they accepted, and give them an agency.
@@ -116,4 +117,5 @@ export async function completeSignup(supabase: SupabaseClient, user: User): Prom
   // new signup to report, and we returned above rather than send a notification
   // about an agency nobody can use.
   await notifyNewAgencySignup({ agencyName, fullName, email: user.email ?? "" });
+  await sendEarlyAccessWelcomeIfDue({ founderToken: meta.founder_token, signupEmail: user.email });
 }
