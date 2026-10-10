@@ -717,6 +717,37 @@ const items: ComplianceItem[] = [
     hideNote: true,
   },
   {
+    // Adam, 5 Oct 2026, from the 21 Sep 2026 rental law changes. Two duties on
+    // one card: 7 days' notice before photos or video are taken (s55AA), and
+    // the tenant's permission before publishing photos that show their things,
+    // given no more than 3 weeks before the listing first goes live (s55A).
+    // The rule and its checks live in lib/rules/tenant-photo-notice.ts.
+    //
+    // The notice date is the card's own event date. The shoot date, the
+    // permission tick and date, and the "no belongings in shot" answer go in
+    // the item's data. Uploading the tenant's email or text is optional
+    // (Adam: "make it a tickbox while providing the option to upload email or
+    // text evidence").
+    //
+    // Shown on tenanted files still at Listing set-up or Pre-market, and on
+    // any file where it has already been answered. A file already past
+    // Pre-market when this card arrived had its photos taken under the old
+    // rules, and a new required card there would hold it back at Pre-market.
+    key: "t5",
+    stage: 1,
+    kind: "checklist",
+    label: "Tenant notice and permission for photos",
+    description:
+      "The tenant must get at least 7 days' notice before photos or video are taken for advertising, so they can move their things out of shot. If the photos show their belongings, get the tenant's permission within the 3 weeks of the ad going live. Permission cannot be more than 3 weeks old before publishing the listing.",
+    legalBasis: "s55AA and s55A, Residential Tenancies Act 2010 (NSW)",
+    requiresDate: true,
+    dateLabel: "Date notice was given to the tenant",
+    requiredForStageCompletion: true,
+    showIf: (p, allItems) => Boolean(p.is_tenanted) && (p.stage <= 1 || allItems.t5 != null),
+    hideNote: true,
+    evidenceLabel: "The tenant's email or text giving permission",
+  },
+  {
     key: "t3",
     stage: 1,
     kind: "checklist",

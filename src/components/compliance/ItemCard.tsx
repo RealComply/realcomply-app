@@ -3,6 +3,13 @@
 import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
 import { selfManaged } from "@/lib/rules/nsw-sales";
+import {
+  PERMISSION_RULE_TEXT,
+  PHOTO_NOTICE_DAYS,
+  addDays,
+  daysBetween,
+  type TenantPhotoData,
+} from "@/lib/rules/tenant-photo-notice";
 import { formatAuDate } from "@/lib/format-date";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
@@ -1022,6 +1029,9 @@ function ChecklistItem({
             </label>
           </div>
         )}
+        {/* t5. Its own block because the two dates are read together: the
+            gap between the notice and the shoot is the whole of s55AA. */}
+        {item.key === "t5" && <TenantPhotoFields item={item} current={current} />}
         {item.key === "a7" && (
           <div>
             <label className="block text-xs text-rc-muted">Material fact disclosed by the vendor?</label>
@@ -1135,7 +1145,7 @@ function ChecklistItem({
             )}
           </div>
         )}
-        {item.requiresDate && (
+        {item.requiresDate && item.key !== "t5" && (
           <div>
             <label className="block text-xs text-rc-muted">{item.dateLabel ?? "Event date"}</label>
             <input
@@ -1414,6 +1424,134 @@ function ChecklistItem({
       </form>
       <FieldError error={state.error} />
     </ItemShell>
+  );
+}
+
+// t5 — tenant notice and permission for advertising photos (Adam, 5 Oct 2026).
+//
+// The notice date carries name="eventDate" so the generic date rules apply to
+// it. The live line under the dates only tells the agent before they save;
+// setItemStatus re-checks everything and is what flags the card. The
+// permission is a tick and a date. The tenant's email or text is optional and
+// goes in the card's upload slot (Adam: "make it a tickbox while providing
+// the option to upload email or text evidence").
+function TenantPhotoFields({ item, current }: { item: ComplianceItem; current?: PropertyItem }) {
+  const saved = (current?.data ?? {}) as TenantPhotoData & { flagReasons?: string[] };
+  const [notice, setNotice] = useState(current?.event_date ?? "");
+  const [shoot, setShoot] = useState(saved.shootDate ?? "");
+  const [permission, setPermission] = useState(saved.permissionGiven === true);
+  const [noBelongings, setNoBelongings] = useState(saved.noBelongings === true);
+
+  const gap = notice && shoot ? daysBetween(notice, shoot) : null;
+  const short = gap !== null && gap < PHOTO_NOTICE_DAYS;
+
+  return (
+    <div className="space-y-3">
+      {current?.status === "flagged" && saved.flagReasons && saved.flagReasons.length > 0 && (
+        <ul className="space-y-1">
+          {saved.flagReasons.map((r) => (
+            <li key={r} className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+              <span>{r}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap gap-4">
+        <div>
+          <label className="block text-xs text-rc-muted" htmlFor="t5-notice">
+            {item.dateLabel ?? "Event date"}
+          </label>
+          <input
+            id="t5-notice"
+            type="date"
+            name="eventDate"
+            value={notice}
+            onChange={(e) => setNotice(e.target.value)}
+            className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-rc-muted" htmlFor="t5-shoot">
+            Date of the photo or video shoot
+          </label>
+          <input
+            id="t5-shoot"
+            type="date"
+            name="shootDate"
+            value={shoot}
+            onChange={(e) => setShoot(e.target.value)}
+            className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+          />
+        </div>
+      </div>
+      {gap !== null && (
+        <p
+          className={
+            short
+              ? "flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep"
+              : "flex items-start gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-1.5 text-xs text-rc-green-deep"
+          }
+        >
+          {short ? <AlertTriangle size={13} className="mt-0.5 shrink-0" /> : <Check size={13} className="mt-0.5 shrink-0" />}
+          <span>
+            {short
+              ? `Only ${Math.max(gap, 0)} days' notice. The tenant must get at least ${PHOTO_NOTICE_DAYS}. Move the shoot to ${formatAuDate(addDays(notice, PHOTO_NOTICE_DAYS))} or later, or give a new notice.`
+              : `${gap} days' notice. Meets the ${PHOTO_NOTICE_DAYS}-day rule.`}
+          </span>
+        </p>
+      )}
+
+      <div className="space-y-2 border-t border-rc-border pt-3">
+        <p className="text-sm font-semibold text-rc-ink">Tenant&apos;s permission to publish the photos</p>
+        <p className="rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-ink">{PERMISSION_RULE_TEXT}</p>
+        <label className="flex items-start gap-2.5 text-sm text-rc-ink">
+          <input
+            type="checkbox"
+            name="permissionGiven"
+            value="yes"
+            checked={permission}
+            onChange={(e) => {
+              setPermission(e.target.checked);
+              if (e.target.checked) setNoBelongings(false);
+            }}
+            className="mt-0.5 shrink-0 accent-rc-green-deep"
+          />
+          <span>The tenant gave permission to publish the photos</span>
+        </label>
+        {permission && (
+          <div className="pl-6">
+            <label className="block text-xs text-rc-muted" htmlFor="t5-permission">
+              Date permission was given
+            </label>
+            <input
+              id="t5-permission"
+              type="date"
+              name="permissionDate"
+              defaultValue={saved.permissionDate ?? ""}
+              className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+            />
+            <p className="mt-1 text-xs text-rc-faint">
+              You can attach the tenant&apos;s email or text below. It&apos;s optional.
+            </p>
+          </div>
+        )}
+        <label className="flex items-start gap-2.5 text-sm text-rc-ink">
+          <input
+            type="checkbox"
+            name="noBelongings"
+            value="yes"
+            checked={noBelongings}
+            onChange={(e) => {
+              setNoBelongings(e.target.checked);
+              if (e.target.checked) setPermission(false);
+            }}
+            className="mt-0.5 shrink-0 accent-rc-green-deep"
+          />
+          <span>None of the tenant&apos;s belongings are in the photos, so permission isn&apos;t needed</span>
+        </label>
+      </div>
+    </div>
   );
 }
 
