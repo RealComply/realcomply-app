@@ -1,6 +1,15 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
 import { selfManaged } from "@/lib/rules/nsw-sales";
 import { formatAuDate } from "@/lib/format-date";
@@ -3023,15 +3032,27 @@ const money = (n: number) => `$${n.toLocaleString("en-AU")}`;
 // and only then (10 Oct 2026). They used to close the moment Save was pressed,
 // before the server answered, so a refusal (no licence number, "Sold" with no
 // price) went to a form that was already gone and the card read as saved.
+//
+// Sent from onSubmit rather than <form action> (review, 10 Oct 2026): React
+// resets a form once its action has run, refused or not, so a refusal kept
+// the editor open with what had been typed wiped (a first-time auctioneer's
+// name and address, for want of a licence number). Dispatching it here
+// leaves the fields alone; a save that succeeds closes the editor anyway.
 function useSaveThenClose(
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>,
   setEditing: (editing: boolean) => void,
 ) {
-  return useActionState(async (prev: ActionState, formData: FormData) => {
+  const [state, dispatch, pending] = useActionState(async (prev: ActionState, formData: FormData) => {
     const result = await action(prev, formData);
     if (!result.error) setEditing(false);
     return result;
   }, initialState);
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => dispatch(formData));
+  };
+  return [state, onSubmit, pending] as const;
 }
 
 // x1 — the auctioneer. Three typed fields, shown as a plain line once saved.
@@ -3046,7 +3067,7 @@ function AuctioneerItem({
 }) {
   const saved = (current?.data ?? {}) as { name?: string; licenceNumber?: string; businessAddress?: string };
   const [editing, setEditing] = useState(!saved.name);
-  const [state, formAction, pending] = useSaveThenClose(setAuctioneerDetails.bind(null, propertyId), setEditing);
+  const [state, onSubmit, pending] = useSaveThenClose(setAuctioneerDetails.bind(null, propertyId), setEditing);
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -3066,7 +3087,7 @@ function AuctioneerItem({
           </button>
         </div>
       ) : (
-        <form action={formAction} className="space-y-2">
+        <form onSubmit={onSubmit} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3127,7 +3148,7 @@ function ReserveItem({
 }) {
   const saved = (current?.data ?? {}) as { reserve?: number; givenAt?: string };
   const [editing, setEditing] = useState(saved.reserve == null);
-  const [state, formAction, pending] = useSaveThenClose(setReserve.bind(null, propertyId), setEditing);
+  const [state, onSubmit, pending] = useSaveThenClose(setReserve.bind(null, propertyId), setEditing);
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -3146,7 +3167,7 @@ function ReserveItem({
           </button>
         </div>
       ) : (
-        <form action={formAction} className="space-y-2">
+        <form onSubmit={onSubmit} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3211,7 +3232,7 @@ function AuctionOutcomeItem({
   const [choice, setChoice] = useState<AuctionOutcomeKind | null>(saved.outcome ?? null);
   const [vendorBid, setVendorBid] = useState(Boolean(saved.vendorBid));
   const [editing, setEditing] = useState(!saved.outcome);
-  const [state, formAction, pending] = useSaveThenClose(recordAuctionOutcome.bind(null, propertyId), setEditing);
+  const [state, onSubmit, pending] = useSaveThenClose(recordAuctionOutcome.bind(null, propertyId), setEditing);
 
   if (!editing) {
     const chosen = OUTCOME_CHOICES.find((c) => c.value === saved.outcome);
@@ -3258,7 +3279,7 @@ function AuctionOutcomeItem({
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form action={formAction} className="space-y-3">
+      <form onSubmit={onSubmit} className="space-y-3">
         <input type="hidden" name="outcome" value={choice ?? ""} />
         <div className="flex flex-wrap gap-2">
           {OUTCOME_CHOICES.map((c) => (
