@@ -31,6 +31,7 @@ const CHIP: Record<ReconciliationMonth["status"], string> = {
   awaiting_upload: "bg-rc-amber/15 text-rc-amber-deep border-rc-amber/30",
   overdue: "bg-rc-red-soft text-rc-red border-rc-red/30",
   future: "border-dashed border-rc-border bg-rc-bg-alt text-rc-faint",
+  not_applicable: "border-dashed border-rc-border bg-rc-bg-alt text-rc-faint",
 };
 
 export function TrustAccountPanel({
@@ -47,6 +48,8 @@ export function TrustAccountPanel({
   audit,
   auditConfirmedByName,
   auditYearLabel,
+  auditIsOwed = true,
+  openedOn = null,
 }: {
   months: ReconciliationMonth[];
   agencyId: string;
@@ -62,6 +65,10 @@ export function TrustAccountPanel({
   audit: TrustAudit | null;
   auditConfirmedByName: string | null;
   auditYearLabel: string;
+  /** False when the audit year ended before the account opened. */
+  auditIsOwed?: boolean;
+  /** trust_accounts.opened_on, for saying why nothing is owed. */
+  openedOn?: string | null;
 }) {
   // Everything that has come due and is not signed, worst first. Plus the most
   // recent signed month, so a clean register still shows something rather than
@@ -118,11 +125,13 @@ export function TrustAccountPanel({
         </p>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {months.map((m) =>
-            m.status === "future" ? (
+            // Before the account opened is as inert as not due yet: nothing is
+            // owed and nothing is there to open.
+            m.status === "future" || m.status === "not_applicable" ? (
               <div
                 key={m.month}
                 className={`rounded-xl border px-3 py-2.5 ${CHIP[m.status]}`}
-                title="Not due yet"
+                title={m.status === "future" ? "Not due yet" : "Before this account opened — nothing owed"}
               >
                 <p className="text-[13px] font-bold">{m.label}</p>
                 <p className="mt-0.5 text-[11px] font-semibold">{MONTH_STATUS_LABELS[m.status]}</p>
@@ -180,17 +189,27 @@ export function TrustAccountPanel({
       )}
 
       {/* ── Annual ── */}
-      <TrustAuditForm
-        agencyId={agencyId}
-        trustAccountId={trustAccountId}
-        accountName={accountName}
-        periodEnd={auditPeriodEnd}
-        dueOn={auditDueOn}
-        daysToDue={auditDaysToDue}
-        audit={audit}
-        confirmedByName={auditConfirmedByName}
-        canEdit={canSign}
-      />
+      {!auditIsOwed ? (
+        <section className="rounded-card border border-rc-border bg-white p-5 shadow-card">
+          <h3 className="text-sm font-bold text-rc-ink">Annual audit — {accountName}</h3>
+          <p className="mt-1 text-xs text-rc-muted">
+            No audit is owed for the year ended {formatAuDate(auditPeriodEnd)}: this account opened on{" "}
+            {formatAuDate(openedOn)}, after that year ended. The first audit is for the year it opened in.
+          </p>
+        </section>
+      ) : (
+        <TrustAuditForm
+          agencyId={agencyId}
+          trustAccountId={trustAccountId}
+          accountName={accountName}
+          periodEnd={auditPeriodEnd}
+          dueOn={auditDueOn}
+          daysToDue={auditDaysToDue}
+          audit={audit}
+          confirmedByName={auditConfirmedByName}
+          canEdit={canSign}
+        />
+      )}
     </div>
   );
 }

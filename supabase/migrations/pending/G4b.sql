@@ -1,10 +1,13 @@
--- ===== G4b: sign-offs for people who join later, 10 October 2026 =====
+-- ===== G4b: sign-offs for people who join later; when a trust account opened, 10 October 2026 =====
 --
--- From the 10 Oct function check (document sign-offs). Plain SQL, safe to
--- run more than once. Nothing here edits or removes an existing row: it adds
--- unsigned sign-off rows for people who are missing them.
+-- Two changes from the 10 Oct function check (document sign-offs and trust
+-- accounts). Plain SQL, safe to run more than once. Nothing here edits or
+-- removes an existing row: one adds unsigned sign-off rows for people who are
+-- missing them, the other adds an empty column.
 --
--- Run before merging fix/G4b.
+-- Run before merging fix/G4b. The app copes with the column not being there
+-- yet (it reads trust_accounts with select *), but giving a new account an
+-- "opened on" date needs it.
 --
 -- ─────────────────────────────────────────────────────────────────────────
 -- 1. Someone who joins after an SG Manual version is published is asked to
@@ -85,3 +88,28 @@ select cur.id, cur.agency_id, p.id
   join public.profiles p on p.agency_id = cur.agency_id and p.archived_at is null
   join public.agencies a on a.id = cur.agency_id and a.ended_at is null
 on conflict (document_id, signer_id) do nothing;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 2. When a trust account opened.
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- A trust account added in October for an account that opened on 1 October
+-- showed July, August and September as overdue straight away, and asked for
+-- the audit of the year before it existed. The red badge could only be
+-- cleared by filing reconciliations for months the account never had.
+--
+-- The date the account OPENED, given by the licensee, not created_at. They
+-- differ for every agency that joins part way through a year, and for every
+-- account 0032 created on 25 Aug 2026 for the agencies already here: those
+-- still owed their July reconciliations and their 2025-26 audit, and reading
+-- created_at would have gone quiet about both.
+--
+-- Null means it was already open, so every existing account carries on
+-- exactly as before. Covered by the existing trust_accounts policies (the
+-- licensee adds and edits accounts).
+
+alter table public.trust_accounts
+  add column if not exists opened_on date;
+
+comment on column public.trust_accounts.opened_on is
+  'The day the account opened, when it opened part way through a year. Months and audit periods that ended before it are not owed (src/lib/trust-account.ts monthBeforeOpening, auditOwed). Null: already open, everything owed.';

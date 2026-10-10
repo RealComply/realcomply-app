@@ -69,7 +69,7 @@ export default async function DocumentSignoffsPage() {
           <div className="mt-6 rounded-card border border-rc-border bg-rc-bg-alt px-4 py-3 text-sm text-rc-muted">
             Trust account reconciliations are now uploaded and signed on the{" "}
             <Link
-              href="/dashboard/registers?tab=trust"
+              href="/dashboard/trust"
               className="font-medium text-rc-green-deep hover:underline"
             >
               Trust account register

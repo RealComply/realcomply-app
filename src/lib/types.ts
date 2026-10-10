@@ -326,6 +326,10 @@ export type TrustAccount = {
    *  still records the agency has to keep. */
   archived_at: string | null;
   created_at: string;
+  /** The day the account opened, when it opened part way through a year. Null
+   *  means it was already open: every month and audit is owed. Optional until
+   *  supabase/migrations/pending/G4b.sql has run. */
+  opened_on?: string | null;
 };
 
 export type TrustAudit = {

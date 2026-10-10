@@ -5,11 +5,13 @@ import { computePropertyDigests } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
 import {
   auditDueOn,
+  auditOwed,
   buildMonths,
   daysUntil,
   previousAuditPeriodEnd,
   auditPeriodEndFor,
   reconciliationRecordsFor,
+  sydneyToday,
 } from "@/lib/trust-account";
 import type {
   Agency, Breach, Profile, Property, PropertyItem, PropertyStage,
@@ -191,7 +193,9 @@ export const navCountsFor = cache(async function navCountsFor(
     supabase.from("gifts").select("id", { count: "exact", head: true }).eq("status", "flagged"),
     supabase.from("complaints").select("id", { count: "exact", head: true }).neq("status", "resolved"),
     supabase.from("breaches").select("status, notifiable, notified_date"),
-    supabase.from("trust_accounts").select("id, archived_at"),
+    // Every column, so opened_on comes through once G4b.sql has added it and
+    // nothing breaks before then. A handful of rows per agency.
+    supabase.from("trust_accounts").select("*"),
     supabase
       .from("signoff_documents")
       .select("id, period_month, trust_account_id, created_at")
@@ -263,9 +267,10 @@ export const navCountsFor = cache(async function navCountsFor(
 
   // Trust accounts, per account. Reuses the same helpers the Trust accounts
   // screen uses, so the dot and the page can never disagree about whether
-  // something is late.
-  const auditPeriod = previousAuditPeriodEnd(today);
-  const auditLateAt = daysUntil(auditDueOn(auditPeriod), today) < 0;
+  // something is late. On Sydney's date, as the page is (10 Oct 2026).
+  const trustToday = sydneyToday(today);
+  const auditPeriod = previousAuditPeriodEnd(trustToday);
+  const auditLateAt = daysUntil(auditDueOn(auditPeriod), trustToday) < 0;
   const audits = (trustAuditRows ?? []) as Pick<
     TrustAudit,
     "period_end" | "confirmed_at" | "trust_account_id"
@@ -277,13 +282,17 @@ export const navCountsFor = cache(async function navCountsFor(
 
   let trustOverdue = 0;
   let trustPending = 0;
-  for (const acct of (trustAccountRows ?? []) as { id: string; archived_at: string | null }[]) {
+  for (const acct of (trustAccountRows ?? []) as {
+    id: string;
+    archived_at: string | null;
+    opened_on?: string | null;
+  }[]) {
     // A closed account still holds records worth reading, but nothing new is
     // owed on it, so it cannot be outstanding.
     if (acct.archived_at) continue;
 
     const records = reconciliationRecordsFor(acct.id, docs, signatures);
-    const months = buildMonths(auditPeriodEndFor(today), records, today);
+    const months = buildMonths(auditPeriodEndFor(trustToday), records, trustToday, acct.opened_on ?? null);
     trustOverdue += months.filter((m) => m.status === "overdue").length;
     trustPending += months.filter(
       (m) => m.status === "awaiting_signature" || m.status === "awaiting_upload",
@@ -291,7 +300,8 @@ export const navCountsFor = cache(async function navCountsFor(
 
     // One audit per account per year (Adam, 25 Aug 2026).
     const audit = audits.find((a) => a.trust_account_id === acct.id && a.period_end === auditPeriod);
-    if (!audit?.confirmed_at) {
+    // Not owed for a year that ended before the account opened.
+    if (!audit?.confirmed_at && auditOwed(auditPeriod, acct.opened_on)) {
       if (auditLateAt) trustOverdue += 1;
       else trustPending += 1;
     }

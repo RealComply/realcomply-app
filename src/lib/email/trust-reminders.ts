@@ -9,9 +9,11 @@ import {
 import { formatAuDate } from "@/lib/format-date";
 import {
   auditDueOn,
+  auditOwed,
   auditStageForMonth,
   daysUntil,
   lastCompletedMonth,
+  monthBeforeOpening,
   monthLabel,
   previousAuditPeriodEnd,
   reminderStageForDay,
@@ -19,6 +21,7 @@ import {
   reconciliationProgress,
   reconciliationRecordsFor,
   reconciliationReminderFor,
+  sydneyToday,
   type ReconciliationDocRow,
   type ReconciliationProgress,
   type ReconciliationSignatureRow,
@@ -131,9 +134,13 @@ export async function runTrustReminders(
     failed: 0,
   };
 
-  const dayOfMonth = today.getUTCDate();
+  // Sydney's date, not UTC's (10 Oct 2026). The job runs at 21:40 UTC, which
+  // is the next morning in Sydney, so the UTC date sent the 1st's email on the
+  // 2nd and counted the 18th's "days left" one too many. See sydneyToday.
+  const day = sydneyToday(today);
+  const dayOfMonth = day.getUTCDate();
   const stage = reminderStageForDay(dayOfMonth);
-  const auditStage = dayOfMonth === 1 ? auditStageForMonth(today.getUTCMonth()) : null;
+  const auditStage = dayOfMonth === 1 ? auditStageForMonth(day.getUTCMonth()) : null;
 
   // Most mornings this is both null and the job does nothing at all, which is
   // the intended shape — cheap to run daily, silent unless there is something
@@ -168,13 +175,20 @@ export async function runTrustReminders(
     for (const account of accounts) {
       // ── Monthly reconciliation ──
       if (stage) {
-        const month = lastCompletedMonth(today);
+        const month = lastCompletedMonth(day);
         const due = reconciliationDueOn(month);
-        const left = daysUntil(due, today);
+        const left = daysUntil(due, day);
 
         // Read now, at send time, every stage.
         const progress = await currentReconciliationProgress(supabase, agency.id, account.id, month);
-        const kind = progress ? reconciliationReminderFor(progress) : null;
+        // A month that ended before the account opened was never owed, unless
+        // something was filed for it anyway — the same rule as statusFor.
+        const kind =
+          progress === "not_filed" && monthBeforeOpening(month, account.opened_on)
+            ? "none"
+            : progress
+              ? reconciliationReminderFor(progress)
+              : null;
 
         if (kind === null) {
           // Could not tell. Sending the wrong email is the bug this guards
@@ -208,7 +222,7 @@ export async function runTrustReminders(
 
       // ── Annual audit ──
       if (auditStage) {
-        const period = previousAuditPeriodEnd(today);
+        const period = previousAuditPeriodEnd(day);
         const due = auditDueOn(period);
 
         // The audit record as it stands now — the same row and the same
@@ -222,12 +236,13 @@ export async function runTrustReminders(
           .maybeSingle();
         const audit = auditRow as TrustAudit | null;
 
-        if (audit?.confirmed_at) {
+        // Nothing owed either for a year that ended before the account opened.
+        if (audit?.confirmed_at || !auditOwed(period, account.opened_on)) {
           result.skippedNothingDue += 1;
         } else if (await alreadyRecorded(supabase, agency.id, account.id, "audit", period, auditStage)) {
           result.alreadySent += 1;
         } else {
-          const ok = await sendAudit(send, agency, account, recipients, period, due, daysUntil(due, today));
+          const ok = await sendAudit(send, agency, account, recipients, period, due, daysUntil(due, day));
           if (ok) {
             await supabase.from("trust_reminders").insert({
               agency_id: agency.id,
@@ -329,7 +344,10 @@ function sendReconciliation(
         },
       ],
     },
-    { kind: "note", text: "Your assistant can upload the report. The signature is yours." },
+    // Was "Your assistant can upload the report. The signature is yours." Not
+    // since Adam's 7 Oct reversal: trust is the licensee's only, and an
+    // assistant who is asked to do it gets a page that is not there (10 Oct 2026).
+    { kind: "note", text: "Upload the report and sign it off on the trust register." },
     { kind: "button", label: "Open the trust register", href: TRUST_URL },
   ];
 
