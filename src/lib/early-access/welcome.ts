@@ -1,92 +1,117 @@
-import { createServiceClient } from "@/lib/supabase/service";
-import { sendEmail } from "@/lib/email/send";
+import { sendEmail, type SendEmailInput } from "@/lib/email/send";
 import { ADMIN_COPY_ADDRESS, SENDER_NAME, buildWelcomeEmail } from "@/lib/email/early-access-invite";
 import { welcomeSwitchedOn } from "./rules";
 
-// The welcome email (brief Part C, 10 Oct 2026): sent once, as soon as a new
-// office is created with an invitation link that came from the early access
-// list.
+// The welcome email (brief Part C, 10 Oct 2026), sent once to someone from the
+// early access list after they have set up their office with their invitation
+// link.
 //
-// SWITCHED OFF until Adam turns it on. It links to the Getting started page,
-// and Adam checks that page before anyone is sent there. The switch is the
-// EARLY_ACCESS_WELCOME_EMAIL environment variable, set to "on" in Vercel.
+// WHEN: ONCE THE CARD IS IN, not when the office is created (Adam, 11 Oct
+// 2026). A new office sees only "Start your 14-day trial" until Stripe has
+// its card, so a welcome sent any earlier would say "your office is all set
+// up" and link a video the reader cannot reach yet. The Stripe webhook calls
+// this after it records the subscription (app/api/stripe/webhook/route.ts),
+// which is the moment the trial starts.
 //
-// CALLED FROM ALL THREE PLACES AN OFFICE CAN BE CREATED: the signup form
-// (lib/actions/auth.ts), the email-confirmation return (lib/auth/complete-signup.ts)
-// and the self-heal in requireProfile (lib/data/current-profile.ts). Each calls
-// it only after bootstrap_agency_v3 succeeded.
+// SWITCHED OFF until Adam turns it on: EARLY_ACCESS_WELCOME_EMAIL=on in
+// Vercel. It links to the Getting started page, which he checks first.
 //
-// ONCE ONLY. The row is claimed by an UPDATE that requires welcome_sent_at to
-// be empty (0061), so if two of those paths run for the same person, the
-// second claims nothing and sends nothing.
+// ONCE ONLY. The early access row is claimed by an UPDATE that requires
+// welcome_sent_at to be empty (0061). Stripe sends more than one event for a
+// new subscription, and resends any it likes; the second claim matches
+// nothing and sends nothing.
 //
-// NEVER BREAKS A SIGNUP. Every failure is logged and swallowed: a missing
-// welcome email is ours to notice, an error page on someone's first sign-in is
-// not acceptable.
+// NEVER THROWS. A failed welcome is logged, and the claim is undone so the
+// staff page never shows "welcome sent" for an email that did not go. It must
+// not fail the webhook: Stripe would retry an update that already succeeded.
 
-export async function sendEarlyAccessWelcomeIfDue(input: {
-  founderToken: string | null | undefined;
-  /** The address they signed up with, which is where the welcome goes. */
-  signupEmail: string | null | undefined;
-}): Promise<"sent" | "skipped" | "failed"> {
-  const token = input.founderToken?.trim();
-  const to = input.signupEmail?.trim();
-  if (!token || !to) return "skipped";
+/** The few query-builder calls this uses, so a test can stand in for Supabase. */
+type Client = {
+  from: (table: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
+};
 
-  if (!welcomeSwitchedOn()) {
-    console.info("early access welcome: switched off (EARLY_ACCESS_WELCOME_EMAIL is not \"on\"); not sent");
-    return "skipped";
-  }
+export type WelcomeOutcome = "sent" | "switched_off" | "not_early_access" | "already_sent" | "failed";
+
+export async function sendEarlyAccessWelcome(
+  supabase: Client,
+  agencyId: string,
+  deps: {
+    send?: (input: SendEmailInput) => Promise<boolean>;
+    env?: Record<string, string | undefined>;
+  } = {},
+): Promise<WelcomeOutcome> {
+  const send = deps.send ?? sendEmail;
+  const env = deps.env ?? process.env;
+
+  if (!welcomeSwitchedOn(env)) return "switched_off";
 
   try {
-    const supabase = createServiceClient();
-
-    // Only for an invitation that was actually spent on creating an office.
-    const { data: invite } = await supabase
+    // The invitation that created this office. bootstrap_agency_v3 stamps the
+    // agency and the person on the token it consumed (0045).
+    const { data: invites } = await supabase
       .from("founder_invites")
-      .select("accepted_at")
-      .eq("token", token)
-      .maybeSingle();
-    if (!(invite as { accepted_at: string | null } | null)?.accepted_at) return "skipped";
+      .select("token, accepted_by")
+      .eq("agency_id", agencyId)
+      .not("accepted_at", "is", null);
+    const used = (invites ?? []) as Array<{ token: string; accepted_by: string | null }>;
+    if (used.length === 0) return "not_early_access";
 
     const sentAt = new Date().toISOString();
     const { data: claimed, error: claimError } = await supabase
       .from("early_access")
       .update({ welcome_sent_at: sentAt })
-      .eq("invited_token", token)
+      .in(
+        "invited_token",
+        used.map((u) => u.token),
+      )
       .is("welcome_sent_at", null)
       .is("unsubscribed_at", null)
-      .select("id, first_name");
+      .select("id, first_name, invited_token");
 
     if (claimError) {
       console.error("early access welcome: claim failed", claimError.message);
       return "failed";
     }
-    // Not from the early access list, or already welcomed.
-    const row = (claimed as Array<{ id: string; first_name: string | null }> | null)?.[0];
-    if (!row) return "skipped";
+    const row = ((claimed ?? []) as Array<{ id: string; first_name: string | null; invited_token: string }>)[0];
+    if (!row) {
+      // Either not from the early access list, or welcomed already. Tell them
+      // apart only for the log line.
+      const { data: rows } = await supabase
+        .from("early_access")
+        .select("id")
+        .in(
+          "invited_token",
+          used.map((u) => u.token),
+        );
+      return (rows ?? []).length > 0 ? "already_sent" : "not_early_access";
+    }
+
+    const undo = () =>
+      supabase.from("early_access").update({ welcome_sent_at: null }).eq("id", row.id).eq("welcome_sent_at", sentAt);
+
+    // To the address they signed up with (brief), which is often not the one
+    // they registered with.
+    const personId = used.find((u) => u.token === row.invited_token)?.accepted_by ?? null;
+    const { data: person } = personId
+      ? await supabase.from("profiles").select("email").eq("id", personId).maybeSingle()
+      : { data: null };
+    const to = (person as { email: string | null } | null)?.email?.trim();
+    if (!to) {
+      await undo();
+      console.error("early access welcome: no sign-up address for agency", agencyId);
+      return "failed";
+    }
 
     const { subject, text, html } = buildWelcomeEmail({ firstName: row.first_name });
-    const sent = await sendEmail({
-      to,
-      bcc: ADMIN_COPY_ADDRESS,
-      replyTo: ADMIN_COPY_ADDRESS,
-      fromName: SENDER_NAME,
-      subject,
-      text,
-      html,
-    });
-
+    const sent = await send({ to, bcc: ADMIN_COPY_ADDRESS, replyTo: ADMIN_COPY_ADDRESS, fromName: SENDER_NAME, subject, text, html });
     if (!sent) {
-      // Undo the claim, so the staff page never says "welcome sent" for an
-      // email that did not go.
-      await supabase.from("early_access").update({ welcome_sent_at: null }).eq("id", row.id).eq("welcome_sent_at", sentAt);
-      console.error("early access welcome: send failed", { to });
+      await undo();
+      console.error("early access welcome: send failed", { agencyId });
       return "failed";
     }
     return "sent";
   } catch (err) {
-    console.error("early access welcome failed:", err);
+    console.error("early access welcome failed:", agencyId, err);
     return "failed";
   }
 }

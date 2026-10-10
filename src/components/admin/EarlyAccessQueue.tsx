@@ -170,9 +170,9 @@ export function EarlyAccessQueue({ rows: initialRows }: { rows: EarlyAccessRow[]
       </section>
 
       <p className="max-w-[70ch] text-[13px] text-rc-muted">
-        When someone signs up with their invitation, the welcome email with the licensee video goes automatically,
-        also BCC&rsquo;d to admin@realcomply.com.au, once it is switched on. Their row then shows &ldquo;Signed
-        up&rdquo;. Your own test addresses at realcomply.com.au and cassproperty.com.au are left off this list.
+        When someone signs up with their invitation, their row shows &ldquo;Signed up&rdquo;. Once they have put
+        their card in and started their trial, the welcome email with the licensee video goes automatically, also
+        BCC&rsquo;d to admin@realcomply.com.au (when it is switched on). Your own test addresses at realcomply.com.au and cassproperty.com.au are left off this list.
       </p>
     </div>
   );

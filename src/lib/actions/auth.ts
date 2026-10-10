@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
-import { sendEarlyAccessWelcomeIfDue } from "@/lib/early-access/welcome";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { currentLegalVersions } from "@/lib/legal/documents";
 import { founderInviteValid, openSignupsAllowed } from "@/lib/signups";
@@ -260,7 +259,6 @@ export async function signup(
   // invite — this is the "new signup" event, accept_invite isn't.
   if (!inviteToken) {
     await notifyNewAgencySignup({ agencyName, fullName, email });
-    await sendEarlyAccessWelcomeIfDue({ founderToken, signupEmail: email });
   }
 
   redirect("/dashboard/home");

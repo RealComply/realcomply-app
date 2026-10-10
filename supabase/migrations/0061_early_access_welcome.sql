@@ -2,15 +2,16 @@
 --
 -- MIGRATION 0061 — record when an early access registrant was sent the welcome
 --
--- Brief, 10 Oct 2026 (early access invites): when someone signs up with the
--- invitation link from their early access row, RealComply sends them a welcome
--- email, once. "Send it once only: record when it was sent."
+-- Brief, 10 Oct 2026 (early access invites): someone who sets up their office
+-- with the invitation link from their early access row gets a welcome email,
+-- once. "Send it once only: record when it was sent." Adam, 11 Oct 2026: it
+-- goes when their card is in and the trial has started, from the Stripe
+-- webhook.
 --
 -- The welcome is claimed by an UPDATE whose WHERE clause includes
 -- `welcome_sent_at is null`, the same claim-is-the-check pattern as the
--- founder invite in 0045. Two sign-up paths finishing at the same moment (the
--- signup form and /auth/callback) cannot both send it, because the second
--- update matches nothing.
+-- founder invite in 0045. Stripe sends more than one event for a new
+-- subscription and retries as it likes; the second claim matches nothing.
 --
 -- Nothing else changes. The invitation itself is still recorded in the
 -- existing invited_at and invited_token columns (0049), and arrival is still
