@@ -20,7 +20,7 @@ import type { AgencyInvite, Profile } from "@/lib/types";
 export default async function TeamPage() {
   // Licensee only (Adam, 7 Oct 2026): a typed address refuses, not just a
   // hidden link.
-  const { profile } = await requireLicenseePage();
+  const { profile, access } = await requireLicenseePage();
   const supabase = await createClient();
 
   const [{ data: staffRows }, { data: inviteRows }, { data: linkRows }] = await Promise.all([
@@ -88,13 +88,21 @@ export default async function TeamPage() {
           </Link>
         </div>
 
-        {profile.is_licensee_in_charge && (
+        {/* The licensee's details on access, not the raw flag (10 Oct 2026),
+            so the agent on their own plan can correct the address every
+            sign-off link goes to, as the database already allows (0058). The
+            logo stays with the licensee in charge, the same as
+            set_agency_logo: an individual agent's record has the office name
+            and theirs, without a logo (Adam, 23 Aug 2026). */}
+        {access.actsAsLicensee && (
           <div className="mt-6">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">
               Sign-off
             </h3>
             <LicenseeEmailForm current={licenseeEmail} currentName={licenseeName} website={websiteUrl} />
-            <AgencyLogoForm currentPath={agencyDetails?.logo_path ?? null} currentUrl={logoUrl} />
+            {profile.is_licensee_in_charge && (
+              <AgencyLogoForm currentPath={agencyDetails?.logo_path ?? null} currentUrl={logoUrl} />
+            )}
           </div>
         )}
 
@@ -118,6 +126,7 @@ export default async function TeamPage() {
                 isSelf={s.id === profile.id}
                 canManage={Boolean(profile.is_licensee_in_charge)}
                 agents={agents.filter((a) => a.id !== s.id).map((a) => ({ id: a.id, name: a.full_name ?? a.email }))}
+                supporting={links.filter((l) => l.assistant_id === s.id).map((l) => l.agent_id)}
                 subtitle={s.is_assistant ? supportLine(s.id) ?? s.email : s.email}
               />
             ))}

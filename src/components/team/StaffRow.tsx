@@ -34,12 +34,15 @@ export function StaffRow({
   isSelf,
   canManage,
   agents,
+  supporting,
   subtitle,
 }: {
   person: StaffPerson;
   isSelf: boolean;
   canManage: boolean;
   agents: SupportableAgent[];
+  /** The agents this person assists now, so the Role form opens with them ticked. */
+  supporting: string[];
   subtitle: string;
 }) {
   const [editing, setEditing] = useState<"name" | "role" | null>(null);
@@ -190,7 +193,12 @@ export function StaffRow({
                   choosing what the person is about to become, not describing
                   what they are. The Server Action refuses an assistant with no
                   agents — that list is their access, and none means they can
-                  see nothing. */}
+                  see nothing.
+
+                  Opens with their current agents ticked (10 Oct 2026). The
+                  save replaces the whole list with what is ticked, so boxes
+                  that opened empty meant ticking one more agent removed the
+                  ones they already had, and with them their access. */}
               <fieldset className="rounded-md border border-rc-border bg-white p-2">
                 <legend className="px-1 text-[11px] font-medium text-rc-muted">
                   If assistant, who do they support?
@@ -205,6 +213,7 @@ export function StaffRow({
                           type="checkbox"
                           name="supportsAgentIds"
                           value={a.id}
+                          defaultChecked={supporting.includes(a.id)}
                           className="accent-rc-green-deep"
                         />
                         {a.name}
@@ -242,10 +251,15 @@ export function StaffRow({
                 </button>
               ) : (
                 <div className="space-y-2">
+                  {/* Says what archiveStaff does (10 Oct 2026). It used to
+                      promise the listings weren't touched, while their open
+                      ones passed to the licensee and Bring back returns none. */}
                   <p className="text-xs leading-relaxed text-rc-ink">
                     Remove <span className="font-semibold">{person.fullName ?? person.email}</span>? They lose access
-                    immediately. Everything they did stays — their signatures, CPD records and the listings they ran
-                    are the compliance record and aren&rsquo;t touched. You can bring them back at any time.
+                    immediately. Their listings that haven&rsquo;t settled, and the properties they manage, pass to
+                    you to reassign. Everything they did stays — their signatures, CPD records and settled listings
+                    are the compliance record and stay in their name. You can bring them back at any time, but the
+                    work that passed to you stays with you until you move it.
                   </p>
                   <div className="flex items-center gap-2">
                     <button

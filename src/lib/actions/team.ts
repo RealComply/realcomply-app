@@ -163,13 +163,19 @@ export async function revokeInvite(inviteId: string): Promise<void> {
 // agent change it would be a clean way to route their own file's sign-off to
 // an address they control. The RPC scopes the write to the caller's own
 // agency; this check is about which role may make it.
+//
+// "The licensee" here is access.actsAsLicensee, not the raw flag (10 Oct
+// 2026): the agent on their own plan is the licensee for their own account,
+// and the database already lets them make this change (0058). On the raw
+// flag, the one who answered "No, someone else" at signup could never correct
+// a mistyped address, and every sign-off link went to it.
 export async function saveLicenseeEmail(
   _prev: { error: string | null; saved: boolean; licenseeChanged?: boolean },
   formData: FormData,
 ): Promise<{ error: string | null; saved: boolean; licenseeChanged?: boolean }> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  if (!access.actsAsLicensee) {
     return { error: "Only the licensee in charge can change this.", saved: false };
   }
 
@@ -193,10 +199,6 @@ export async function saveLicenseeEmail(
   }
 
   const licenseeName = String(formData.get("licenseeName") ?? "").trim();
-  const { error } = await supabase.rpc("set_agency_licensee", { p_name: licenseeName, p_email: email });
-  if (error) {
-    return { error: "Couldn't save that. Try again.", saved: false };
-  }
 
   // Saved in the same submission as the licensee email — one form, one button,
   // two agency-level settings. Validated only for shape: anything stricter here
@@ -204,17 +206,20 @@ export async function saveLicenseeEmail(
   // website surfaces immediately the first time the app tries to find a listing.
   // Typed the way a person says it — cassproperty.com.au — and normalised
   // here rather than demanded of them. See lib/normalise-url.ts.
+  //
+  // Checked BEFORE anything is saved (10 Oct 2026). It used to run after the
+  // new licensee was already on file, so a website typo returned an error
+  // with no notice, and the corrected resave saw the new name as nothing
+  // changed: the s31(3) notice below never showed for that appointment.
   const website = normaliseWebsiteUrl(String(formData.get("websiteUrl") ?? ""));
   if (!website.ok) {
     return { error: website.error, saved: false };
   }
 
-  const { error: siteError } = await supabase.rpc("set_agency_website", { p_url: website.url });
-  if (siteError) {
-    return { error: "Saved the email, but couldn't save the website. Try again.", saved: false };
+  const { error } = await supabase.rpc("set_agency_licensee", { p_name: licenseeName, p_email: email });
+  if (error) {
+    return { error: "Couldn't save that. Try again.", saved: false };
   }
-
-  revalidatePath("/dashboard/team");
 
   // A CHANGE, not a first entry and not an edited address.
   //
@@ -230,6 +235,15 @@ export async function saveLicenseeEmail(
   // is how a notice earns itself a reputation for being dismissed unread.
   const licenseeChanged =
     previousName.length > 0 && previousName.toLowerCase() !== licenseeName.toLowerCase();
+
+  // From here the licensee is saved, so every answer carries licenseeChanged
+  // and the page is refreshed, even if the website then fails to save.
+  revalidatePath("/dashboard/team");
+
+  const { error: siteError } = await supabase.rpc("set_agency_website", { p_url: website.url });
+  if (siteError) {
+    return { error: "Saved the email, but couldn't save the website. Try again.", saved: false, licenseeChanged };
+  }
 
   return { error: null, saved: true, licenseeChanged };
 }
@@ -496,12 +510,13 @@ export async function setStaffRole(
  * does not change what they did. 0035 has the full reasoning.
  *
  * REVERSAL (Adam, 7 Oct 2026). Was: refused while they still held
- * unfinished listings ("move the listings first"). Now their listings, and
- * any properties they manage, pass to the licensee in charge doing the
- * archiving, who reassigns them from there. Since agents see only their own
- * listings (0058), a file left on an archived person's name would be one
- * that only the licensee could see; handing it over says so plainly, and
- * every move is recorded in property_transfers by guard_listing_transfer.
+ * unfinished listings ("move the listings first"). Now their unfinished
+ * listings, and any properties they still manage, pass to the licensee in
+ * charge doing the archiving, who reassigns them from there. Since agents
+ * see only their own listings (0058), a file left on an archived person's
+ * name would be one that only the licensee could see; handing it over says
+ * so plainly, and every move is recorded in property_transfers by
+ * guard_listing_transfer. Settled listings stay in their name (10 Oct 2026).
  */
 export async function archiveStaff(profileId: string): Promise<ActionState> {
   const ctx = await requireLicenseeAndSubject(profileId);
@@ -517,17 +532,25 @@ export async function archiveStaff(profileId: string): Promise<ActionState> {
   // Their listings and managed properties pass to the licensee in charge
   // first, so nothing is left that nobody works on. Before the archive, so a
   // failure here leaves them as they were rather than half-removed.
+  //
+  // Only the work still going (10 Oct 2026): listings not yet settled, the
+  // same test as openListingsFor, and properties not archived. A finished
+  // file is the record of who did it. Moving it put the licensee's name on
+  // the finalised record as the agent, beside the departed agent's own
+  // signature, and the licensee already sees every file anyway.
   const { error: moveError } = await ctx.supabase
     .from("properties")
     .update({ created_by: ctx.profile.id })
-    .eq("created_by", profileId);
+    .eq("created_by", profileId)
+    .lt("stage", 5);
   if (moveError) {
     return { error: "Couldn't move their listings to you, so they have not been removed. Try again." };
   }
   const { error: pmMoveError } = await ctx.supabase
     .from("pm_properties")
     .update({ manager_id: ctx.profile.id })
-    .eq("manager_id", profileId);
+    .eq("manager_id", profileId)
+    .neq("grp", "archived");
   if (pmMoveError) {
     return { error: "Couldn't move the properties they manage to you, so they have not been removed. Try again." };
   }
