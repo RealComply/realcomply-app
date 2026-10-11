@@ -21,7 +21,7 @@ export function LicenceCpdWidget({
       icon={GraduationCap}
       title="Licence & CPD"
       href="/dashboard/registers"
-      hrefLabel="Registers →"
+      hrefLabel="Registers"
       metric={holders}
       caption={`licence holders · ${cpdYearLabel} CPD year`}
       tone={expired > 0 ? "danger" : expiringSoon > 0 || cpdOutstanding > 0 ? "warn" : "ok"}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Sparkles, FlaskConical } from "lucide-react";
 import { completeStage, toggleTestMode, type ActionState } from "@/lib/actions/compliance";
 import { extractFromDocuments } from "@/lib/actions/extraction";
@@ -11,12 +12,24 @@ const initialState: ActionState = { error: null };
 export function CompleteStageButton({
   propertyId,
   stage,
+  stageInUrl = false,
 }: {
   propertyId: string;
   stage: PropertyStage;
+  /** The page was opened from a stage tab (?stage=N), not on its own stage. */
+  stageInUrl?: boolean;
 }) {
-  const boundAction = completeStage.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(boundAction, initialState);
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState(async (prev: ActionState, formData: FormData) => {
+    const result = await completeStage(propertyId, prev, formData);
+    // Opened from a stage tab, the page kept showing the stage just completed
+    // (preview check, 10 Oct 2026): ?stage still pointed at it, so this button
+    // went and nothing scrolled, and Continue looked as if it had done
+    // nothing. Back to the listing's own address, which opens on the new
+    // current stage; the navigation also takes the page to the top.
+    if (!result.error && stageInUrl) router.replace(`/dashboard/${propertyId}`);
+    return result;
+  }, initialState);
 
   // Go back to the top when the stage actually changes.
   //

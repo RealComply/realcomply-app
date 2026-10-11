@@ -140,3 +140,62 @@ test("a test reminder goes to the team member and the licensee, labelled, and re
   assert.ok(sent.every((s) => !/compliant/i.test(s.text)));
   assert.equal(tables.licence_reminders.length, 0);
 });
+
+// ── Where the button goes ───────────────────────────────────────────────────
+
+test("the holder's button opens their own licence card; the licensee's opens the register", async () => {
+  const { sent, deps } = world("2026-10-15");
+  await runLicenceReminders(day("2026-10-01"), deps);
+  const holder = sent.find((s) => s.to === "jane@example.com");
+  const licensee = sent.find((s) => s.to === "lic@example.com");
+  // An agent's Registers page opened on the Gift register while their
+  // Licences tab was hidden (check of 10 Oct 2026). The holder is sent to
+  // the tab that has the upload.
+  assert.ok((holder?.html ?? "").includes('href="https://www.realcomply.com.au/dashboard/registers?tab=licence"'));
+  assert.ok((licensee?.html ?? "").includes('href="https://www.realcomply.com.au/dashboard/registers"'));
+});
+
+// ── Who "the licensee" is ───────────────────────────────────────────────────
+
+test("on an agent plan the agent is the licensee, flagged or not: told about the corporation licence and the assistant's certificate", async () => {
+  // The agent said at signup they are not the licensee in charge, so nobody
+  // carries the flag. The app treats them as the licensee for their own
+  // account (lib/access.ts), and now so does the job (review of 10 Oct 2026).
+  const tables: Record<string, Row[]> = {
+    agencies: [
+      { id: "ag2", name: "Solo Agent", plan: "agent_1", corporation_licence_expiry: "2026-10-08", corporation_licence_holder: null, corporation_licence_number: null },
+    ],
+    profiles: [
+      { id: "agent", agency_id: "ag2", email: "agent@example.com", full_name: "Alex Agent", is_licensee_in_charge: false, is_assistant: false, archived_at: null, licence_expiry: null, licence_type: "class_2", licence_number: null },
+      { id: "asst", agency_id: "ag2", email: "asst@example.com", full_name: "Sam Assistant", is_licensee_in_charge: false, is_assistant: true, archived_at: null, licence_expiry: "2026-10-08", licence_type: "certificate_of_registration", licence_number: null },
+    ],
+    licence_reminders: [],
+  };
+  const sent: SendEmailInput[] = [];
+  const result = await runLicenceReminders(day("2026-10-01"), {
+    supabase: fakeSupabase(tables),
+    send: async (input) => {
+      sent.push(input);
+      return true;
+    },
+  });
+  assert.equal(result.sent, 2);
+  assert.deepEqual(
+    tables.licence_reminders.map((r) => [r.subject_kind, r.recipients]),
+    [
+      ["profile", ["asst@example.com", "agent@example.com"]],
+      ["corporation", ["agent@example.com"]],
+    ],
+  );
+  // The assistant's email says their licensee has a copy, and now they do.
+  const assistant = sent.find((s) => s.to === "asst@example.com");
+  assert.ok((assistant?.text ?? "").includes("has been sent a copy"));
+});
+
+test("a holder who is the only licensee isn't told a copy went to their licensee", async () => {
+  const { tables, sent, deps } = world(null);
+  tables.profiles[0].licence_expiry = "2026-10-15";
+  await runLicenceReminders(day("2026-10-01"), deps);
+  assert.deepEqual(sent.map((s) => s.to), ["lic@example.com"]);
+  assert.ok(!sent[0].text.includes("has been sent a copy"));
+});

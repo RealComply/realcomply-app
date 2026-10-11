@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
+import { reopenStaleNoRevision } from "@/lib/data/no-revision-reask";
 import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import { PRICE_CHECK_FROM, scanModeAt } from "@/lib/listing-scan-schedule";
 import type { PropertyItem } from "@/lib/types";
@@ -566,7 +567,8 @@ async function writeFinding(
   //
   // Re-asking rather than flagging c1, because the question belongs on the
   // revision card and the agent needs to be asked again, not told off. The
-  // reopen only fires on an answered "no" — see reopenNoRevisionIfPriceMoved.
+  // reopen only fires on an answered "no" — see reopenStaleNoRevision. On
+  // this check's own connection, so the 7am run reaches d3 too (10 Oct 2026).
   const priceMoved =
     finding.addressConfirmed &&
     previous?.priceLow != null &&
@@ -574,8 +576,8 @@ async function writeFinding(
     previous.priceLow !== finding.priceLow;
 
   if (priceMoved) {
-    const { reopenNoRevisionIfPriceMoved } = await import("@/lib/actions/compliance");
-    await reopenNoRevisionIfPriceMoved(
+    await reopenStaleNoRevision(
+      supabase,
       property.id,
       `The advertised price changed from $${previous!.priceLow!.toLocaleString("en-AU")} to $${finding.priceLow!.toLocaleString("en-AU")} on your listing page, but this file records no revision. If the estimated selling price was revised, attach the notice. If it was not, the advertising has moved without one.`,
     );

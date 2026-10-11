@@ -38,7 +38,10 @@ export async function GET(request: Request) {
 
     if (!error && data.user) {
       await completeSignup(supabase, data.user);
-      return NextResponse.redirect(`${origin}${next}`);
+      // Resets land on /reset-password now, outside /dashboard (10 Oct 2026).
+      // A link sent before that still names the dashboard page.
+      const destination = next === "/dashboard/password?reset=1" ? "/reset-password" : next;
+      return NextResponse.redirect(`${origin}${destination}`);
     }
   }
 
@@ -51,7 +54,7 @@ export async function GET(request: Request) {
   // default — under the token-hash flow resets land on /auth/confirm — so the
   // browser-bound failure is back in play and "ask for a new one" is the only
   // advice that reliably helps.
-  const isReset = next.startsWith("/dashboard/password");
+  const isReset = next.startsWith("/reset-password") || next.startsWith("/dashboard/password");
 
   return NextResponse.redirect(
     `${origin}/login?message=${encodeURIComponent(

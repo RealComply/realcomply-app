@@ -95,7 +95,11 @@ export default async function TrainingPage({
   // their own card only; the licensee gets everyone's.
   const people = access.actsAsLicensee ? staff : staff.filter((s) => s.id === profile.id);
 
-  const needsPlan = people.filter((s) => !planByProfile.has(s.id) || !planByProfile.get(s.id)!.principal_signed_at).length;
+  // Someone archived has left: their card stays as history, but they don't
+  // need a plan (check, 10 Oct 2026; they kept the badge up for good).
+  const needsPlan = people.filter(
+    (s) => !s.archived_at && (!planByProfile.has(s.id) || !planByProfile.get(s.id)!.principal_signed_at),
+  ).length;
 
   // Adam, 18 Aug 2026: "having these sections so text heavy is just gonna put
   // people off... most agents don't need to know this stuff. The licensee

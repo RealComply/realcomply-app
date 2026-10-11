@@ -13,7 +13,8 @@ import { LicenseeChangeNotice } from "@/components/team/LicenseeChangeNotice";
 //
 // Licensee-only. It decides where a sign-off request lands, so an agent being
 // able to edit it would be a straightforward way to route their own file's
-// sign-off to an address they control.
+// sign-off to an address they control. "The licensee" includes the agent on
+// their own plan, who is the licensee for their own account (10 Oct 2026).
 
 const initial = { error: null as string | null, saved: false, licenseeChanged: false };
 

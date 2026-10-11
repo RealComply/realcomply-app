@@ -82,10 +82,12 @@ export async function GET(request: Request) {
       // an existing profile, which someone resetting a password always has.
       await completeSignup(supabase, data.user);
 
-      // ?reset=1 tells /dashboard/password to say "set a new password" and
-      // explain how they got there, rather than the "change your password"
-      // wording someone sees when they arrive from the avatar menu.
-      const destination = isRecovery && next === "/dashboard/password" ? `${next}?reset=1` : next;
+      // A reset goes to /reset-password, outside /dashboard, so the dashboard
+      // layout's trial, records and terms checks cannot take the place of the
+      // form (10 Oct 2026; see that page). Mapped here because the email
+      // template still names /dashboard/password, and changing one without
+      // the other is how resets break.
+      const destination = isRecovery && next === "/dashboard/password" ? "/reset-password" : next;
       return NextResponse.redirect(`${origin}${destination}`);
     }
   }

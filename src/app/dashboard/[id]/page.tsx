@@ -3,7 +3,7 @@ import { agencyPeople } from "@/lib/data/people";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { EditPropertyDetails } from "@/components/property/EditPropertyDetails";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
 import { TransferListingSection } from "@/components/compliance/TransferListingSection";
@@ -50,7 +50,7 @@ export default async function PropertyPage({
 }) {
   const { id } = await params;
   const { stage: stageParam } = await searchParams;
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
   const { data: property } = await supabase
@@ -206,7 +206,7 @@ export default async function PropertyPage({
                   think it should be up the top somewhere, not in a crowded
                   position." Beside the audit-pack button is the only other
                   uncrowded spot on the page. */}
-              <EditPropertyDetails property={p} canDelete={profile.is_licensee_in_charge} />
+              <EditPropertyDetails property={p} canDelete={access.actsAsLicensee} />
               <Link
                 href={`/dashboard/${p.id}/summary`}
                 className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted shadow-card transition hover:border-rc-green-deep/40 hover:text-rc-green-deep"
@@ -340,7 +340,9 @@ export default async function PropertyPage({
 
         {/* Held: no Continue button. Completing the held stage's cards is
             what releases the file, back to its own stage. */}
-        {isCurrentStage && !held && p.stage < 5 && <CompleteStageButton propertyId={p.id} stage={p.stage} />}
+        {isCurrentStage && !held && p.stage < 5 && (
+          <CompleteStageButton propertyId={p.id} stage={p.stage} stageInUrl={stageParam !== undefined} />
+        )}
 
         {/* The way on from a stage you are looking back at (Adam, 3 Oct 2026):
             "at the bottom of the page of each stage, we should have a button

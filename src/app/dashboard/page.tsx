@@ -63,7 +63,10 @@ export default async function DashboardPage() {
               <li key={property.id}>
                 <Link
                   href={`/dashboard/${property.id}`}
-                  className="flex items-center justify-between gap-3 px-4 py-4 transition hover:bg-rc-bg-alt"
+                  // On a phone the pills go under the address and the address
+                  // wraps (10 Oct 2026): beside the pills it was cut to about ten
+                  // characters. From sm up, one row as before.
+                  className="flex flex-col gap-2 px-4 py-4 transition hover:bg-rc-bg-alt sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <span
@@ -73,7 +76,7 @@ export default async function DashboardPage() {
                       <HomeIcon size={16} strokeWidth={2} />
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate font-medium text-rc-ink">{property.address}</p>
+                      <p className="break-words font-medium text-rc-ink sm:truncate">{property.address}</p>
                       <p className="text-sm text-rc-muted">
                         {property.property_type}
                         {property.is_strata ? " · Strata" : ""}
@@ -82,7 +85,7 @@ export default async function DashboardPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 pl-12 sm:shrink-0 sm:flex-nowrap sm:pl-0">
                     {/* What this file still needs, in the stage it is in.
                         Absent on a test listing, which is deliberately not
                         counted anywhere — see nav-counts.ts. */}

@@ -145,7 +145,9 @@ export async function AgentHome({
             l="My licence"
             tone={licence === "expired" || licence === "urgent" ? "warn" : licence === "none" ? "neutral" : "ok"}
             icon={IdCard}
-            href="/dashboard/cpd"
+            // Their own licence card, where the renewal is uploaded (10 Oct
+            // 2026). CPD has no licence controls.
+            href="/dashboard/registers?tab=licence"
           />
           <StatTile
             n={cpdTarget === null ? `${cpdDone}` : `${cpdDone} / ${cpdTarget}`}

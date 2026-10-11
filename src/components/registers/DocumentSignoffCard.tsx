@@ -1,5 +1,7 @@
 import { Paperclip } from "lucide-react";
 import { SignatureBox } from "@/components/registers/SignatureBox";
+import { AskToSignButton } from "@/components/registers/AskToSignButton";
+import { notNeededReason, signoffTally } from "@/lib/signoff/awaiting";
 import type { Profile, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -18,25 +20,35 @@ export function DocumentSignoffCard({
   currentProfile,
   fileUrl,
   ownOnly = false,
+  notAsked = [],
 }: {
   document: SignoffDocument;
   signatures: SignoffSignature[];
   /** Names only (agency_people): an agent cannot read colleagues' profiles. */
-  profiles: Array<{ id: string; full_name: string | null; email?: string | null }>;
+  profiles: Array<{ id: string; full_name: string | null; email?: string | null; archived_at?: string | null }>;
   currentProfile: Profile;
   fileUrl: string | null;
   /** An agent or assistant reads their own signature only (0058), so "1 of 1
    *  signed" would read as everyone done. They see their own status. */
   ownOnly?: boolean;
+  /** For the licensee, on the current SG Manual version: present staff with
+   *  no row on it, who were never asked to sign (see askStaffToSign). */
+  notAsked?: Array<{ id: string; full_name: string | null }>;
 }) {
   const nameFor = (id: string) =>
     profiles.find((p) => p.id === id)?.full_name ?? profiles.find((p) => p.id === id)?.email ?? "Unknown";
 
-  const signedCount = signatures.filter((s) => s.signed_at).length;
-  const total = signatures.length;
-  const allSigned = total > 0 && signedCount === total;
+  // Unsigned rows that nobody is waiting on any more (10 Oct 2026): someone
+  // who has left, or a licensee-only document another licensee has signed.
+  // Still listed, never counted, so the document can read as done.
+  const leftIds = new Set(profiles.filter((p) => p.archived_at).map((p) => p.id));
+  const reasonFor = (sig: SignoffSignature) =>
+    notNeededReason(sig, document.signer_scope, signatures, leftIds);
+  // Staff never asked to sign are owed a signature too, so they count against
+  // "all signed" rather than letting a five-person office read "1 of 1".
+  const { signedCount, total, allSigned } = signoffTally(signatures, document.signer_scope, leftIds, notAsked.length);
   const mine = signatures.find((s) => s.signer_id === currentProfile.id);
-  const needsMySignature = !!mine && !mine.signed_at;
+  const needsMySignature = !!mine && !mine.signed_at && reasonFor(mine) === null;
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
@@ -73,10 +85,10 @@ export function DocumentSignoffCard({
           mine && (
             <span
               className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${
-                mine.signed_at ? "bg-rc-green-soft text-rc-green-deep" : "bg-rc-amber/15 text-rc-amber-deep"
+                needsMySignature ? "bg-rc-amber/15 text-rc-amber-deep" : "bg-rc-green-soft text-rc-green-deep"
               }`}
             >
-              {mine.signed_at ? "You signed" : "Awaiting your signature"}
+              {mine.signed_at ? "You signed" : needsMySignature ? "Awaiting your signature" : "Not needed"}
             </span>
           )
         ) : (
@@ -92,17 +104,39 @@ export function DocumentSignoffCard({
 
       {!ownOnly && (
         <ul className="mt-3 divide-y divide-rc-border border-t border-rc-border text-sm">
-          {signatures.map((sig) => (
-            <li key={sig.id} className="flex items-center justify-between py-1.5">
-              <span className="text-rc-ink">{nameFor(sig.signer_id)}</span>
-              {sig.signed_at ? (
-                <span className="text-xs text-rc-muted">Signed {new Date(sig.signed_at).toLocaleDateString("en-AU")}</span>
-              ) : (
-                <span className="text-xs font-medium text-rc-amber-deep">Outstanding</span>
-              )}
+          {signatures.map((sig) => {
+            const reason = reasonFor(sig);
+            return (
+              <li key={sig.id} className="flex items-center justify-between py-1.5">
+                <span className={reason ? "text-rc-muted" : "text-rc-ink"}>{nameFor(sig.signer_id)}</span>
+                {sig.signed_at ? (
+                  <span className="text-xs text-rc-muted">Signed {new Date(sig.signed_at).toLocaleDateString("en-AU")}</span>
+                ) : reason === "another_licensee_signed" ? (
+                  <span className="text-xs text-rc-faint">Not needed — another licensee signed it off</span>
+                ) : reason === "left_the_office" ? (
+                  <span className="text-xs text-rc-faint">Left the office — not required</span>
+                ) : (
+                  <span className="text-xs font-medium text-rc-amber-deep">Outstanding</span>
+                )}
+              </li>
+            );
+          })}
+          {notAsked.map((p) => (
+            <li key={p.id} className="flex items-center justify-between py-1.5">
+              <span className="text-rc-ink">{p.full_name ?? "Unknown"}</span>
+              <span className="text-xs font-medium text-rc-amber-deep">Not asked to sign this version</span>
             </li>
           ))}
         </ul>
+      )}
+      {!ownOnly && notAsked.length > 0 && (
+        <div className="mt-2">
+          <p className="text-xs text-rc-muted">
+            Not on this version&rsquo;s signer list, so nothing has asked them to sign it. Asking adds
+            them; they&rsquo;ll see it on their SG Manual page.
+          </p>
+          <AskToSignButton documentId={document.id} />
+        </div>
       )}
       {ownOnly && mine?.signed_at && (
         <p className="mt-2 text-xs text-rc-muted">Signed {new Date(mine.signed_at).toLocaleDateString("en-AU")}</p>

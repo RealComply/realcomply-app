@@ -3,7 +3,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireAuthContext } from "@/lib/actions/compliance";
+import { requireAuthContext, sendToLicensee } from "@/lib/actions/compliance";
 import { buildSignoffStatement } from "@/lib/signoff/statement";
 import { effectiveEsp } from "@/lib/data/effective-esp";
 import { liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
@@ -108,6 +108,28 @@ async function deliverSignoffEmail(
 }
 
 /**
+ * Completes the file's "Send to licensee" step once the link has actually
+ * gone (10 Oct 2026). Only the separate "Mark sent to licensee" button ever
+ * did it, so a file whose link had been emailed, and even signed, kept that
+ * step outstanding and stayed amber on Home and in the sidebar. The step
+ * records that the file went to the licensee, and this email is that event.
+ * Left alone when it is already done, so the first send keeps its time.
+ */
+async function markSentToLicensee(
+  supabase: Awaited<ReturnType<typeof requireAuthContext>>["supabase"],
+  propertyId: string,
+): Promise<void> {
+  const { data } = await supabase
+    .from("property_items")
+    .select("status")
+    .eq("property_id", propertyId)
+    .eq("item_key", "send_licensee")
+    .maybeSingle();
+  if ((data as { status?: string } | null)?.status === "done") return;
+  await sendToLicensee(propertyId);
+}
+
+/**
  * Creates a sign-off link for a property AND emails it to the licensee.
  *
  * IT USED TO DELIBERATELY NOT SEND, and the reason is worth keeping because it
@@ -133,7 +155,7 @@ async function deliverSignoffEmail(
  * change (0058).
  */
 export async function issueSignoffLink(propertyId: string): Promise<IssueResult> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   // An outstanding link is handed back rather than replaced.
   //
@@ -171,9 +193,14 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
 
   const licenseeEmail = (agency as { licensee_email?: string | null } | null)?.licensee_email ?? null;
   if (!licenseeEmail) {
+    // Only the licensee can add it (0058), and Team is the licensee's page, so
+    // an agent sent there met a page that was not found (10 Oct 2026). They
+    // are told who to ask instead. The usual cause is a licensee who answered
+    // "Yes, that's me" at signup, where the form does not ask for the email.
     return {
-      error:
-        "No licensee email on file. Add the licensee in charge's email address in Team settings, then try again.",
+      error: access.actsAsLicensee
+        ? "No licensee email on file. Add the licensee in charge's email address in Team settings, then try again."
+        : "Your licensee in charge hasn't added their email address yet. Ask them to add it in Team settings, then try again.",
     };
   }
 
@@ -238,6 +265,8 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
     priorAttempts: 0,
   });
 
+  if (emailed) await markSentToLicensee(supabase, propertyId);
+
   revalidatePath(`/dashboard/${propertyId}`);
   return { error: null, sentTo: licenseeEmail, emailed };
 }
@@ -295,6 +324,9 @@ export async function resendSignoffLink(propertyId: string): Promise<IssueResult
     espHigh: esp.high,
     priorAttempts: outstanding.emailAttempts,
   });
+
+  // The first send failed and this one went, so the file has now been sent.
+  if (emailed) await markSentToLicensee(supabase, propertyId);
 
   revalidatePath(`/dashboard/${propertyId}`);
   return {

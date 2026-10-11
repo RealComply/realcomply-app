@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { History } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
 import { loadPmProperty, loadPmRecords, pmAgencySettings, pmItemDetail, pmPeople, type PmRecordRow } from "@/lib/data/pm";
 import { formatAuDate } from "@/lib/format-date";
 import {
@@ -30,6 +30,7 @@ import { PmStageSection } from "@/components/pm/PmStageSection";
 import { PmItemRow } from "@/components/pm/PmItemRow";
 import { PmWaterRow } from "@/components/pm/PmWaterRow";
 import { PmMoveControl } from "@/components/pm/PmMoveControl";
+import { PmManagerControl } from "@/components/pm/PmManagerControl";
 import { PmOngoingRecords, PmOpenPetRequests, PmPetApplication, type PmRecordView } from "@/components/pm/PmRecords";
 import { PmOutgoingMoveOut } from "@/components/pm/PmOutgoingMoveOut";
 import { todayInSydney } from "@/components/pm/pm-dates";
@@ -63,7 +64,7 @@ function RetentionNote({ text }: { text: string }) {
 
 export default async function PmPropertyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
   const settings = await pmAgencySettings(supabase, profile.agency_id);
   if (!settings.enabled) notFound();
@@ -138,6 +139,16 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
         Property manager: {nameOf.get(property.manager_id) ?? "not set"}. Records are kept in{" "}
         <b className="font-semibold text-rc-ink">{recordsIn}</b>.
       </p>
+      {/* The licensee can pass a property to another manager (10 Oct 2026):
+          one handed to the licensee when its manager left had no way back.
+          The same people as their "+ Add property" picker: anyone active. */}
+      {access.actsAsLicensee && !archived && (
+        <PmManagerControl
+          propertyId={property.id}
+          currentManagerId={property.manager_id}
+          people={people.filter((p) => !p.archived)}
+        />
+      )}
 
       <div className="mt-3 md:hidden">
         <PmStageOvals stages={views} />

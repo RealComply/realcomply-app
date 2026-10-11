@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
+import { attendanceChanges } from "@/lib/attendance-changes";
+import { cpdFolder, isInFolder, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -35,9 +37,11 @@ export async function updateInsurancePolicy(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  // access, not the raw flag: the agent on their own plan is the licensee
+  // for their account, and 0058 lets them write the agency row (10 Oct 2026).
+  if (!access.actsAsLicensee) {
     return { error: "Only the licensee in charge can update the agency's insurance details." };
   }
 
@@ -138,6 +142,12 @@ export async function addCpdFromCertificate(
 
   if (profile.id !== profileId && !profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can add CPD for someone else." };
+  }
+  // The browser says where it put the certificate; it must be that person's
+  // CPD folder, since the licensee's delete later removes whatever file the
+  // record names (review of these fixes, 10 Oct 2026).
+  if (!isInFolder(path, cpdFolder(profile.agency_id, profileId))) {
+    return { error: "Couldn't save that certificate — try again." };
   }
 
   const { extractCpdCertificate } = await import("@/lib/actions/extraction");
@@ -264,11 +274,15 @@ export async function setCpdYearComplete(
 export async function finalizeCpdEvidence(recordId: string, path: string, fileName: string): Promise<{ error: string | null }> {
   const { supabase, profile } = await requireAuthContext();
 
-  const { data: row } = await supabase.from("cpd_records").select("profile_id").eq("id", recordId).maybeSingle();
+  const { data: row } = await supabase.from("cpd_records").select("profile_id, agency_id").eq("id", recordId).maybeSingle();
   const ownerId = (row as { profile_id: string } | null)?.profile_id;
   if (!ownerId) return { error: "Couldn't find that CPD record." };
   if (ownerId !== profile.id && !profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can attach a certificate for someone else." };
+  }
+  // Only a file in that person's CPD folder (see addCpdFromCertificate).
+  if (!isInFolder(path, cpdFolder((row as { agency_id: string }).agency_id, ownerId))) {
+    return { error: "Couldn't save the certificate — try again." };
   }
 
   const { error } = await supabase
@@ -298,7 +312,7 @@ export async function deleteCpdRecord(recordId: string): Promise<void> {
 
   const { data: record } = await supabase
     .from("cpd_records")
-    .select("profile_id")
+    .select("profile_id, agency_id, evidence_path")
     .eq("id", recordId)
     .maybeSingle();
 
@@ -307,7 +321,38 @@ export async function deleteCpdRecord(recordId: string): Promise<void> {
   // licensee deletes a compliance record, and the delete is logged (0058).
   if (!access.actsAsLicensee) return;
 
-  await supabase.from("cpd_records").delete().eq("id", recordId);
+  const { data: deleted } = await supabase.from("cpd_records").delete().eq("id", recordId).select("id");
+  // The certificate goes with its record (check, 10 Oct 2026). It was left in
+  // {agency}/_cpd/{person}/ with nothing pointing at it and no control that
+  // could remove it. Only once the record has actually gone, and on the
+  // licensee's own access, the one person who may delete files (0058); that
+  // delete is logged too.
+  //
+  // Only a file in that person's CPD folder: the record's path is written by
+  // whoever may change the record, and this removes it with the licensee's
+  // access (review of these fixes, 10 Oct 2026).
+  const { evidence_path: evidencePath, agency_id: agencyId, profile_id: profileId } = record as {
+    evidence_path: string | null;
+    agency_id: string;
+    profile_id: string;
+  };
+  // And not one another of their records still names (the same reasoning,
+  // one record to the next).
+  const { data: sharing } =
+    deleted && deleted.length > 0 && evidencePath
+      ? await supabase.from("cpd_records").select("id").eq("agency_id", agencyId).eq("evidence_path", evidencePath).limit(1)
+      : { data: [] };
+  if (
+    deleted &&
+    deleted.length > 0 &&
+    evidencePath &&
+    isInFolder(evidencePath, cpdFolder(agencyId, profileId)) &&
+    (sharing ?? []).length === 0
+  ) {
+    const { error } = await supabase.storage.from(EVIDENCE_BUCKET).remove([evidencePath]);
+    // The folder only, never the file name.
+    if (error) console.error("CPD certificate not deleted:", evidencePath.split("/").slice(0, 3).join("/"), error.message);
+  }
   revalidatePath("/dashboard/registers");
 }
 
@@ -369,17 +414,22 @@ export async function addTrainingSession(_prev: ActionState, formData: FormData)
 }
 
 export async function deleteTrainingSession(sessionId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  // access, not the raw flag, like adding a session and recording attendance:
+  // the agent on their own plan saw Delete and it did nothing (check, 10 Oct 2026).
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase.from("training_sessions").delete().eq("id", sessionId);
   revalidatePath("/dashboard/training");
 }
 
-// Replaces attendance for a session with whatever's checked on the form, and
-// keeps each attendee's auto-logged CPD record in sync: delete-then-reinsert
-// both attendance and the linked cpd_records rows (source_session_id) so
-// re-saving attendance is safe to run any number of times, never doubling up
-// hours. Only fires the CPD write for sessions actually marked CPD-eligible.
+// Makes attendance for a session match whatever's checked on the form, and
+// keeps each attendee's auto-logged CPD record (source_session_id) in step,
+// so re-saving attendance is safe to run any number of times, never doubling
+// up hours. Only fires the CPD write for sessions actually marked CPD-eligible.
+//
+// Changes only what changed (check, 10 Oct 2026; was delete-everything-then-
+// reinsert, which since 0058 logged every attendee's records as deleted on
+// each save and undid their corrections). See lib/attendance-changes.ts.
 export async function recordAttendance(sessionId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   const { supabase, profile, access } = await requireAuthContext();
   // Rewriting attendance replaces other people's session CPD records, so it
@@ -404,49 +454,73 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
 
   const attendeeIds = formData.getAll("attendee").filter((v): v is string => typeof v === "string");
 
-  await supabase.from("training_attendance").delete().eq("session_id", sessionId);
-  await supabase.from("cpd_records").delete().eq("source_session_id", sessionId);
+  const [{ data: attendanceRows, error: readError }, { data: cpdRows, error: cpdReadError }] = await Promise.all([
+    supabase.from("training_attendance").select("profile_id").eq("session_id", sessionId),
+    supabase.from("cpd_records").select("profile_id").eq("source_session_id", sessionId),
+  ]);
+  if (readError || cpdReadError) return { error: "Couldn't save attendance — try again." };
 
-  if (attendeeIds.length > 0) {
+  const { unticked, ticked, needCpd } = attendanceChanges({
+    recorded: ((attendanceRows ?? []) as { profile_id: string }[]).map((r) => r.profile_id),
+    withCpd: ((cpdRows ?? []) as { profile_id: string }[]).map((r) => r.profile_id),
+    wanted: attendeeIds,
+  });
+
+  // From here on, every return refreshes the page first, a refusal included
+  // (review of 10 Oct 2026). The ticks start from the attendance on record,
+  // and the editor stays open on a message. When the CPD write failed after
+  // a latecomer's attendance was saved, the page still showed the old
+  // attendance, the latecomer's box went back to empty, and saving again
+  // "mended" it by removing them.
+  const settle = (result: ActionState): ActionState => {
+    revalidatePath("/dashboard/training");
+    revalidatePath("/dashboard/registers");
+    return result;
+  };
+
+  if (unticked.length > 0) {
+    await supabase.from("training_attendance").delete().eq("session_id", sessionId).in("profile_id", unticked);
+    await supabase.from("cpd_records").delete().eq("source_session_id", sessionId).in("profile_id", unticked);
+  }
+
+  if (ticked.length > 0) {
     const { error: attendanceError } = await supabase.from("training_attendance").insert(
-      attendeeIds.map((profileId) => ({
+      ticked.map((profileId) => ({
         agency_id: session.agency_id,
         session_id: sessionId,
         profile_id: profileId,
       })),
     );
-    if (attendanceError) return { error: "Couldn't save attendance — try again." };
-
-    // The provider is the gate, not the tick-box. NSW CPD can only be
-    // delivered by a Fair Trading approved provider, and for 2026–27 every
-    // published hour is a compulsory topic — there is no elective or
-    // self-directed category to absorb an internal session. So a session with
-    // no named provider records attendance and nothing else, however it was
-    // ticked. (The venue is irrelevant: an approved provider delivering in
-    // your own office does count, which is why this checks the provider
-    // rather than is_external.)
-    if (session.is_cpd_eligible && session.cpd_hours && session.cpd_provider) {
-      const { error: cpdError } = await supabase.from("cpd_records").insert(
-        attendeeIds.map((profileId) => ({
-          agency_id: session.agency_id,
-          profile_id: profileId,
-          activity_name: session.title,
-          category: "general",
-          hours: session.cpd_hours,
-          completed_date: session.session_date,
-          // Recorded in its own column so the record shows who delivered it.
-          provider: session.cpd_provider,
-          source_session_id: sessionId,
-          created_by: profile.id,
-        })),
-      );
-      if (cpdError) return { error: "Attendance saved, but couldn't auto-log CPD hours — add them manually." };
-    }
+    if (attendanceError) return settle({ error: "Couldn't save attendance — try again." });
   }
 
-  revalidatePath("/dashboard/training");
-  revalidatePath("/dashboard/registers");
-  return ok;
+  // The provider is the gate, not the tick-box. NSW CPD can only be
+  // delivered by a Fair Trading approved provider, and for 2026–27 every
+  // published hour is a compulsory topic — there is no elective or
+  // self-directed category to absorb an internal session. So a session with
+  // no named provider records attendance and nothing else, however it was
+  // ticked. (The venue is irrelevant: an approved provider delivering in
+  // your own office does count, which is why this checks the provider
+  // rather than is_external.)
+  if (needCpd.length > 0 && session.is_cpd_eligible && session.cpd_hours && session.cpd_provider) {
+    const { error: cpdError } = await supabase.from("cpd_records").insert(
+      needCpd.map((profileId) => ({
+        agency_id: session.agency_id,
+        profile_id: profileId,
+        activity_name: session.title,
+        category: "general",
+        hours: session.cpd_hours,
+        completed_date: session.session_date,
+        // Recorded in its own column so the record shows who delivered it.
+        provider: session.cpd_provider,
+        source_session_id: sessionId,
+        created_by: profile.id,
+      })),
+    );
+    if (cpdError) return settle({ error: "Attendance saved, but couldn't auto-log CPD hours — add them manually." });
+  }
+
+  return settle(ok);
 }
 
 // ── Gifts & benefits register — Rules of Conduct probity/conflicts control.
@@ -507,22 +581,22 @@ export async function addGift(_prev: ActionState, formData: FormData): Promise<A
 // itself is never hidden or deleted, just marked reviewed (same "record the
 // diligence, don't scrub the record" principle as everywhere else).
 export async function markGiftReviewed(giftId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase.from("gifts").update({ status: "reviewed" }).eq("id", giftId).eq("status", "flagged");
   revalidatePath("/dashboard/registers");
 }
 
 export async function deleteGift(giftId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase.from("gifts").delete().eq("id", giftId);
   revalidatePath("/dashboard/registers");
 }
 
 export async function updateGiftThreshold(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return { error: "Only the licensee in charge can change the threshold." };
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can change the threshold." };
 
   const thresholdRaw = str(formData, "giftThreshold");
   const threshold = thresholdRaw ? Number(thresholdRaw) : NaN;
@@ -733,10 +807,12 @@ export async function recordBreachNotification(
 
 // Closing is licensee-only: signing off that a breach is dealt with is a
 // supervision judgement, the same trust level as the other licensee-gated
-// actions in this app.
+// actions in this app. The licensee here includes the agent on their own plan
+// (access.actsAsLicensee; 0058 lets them close and delete), who could never
+// close a breach while this checked the raw flag (10 Oct 2026).
 export async function closeBreach(breachId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase
     .from("breaches")
     .update({ status: "closed", closed_date: new Date().toISOString().slice(0, 10) })
@@ -745,8 +821,8 @@ export async function closeBreach(breachId: string): Promise<void> {
 }
 
 export async function deleteBreach(breachId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) return;
+  const { supabase, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return;
   await supabase.from("breaches").delete().eq("id", breachId);
   revalidatePath("/dashboard/registers");
 }

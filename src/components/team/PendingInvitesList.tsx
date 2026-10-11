@@ -23,7 +23,13 @@ export function PendingInvitesList({ invites, canManage }: { invites: AgencyInvi
                 <p className="font-medium text-rc-ink">{invite.full_name ?? invite.email}</p>
                 <p className="text-xs text-rc-muted">
                   {invite.email}
-                  {invite.is_licensee_in_charge ? " · invited as licensee in charge" : " · invited as agent"}
+                  {/* Assistant checked too (10 Oct 2026): an assistant invite
+                      read "invited as agent", though they join as an assistant. */}
+                  {invite.is_licensee_in_charge
+                    ? " · invited as licensee in charge"
+                    : invite.is_assistant
+                      ? " · invited as assistant"
+                      : " · invited as agent"}
                 </p>
               </div>
             </div>

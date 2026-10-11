@@ -43,13 +43,15 @@ function fakeSupabase(tables: Record<string, Row[]>) {
 }
 
 const SEPTEMBER = "2026-09-01";
-// The cron runs at 21:40 UTC.
-const DAY1 = new Date("2026-10-01T21:40:00Z");
-const DAY7 = new Date("2026-10-07T21:40:00Z");
+// The cron runs at 21:40 UTC, which is already the next morning in Sydney, and
+// the job goes by Sydney's date: the 1 October run is 30 Sep 21:40 UTC
+// (7:40am AEST), the 7 October one 6 Oct 21:40 UTC (8:40am AEDT).
+const DAY1 = new Date("2026-09-30T21:40:00Z");
+const DAY7 = new Date("2026-10-06T21:40:00Z");
 
 type State = "signed" | "filed_unsigned" | "not_filed";
 
-function world(state: State, opts: { accountArchived?: boolean } = {}) {
+function world(state: State, opts: { accountArchived?: boolean; openedOn?: string } = {}) {
   const tables: Record<string, Row[]> = {
     agencies: [{ id: "ag1", name: "Cass Property" }],
     profiles: [
@@ -57,7 +59,13 @@ function world(state: State, opts: { accountArchived?: boolean } = {}) {
       { id: "asst", agency_id: "ag1", email: "assistant@example.com", is_licensee_in_charge: false, archived_at: null },
     ],
     trust_accounts: [
-      { id: "acc1", agency_id: "ag1", name: "Property management", archived_at: opts.accountArchived ? "2026-08-01T00:00:00Z" : null },
+      {
+        id: "acc1",
+        agency_id: "ag1",
+        name: "Property management",
+        archived_at: opts.accountArchived ? "2026-08-01T00:00:00Z" : null,
+        opened_on: opts.openedOn ?? null,
+      },
     ],
     signoff_documents: [],
     signoff_signatures: [],
@@ -118,7 +126,9 @@ for (const [stage, today] of [["day1", DAY1], ["day7", DAY7]] as const) {
     assert.equal(sent.length, 1);
     assert.deepEqual(sent[0].to, ["licensee@example.com"]);
     assert.doesNotMatch(sent[0].subject, /ready for your sign-off/);
-    assert.match(sent[0].text, /Your assistant can upload the report/);
+    assert.match(sent[0].text, /Upload the report and sign it off/);
+    // Trust is the licensee's only since 7 Oct; an assistant cannot open it.
+    assert.doesNotMatch(sent[0].text, /assistant/i);
     assert.equal(result.sent, 1);
     assert.equal(result.sentReadyForSignoff, 0);
     assert.equal(tables.trust_reminders.length, 1);
@@ -155,4 +165,45 @@ test("a licensee who has left the office is not mailed", async () => {
   tables.profiles[0].archived_at = "2026-09-15T00:00:00Z";
   await runTrustReminders(DAY1, deps);
   assert.equal(sent.length, 0);
+});
+
+test("the 18th goes by Sydney's date and counts the days left from it", async () => {
+  // 17 Oct 21:40 UTC is 8:40am on 18 October in Sydney. September is due on
+  // 21 October: three days away.
+  const { sent, deps } = world("not_filed");
+  await runTrustReminders(new Date("2026-10-17T21:40:00Z"), deps);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].subject, /3 days left/);
+});
+
+test("the run on the UTC 18th is Sydney's 19th and sends nothing", async () => {
+  const { sent, deps } = world("not_filed");
+  await runTrustReminders(new Date("2026-10-18T21:40:00Z"), deps);
+  assert.equal(sent.length, 0);
+});
+
+test("a month that ended before the account opened is not chased", async () => {
+  const { tables, sent, deps } = world("not_filed", { openedOn: "2026-10-01" });
+  const result = await runTrustReminders(DAY7, deps);
+  assert.equal(sent.length, 0);
+  assert.equal(tables.trust_reminders.length, 0);
+  assert.equal(result.skippedNothingDue, 1);
+});
+
+test("an account opened during the month is chased for it", async () => {
+  const { sent, deps } = world("not_filed", { openedOn: "2026-09-15" });
+  await runTrustReminders(DAY7, deps);
+  assert.equal(sent.length, 1);
+});
+
+test("no audit reminder for a year that ended before the account opened", async () => {
+  // 1 July 2027 in Sydney: the audit for the year ended 30 June 2027 is owed by
+  // an account opened in October 2026, and the year before is not.
+  const opened = world("signed", { openedOn: "2026-10-01" });
+  await runTrustReminders(new Date("2027-06-30T21:40:00Z"), opened.deps);
+  assert.equal(opened.sent.filter((m) => /audit/i.test(m.subject)).length, 1);
+
+  const before = world("signed", { openedOn: "2026-10-01" });
+  await runTrustReminders(new Date("2026-08-31T21:40:00Z"), before.deps);
+  assert.equal(before.sent.filter((m) => /audit/i.test(m.subject)).length, 0);
 });

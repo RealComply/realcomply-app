@@ -70,7 +70,10 @@ export default async function PortfolioPage() {
   // but the licensee needs to know whose licence it is without a second
   // click. This is the bit the old /dashboard/licensee page had that this
   // page's stat tile alone didn't.
+  // Not people who have left (archived): Registers no longer lists them, so
+  // naming one here led to a page with nothing to fix (10 Oct 2026).
   const expiringStaff = staffList.filter((s) => {
+    if (s.archived_at) return false;
     const status = expiryStatus(s.licence_expiry);
     return status === "expired" || status === "urgent";
   });

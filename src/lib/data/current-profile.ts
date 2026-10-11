@@ -37,6 +37,18 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     return profile as Profile;
   }
 
+  // Removed from the office (10 Oct 2026). Once archived, a person cannot
+  // read their own profile (current_agency_id() is null for them), so they
+  // fell through to the bootstrap below and on to /signup, which told them
+  // RealComply is invite-only and to sign in: nothing said they had been
+  // removed. my_profile_is_archived() (0060) answers for the caller's own row
+  // only. Asked before the bootstrap, so a stashed invite token is never
+  // tried again. If it errors (0060 not run yet), this carries on as before.
+  const { data: archived, error: archivedError } = await supabase.rpc("my_profile_is_archived");
+  if (!archivedError && archived === true) {
+    redirect("/removed");
+  }
+
   const meta = user.user_metadata as {
     full_name?: string;
     agency_name?: string;

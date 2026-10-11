@@ -192,6 +192,22 @@ export type BreachCategory =
   | "supervision"
   | "other";
 
+// The words the Breach register shows for each category. Moved here from
+// BreachesPanel (10 Oct 2026) so the printed export says "Trust account", not
+// the stored key "trust_account": a "use client" file's constants can't be
+// read by the server-rendered export page.
+export const BREACH_CATEGORY_LABELS: Record<BreachCategory, string> = {
+  pricing: "Pricing / underquoting",
+  agency_agreement: "Agency agreement",
+  material_facts: "Material facts",
+  trust_account: "Trust account",
+  advertising: "Advertising",
+  record_keeping: "Record keeping",
+  conduct: "Conduct",
+  supervision: "Supervision",
+  other: "Other",
+};
+
 // One row per licence/certificate expiry reminder actually sent — see
 // 0019_licence_reminders.sql. Read-only from the app: the daily cron writes
 // them through the service client, and the register displays the most recent
@@ -326,6 +342,10 @@ export type TrustAccount = {
    *  still records the agency has to keep. */
   archived_at: string | null;
   created_at: string;
+  /** The day the account opened, when it opened part way through a year. Null
+   *  means it was already open: every month and audit is owed. Optional until
+   *  supabase/migrations/0060_check_fixes.sql has run. */
+  opened_on?: string | null;
 };
 
 export type TrustAudit = {
@@ -436,6 +456,8 @@ export type AgencyInvite = {
   email: string;
   full_name: string | null;
   is_licensee_in_charge: boolean;
+  /** Invited as an assistant (0025). Neither flag set means invited as an agent. */
+  is_assistant: boolean;
   token: string;
   status: InviteStatus;
   invited_by: string | null;

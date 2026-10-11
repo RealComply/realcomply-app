@@ -17,7 +17,7 @@ export function ComplaintsWidget({
       icon={MessageSquareWarning}
       title="Complaints"
       href="/dashboard/registers"
-      hrefLabel="Registers →"
+      hrefLabel="Registers"
       metric={open + underReview}
       caption="currently open"
       tone={overdue > 0 ? "danger" : open + underReview > 0 ? "warn" : "ok"}

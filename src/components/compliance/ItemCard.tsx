@@ -1,6 +1,15 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
 import { selfManaged } from "@/lib/rules/nsw-sales";
 import { formatAuDate } from "@/lib/format-date";
@@ -63,6 +72,7 @@ import type { EspDraftInput } from "@/lib/data/esp-draft";
 import type { NoneOnMarketRecord, ReasoningAdoptionRecord } from "@/lib/rules/esp-reasoning-adoption";
 import { Disclaimer, ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import { espReasoningMissing } from "@/lib/rules/esp-reasoning-gate";
+import { linkRequestNeedingTime, listingSignature } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
 const initialState: ActionState = { error: null };
@@ -730,6 +740,8 @@ function ChecklistItem({
     preCommencement?: boolean;
     preCommencementAgreementDate?: string;
     preCommencementRevokedOn?: string;
+    /** Why setItemStatus flagged the card (b6, b1a/c0 dates; the a4 spread). */
+    flagReason?: string;
     aiDraft?: {
       note?: string;
       espLow?: number;
@@ -867,6 +879,26 @@ function ChecklistItem({
       {/* Outside the form below, because its own Add button is a form and
           forms cannot nest. */}
       {item.key === "f4" && <BuyerListItem propertyId={propertyId} current={current} />}
+      {/* The same for the a4c sales and the competition. They were inside the
+          form from 7 Sep (moved onto this card, above the box they fill),
+          where a nested form makes the browser drop the inner one: "Add a
+          sale" and "Add a listing" did nothing, and the page logged a
+          hydration error (preview check, 9 Oct 2026). Nothing in the form
+          comes before them on a4c, so the card reads the same. */}
+      {item.key === "a4c" && subject && !espElsewhere && !item.showFindings && !item.hideNote && (
+        <div className="mb-3">
+          <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
+          {/* The competition, under the sales (Stephen Borg, 28 Sep
+              2026; mockup v2 approved by Adam). */}
+          <MarketListingsPanel
+            propertyId={propertyId}
+            subject={subject}
+            listings={marketListings}
+            agreementDate={agreementDate}
+            noneOnMarket={Boolean(data.noneOnMarket)}
+          />
+        </div>
+      )}
       <form action={formAction} className="space-y-3">
         {wrongDocument ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
@@ -1243,20 +1275,8 @@ function ChecklistItem({
                   on the ESP card, where the report is attached, and Adam could
                   not find them. Weighing the sales IS the reasoning, so they
                   belong with it.) */}
-              {item.key === "a4c" && subject && !espElsewhere && (
-                <div className="mb-3">
-                  <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
-                  {/* The competition, under the sales (Stephen Borg, 28 Sep
-                      2026; mockup v2 approved by Adam). */}
-                  <MarketListingsPanel
-                    propertyId={propertyId}
-                    subject={subject}
-                    listings={marketListings}
-                    agreementDate={agreementDate}
-                    noneOnMarket={Boolean(data.noneOnMarket)}
-                  />
-                </div>
-              )}
+              {/* The sales and the competition sit above this box, but outside
+                  the form: see the note at the top of the form. */}
 
               {/* "Recorded elsewhere" was retired on 2 Oct 2026 (see
                   lib/rules/esp-reasoning-gate.ts): the reasoning has to be in
@@ -1413,6 +1433,12 @@ function ChecklistItem({
         </div>
       </form>
       <FieldError error={state.error} />
+      {/* Why it is flagged (10 Oct 2026). The reason was saved (an inspection
+          dated after the agreement, a contract after the launch) but never
+          shown, so the card said "Flagged" and nothing else. */}
+      {status === "flagged" && data.flagReason && (
+        <p className="mt-2 text-sm text-rc-amber-deep">{data.flagReason}</p>
+      )}
     </ItemShell>
   );
 }
@@ -1887,6 +1913,15 @@ function ReportEvidenceLink({ path, fileName }: { path: string; fileName: string
   );
 }
 
+// What a logged report's document did not state, by the rule addReportEntry
+// applies since 10 Oct 2026: the date and the preparer's name, and only where
+// a document was read. Entries saved before then carry the old list, which
+// also flagged the details cl 37(4) does not require, on typed entries too.
+function reportEntryGaps(e: { evidencePath: string | null; missingFields?: string[] }): string[] {
+  if (!e.evidencePath) return [];
+  return (e.missingFields ?? []).filter((f) => f === "inspection date" || f === "preparer's name");
+}
+
 // f3 — the cl 37 report register. The agent just uploads the report; every
 // cl 37 field is read straight from it via extractReportDetails, shown
 // read-only (same "Findings, not a form" idea as b1) so there's nothing left
@@ -2221,9 +2256,10 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
                   <ReportEvidenceLink path={e.evidencePath} fileName={e.evidenceFileName} />
                 </>
               )}
-              {e.missingFields && e.missingFields.length > 0 && (
+              {reportEntryGaps(e).length > 0 && (
                 <p className="mt-1 flex items-center gap-1 text-rc-amber-deep">
-                  <AlertTriangle size={12} className="shrink-0" /> Not stated in the document: {e.missingFields.join(", ")}
+                  <AlertTriangle size={12} className="shrink-0" /> Not stated in the document:{" "}
+                  {reportEntryGaps(e).join(", ")}
                 </p>
               )}
             </li>
@@ -2700,24 +2736,33 @@ function SignItem({
   current,
   profile,
   listingAgentId,
+  signoffLinks = [],
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   profile: Profile;
   listingAgentId?: string;
+  signoffLinks?: SignoffLink[];
 }) {
   const boundAction = signItem.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const data = (current?.data ?? {}) as { typedName?: string; signedAt?: string };
 
   // Signed comes first: whoever is looking, a signature on file is the answer.
-  if (data.signedAt) {
+  // Given in the app or through the emailed link, whose time is on the link
+  // (10 Oct 2026; see lib/rules/listing-signature.ts).
+  const linkId = linkRequestNeedingTime(current?.data);
+  const signature = listingSignature(
+    current?.data,
+    linkId ? (signoffLinks.find((l) => l.id === linkId)?.signedAt ?? null) : null,
+  );
+  if (signature) {
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
         <p className="text-sm text-rc-muted">
-          Signed <span className="font-medium text-rc-ink">{data.typedName}</span> on{" "}
-          {new Date(data.signedAt).toLocaleString("en-AU")}
+          Signed <span className="font-medium text-rc-ink">{signature.typedName}</span>
+          {signature.signedAt && <> on {new Date(signature.signedAt).toLocaleString("en-AU")}</>}
         </p>
       </ItemShell>
     );
@@ -2983,6 +3028,33 @@ function ExportItem({
 
 const money = (n: number) => `$${n.toLocaleString("en-AU")}`;
 
+// The auction-day cards close their editor once the save has gone through,
+// and only then (10 Oct 2026). They used to close the moment Save was pressed,
+// before the server answered, so a refusal (no licence number, "Sold" with no
+// price) went to a form that was already gone and the card read as saved.
+//
+// Sent from onSubmit rather than <form action> (review, 10 Oct 2026): React
+// resets a form once its action has run, refused or not, so a refusal kept
+// the editor open with what had been typed wiped (a first-time auctioneer's
+// name and address, for want of a licence number). Dispatching it here
+// leaves the fields alone; a save that succeeds closes the editor anyway.
+function useSaveThenClose(
+  action: (prev: ActionState, formData: FormData) => Promise<ActionState>,
+  setEditing: (editing: boolean) => void,
+) {
+  const [state, dispatch, pending] = useActionState(async (prev: ActionState, formData: FormData) => {
+    const result = await action(prev, formData);
+    if (!result.error) setEditing(false);
+    return result;
+  }, initialState);
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => dispatch(formData));
+  };
+  return [state, onSubmit, pending] as const;
+}
+
 // x1 — the auctioneer. Three typed fields, shown as a plain line once saved.
 function AuctioneerItem({
   item,
@@ -2995,8 +3067,7 @@ function AuctioneerItem({
 }) {
   const saved = (current?.data ?? {}) as { name?: string; licenceNumber?: string; businessAddress?: string };
   const [editing, setEditing] = useState(!saved.name);
-  const action = setAuctioneerDetails.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, onSubmit, pending] = useSaveThenClose(setAuctioneerDetails.bind(null, propertyId), setEditing);
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -3016,13 +3087,7 @@ function AuctioneerItem({
           </button>
         </div>
       ) : (
-        <form
-          action={async (fd) => {
-            await formAction(fd);
-            setEditing(false);
-          }}
-          className="space-y-2"
-        >
+        <form method="post" onSubmit={onSubmit} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3083,8 +3148,7 @@ function ReserveItem({
 }) {
   const saved = (current?.data ?? {}) as { reserve?: number; givenAt?: string };
   const [editing, setEditing] = useState(saved.reserve == null);
-  const action = setReserve.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, onSubmit, pending] = useSaveThenClose(setReserve.bind(null, propertyId), setEditing);
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -3103,13 +3167,7 @@ function ReserveItem({
           </button>
         </div>
       ) : (
-        <form
-          action={async (fd) => {
-            await formAction(fd);
-            setEditing(false);
-          }}
-          className="space-y-2"
-        >
+        <form method="post" onSubmit={onSubmit} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
@@ -3174,8 +3232,7 @@ function AuctionOutcomeItem({
   const [choice, setChoice] = useState<AuctionOutcomeKind | null>(saved.outcome ?? null);
   const [vendorBid, setVendorBid] = useState(Boolean(saved.vendorBid));
   const [editing, setEditing] = useState(!saved.outcome);
-  const action = recordAuctionOutcome.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, onSubmit, pending] = useSaveThenClose(recordAuctionOutcome.bind(null, propertyId), setEditing);
 
   if (!editing) {
     const chosen = OUTCOME_CHOICES.find((c) => c.value === saved.outcome);
@@ -3222,13 +3279,7 @@ function AuctionOutcomeItem({
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form
-        action={async (fd) => {
-          await formAction(fd);
-          setEditing(false);
-        }}
-        className="space-y-3"
-      >
+      <form method="post" onSubmit={onSubmit} className="space-y-3">
         <input type="hidden" name="outcome" value={choice ?? ""} />
         <div className="flex flex-wrap gap-2">
           {OUTCOME_CHOICES.map((c) => (
@@ -3427,7 +3478,14 @@ export function ItemCard({
       return <SaleItem item={item} propertyId={propertyId} current={current} />;
     case "sign":
       return (
-        <SignItem item={item} propertyId={propertyId} current={current} profile={profile} listingAgentId={listingAgentId} />
+        <SignItem
+          item={item}
+          propertyId={propertyId}
+          current={current}
+          profile={profile}
+          listingAgentId={listingAgentId}
+          signoffLinks={signoffLinks}
+        />
       );
     case "send":
       return <SendItem item={item} propertyId={propertyId} current={current} signoffLinks={signoffLinks} />;

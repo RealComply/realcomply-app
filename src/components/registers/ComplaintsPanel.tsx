@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { addComplaint, updateComplaintStatus, deleteComplaint, type ActionState } from "@/lib/actions/registers";
+import { useOnSaved } from "@/lib/use-on-saved";
 import type { Complaint, Profile, Property } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
@@ -30,23 +31,28 @@ export function ComplaintsPanel({
   staff,
   properties,
   viewerProfile,
+  nameOf = {},
   resolutionTargetDays,
 }: {
   complaints: Complaint[];
   staff: Profile[];
   properties: Property[];
   viewerProfile: Profile;
+  /** Everyone's display name, people who have left included (the picker isn't). */
+  nameOf?: Record<string, string>;
   resolutionTargetDays: number;
 }) {
   const [adding, setAdding] = useState(false);
   const [state, formAction, pending] = useActionState(addComplaint, initialState);
+  useOnSaved(pending, state.error, () => setAdding(false));
 
   const open = complaints.filter((c) => c.status !== "resolved");
   const resolvedThisYear = complaints.filter((c) => c.status === "resolved");
   const overdue = open.filter((c) => daysSince(c.received_date) > resolutionTargetDays);
   const oldestOpenDays = open.length > 0 ? Math.max(...open.map((c) => daysSince(c.received_date))) : 0;
 
-  const nameFor = (id: string | null) => (id ? staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "—" : "—");
+  const nameFor = (id: string | null) =>
+    id ? nameOf[id] ?? staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "—" : "—";
   const addressFor = (id: string | null) => (id ? properties.find((p) => p.id === id)?.address ?? null : null);
 
   return (
@@ -77,13 +83,7 @@ export function ComplaintsPanel({
         </div>
 
         {adding && (
-          <form
-            action={async (fd) => {
-              await formAction(fd);
-              setAdding(false);
-            }}
-            className="mt-3 space-y-2 rounded-md border border-rc-border p-3"
-          >
+          <form action={formAction} className="mt-3 space-y-2 rounded-md border border-rc-border p-3">
             <div className="flex flex-wrap gap-2">
               <input type="date" name="receivedDate" required className="rounded-md border border-rc-border px-2 py-1 text-sm" />
               <input
@@ -151,7 +151,8 @@ export function ComplaintsPanel({
               <tbody>
                 {complaints.map((c) => (
                   <tr key={c.id} className="border-b border-neutral-100 align-top">
-                    <td className="py-2 pr-3">{c.received_date}</td>
+                    {/* nowrap: at 1280px the date broke over two lines. */}
+                    <td className="whitespace-nowrap py-2 pr-3">{c.received_date}</td>
                     <td className="py-2 pr-3">{c.complainant}</td>
                     <td className="py-2 pr-3">
                       {addressFor(c.property_id) ? (

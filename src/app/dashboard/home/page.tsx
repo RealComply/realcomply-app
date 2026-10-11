@@ -131,7 +131,12 @@ export default async function HomeDashboardPage() {
   }).length;
 
   // ── Licence & CPD ────────────────────────────────────────────────────────
-  const licenceStatuses = staff.map((s) => expiryStatus(s.licence_expiry));
+  // People who have left (archived) are kept for their names on old files,
+  // but are not counted here: Registers, CPD and the sidebar dot already
+  // leave them out, so a departed agent's lapsed licence kept this card red
+  // with nothing on Registers to fix (review of the 10 Oct fixes).
+  const activeStaff = staff.filter((s) => !s.archived_at);
+  const licenceStatuses = activeStaff.map((s) => expiryStatus(s.licence_expiry));
   const licenceCurrent = licenceStatuses.filter((s) => s === "ok" || s === "soon").length;
   const licenceExpiringSoon = licenceStatuses.filter((s) => s === "urgent").length;
   const licenceExpired = licenceStatuses.filter((s) => s === "expired").length;
@@ -143,7 +148,7 @@ export default async function HomeDashboardPage() {
   // Only counts people whose requirement can actually be stated — Fair
   // Trading sets CPD hours per category of practice, and hasn't published a
   // figure for every category this year. See rules/nsw-cpd.ts.
-  const cpdOutstanding = staff.filter((s) => {
+  const cpdOutstanding = activeStaff.filter((s) => {
     const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
     const target = requirement.units ?? requirement.coreHours;
     if (target === null) return false;
@@ -268,7 +273,7 @@ export default async function HomeDashboardPage() {
           <WeeklyReviewWidget dueCount={dueForReview} />
 
           <LicenceCpdWidget
-            holders={staff.length}
+            holders={activeStaff.length}
             current={licenceCurrent}
             expiringSoon={licenceExpiringSoon}
             expired={licenceExpired}
@@ -286,7 +291,7 @@ export default async function HomeDashboardPage() {
             versionLabel={currentSgVersion?.version_label ?? null}
             uploadedAt={currentSgVersion?.created_at ?? null}
           />
-          <TeamWidget staffCount={staff.length} pendingInvites={pendingInviteCount} />
+          <TeamWidget staffCount={activeStaff.length} pendingInvites={pendingInviteCount} />
         </div>
       </main>
     </>

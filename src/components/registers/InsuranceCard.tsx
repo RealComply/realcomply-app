@@ -3,7 +3,9 @@
 import { useActionState, useState } from "react";
 import { updateInsurancePolicy, type ActionState } from "@/lib/actions/registers";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
-import type { InsurancePolicyType, Profile } from "@/lib/types";
+import { useViewerAccess } from "@/components/ViewerAccess";
+import { useOnSaved } from "@/lib/use-on-saved";
+import type { InsurancePolicyType } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
 
@@ -20,7 +22,6 @@ export function InsuranceCard({
   insurer,
   policyNumber,
   expiry,
-  viewerProfile,
 }: {
   policyType: InsurancePolicyType;
   title: string;
@@ -28,11 +29,15 @@ export function InsuranceCard({
   insurer: string | null;
   policyNumber: string | null;
   expiry: string | null;
-  viewerProfile: Profile;
 }) {
+  // The licensee's to maintain, which includes the agent on their own plan
+  // (lib/access.ts). The raw flag left that agent unable ever to enter their
+  // insurance (check of 10 Oct 2026).
+  const { actsAsLicensee } = useViewerAccess();
   const [editing, setEditing] = useState(false);
   const boundAction = updateInsurancePolicy.bind(null, policyType);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
+  useOnSaved(pending, state.error, () => setEditing(false));
   const status = expiryStatus(expiry);
 
   return (
@@ -61,7 +66,7 @@ export function InsuranceCard({
                 "No details on file yet."
               )}
             </div>
-            {viewerProfile.is_licensee_in_charge && (
+            {actsAsLicensee && (
               <button
                 type="button"
                 onClick={() => setEditing(true)}
@@ -72,13 +77,7 @@ export function InsuranceCard({
             )}
           </div>
         ) : (
-          <form
-            action={async (formData) => {
-              await formAction(formData);
-              setEditing(false);
-            }}
-            className="space-y-2"
-          >
+          <form action={formAction} className="space-y-2">
             <div className="flex flex-wrap gap-2">
               <input
                 type="text"
@@ -121,7 +120,7 @@ export function InsuranceCard({
           </form>
         )}
       </div>
-      {!viewerProfile.is_licensee_in_charge && !insurer && (
+      {!actsAsLicensee && !insurer && (
         <p className="mt-2 text-xs text-rc-faint">Only the licensee in charge can enter these details.</p>
       )}
     </div>

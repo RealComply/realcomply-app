@@ -142,7 +142,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
       {invite && (
         <p className="rounded-2xl border border-rc-green-deep/30 bg-rc-green-soft px-3 py-2 text-sm text-rc-green-deep">
           You&rsquo;ve been invited to join <span className="font-semibold">{invite.agencyName}</span> as{" "}
-          {invite.isLicenseeInCharge ? "a licensee in charge" : "an agent"}.
+          {invite.isLicenseeInCharge ? "a licensee in charge" : invite.isAssistant ? "an assistant" : "an agent"}.
         </p>
       )}
       {state.error && (

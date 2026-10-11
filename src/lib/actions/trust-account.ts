@@ -2,8 +2,32 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
+import { daysUntil, sydneyToday } from "@/lib/trust-account";
 
 export type ActionState = { error: string | null; saved?: boolean };
+
+// The day the account opened, if the licensee gave one (10 Oct 2026). Months
+// and audit years that ended before it are not asked for — see
+// monthBeforeOpening in lib/trust-account.ts. Blank means it was already open.
+//
+// Not more than a month ahead (10 Oct 2026). A date in the future quietly
+// marks every month before it "Before it opened" and the year's audit as not
+// owed, so a mistyped year (2027 for 2026) took an open account's overdue
+// reconciliations and audit off the page, the badge and the reminders with
+// no warning. A month still lets an account about to open be set up early.
+const OPENED_ON_MAX_DAYS_AHEAD = 31;
+
+function openedOnFrom(formData: FormData): { openedOn: string | null; error: string | null } {
+  const value = String(formData.get("openedOn") ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return { openedOn: null, error: null };
+  if (daysUntil(value, sydneyToday()) > OPENED_ON_MAX_DAYS_AHEAD) {
+    return {
+      openedOn: null,
+      error: "The opening date is more than a month away. Check the year — months before it are not asked for.",
+    };
+  }
+  return { openedOn: value, error: null };
+}
 
 // ── The accounts themselves ───────────────────────────────────────────────
 //
@@ -21,9 +45,11 @@ export async function createTrustAccount(_prev: ActionState, formData: FormData)
   if (!name) return { error: "Give the account a name — whatever you call it in the office." };
   if (name.length > 80) return { error: "That name is too long. Eighty characters is the limit." };
 
+  const { openedOn, error: openedOnError } = openedOnFrom(formData);
+  if (openedOnError) return { error: openedOnError };
   const { error } = await supabase
     .from("trust_accounts")
-    .insert({ agency_id: profile.agency_id, name });
+    .insert({ agency_id: profile.agency_id, name, ...(openedOn ? { opened_on: openedOn } : {}) });
 
   if (error) return { error: "Couldn't add that account — try again." };
   revalidatePath("/dashboard/trust");
@@ -40,8 +66,15 @@ export async function renameTrustAccount(_prev: ActionState, formData: FormData)
   const name = String(formData.get("name") ?? "").trim();
   if (!id || !name) return { error: "Give the account a name." };
 
-  const { error } = await supabase.from("trust_accounts").update({ name }).eq("id", id);
-  if (error) return { error: "Couldn't rename that account — try again." };
+  // Written only when it changed, so a plain rename never touches it.
+  const { openedOn, error: openedOnError } = openedOnFrom(formData);
+  if (openedOnError) return { error: openedOnError };
+  const openedOnWas = String(formData.get("openedOnWas") ?? "").trim() || null;
+  const { error } = await supabase
+    .from("trust_accounts")
+    .update(openedOn === openedOnWas ? { name } : { name, opened_on: openedOn })
+    .eq("id", id);
+  if (error) return { error: "Couldn't save that account — try again." };
   revalidatePath("/dashboard/trust");
   return { error: null, saved: true };
 }
@@ -135,7 +168,11 @@ export async function saveTrustAudit(
     file_path: filePath ?? existing?.file_path ?? null,
     file_name: fileName ?? existing?.file_name ?? null,
     notes,
-    confirmed_by: confirmed ? profile.id : null,
+    // Kept with its date (10 Oct 2026). A second licensee re-saving a confirmed
+    // audit to add the report date was rewriting who confirmed it while the
+    // original date stayed, so the record said they confirmed it on a day they
+    // did not. Who and when are one fact; they change together or not at all.
+    confirmed_by: confirmed ? (existing?.confirmed_at ? existing.confirmed_by : profile.id) : null,
     // Keep the original timestamp when a confirmation is merely being re-saved
     // alongside another field. The date on a confirmation is part of it.
     confirmed_at: confirmed ? existing?.confirmed_at ?? new Date().toISOString() : null,

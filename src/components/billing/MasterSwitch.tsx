@@ -103,7 +103,7 @@ export function MasterSwitch({
 
         <p className="text-[11px] leading-relaxed text-rc-faint">
           {isFree
-            ? "This agency is on a free account, so no plans are offered above. Put it on a trial to see the plan picker and test checkout."
+            ? "This agency is on a free account, so no plans are offered above. Put it on a trial to see the plan picker and test checkout. Until checkout finishes, everyone in the office sees the start-your-trial page and nothing new can be saved; this box is on that page too, to put it back."
             : "Back to a free account also clears the Stripe customer and subscription ids. Use it as soon as a test is finished — a sandbox id left behind points at nothing once the account is live, and it is the first thing anyone will read and believe when billing misbehaves."}
         </p>
 

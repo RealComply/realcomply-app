@@ -2,14 +2,14 @@
 
 import { InsuranceCard } from "@/components/registers/InsuranceCard";
 import { expiryStatus } from "@/lib/expiry-status";
-import type { Agency, Profile } from "@/lib/types";
+import type { Agency } from "@/lib/types";
 
 // Insurance register — split out of Licence register (Adam, 13 Aug 2026),
 // which used to bundle a single PI insurance card in with licence/CPD data
 // and had no room for anything else. Room for exactly the three policies
 // Adam named: PI, cybersecurity, iCare workers — not a generic "add any
 // policy" system, since that's not what was asked for.
-export function InsurancePanel({ agency, viewerProfile }: { agency: Agency; viewerProfile: Profile }) {
+export function InsurancePanel({ agency }: { agency: Agency }) {
   const statuses = [
     expiryStatus(agency.pi_expiry),
     expiryStatus(agency.cyber_expiry),
@@ -37,7 +37,6 @@ export function InsurancePanel({ agency, viewerProfile }: { agency: Agency; view
           insurer={agency.pi_insurer}
           policyNumber={agency.pi_policy_number}
           expiry={agency.pi_expiry}
-          viewerProfile={viewerProfile}
         />
         <InsuranceCard
           policyType="cyber"
@@ -46,7 +45,6 @@ export function InsurancePanel({ agency, viewerProfile }: { agency: Agency; view
           insurer={agency.cyber_insurer}
           policyNumber={agency.cyber_policy_number}
           expiry={agency.cyber_expiry}
-          viewerProfile={viewerProfile}
         />
         <InsuranceCard
           policyType="icare"
@@ -55,7 +53,6 @@ export function InsurancePanel({ agency, viewerProfile }: { agency: Agency; view
           insurer={agency.icare_insurer}
           policyNumber={agency.icare_policy_number}
           expiry={agency.icare_expiry}
-          viewerProfile={viewerProfile}
         />
       </div>
     </div>

@@ -9,8 +9,11 @@ import { LICENCE_FIELD_LABELS, type LicenceField, type LicenceReadState } from "
 // What the register says about a licence record that was read off a document.
 //
 // Four jobs, in order of how much they matter:
-//   1. A warning when the last upload was refused: someone else's licence, or
-//      not a licence at all. Nothing was saved, and the card says so plainly.
+//   1. A warning when an upload is refused: someone else's licence, or not a
+//      licence at all. Nothing was saved, and the card says so plainly. Shown
+//      once, in the browser that uploaded it, and gone on reload: the refusal
+//      is no longer stored, so the other person's name never reaches this
+//      person's record (10 Oct 2026).
 //   2. The fields that could not be read, each asked for on its own.
 //   3. Where each value came from: read from which document, or typed by whom,
 //      and when. "Change" is the existing Edit control on the card.
@@ -22,7 +25,6 @@ const initial: ActionState = { error: null };
 export function LicenceReadNotice({
   state,
   target,
-  holderLabel,
   nameOf,
   canEdit,
   canReread,
@@ -31,8 +33,6 @@ export function LicenceReadNotice({
 }: {
   state: LicenceReadState | null;
   target: GapTarget;
-  /** Who the record belongs to, as the warning should name them. */
-  holderLabel: string;
   nameOf: Record<string, string>;
   canEdit: boolean;
   /** Offer "Read from document": a file is on record and details are missing. */
@@ -46,7 +46,7 @@ export function LicenceReadNotice({
   const shown = readResult ?? lastResult;
 
   const lastRead = state?.lastRead ?? null;
-  const refused = lastRead && (lastRead.status === "name_mismatch" || lastRead.status === "not_a_licence");
+  const refused = shown?.outcome === "name_mismatch" || shown?.outcome === "not_a_licence";
 
   const documentFields = state
     ? (Object.entries(state.fields) as [LicenceField, { source: string; by: string | null; at: string }][])
@@ -67,14 +67,10 @@ export function LicenceReadNotice({
 
   return (
     <div className="mt-2 space-y-1.5 text-[11px]">
-      {refused && lastRead && (
+      {refused && shown?.message && (
         <p className="flex items-start gap-1.5 rounded-md bg-rc-red-soft px-2 py-1.5 text-rc-red" role="alert">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-          <span>
-            {lastRead.status === "name_mismatch"
-              ? `${lastRead.fileName ?? "The last document"} is in the name of ${lastRead.nameOnDocument}, not ${holderLabel}. Nothing was saved. Check it's the right licence and upload again.`
-              : `${lastRead.fileName ?? "The last document"} doesn't look like a licence. Nothing was saved.`}
-          </span>
+          <span>{shown.message}</span>
         </p>
       )}
 

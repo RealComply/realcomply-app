@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Check, FileText } from "lucide-react";
+import { AlertTriangle, Check, FileText } from "lucide-react";
 import { FileDropZone } from "@/components/FileDropZone";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { uploadEvidenceObject, buildSignoffDocPath } from "@/lib/storage/evidence";
@@ -71,6 +71,18 @@ export function TrustAuditForm({
 
   const overdue = daysToDue < 0;
 
+  // WHAT IS ON RECORD, NOT WHAT IS ON SCREEN (10 Oct 2026). The report uploads
+  // the moment it is dropped and the tick flips locally, but nothing reaches
+  // the audit record until Save. The chip turned green "Confirmed" and the
+  // file name sat there like a saved one, so a licensee who left without
+  // pressing Save believed the audit was recorded while the badge and the
+  // reminders carried on. The chip now reads the saved record, and anything
+  // changed but not saved says so — the same amber gate as "Not attached yet"
+  // on a listing's evidence.
+  const savedConfirmed = Boolean(audit?.confirmed_at);
+  const fileUnsaved = Boolean(filePath) && filePath !== (audit?.file_path ?? "");
+  const confirmUnsaved = confirmed !== savedConfirmed;
+
   return (
     <form action={action} className="rounded-card border border-rc-border bg-white p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -82,14 +94,14 @@ export function TrustAuditForm({
         </div>
         <span
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${
-            confirmed
+            savedConfirmed
               ? "bg-rc-green-soft text-rc-green-deep"
               : overdue
                 ? "bg-rc-red-soft text-rc-red"
                 : "bg-rc-amber/15 text-rc-amber-deep"
           }`}
         >
-          {confirmed
+          {savedConfirmed
             ? "Confirmed"
             : overdue
               ? `Overdue by ${Math.abs(daysToDue)} days`
@@ -198,6 +210,19 @@ export function TrustAuditForm({
           {confirmed && confirmedByName && audit?.confirmed_at
             ? `Confirmed by ${confirmedByName} on ${formatAuDate(audit.confirmed_at.slice(0, 10))}.`
             : "Only the licensee in charge can record this."}
+        </p>
+      )}
+
+      {canEdit && !uploading && !pending && (fileUnsaved || confirmUnsaved) && (
+        <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-rc-amber-deep">
+          <AlertTriangle size={12} className="shrink-0" aria-hidden="true" />
+          {fileUnsaved && confirmUnsaved
+            ? "The report and your confirmation are not saved yet — press Save."
+            : fileUnsaved
+              ? "The report is not saved yet — press Save."
+              : confirmed
+                ? "Your confirmation is not saved yet — press Save."
+                : "Removing the confirmation is not saved yet — press Save."}
         </p>
       )}
 

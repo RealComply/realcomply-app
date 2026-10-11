@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
 // Putting the signature ON the document.
 //
@@ -62,6 +62,8 @@ const MARGIN = 56;
 export type Signatory = {
   /** The signer's name, off their authenticated profile. */
   name: string;
+  /** Printed instead when the font cannot draw any of the name (see pdfText). */
+  email?: string | null;
   /** Their role, e.g. "Licensee in charge". */
   role: string;
   /** ISO timestamp of the signature. */
@@ -95,18 +97,46 @@ export type SignatureStamp = {
 // Standard PDF fonts are WinAnsi-encoded and throw on anything outside it.
 // A compliance document must never fail to produce because somebody's name or
 // a file name carries a curly apostrophe.
-function ascii(text: string): string {
-  return text
+//
+// KEEP WHAT THE FONT CAN DRAW (10 Oct 2026). This used to strip everything
+// outside plain ASCII, so "José Müller" signed as "Jos Mller" and a name
+// written in Chinese left an empty signature line — the page naming the signer
+// wrongly, or not at all. WinAnsi covers é, ü, ë and the rest of Western
+// European Latin, so those now stay. A letter it cannot draw is tried without
+// its accent (ễ → e, Ş → S) before it is dropped, so a name is spelt as near
+// as the font allows rather than with holes in it.
+function drawable(ch: string, font: PDFFont): boolean {
+  try {
+    font.encodeText(ch);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function pdfText(text: string, font: PDFFont): string {
+  const cleaned = text
     .replace(/[‘’‛]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, "-")
     .replace(/…/g, "...")
     .replace(/ /g, " ")
-    .replace(/[^\x20-\x7E]/g, "");
+    .replace(/[\x00-\x1F\x7F]/g, "");
+  let out = "";
+  for (const ch of cleaned) {
+    if (drawable(ch, font)) {
+      out += ch;
+      continue;
+    }
+    for (const bare of ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) {
+      if (drawable(bare, font)) out += bare;
+    }
+  }
+  return out;
 }
 
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = ascii(text).split(/\s+/).filter(Boolean);
+  const words = pdfText(text, font).split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
   const lines: string[] = [];
   let line = words[0];
@@ -151,9 +181,21 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
 
-  const page = pdf.addPage([A4.w, A4.h]);
+  const many = stamp.signatories.length > 1;
   const contentW = A4.w - MARGIN * 2;
-  let y = A4.h - MARGIN;
+  const top = A4.h - MARGIN;
+
+  // AS MANY PAGES AS IT TAKES (10 Oct 2026). This drew everything onto one
+  // A4 page with nothing watching the bottom margin. An SG version is signed
+  // by the whole office, so from about six signers the closing paragraphs ran
+  // into the footer, and from nine the later names were drawn below the edge
+  // of the page — a signed copy, the file handed to an auditor, that did not
+  // show everyone who signed. Each block now checks it fits and starts a new
+  // page when it does not, and every page carries the footer.
+  const pages: PDFPage[] = [];
+  let page = pdf.addPage([A4.w, A4.h]);
+  pages.push(page);
+  let y = top;
 
   const line = (
     text: string,
@@ -161,14 +203,41 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
   ) => {
     const size = opts.size ?? 10;
     const font = opts.font ?? regular;
-    for (const l of wrap(text, font, size, contentW)) {
+    const lines = wrap(text, font, size, contentW);
+    // A paragraph moves to the next page whole rather than splitting.
+    fit(lines.length * size * 1.45);
+    for (const l of lines) {
+      fit(size * 1.45);
       page.drawText(l, { x: MARGIN, y: y - size, size, font, color: opts.color ?? INK });
       y -= size * 1.45;
     }
     y -= opts.gap ?? 0;
   };
 
+  // A continuation page names the document again, so it still says what was
+  // signed if it is ever separated from the page before it.
+  const newPage = () => {
+    page = pdf.addPage([A4.w, A4.h]);
+    pages.push(page);
+    y = top;
+    line(`${many ? "Signatures" : "Signature"}, continued: ${stamp.title}`, {
+      size: 9,
+      font: bold,
+      color: FAINT,
+      gap: 14,
+    });
+  };
+
+  const fit = (height: number) => {
+    if (y - height < MARGIN) newPage();
+  };
+
   const rule = (gapAbove = 8, gapBelow = 10) => {
+    // A divider at the foot of a page divides nothing; the new page is the break.
+    if (y - gapAbove - gapBelow < MARGIN) {
+      newPage();
+      return;
+    }
     y -= gapAbove;
     page.drawLine({
       start: { x: MARGIN, y },
@@ -178,8 +247,6 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
     });
     y -= gapBelow;
   };
-
-  const many = stamp.signatories.length > 1;
 
   line(many ? "Signatures" : "Signature", { size: 20, font: bold, gap: 2 });
   line(stamp.agencyName, { size: 11, color: MUTED, gap: 6 });
@@ -209,8 +276,14 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
   // A name per signature, smaller where there are several, so a document
   // signed by eight people does not run to four pages of signature blocks.
   const sigSize = many ? 18 : 26;
+  // One signer's name, line, role and time, kept together on one page.
+  const blockHeight = sigSize * 1.3 + 12 + 9.5 * 1.45 + 1 + 9 * 1.45 + (many ? 12 : 0);
   for (const s of stamp.signatories) {
-    page.drawText(ascii(s.name), { x: MARGIN, y: y - sigSize, size: sigSize, font: italic, color: INK });
+    fit(blockHeight);
+    // A name the font cannot draw at all (one written in Chinese, say) would
+    // leave the line blank; their account's email identifies them instead.
+    const name = pdfText(s.name, italic).trim() || pdfText(s.email ?? "", italic).trim();
+    page.drawText(name, { x: MARGIN, y: y - sigSize, size: sigSize, font: italic, color: INK });
     y -= sigSize * 1.3;
     page.drawLine({
       start: { x: MARGIN, y },
@@ -236,17 +309,28 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
     "This sign-off records the review of the document by the people named. It is kept as evidence of proper supervision under section 32 of the Property and Stock Agents Act 2002 (NSW).",
     { size: 8.5, color: MUTED, gap: 8 },
   );
+  // Room is made before the wording is chosen, so it can say "these pages"
+  // when the signatures ran to more than one.
+  const severalPages =
+    "The pages before these signature pages are the document as it was uploaded. They have not been altered by the addition of these pages.";
+  fit(wrap(severalPages, regular, 8.5, contentW).length * 8.5 * 1.45);
   line(
-    "The pages before this one are the document as it was uploaded. They have not been altered by the addition of this page.",
+    pages.length > 1
+      ? severalPages
+      : "The pages before this one are the document as it was uploaded. They have not been altered by the addition of this page.",
     { size: 8.5, color: MUTED, gap: 0 },
   );
 
-  page.drawText(ascii(`Generated by RealComply on ${formatSignedAt(new Date().toISOString())}`), {
-    x: MARGIN,
-    y: MARGIN - 12,
-    size: 7.5,
-    font: regular,
-    color: FAINT,
+  const generated = `Generated by RealComply on ${formatSignedAt(new Date().toISOString())}`;
+  pages.forEach((p, i) => {
+    const footer = pages.length > 1 ? `${generated} - signature page ${i + 1} of ${pages.length}` : generated;
+    p.drawText(pdfText(footer, regular), {
+      x: MARGIN,
+      y: MARGIN - 12,
+      size: 7.5,
+      font: regular,
+      color: FAINT,
+    });
   });
 }
 
