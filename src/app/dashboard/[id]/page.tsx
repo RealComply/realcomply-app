@@ -89,7 +89,7 @@ export default async function PropertyPage({
     // Licensee sign-off links for this file. Read here rather than in the card
     // so the send_licensee card knows on first paint whether a link is already
     // out and whether it has been signed — see lib/data/signoff-links.ts.
-    // Both kinds since 0065, split below.
+    // Both kinds since 0066, split below.
     signoffLinksFor(supabase, id),
     // The comparable sales on this listing. Read here so the ESP card and the
     // ESP reasoning card directly below it both work from one query.
@@ -113,7 +113,7 @@ export default async function PropertyPage({
 
   const ruleCtx = await ruleContextFor(supabase, p);
 
-  // The final sign-off's links and the price statement's (b4, 0065), kept
+  // The final sign-off's links and the price statement's (b4, 0066), kept
   // apart from here on: a b4 request is never the file going to the licensee,
   // and an approved one is never their signature.
   const finalLinks = linksFor(signoffLinks, "sign_licensee");

@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { linksFor, liveLink, signedLink, type SignoffLink } from "./signoff-links";
 
-// The two kinds of link on one listing (0065): the final sign-off and the
+// The two kinds of link on one listing (0066): the final sign-off and the
 // price statement. Neither may ever be read as the other.
 
 const now = new Date("2026-10-12T00:00:00Z");

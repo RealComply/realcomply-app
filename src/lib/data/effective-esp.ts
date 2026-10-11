@@ -44,7 +44,7 @@ type RevisionDraft = {
   noticeServedOn?: string;
 };
 
-// A figure as the database reads it (jsonb_to_numeric in 0065): a number, or
+// A figure as the database reads it (jsonb_to_numeric in 0066): a number, or
 // a string of digits, with or without decimals, once the spaces round it are
 // trimmed. Anything else is no figure at all. The two have to agree to the
 // dollar: the price statement link is refused once the ESP on foot stops
@@ -69,7 +69,7 @@ function figure(value: unknown): number | null {
  * The rule itself, from the a4 and d3 records the caller already has: d3's
  * revised figures when both are there, otherwise a4's. Pure, so the page can
  * use it without another query, and so it can be held against
- * listing_effective_esp in 0065, which applies the same rule in the database.
+ * listing_effective_esp in 0066, which applies the same rule in the database.
  */
 export function espFrom(a4Data: unknown, d3Data: unknown): EffectiveEsp {
   const revision = ((d3Data ?? {}) as RevisionDraft | null) ?? {};

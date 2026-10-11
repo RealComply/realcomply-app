@@ -60,7 +60,7 @@ describe("send-back email to the agent", () => {
     assert.ok(!m.text.includes(RESEND));
   });
 
-  // Nobody signed in can mark b4 done when it goes by email (0065), so the
+  // Nobody signed in can mark b4 done when it goes by email (0066), so the
   // email can't tell the agent to, any more than the card can (review, 11 Oct 2026).
   it("sends the agent to the price statement's card when it goes by email and is the only card", () => {
     const m = buildSendBackEmail({ ...base, cards: [priceStatement], priceStatementByEmail: true });

@@ -1,6 +1,6 @@
--- ===== RUN THIS ONE. Migration 0065, price statement approval by email, 12 October 2026 =====
+-- ===== RUN THIS ONE. Migration 0066, price statement approval by email, 12 October 2026 =====
 --
--- MIGRATION 0065 — the licensee approves the price statement (b4) by email
+-- MIGRATION 0066 — the licensee approves the price statement (b4) by email
 --
 -- b4, "Licensee approved the price statement before publication", is the
 -- licensee in charge's own card. In an office whose licensee does not use
@@ -15,7 +15,7 @@
 --      statement and the ESP the licensee was shown. Existing links read as
 --      'sign_licensee' through the column default; no existing row changes.
 --   2. Every new link's token, expiry and email status still come from the
---      database (0064's lines, kept as they are).
+--      database (0065's lines, kept as they are).
 --   3. A b4 link is refused when the office has an active licensee in charge,
 --      when the licensee email on file is the login of someone in this
 --      office, on a practice listing, and once b4 is approved. The statement
@@ -48,21 +48,21 @@
 -- only, without an item_key, and reads them through get_signoff_request_v2,
 -- which still returns every one of them.
 --
--- Run after 0064. SAFE TO RUN TWICE. One transaction.
+-- Run after 0065. SAFE TO RUN TWICE. One transaction.
 --
 -- Tests: supabase/tests/price_statement_link.sql.
 
 begin;
 
 -- ── 0. Order ────────────────────────────────────────────────────────────
--- 0062 and 0063 (send back) and 0064 (the database chooses the token).
+-- 0062 and 0063 (send back) and 0065 (the database chooses the token).
 do $$
 begin
   if to_regprocedure('public.send_back_by_token(uuid, jsonb)') is null
      or not exists (select 1 from pg_trigger where tgname = 'property_items_clear_send_back')
      or position('new.token := gen_random_uuid()' in
                  pg_get_functiondef('public.guard_signoff_request_insert()'::regprocedure)) = 0 then
-    raise exception 'Run 0062, 0063 and 0064 before 0065.';
+    raise exception 'Run 0062, 0063 and 0065 before 0066.';
   end if;
 end
 $$;
@@ -86,7 +86,7 @@ end
 $$;
 
 comment on column public.property_signoff_requests.item_key is
-  'What the link is for: sign_licensee (the final sign-off on the file) or b4 (the licensee''s approval of the price statement, 0065).';
+  'What the link is for: sign_licensee (the final sign-off on the file) or b4 (the licensee''s approval of the price statement, 0066).';
 comment on column public.property_signoff_requests.price_statement is
   'b4 only: the exact words the licensee approves, set when the link was sent. Never changed afterwards.';
 comment on column public.property_signoff_requests.esp_low is
@@ -265,7 +265,7 @@ grant execute on function public.price_statement_text(text, text, text, text, nu
 grant execute on function public.office_has_active_licensee() to authenticated;
 grant execute on function public.licensee_email_is_a_member() to authenticated;
 
--- ── 3. Issuing a link: 0064's guard, with the lines marked 0065 ─────────
+-- ── 3. Issuing a link: 0065's guard, with the lines marked 0066 ─────────
 create or replace function public.guard_signoff_request_insert()
 returns trigger
 language plpgsql
@@ -281,10 +281,10 @@ begin
     return new;
   end if;
 
-  -- 0065: what the link is for. Without one it is the final sign-off.
+  -- 0066: what the link is for. Without one it is the final sign-off.
   new.item_key := coalesce(new.item_key, 'sign_licensee');
 
-  -- 0062's lock, now for the final sign-off only (0065). A b4 the licensee
+  -- 0062's lock, now for the final sign-off only (0066). A b4 the licensee
   -- flagged must be approvable again, or its flag could never clear.
   if new.item_key = 'sign_licensee' and public.listing_has_open_send_back(new.property_id) then
     raise exception 'Some cards your licensee flagged are not marked "Changes made" yet.';
@@ -307,7 +307,7 @@ begin
   new.email_attempts := 0;
   new.email_error := null;
 
-  -- 0065: the price statement. Only when the licensee can't approve it in the
+  -- 0066: the price statement. Only when the licensee can't approve it in the
   -- app, only to an outside address, never on a practice listing, and the
   -- statement and ESP come from here.
   if new.item_key = 'b4' then
@@ -345,7 +345,7 @@ begin
     new.esp_high := null;
   end if;
 
-  -- 0065: one live link per listing and purpose. The lock makes a second
+  -- 0066: one live link per listing and purpose. The lock makes a second
   -- click wait for the first to finish, then see its link.
   perform pg_advisory_xact_lock(hashtextextended('signoff_request:' || new.property_id::text || ':' || new.item_key, 0));
   if exists (select 1 from public.property_signoff_requests r
@@ -394,7 +394,7 @@ create trigger property_signoff_requests_update_guard
   before update on public.property_signoff_requests
   for each row execute function public.guard_signoff_request_update();
 
--- ── 5. Listing sign-offs: 0062's guard, plus the 0065 lines ────────────
+-- ── 5. Listing sign-offs: 0062's guard, plus the 0066 lines ────────────
 create or replace function public.guard_listing_signoff()
 returns trigger
 language plpgsql
@@ -416,14 +416,14 @@ begin
     raise exception 'This sign-off is already recorded and can''t be changed.';
   end if;
 
-  -- 0065: the app only ever writes these three. Any other spelling, such as
+  -- 0066: the app only ever writes these three. Any other spelling, such as
   -- 'Done', would skip the signer check below and still print as done in
   -- the pack and on the summary.
   if new.status not in ('open', 'done', 'flagged') then
     raise exception 'This card can only be open, done or flagged.';
   end if;
 
-  -- 0065: when the card went on the file is the database's time. 0001 says
+  -- 0066: when the card went on the file is the database's time. 0001 says
   -- recorded_at is set by the server and never changed; the app never
   -- writes it. On these cards it sits in the 7-year record beside who
   -- signed, so nobody else writes it either.
@@ -433,7 +433,7 @@ begin
     new.recorded_at := old.recorded_at;
   end if;
 
-  -- 0065: what the emailed link records (submit_signoff) never comes from
+  -- 0066: what the emailed link records (submit_signoff) never comes from
   -- the browser, even on a card that is not done yet.
   if new.item_key in ('sign_licensee', 'b4') then
     new.data := coalesce(new.data, '{}'::jsonb) - array['signedVia', 'signedName', 'signoffRequestId', 'sentTo'];
@@ -622,12 +622,12 @@ begin
     return false;
   end if;
 
-  -- 0065: the price statement. This runs with the owner's rights, so
+  -- 0066: the price statement. This runs with the owner's rights, so
   -- guard_listing_signoff doesn't run; its rules for b4 are kept here: b4
   -- only, never over an approval already recorded, and who, when and what
   -- come from the request row, never the browser. The card's data is
   -- replaced in full. b4 takes no date, so a date already on the open card
-  -- (the guard let one through before 0065) goes too, or it would print as
+  -- (the guard let one through before 0066) goes too, or it would print as
   -- the approval date.
   --
   -- A file already on the open card comes off too, with its name. The
@@ -672,7 +672,7 @@ begin
     return true;
   end if;
 
-  -- The final sign-off: 0014, except for the lines marked 0065.
+  -- The final sign-off: 0014, except for the lines marked 0066.
   update public.property_signoff_requests
      set signed_at = now(),
          signed_name = btrim(p_typed_name)
@@ -698,8 +698,8 @@ begin
       'signoffRequestId', v_request.id
     )
   )
-  -- 0065: a name, time, completer or date put on the card while it was
-  -- open (before 0065 the guard let them through) would read as the
+  -- 0066: a name, time, completer or date put on the card while it was
+  -- open (before 0066 the guard let them through) would read as the
   -- licensee's. Dropped here, so cards already holding one are covered. A
   -- card already signed in the app keeps its signature, as before.
   on conflict (property_id, item_key) do update
@@ -775,7 +775,7 @@ create table if not exists public.licensee_contact_changes (
 create index if not exists licensee_contact_changes_agency_idx
   on public.licensee_contact_changes (agency_id, changed_at);
 comment on table public.licensee_contact_changes is
-  'Every change to the agency''s licensee name or email, and who made it (0065). Agency data; deleted with the agency. Only ids and dates go into the activity record.';
+  'Every change to the agency''s licensee name or email, and who made it (0066). Agency data; deleted with the agency. Only ids and dates go into the activity record.';
 alter table public.licensee_contact_changes enable row level security;
 -- Read: the licensee (or the agent on their own plan) and the account holder.
 -- Write: only the trigger below.
@@ -812,7 +812,7 @@ create trigger agencies_licensee_contact_log
 -- Both builders are replaced in full, not renamed and wrapped again.
 --
 -- build_activity_record_core is 0054's builder under the name 0058 gave it,
--- word for word, with one change (0065): each sign-off link says what it was
+-- word for word, with one change (0066): each sign-off link says what it was
 -- for ('item').
 create or replace function public.build_activity_record_core(p_agency_id uuid)
 returns jsonb
@@ -960,7 +960,7 @@ as $$
   );
 $$;
 
--- build_activity_record is 0062's, word for word, plus (0065) who changed
+-- build_activity_record is 0062's, word for word, plus (0066) who changed
 -- the licensee's details and when. Never the names or addresses.
 create or replace function public.build_activity_record(p_agency_id uuid)
 returns jsonb

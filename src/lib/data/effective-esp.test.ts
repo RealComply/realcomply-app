@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { espFrom } from "./effective-esp";
 
 // The app and the database have to read the same ESP (jsonb_to_numeric and
-// listing_effective_esp in 0065). Each string below was run through
+// listing_effective_esp in 0066). Each string below was run through
 // jsonb_to_numeric on Postgres, 11 Oct 2026, and the expected answer is what
 // it gave: a figure, or none.
 

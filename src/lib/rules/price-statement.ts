@@ -9,18 +9,18 @@ import { espFrom } from "@/lib/data/effective-esp";
 // complete b4, so every listing stopped at Pre-market.
 //
 // Pure rules only, so the page, the card, the audit pack and the tests all
-// read the same answers. The database holds the same rules in 0065 and is the
+// read the same answers. The database holds the same rules in 0066 and is the
 // one that counts: the app works them out to decide what to show, and to say
 // no in plain words before the database does.
 
-/** The longest price statement a link can carry. The database refuses longer (0065). */
+/** The longest price statement a link can carry. The database refuses longer (0066). */
 export const PRICE_STATEMENT_MAX = 300;
 
 /**
  * The price statement as it is stored and shown: trimmed, every run of
  * spaces or line breaks made one space. Null when empty or too long.
  *
- * Mirrors the database's own clean-up in 0065, so what the agent sees in the
+ * Mirrors the database's own clean-up in 0066, so what the agent sees in the
  * box after sending is what the licensee reads. Counted in characters, as the
  * database counts them, not in UTF-16 units.
  */
@@ -42,7 +42,7 @@ export function normalisePriceStatement(raw: unknown): string | null {
  * RealComply, and one who answered "Yes, that's me" approves in the app.
  * people comes from agency_people() (lib/data/people.ts), which every member
  * can read. The database asks the same question (office_has_active_licensee,
- * 0065) and refuses a link when the answer is no.
+ * 0066) and refuses a link when the answer is no.
  */
 export function priceStatementByEmail(
   people: Array<{ is_licensee_in_charge: boolean; archived_at: string | null }>,
@@ -118,7 +118,7 @@ export function priceApproval(
  *
  * Whole dollars, rounding a half up, because that is how the database writes
  * the same figures into the statement the licensee approves (to_char in
- * 0065's price_statement_text). An ESP typed with cents would otherwise read
+ * 0066's price_statement_text). An ESP typed with cents would otherwise read
  * as one figure in the email and on the card, and another on the page.
  */
 export function espRangeText(low: number | null, high: number | null): string | null {
@@ -130,7 +130,7 @@ export function espRangeText(low: number | null, high: number | null): string | 
 
 /**
  * The longest name the licensee can type to approve a price statement. The
- * database refuses longer (0065), and its refusal reads on the page as a
+ * database refuses longer (0066), and its refusal reads on the page as a
  * link that no longer works, so the page says it first.
  */
 export const APPROVER_NAME_MAX = 200;
@@ -164,7 +164,7 @@ type StaleInput = { espLow: number | null; espHigh: number | null };
  * True when the licensee can no longer approve this request: the ESP on foot
  * is not the one they were shown, or the ESP reasoning card is not done.
  *
- * The same test as price_request_current in 0065, which hides the request
+ * The same test as price_request_current in 0066, which hides the request
  * from the page and refuses the approval. items is the listing's rows as
  * stored, not the page's effective statuses: the database reads a4c's stored
  * status, and the two have to agree on whether the licensee can still approve.

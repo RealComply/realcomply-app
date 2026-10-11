@@ -13,7 +13,7 @@ export type SendBackEmail = {
   cards: Array<{ itemKey: string; label: string; stageLabel: string; note: string; mayBeBreach: boolean }>;
   /**
    * b4 goes to the licensee by email: nobody in the office is an active
-   * licensee in charge on RealComply (priceStatementByEmail, 0065).
+   * licensee in charge on RealComply (priceStatementByEmail, 0066).
    */
   priceStatementByEmail: boolean;
 };

@@ -17,7 +17,7 @@ import { APPROVER_NAME_MAX } from "@/lib/rules/price-statement";
 // button says what it does, and an extra modal between reading and signing
 // makes a considered act feel like a dark pattern.
 //
-// kind="b4" is the price statement approval (Adam, 12 Oct 2026, 0065). Same
+// kind="b4" is the price statement approval (Adam, 12 Oct 2026, 0066). Same
 // typed name, same timestamp, different words: the licensee is approving one
 // line before it is advertised, not signing off the file. The kind changes
 // the words only. Which card the approval completes is decided by the
@@ -68,7 +68,7 @@ export function SignoffForm({ token, kind = "sign_licensee" }: { token: string; 
         autoComplete="name"
         placeholder="Jane Smith"
         // The database refuses a longer name on a price statement approval
-        // (0065). The final sign-off has no limit, and keeps none here.
+        // (0066). The final sign-off has no limit, and keeps none here.
         maxLength={approving ? APPROVER_NAME_MAX : undefined}
         className="mt-1 w-full max-w-sm rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
       />

@@ -2998,7 +2998,7 @@ function SendItem({
       // The sign-off link panel stays in view until the licensee has signed:
       // it carries the link, its expiry and any email that failed to send.
       // The final sign-off's signature only: an approved price statement
-      // (b4, 0065) is not the licensee signing the file.
+      // (b4, 0066) is not the licensee signing the file.
       foldable={!isSendLicensee || signedLink(signoffLinks, "sign_licensee") !== null}
     >
       {/* NO "Mark sent to licensee" (Adam, 12 Oct 2026). Sending the link is
@@ -3559,7 +3559,7 @@ function AuctionOutcomeItem({
 // either way. The sign cards have their own version of this in SignItem.
 //
 // Once done it says who approved, when, and how (12 Oct 2026): in the app, or
-// through the emailed link and to which address (0065). Until then it said
+// through the emailed link and to which address (0066). Until then it said
 // "Done by the licensee in charge" whichever way, with no name and no time.
 // Rows from before 0058 carry no time, and still read the old way.
 function LicenseeOnlyItem({
@@ -3608,7 +3608,7 @@ function LicenseeOnlyItem({
 }
 
 // What the b4 card needs to know about the price statement going by email
-// (12 Oct 2026, 0065). Worked out once by the page, from reads it already
+// (12 Oct 2026, 0066). Worked out once by the page, from reads it already
 // makes; see lib/rules/price-statement.ts for each rule.
 export type B4Route = {
   /** Nobody in the office is an active licensee in charge on RealComply. */
@@ -3637,7 +3637,7 @@ export type B4Route = {
 // read-only: the approval is the licensee's, by email, and a file put on the
 // card would sit beside it as if it were part of it. A file an agent put on
 // b4 before the card was read-only to them comes off when the licensee
-// approves by link, and stays on record (submit_signoff, 0065): the licensee
+// approves by link, and stays on record (submit_signoff, 0066): the licensee
 // never saw it.
 function PriceStatementByEmailItem({
   item,
@@ -3674,7 +3674,7 @@ function PriceStatementByEmailItem({
 // in charge now uses RealComply (they joined, or came back, while it was
 // pending). Both ways stay open and the first approval counts: the link
 // stops working once b4 is done, and the app refuses an approval the link
-// already gave (0065). Said under the card, with a way to withdraw it.
+// already gave (0066). Said under the card, with a way to withdraw it.
 //
 // Unless the ESP or the ESP reasoning has changed since it went (stale).
 // Then the link no longer works and only the approval in the app can count,
@@ -3741,7 +3741,7 @@ type ItemCardProps = {
   // Properties on the market as at the agency agreement date (29 Sep 2026).
   // Only the ESP reasoning card uses them.
   marketListings?: MarketListing[];
-  // The price statement by email (0065). Only the b4 card uses it.
+  // The price statement by email (0066). Only the b4 card uses it.
   b4Route?: B4Route;
 };
 

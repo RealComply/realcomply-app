@@ -11,7 +11,7 @@ import type { Property, PropertyItem } from "@/lib/types";
 // Server's own access, because the licensee has no session. Every read below
 // is scoped to the one listing and agency the token names.
 //
-// The final sign-off link only (0065, 12 Oct 2026). A price statement link
+// The final sign-off link only (0066, 12 Oct 2026). A price statement link
 // asks the licensee to approve one line before the listing is advertised: it
 // is not a review of the file, cannot send it back, and must not open the
 // audit pack at /signoff/[token]/file. With the filter below a b4 token finds

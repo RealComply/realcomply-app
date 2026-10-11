@@ -2,8 +2,8 @@
 --
 -- Proves supabase/migrations/0065_price_statement_link.sql (the licensee
 -- approves the price statement, b4, through an emailed link when the office's
--- licensee in charge doesn't use RealComply) and keeps proving 0064 (the
--- database chooses a link's token). Run after 0065. Safe on the live
+-- licensee in charge doesn't use RealComply) and keeps proving 0065 (the
+-- database chooses a link's token). Run after 0066. Safe on the live
 -- database: everything happens inside one transaction that is rolled back at
 -- the end, so the made-up offices, people and listings it creates never exist
 -- outside it.
@@ -89,7 +89,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
   set local role authenticated;
 
-  -- 1. (0064) A final sign-off link the browser tries to fill in itself: the
+  -- 1. (0065) A final sign-off link the browser tries to fill in itself: the
   --    token, expiry and email status are the database's.
   msg := null;
   begin
@@ -607,7 +607,7 @@ begin
   end if;
   reset role;
   perform set_config('request.jwt.claims', '', true);
-  -- A file already there when 0065 ran, written as the database owner.
+  -- A file already there when 0066 ran, written as the database owner.
   insert into public.property_items (agency_id, property_id, item_key, status, evidence_path, data)
   values (office, p6, 'b4', 'open', office::text || '/' || p6::text || '/b4/approval.pdf',
           '{"evidenceFileName": "approval.pdf"}');
@@ -716,7 +716,7 @@ begin
   end if;
 
   -- A b4 that already held a completer, a date and an agent's file when
-  -- 0065 ran (the guard let the first two through before, and until 10
+  -- 0066 ran (the guard let the first two through before, and until 10
   -- October the app let an agent attach a file to an open b4), written
   -- here as the database owner. Check 14 shows the emailed approval drops
   -- all three.
@@ -946,7 +946,7 @@ begin
   end if;
 
   -- 18b. A card that already held a name, time, completer and date put
-  --      there while it was open (the guard let them through before 0065;
+  --      there while it was open (the guard let them through before 0066;
   --      written here as the database owner): signing by link drops them,
   --      so the file reads as the licensee's own name and time and names no
   --      one else as completing it. The attached file's name stays.
@@ -984,7 +984,7 @@ begin
 
   -- 18c. A card the licensee already signed in the app keeps that signature,
   --      its completer and its date if the final link is signed afterwards,
-  --      as before 0065. The final link takes a name of any length, as
+  --      as before 0066. The final link takes a name of any length, as
   --      0014 did (only the price statement link stops at 200).
   perform set_config('request.jwt.claims', json_build_object('sub', la, 'role', 'authenticated')::text, true);
   set local role authenticated;

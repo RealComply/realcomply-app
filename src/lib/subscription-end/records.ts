@@ -148,7 +148,7 @@ const TABLES: Array<{ table: string; file: string; order?: string }> = [
   { table: "property_comparables", file: "Comparable sales", order: "created_at" },
   { table: "property_market_listings", file: "Competing listings", order: "created_at" },
   { table: "property_transfers", file: "Listing transfers", order: "moved_at" },
-  // Both kinds of link since 0065: item_key says which (sign_licensee or b4).
+  // Both kinds of link since 0066: item_key says which (sign_licensee or b4).
   { table: "property_signoff_requests", file: "Licensee sign-off and price approval links", order: "created_at" },
   { table: "gifts", file: "Gift register", order: "gift_date" },
   { table: "complaints", file: "Complaint register", order: "received_date" },
@@ -167,7 +167,7 @@ const TABLES: Array<{ table: string; file: string; order?: string }> = [
   // a signed document is replaced, and the record of what was deleted.
   { table: "signoff_signature_voids", file: "Replaced signatures", order: "voided_at" },
   { table: "deletion_log", file: "Deletions", order: "deleted_at" },
-  // Every change to the licensee's name or email, and who made it (0065).
+  // Every change to the licensee's name or email, and who made it (0066).
   { table: "licensee_contact_changes", file: "Licensee contact changes", order: "changed_at" },
   { table: "sg_manual_versions", file: "Statement of generic matters versions", order: "created_at" },
   { table: "licence_history", file: "Licence history", order: "changed_at" },

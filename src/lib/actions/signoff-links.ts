@@ -6,6 +6,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuthContext, sendToLicensee } from "@/lib/actions/compliance";
 import { buildSignoffStatement } from "@/lib/signoff/statement";
+// Stamped on each request so a signature is traceable to the ruleset in
+// force when it was given. Was a copy of the constant that had to be kept in
+// step by hand, and it fell behind when the ruleset moved to 2026.3.
+import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { effectiveEsp } from "@/lib/data/effective-esp";
 import { espGateFor } from "@/lib/data/esp-gate";
 import { agencyPeople } from "@/lib/data/people";
@@ -30,7 +34,7 @@ import type { PropertyItem } from "@/lib/types";
 // Issuing and revoking licensee sign-off links. See
 // RealComply-licensee-signoff-link.md and 0014_licensee_signoff_links.sql.
 //
-// And, since 0065 (Adam, 12 Oct 2026), the price statement link: where the
+// And, since 0066 (Adam, 12 Oct 2026), the price statement link: where the
 // office's licensee in charge does not use RealComply, b4 goes to them by
 // email and they approve the exact words there. Same table, same token rules,
 // a different item_key. Both live in this file so tokenFor stays the one
@@ -38,10 +42,7 @@ import type { PropertyItem } from "@/lib/types";
 // path below names "sign_licensee", so a b4 request is never handed back,
 // resent or withdrawn as the final link.
 
-// Kept in step with the same constant in the finalised-record page. Stamped on
-// each request so a signature is traceable to the ruleset in force when it was
-// given, per the audit-trail principle in the website IA doc.
-const RULESET_VERSION = "NSW Sales Ruleset 2026.2";
+
 
 // No token in the result (Adam, 9 Oct 2026): the link goes only to the
 // licensee, by email, so nobody else can open it and sign in their name.
@@ -271,7 +272,7 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
     .insert({
       agency_id: (property as { agency_id: string }).agency_id,
       property_id: propertyId,
-      // Said outright since 0065, though the column defaults to it.
+      // Said outright since 0066, though the column defaults to it.
       item_key: "sign_licensee",
       sent_to: licenseeEmail,
       statement,
@@ -416,7 +417,7 @@ export async function revokeSignoffLink(requestId: string, propertyId: string): 
 
 export type PublicSignoffRequest = {
   request_id: string;
-  /** What the link is for (0065): the final sign-off, or the price statement. */
+  /** What the link is for (0066): the final sign-off, or the price statement. */
   item_key: "sign_licensee" | "b4";
   statement: string;
   /** b4 only: the exact words being approved, fixed when the request was made. */
@@ -444,7 +445,7 @@ export type PublicSignoffRequest = {
  */
 export async function getSignoffRequest(token: string): Promise<PublicSignoffRequest | null> {
   const supabase = await createClient();
-  // v3 (0065): it says what the link is for, and carries the price statement.
+  // v3 (0066): it says what the link is for, and carries the price statement.
   // A function's return type cannot be changed in place, which is why there
   // is a v2 and now a v3 rather than one replaced function (see 0048). v3
   // also hides a price statement request the licensee can no longer approve,
@@ -453,7 +454,7 @@ export async function getSignoffRequest(token: string): Promise<PublicSignoffReq
   if (error || !data || (Array.isArray(data) && data.length === 0)) return null;
   const row = (Array.isArray(data) ? data[0] : data) as PublicSignoffRequest;
   // Anything but a price statement request reads as the final sign-off, which
-  // is what every link was before 0065.
+  // is what every link was before 0066.
   return { ...row, item_key: row.item_key === "b4" ? "b4" : "sign_licensee" };
 }
 
@@ -463,7 +464,7 @@ export async function getSignoffRequest(token: string): Promise<PublicSignoffReq
  * returns — no second step, and no window in which a licensee has signed
  * something the file still shows as outstanding.
  *
- * For a price statement link the same RPC completes b4 instead (0065). Which
+ * For a price statement link the same RPC completes b4 instead (0066). Which
  * one is decided by the database from the request the token names. The
  * hidden "kind" field below only picks the words on an error.
  */
@@ -514,7 +515,7 @@ export async function submitSignoff(
 //
 // The rule is checked three times: the page decides what to show, these
 // actions work it out again from their own reads, and the database refuses
-// (0065). The database also sets who it goes to, builds the statement the
+// (0066). The database also sets who it goes to, builds the statement the
 // licensee reads, and fixes the ESP they are shown. The app sends only the
 // listing, the kind and the words.
 //
@@ -528,7 +529,7 @@ export type PriceLinkState = {
   emailed?: boolean;
 };
 
-/** The database's own sentence when one of its rules refuses (raised in 0065's guard), otherwise null. */
+/** The database's own sentence when one of its rules refuses (raised in 0066's guard), otherwise null. */
 function databaseRefusal(error: { code?: string; message?: string } | null): string | null {
   if (!error || error.code !== "P0001") return null;
   return error.message?.trim() || null;
@@ -620,7 +621,7 @@ export async function issuePriceStatementLink(
   }
 
   // Only what the database cannot work out for itself. It sets the recipient,
-  // the token and expiry, the ESP shown and the statement read (0065), and
+  // the token and expiry, the ESP shown and the statement read (0066), and
   // refuses in a plain sentence when one of its rules says no.
   const { data: inserted, error } = await supabase
     .from("property_signoff_requests")

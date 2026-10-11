@@ -16,7 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // cannot open it and sign as the licensee. lib/actions/signoff-links.ts reads
 // it with the server's own access when it sends the email.
 //
-// TWO KINDS OF LINK SINCE 0065 (Adam, 12 Oct 2026). A link is either the final
+// TWO KINDS OF LINK SINCE 0066 (Adam, 12 Oct 2026). A link is either the final
 // sign-off (sign_licensee) or, where the office's licensee in charge does not
 // use RealComply, the price statement approval (b4). Same table, same token
 // rules, different purpose. Every helper below takes the kind it wants and
@@ -28,7 +28,7 @@ export type SignoffLinkItem = "sign_licensee" | "b4";
 
 export type SignoffLink = {
   id: string;
-  /** What the link is for (0065). Existing links read as the final sign-off. */
+  /** What the link is for (0066). Existing links read as the final sign-off. */
   itemKey: SignoffLinkItem;
   sentTo: string;
   createdAt: string;

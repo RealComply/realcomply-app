@@ -77,7 +77,7 @@ async function emailAgent(propertyId: string, flags: FlagInput[], licenseeName: 
     const a = agent as { full_name: string | null; email: string | null } | null;
     if (!a?.email) return;
 
-    // Whether b4 goes by email in this office (0065), asked only when b4 is
+    // Whether b4 goes by email in this office (0066), asked only when b4 is
     // one of the cards. Then nobody signed in can mark it done, and the email
     // says to send the price statement again instead (review, 11 Oct 2026).
     // The same rule as the listing page, on the same rows; agency_people()
@@ -124,7 +124,7 @@ export async function sendBackWithLink(token: string, _prev: SendBackState, form
   if (typeof flags === "string") return { error: flags };
 
   // Read before the send-back revokes it: which listing, and who it went to.
-  // The final sign-off link only: a price statement link (b4, 0065) cannot
+  // The final sign-off link only: a price statement link (b4, 0066) cannot
   // send the file back, and send_back_by_token refuses one too.
   const service = createServiceClient();
   const { data: request } = await service

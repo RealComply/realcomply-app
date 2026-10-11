@@ -202,7 +202,7 @@ export function PriceStatementLinkPanel({
   }
 
   // Nothing goes to the licensee from a practice listing: the database
-  // refuses it too (0065). The listing can still move on, as practice ones do.
+  // refuses it too (0066). The listing can still move on, as practice ones do.
   if (testMode) {
     return (
       <p className="text-sm text-rc-muted">

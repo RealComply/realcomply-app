@@ -17,7 +17,7 @@ type SendBackPage = {
   flags: OpenFlag[];
   /** The latest send-back, done and not done, for the list at the top. */
   round: RoundCard[];
-  /** b4 goes to the licensee by email, so it can't be marked done here (0065). */
+  /** b4 goes to the licensee by email, so it can't be marked done here (0066). */
   priceStatementByEmail: boolean;
 };
 

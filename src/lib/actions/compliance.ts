@@ -2184,7 +2184,7 @@ export async function uploadEvidence(
   // could be put on b4 by calling it directly. On a price statement approved
   // by email the file would then sit beside an approval it was never part of.
   //
-  // The database refuses the same on b4 and sign_licensee (0065's guard), in
+  // The database refuses the same on b4 and sign_licensee (0066's guard), in
   // the same sentence. A refusal there comes back through
   // finalizeEvidenceRecord word for word, so the agent reads one message
   // whichever side says no first. Change both together.

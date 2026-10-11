@@ -17,7 +17,7 @@ import { signoffReviewFor } from "@/lib/data/signoff-review";
 // The statement is rendered from the snapshot taken when the link was issued,
 // never regenerated — see src/lib/signoff/statement.ts.
 //
-// Two kinds of request since 0065 (Adam, 12 Oct 2026): the final sign-off on
+// Two kinds of request since 0066 (Adam, 12 Oct 2026): the final sign-off on
 // the file, and the price statement (b4) before the listing is advertised.
 // The price statement page shows the words and the statement, and a box to
 // approve. No file, no send-back: those belong to the final sign-off, and a
@@ -91,7 +91,7 @@ export default async function SignoffPage({ params }: { params: Promise<{ token:
         )}
 
         {/* The statement, exactly as the database built it when the request
-            was made (0065): the listing, the ESP on the file, the words, and
+            was made (0066): the listing, the ESP on the file, the words, and
             what approving means. */}
         <div className="mt-4 whitespace-pre-line break-words rounded-card border border-rc-border bg-rc-bg-alt px-5 py-5 text-sm leading-relaxed text-rc-ink">
           {request.statement}

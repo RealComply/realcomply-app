@@ -50,7 +50,7 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
   const [justSent, setJustSent] = useState(false);
 
   // The final sign-off's links only. The page passes only those; this keeps
-  // a price statement request (b4, 0065) from ever reading as the signature.
+  // a price statement request (b4, 0066) from ever reading as the signature.
   const signed = signedLink(links, "sign_licensee");
   const live = liveLink(links, "sign_licensee");
   const expired = !signed && !live && linksFor(links, "sign_licensee").length > 0;

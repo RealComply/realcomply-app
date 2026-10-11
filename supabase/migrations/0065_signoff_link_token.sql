@@ -1,4 +1,7 @@
--- 0064, 11 October 2026: a sign-off link's token is always the database's.
+-- 0065, 11 October 2026: a sign-off link's token is always the database's.
+--
+-- Already run on live on 11 October 2026, when it was numbered 0064. It
+-- became 0065 when 0064_personal_invites reached main first.
 --
 -- Until now a signed-in person could create a licensee sign-off link with a
 -- token of their own choosing, and then use that token to sign the final

@@ -17,7 +17,7 @@ import { espRangeText } from "@/lib/rules/price-statement";
 //      price statement itself, word for word, and the estimated selling price
 //      on the file, the two things a licensee checks one against the other.
 //
-// The figures in it are fixed when the request is made (0065): the price
+// The figures in it are fixed when the request is made (0066): the price
 // statement as typed, and the ESP the database read off the file. A resend
 // shows the same words, so the email always matches the page behind it.
 

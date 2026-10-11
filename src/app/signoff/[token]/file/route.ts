@@ -9,7 +9,7 @@ import { signoffReviewFor } from "@/lib/data/signoff-review";
 //
 // The token is the only credential, the same as the page: a live link, or
 // not found. A final sign-off link only: signoffReviewFor finds nothing for a
-// price statement link (b4, 0065), so its token cannot open the file. Built
+// price statement link (b4, 0066), so its token cannot open the file. Built
 // with the server's access and scoped to the one listing and agency the
 // token names (buildAuditPack keeps every query inside it).
 //

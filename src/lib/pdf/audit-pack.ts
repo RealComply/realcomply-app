@@ -100,7 +100,7 @@ export async function buildAuditPack(
 
   // Either way it was given: in the app, or through the emailed sign-off link,
   // whose time is on the request (lib/rules/listing-signature.ts). Only a
-  // final sign-off request: a price statement request (b4, 0065) is never a
+  // final sign-off request: a price statement request (b4, 0066) is never a
   // signature on the file. And only on a card that is done (12 Oct 2026): a
   // name written on an open card is not a signature.
   const linkSignedAt = async (key: string): Promise<string | null> => {
@@ -216,7 +216,7 @@ export async function buildAuditPack(
     noneOnMarket: Boolean((byKey["a4c"]?.data as { noneOnMarket?: boolean } | undefined)?.noneOnMarket),
     agreementDate: byKey["a3"]?.event_date ?? null,
     // What the licensee approved before the listing was advertised, and how:
-    // in the app, or through the emailed link (b4, 0065).
+    // in the app, or through the emailed link (b4, 0066).
     priceApproval: priceApproval(byKey["b4"]),
     signatures: { agent: agentSignature, licensee: licenseeSignature },
     attachments,
