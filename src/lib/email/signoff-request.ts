@@ -105,7 +105,8 @@ export function buildSignoffRequestEmail(input: SignoffRequestEmail): { subject:
       { kind: "button", label: "Review the file", href: input.url },
       {
         kind: "note",
-        text: `This link is for you only and expires on ${input.expiresAt}. If you weren't expecting it, reply to this email — it goes straight to ${input.agentName}, not to an unattended mailbox.`,
+        // Adam's wording, 12 Oct 2026.
+        text: `This link is for you only and expires on ${input.expiresAt}. If you weren't expecting it, reply to this email and let us know.`,
       },
     ],
     footer: [

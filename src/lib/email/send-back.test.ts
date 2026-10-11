@@ -61,7 +61,7 @@ describe("sign-off request email to the licensee", () => {
     assert.match(m.text, /opens the full file to review/);
     assert.match(m.text, /send it back to Sam/);
     assert.match(m.text, /Review the file: https:\/\/www\.realcomply\.com\.au\/signoff\/tok/);
-    assert.match(m.text, /expires on 10 November 2026/);
+    assert.match(m.text, /This link is for you only and expires on 10 November 2026\. If you weren't expecting it, reply to this email and let us know\./);
   });
 
 });
