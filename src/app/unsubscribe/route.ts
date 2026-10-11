@@ -102,7 +102,11 @@ export async function POST(request: NextRequest) {
   return html(
     page(
       "You're unsubscribed",
-      "<p>We won't email you about RealComply again. If this was a mistake you can register again at realcomply.com.au.</p>",
+      // Wording from the early access invites brief (10 Oct 2026). The
+      // confirm button before this stays, by Adam's decision the same day:
+      // mail scanners open every link, and a one-click GET would unsubscribe
+      // people who never touched it.
+      "<p>You're unsubscribed. You won't get more emails about early access.</p>",
       null,
     ),
   );

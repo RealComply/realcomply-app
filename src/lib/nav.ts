@@ -1,6 +1,7 @@
 import {
   BookOpen,
   Building2,
+  CirclePlay,
   CreditCard,
   FileText,
   ClipboardCheck,
@@ -164,6 +165,22 @@ export const NAV_GROUPS: NavGroup[] = [
         Icon: CreditCard,
         payerOnly: true,
         keywords: ["subscription", "plan", "invoice", "invoices", "payment", "card", "price", "pricing", "cancel", "upgrade"],
+      },
+    ],
+  },
+  // Help, last (early access brief and mockup, 10 Oct 2026). Every role sees
+  // it: assistantSees is the "everyone" marker visibleNavLink already
+  // understands, so whatever a role's menu hides, this stays. Kept as its own
+  // group so a change to what agents see in the groups above never touches it.
+  {
+    heading: "Help",
+    links: [
+      {
+        href: "/dashboard/getting-started",
+        label: "Getting started",
+        Icon: CirclePlay,
+        assistantSees: true,
+        keywords: ["help", "video", "tour", "walkthrough", "how to", "demo"],
       },
     ],
   },
