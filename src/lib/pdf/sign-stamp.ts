@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 
 // Putting the signature ON the document.
 //
@@ -180,6 +181,7 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
+  const hand = await embedSignatureFont(pdf);
 
   const many = stamp.signatories.length > 1;
   const contentW = A4.w - MARGIN * 2;
@@ -283,7 +285,16 @@ async function drawSignaturePage(pdf: PDFDocument, stamp: SignatureStamp): Promi
     // A name the font cannot draw at all (one written in Chinese, say) would
     // leave the line blank; their account's email identifies them instead.
     const name = pdfText(s.name, italic).trim() || pdfText(s.email ?? "", italic).trim();
-    page.drawText(name, { x: MARGIN, y: y - sigSize, size: sigSize, font: italic, color: INK });
+    // The handwriting face Adam chose for signatures (12 Oct 2026), where it
+    // can draw the whole name; otherwise the italic, as before.
+    const inHand = signatureFontCanDraw(hand, s.name);
+    page.drawText(inHand ? s.name.trim() : name, {
+      x: MARGIN,
+      y: y - sigSize,
+      size: inHand ? sigSize * 1.15 : sigSize,
+      font: inHand ? hand : italic,
+      color: INK,
+    });
     y -= sigSize * 1.3;
     page.drawLine({
       start: { x: MARGIN, y },

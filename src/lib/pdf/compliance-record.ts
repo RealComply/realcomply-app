@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { formatSignedAt } from "./sign-stamp";
+import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { formatAuDate } from "@/lib/format-date";
@@ -47,7 +48,7 @@ const MARGIN = 56;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const BOTTOM = 64; // leave room for the footer rule and page number
 
-type Fonts = { regular: PDFFont; bold: PDFFont; italic: PDFFont };
+type Fonts = { regular: PDFFont; bold: PDFFont; italic: PDFFont; signature: PDFFont };
 
 /** Greedy wrap. pdf-lib has no text layout, so lines are measured by hand. */
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
@@ -354,6 +355,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     regular: await doc.embedFont(StandardFonts.Helvetica),
     bold: await doc.embedFont(StandardFonts.HelveticaBold),
     italic: await doc.embedFont(StandardFonts.HelveticaOblique),
+    signature: await embedSignatureFont(doc),
   };
 
   const c = new Cursor(doc, fonts);
@@ -625,9 +627,18 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       // drawn large in the italic face on a green signature line, then the
       // role and the date and time it was given: the trust reconciliation's
       // signature block (sign-stamp.ts), so the two read the same.
-      const SIG = 24;
+      // In the handwriting face Adam chose (signature-font.ts), or the plain
+      // italic for a name it cannot draw.
+      const hand = signatureFontCanDraw(c.fonts.signature, sig.typedName);
+      const SIG = hand ? 30 : 24;
       c.need(SIG * 1.3 + 12 + 9.5 * 1.45 + 9 * 1.45 + 10);
-      c.page.drawText(ascii(sig.typedName), { x: MARGIN, y: c.y - SIG, size: SIG, font: c.fonts.italic, color: INK });
+      c.page.drawText(hand ? sig.typedName.trim() : ascii(sig.typedName), {
+        x: MARGIN,
+        y: c.y - SIG,
+        size: SIG,
+        font: hand ? c.fonts.signature : c.fonts.italic,
+        color: INK,
+      });
       c.y -= SIG * 1.3;
       c.page.drawLine({ start: { x: MARGIN, y: c.y }, end: { x: MARGIN + 260, y: c.y }, thickness: 1, color: GREEN });
       c.y -= 12;
