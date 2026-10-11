@@ -10,6 +10,7 @@ import { sendTrialEndingEmail } from "@/lib/email/trial-ending";
 import { handleTrialWillEnd, willCancelAtTrialEnd, type TrialSubscription } from "@/lib/billing/trial-reminder";
 import type { Plan } from "@/lib/billing/entitlement";
 import { sendEndedEmail } from "@/lib/subscription-end/emails";
+import { sendEarlyAccessWelcome } from "@/lib/early-access/welcome";
 
 // Stripe's side of the conversation.
 //
@@ -110,7 +111,7 @@ async function handle(event: StripeEvent): Promise<void> {
         "GET",
         `/subscriptions/${session.subscription}`,
       );
-      await applySubscription(subscription, agencyId);
+      await applySubscription(subscription, agencyId, { trialJustStarted: true });
       return;
     }
 
@@ -162,6 +163,7 @@ async function handle(event: StripeEvent): Promise<void> {
 async function applySubscription(
   subscription: StripeSubscription,
   agencyIdFromSession: string | null,
+  opts: { trialJustStarted?: boolean } = {},
 ): Promise<void> {
   const supabase = createServiceClient();
 
@@ -222,6 +224,16 @@ async function applySubscription(
   const { error } = await supabase.from("agencies").update(update).eq("id", agencyId);
   if (error) {
     throw new Error(`agencies update failed: ${error.message}`);
+  }
+
+  // The card is in and the trial has started: the moment someone from the
+  // early access list gets their welcome (Adam, 11 Oct 2026), and only from
+  // checkout, so a later renewal never sends one. Once only, switched off
+  // unless EARLY_ACCESS_WELCOME_EMAIL=on, and never throws. See
+  // lib/early-access/welcome.ts.
+  if (opts.trialJustStarted && (update.status === "trialing" || update.status === "active")) {
+    const outcome = await sendEarlyAccessWelcome(supabase, agencyId);
+    if (outcome !== "not_early_access") console.info("early access welcome:", outcome, agencyId);
   }
 
   // The subscription has ended. The database has just set ended_at (0054),

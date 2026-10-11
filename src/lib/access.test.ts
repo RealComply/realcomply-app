@@ -67,12 +67,13 @@ describe("visibleNavLink", () => {
       "CPD",
       "Sign-offs",
       "SG Manual",
+      "Getting started",
     ]);
   });
 
   it("the licensee keeps the whole menu, Billing included", () => {
     const menu = menuFor(true);
-    for (const label of ["Office overview", "Trust accounts", "Team", "Billing"]) {
+    for (const label of ["Office overview", "Trust accounts", "Team", "Billing", "Getting started"]) {
       assert.ok(menu.includes(label), label);
     }
     assert.equal(menu.length, NAV_LINKS.length);
@@ -82,7 +83,8 @@ describe("visibleNavLink", () => {
     const menu = NAV_LINKS.filter((l) =>
       visibleNavLink(l, { actsAsLicensee: false, pmEnabled: true, isAccountHolder: true }),
     ).map((l) => l.label);
-    assert.deepEqual(menu, [...menuFor(false), "Billing"]);
+    // Billing sits in Agency, above the Help group, so compare as sets.
+    assert.deepEqual([...menu].sort(), [...menuFor(false), "Billing"].sort());
   });
 
   it("an agent who is not the account holder does not get Billing", () => {
