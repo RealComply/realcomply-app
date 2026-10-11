@@ -11,6 +11,8 @@ import { HandToAgent } from "@/components/compliance/HandToAgent";
 import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { signoffLinksFor } from "@/lib/data/signoff-links";
+import { openFlagsFor, reviewCardsFor } from "@/lib/data/send-backs";
+import { SendBackBanner, SendBackProvider } from "@/components/compliance/SendBack";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
@@ -108,6 +110,16 @@ export default async function PropertyPage({
 
   const ruleCtx = await ruleContextFor(supabase, p);
 
+  // The licensee's review (0062): cards sent back and not yet fixed, for
+  // everyone; the cards the licensee can flag, for the licensee in charge on
+  // someone else's listing only.
+  const [openFlags, reviewCards] = await Promise.all([
+    openFlagsFor(supabase, id),
+    profile.is_licensee_in_charge && p.created_by !== profile.id
+      ? reviewCardsFor(supabase, p, (propertyItemRows ?? []) as PropertyItem[])
+      : Promise.resolve([]),
+  ]);
+
   // Held at the first earlier stage with a required card not complete (Adam,
   // 3 Oct 2026). Later tabs lock and the page opens on that stage; the stored
   // stage and every later card are untouched, so completing the card puts the
@@ -178,7 +190,9 @@ export default async function PropertyPage({
   const hasSourceDocs = ["a3", "b1", "a4"].some((key) => allItems[key]?.evidence_path);
 
   return (
-    <>
+    <SendBackProvider
+      value={{ propertyId: p.id, flags: openFlags, reviewCards, agentName: personName(p.created_by) }}
+    >
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
@@ -222,6 +236,8 @@ export default async function PropertyPage({
             <StageProgressBar propertyId={p.id} stages={progress} viewedStage={viewedStage} />
           </div>
         </div>
+
+        <SendBackBanner />
 
         <div className="mt-3">
           <p className="text-sm text-rc-muted">
@@ -391,6 +407,6 @@ export default async function PropertyPage({
         )}
 
       </main>
-    </>
+    </SendBackProvider>
   );
 }

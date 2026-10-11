@@ -47,6 +47,35 @@ async function tokenFor(requestId: string): Promise<string | null> {
 }
 
 /**
+ * Where the email sends the licensee (Adam, 12 Oct 2026). A licensee in
+ * charge with an account in this office reviews and signs inside the app,
+ * where they see the whole listing: the link goes to the listing's Settled
+ * stage. Anyone else gets the emailed page, with the file to review on it.
+ * Read with the server's access: an agent's session may not see the
+ * licensee's email address. Null means the emailed page.
+ */
+async function inAppListingUrl(requestId: string, sentTo: string): Promise<string | null> {
+  const service = createServiceClient();
+  const { data: request } = await service
+    .from("property_signoff_requests")
+    .select("agency_id, property_id")
+    .eq("id", requestId)
+    .maybeSingle();
+  const r = request as { agency_id: string; property_id: string } | null;
+  if (!r) return null;
+  const { data: licensee } = await service
+    .from("profiles")
+    .select("id")
+    .eq("agency_id", r.agency_id)
+    .eq("is_licensee_in_charge", true)
+    .is("archived_at", null)
+    .ilike("email", sentTo.trim())
+    .limit(1)
+    .maybeSingle();
+  return licensee ? `${SITE_URL}/dashboard/${r.property_id}?stage=5` : null;
+}
+
+/**
  * Sends the link, and records honestly whether it went.
  *
  * Separated from issuing so the resend path and the first send are the same
@@ -71,11 +100,13 @@ async function deliverSignoffEmail(
 ): Promise<boolean> {
   const token = await tokenFor(args.requestId);
   if (!token) return false;
+  const inAppUrl = await inAppListingUrl(args.requestId, args.sentTo);
   const { subject, text, html } = buildSignoffRequestEmail({
     agentName: args.agentName,
     agencyName: args.agencyName,
     propertyAddress: args.propertyAddress,
-    url: `${SITE_URL}/signoff/${token}`,
+    url: inAppUrl ?? `${SITE_URL}/signoff/${token}`,
+    inApp: inAppUrl !== null,
     expiresAt: formatAuDate(args.expiresAt.slice(0, 10)),
     agreementDate: args.agreementDate ? formatAuDate(args.agreementDate.slice(0, 10)) : null,
     espLow: args.espLow,
@@ -183,6 +214,21 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
 
   if (!property) {
     return { error: "Couldn't find that property." };
+  }
+
+  // After the licensee sent the file back (0062): every flagged card fixed,
+  // then the agent signs again, before it goes back to them. The database
+  // refuses the link while a card is open; this says why in plain words.
+  const [{ data: openFlags }, { data: sendBacks }, { data: agentSig }] = await Promise.all([
+    supabase.from("listing_send_back_items").select("id").eq("property_id", propertyId).is("cleared_at", null).limit(1),
+    supabase.from("listing_send_backs").select("id").eq("property_id", propertyId).limit(1),
+    supabase.from("property_items").select("status").eq("property_id", propertyId).eq("item_key", "sign_agent").maybeSingle(),
+  ]);
+  if ((openFlags ?? []).length > 0) {
+    return { error: "Some cards your licensee sent back aren't marked Changes made yet. Fix them first." };
+  }
+  if ((sendBacks ?? []).length > 0 && (agentSig as { status?: string } | null)?.status !== "done") {
+    return { error: "Sign the file again (Agent signature, above) before sending it back to your licensee." };
   }
 
   const { data: agency } = await supabase

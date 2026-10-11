@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Logo } from "@/components/Logo";
 import { getSignoffRequest } from "@/lib/actions/signoff-links";
 import { SignoffForm } from "@/components/signoff/SignoffForm";
+import { ReviewAndSign } from "@/components/signoff/ReviewAndSign";
+import { signoffReviewFor } from "@/lib/data/signoff-review";
 
 // The public licensee sign-off page.
 //
@@ -29,7 +31,7 @@ export const metadata: Metadata = {
 // yet. The shape is the same: params is a Promise in this version of Next.
 export default async function SignoffPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const request = await getSignoffRequest(token);
+  const [request, review] = await Promise.all([getSignoffRequest(token), signoffReviewFor(token)]);
 
   // One state for every failure — expired, withdrawn, already signed, or never
   // existed. Distinguishing them would let anyone with a guess find out which
@@ -79,7 +81,21 @@ export default async function SignoffPage({ params }: { params: Promise<{ token:
         {request.statement}
       </div>
 
-      <SignoffForm token={token} />
+      {/* THE FILE, BEFORE THE SIGNATURE (Adam, 12 Oct 2026). Until then the
+          licensee was shown the statement and a box to type their name, and
+          could not see what they were signing. The audit pack is the file,
+          exactly as the agent downloads it, marked as a draft until signed.
+          The signature box stays last, so it is reached by way of the file. */}
+      {review ? (
+        <ReviewAndSign
+          token={token}
+          propertyAddress={request.property_address}
+          cards={review.cards}
+          agentName={review.agentName}
+        />
+      ) : (
+        <SignoffForm token={token} />
+      )}
 
       <p className="mt-8 border-t border-rc-border pt-5 text-xs leading-relaxed text-rc-muted">
         This request was sent through RealComply, the compliance system {request.agency_name} uses. RealComply
