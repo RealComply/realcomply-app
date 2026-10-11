@@ -3,25 +3,59 @@ import { fileForUpload } from "@/lib/documents/heic-in-the-browser";
 
 // REVERSAL 2 Oct 2026 (Adam): source documents are kept for the life of the subscription. Do NOT purge at settlement. They are deleted with everything else 14 days after the subscription ends.
 export const EVIDENCE_BUCKET = "compliance-evidence";
-// The cap on anything uploaded as evidence.
+// The cap on anything uploaded as evidence: 150 MB (Adam, 9 Oct 2026).
 //
-// Raised from 20MB to 50MB on 25 Aug 2026. Adam: "there is a size limit of
-// 20MB which will stop many contract for sale being uploaded" — and he is
-// right. A NSW contract for sale with the prescribed documents attached is
-// routinely 10-20MB and not rarely more; the contracts in his own Dropbox run
-// to 36MB.
-//
-// 20MB was ours, not a platform limit. The bucket sets no file_size_limit
-// (0002_evidence_storage.sql), so it inherits the project-level global limit,
-// which Supabase defaults to 50MB — hence 50MB here rather than something
-// larger. Going beyond that needs the project setting raised first, and above
-// roughly 6MB Supabase's own guidance is to use resumable uploads, which this
-// does not yet do: a 45MB file over a phone connection at an open home is the
-// case that will fail. See RealComply-launch-readiness.md.
+// Off-the-plan contracts with their annexures run well past the old 50 MB.
+// The same limit is set on the bucket itself (file_size_limit, 0056), so this
+// check is the friendly message and the bucket is the rule. The project-wide
+// Storage limit in the Supabase dashboard has to be at least this or the
+// bucket setting is capped by it.
 //
 // Compressing a contract to fit was considered and rejected. It is a legal
 // document; altering it to save storage is not a trade this product makes.
-export const MAX_EVIDENCE_BYTES = 50 * 1024 * 1024; // 50MB
+export const MAX_EVIDENCE_BYTES = 150 * 1024 * 1024; // 150 MB
+
+// What may be uploaded: PDF, photos, Word, Excel and saved emails (Adam,
+// 9 Oct 2026). The same list is set on the bucket (allowed_mime_types, 0056).
+//
+// By extension as well as by type, because browsers are unreliable about the
+// type of a saved email: a .msg often arrives as "" or application/octet-stream,
+// and a real email refused for that would be our fault, not the agent's. The
+// type sent to Storage is then taken from this table, so the bucket's own
+// check sees the right one.
+const EVIDENCE_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  heic: "image/heic",
+  heif: "image/heif",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  eml: "message/rfc822",
+  msg: "application/vnd.ms-outlook",
+};
+const ALLOWED_TYPES = new Set(Object.values(EVIDENCE_TYPES));
+
+export const TOO_LARGE_MESSAGE = "This file is over 150 MB. Please upload a smaller copy.";
+export const WRONG_TYPE_MESSAGE =
+  "This file type isn't accepted. Please upload a PDF, photo, Word, Excel or saved email.";
+
+/** The type to store a file under, or null if it is not one we accept. */
+export function evidenceContentType(file: { name: string; type: string }): string | null {
+  const ext = file.name.toLowerCase().split(".").pop() ?? "";
+  if (ALLOWED_TYPES.has(file.type)) return file.type;
+  return EVIDENCE_TYPES[ext] ?? null;
+}
+
+/** The plain message to show if this file cannot be uploaded, else null. */
+export function evidenceFileProblem(file: { name: string; type: string; size: number }): string | null {
+  if (evidenceContentType(file) === null) return WRONG_TYPE_MESSAGE;
+  if (file.size > MAX_EVIDENCE_BYTES) return TOO_LARGE_MESSAGE;
+  return null;
+}
 
 export function sanitizeFileName(name: string): string {
   // Keep it simple and storage-path-safe; the original name is preserved
@@ -116,21 +150,19 @@ export async function uploadEvidenceObject(
   params: { path: string; file: File },
 ): Promise<{ error: string | null; file: File }> {
   const { path } = params;
+  // Checked on the file as chosen, before any conversion, so a refused file
+  // never costs the agent a HEIC conversion first.
+  const problem = evidenceFileProblem(params.file);
+  if (problem) return { error: problem, file: params.file };
   const file = await fileForUpload(params.file);
 
-  // Checked after conversion, not before: what matters is the size of the
-  // thing being stored. A JPEG off a HEIC is usually the larger of the two.
-  if (file.size > MAX_EVIDENCE_BYTES) {
-    // The message used to say 20 MB, which stopped being true on 25 Aug when
-    // the cap went to 50 — a stale number in an error is worse than no number,
-    // because someone will act on it and compress a legal document to fit.
-    const mb = Math.round(MAX_EVIDENCE_BYTES / (1024 * 1024));
-    return { error: `${file.name} is larger than the ${mb} MB limit.`, file };
-  }
+  // And the size again after conversion: what is stored is what counts, and a
+  // JPEG off a HEIC is usually the larger of the two.
+  if (file.size > MAX_EVIDENCE_BYTES) return { error: TOO_LARGE_MESSAGE, file };
 
   const { error } = await supabase.storage
     .from(EVIDENCE_BUCKET)
-    .upload(path, file, { contentType: file.type || undefined });
+    .upload(path, file, { contentType: evidenceContentType(file) ?? undefined });
 
   return { error: error?.message ?? null, file };
 }
