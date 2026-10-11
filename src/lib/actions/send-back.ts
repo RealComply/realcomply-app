@@ -1,5 +1,6 @@
 "use server";
 
+import { appBaseUrl } from "@/lib/site-url";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -22,7 +23,6 @@ export type SendBackState = { error: string | null; done?: boolean };
 
 export type FlagInput = { item_key: string; note: string; may_be_breach: boolean };
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
 
 /** Reads and checks the flagged cards from the form. Null when there are none. */
 function flagsFrom(formData: FormData): FlagInput[] | string {
@@ -79,7 +79,7 @@ async function emailAgent(propertyId: string, flags: FlagInput[], licenseeName: 
       agentName: a.full_name?.split(" ")[0] ?? null,
       licenseeName,
       propertyAddress: p.address,
-      url: `${SITE_URL}/dashboard/${propertyId}`,
+      url: `${appBaseUrl()}/dashboard/${propertyId}`,
       cards: flags.map((f) => {
         const item = getItem(f.item_key);
         return {

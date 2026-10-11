@@ -1,5 +1,6 @@
 "use server";
 
+import { appBaseUrl } from "@/lib/site-url";
 import { createServiceClient } from "@/lib/supabase/service";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -12,7 +13,6 @@ import { buildSignoffRequestEmail } from "@/lib/email/signoff-request";
 import { formatAuDate } from "@/lib/format-date";
 import type { PropertyItem } from "@/lib/types";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
 
 // Issuing and revoking licensee sign-off links. See
 // RealComply-licensee-signoff-link.md and 0014_licensee_signoff_links.sql.
@@ -72,7 +72,7 @@ async function inAppListingUrl(requestId: string, sentTo: string): Promise<strin
     .ilike("email", sentTo.trim())
     .limit(1)
     .maybeSingle();
-  return licensee ? `${SITE_URL}/dashboard/${r.property_id}?stage=5` : null;
+  return licensee ? `${appBaseUrl()}/dashboard/${r.property_id}?stage=5` : null;
 }
 
 /**
@@ -105,7 +105,7 @@ async function deliverSignoffEmail(
     agentName: args.agentName,
     agencyName: args.agencyName,
     propertyAddress: args.propertyAddress,
-    url: inAppUrl ?? `${SITE_URL}/signoff/${token}`,
+    url: inAppUrl ?? `${appBaseUrl()}/signoff/${token}`,
     inApp: inAppUrl !== null,
     expiresAt: formatAuDate(args.expiresAt.slice(0, 10)),
     agreementDate: args.agreementDate ? formatAuDate(args.agreementDate.slice(0, 10)) : null,
