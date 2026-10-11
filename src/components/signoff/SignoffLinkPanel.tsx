@@ -165,7 +165,7 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
           <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">
             {expired
               ? "The last link expired without being signed. A new one is good for another 30 days."
-              : "Emails your licensee in charge a link they can open and sign without a RealComply login. Their reply comes to you."}
+              : "Emails your licensee in charge a link to review the file and sign it, or send it back for changes. No RealComply login needed. Their reply comes to you."}
           </p>
         </>
       )}

@@ -50,7 +50,6 @@ import {
   setReserve,
   recordAuctionOutcome,
   signItem,
-  sendToLicensee,
   generateExport,
   uploadEvidence,
   removeEvidence,
@@ -2840,7 +2839,6 @@ function SendItem({
   current?: PropertyItem;
   signoffLinks: SignoffLink[];
 }) {
-  const action = sendToLicensee.bind(null, propertyId);
   const isSignLicensee = item.key === "send_licensee";
   return (
     <ItemShell
@@ -2852,18 +2850,11 @@ function SendItem({
       // it carries the link, its expiry and any email that failed to send.
       foldable={!isSignLicensee || signoffLinks.some((l) => l.signedAt !== null)}
     >
-      {current?.status === "done" ? (
-        <p className="text-sm text-rc-muted">Marked sent.</p>
-      ) : (
-        <form action={action}>
-          <button
-            type="submit"
-            className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
-          >
-            Mark sent to licensee
-          </button>
-        </form>
-      )}
+      {/* NO "Mark sent to licensee" (Adam, 12 Oct 2026). Sending the link is
+          the only way this step is done: on an agent's listing the licensee
+          signs only through the link, so a hand-ticked "sent" let the file
+          look finished without the licensee ever seeing it. The panel below
+          says when it went and when it was signed. */}
       {isSignLicensee && <SignoffLinkPanel propertyId={propertyId} links={signoffLinks} />}
     </ItemShell>
   );
