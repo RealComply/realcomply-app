@@ -84,7 +84,7 @@ export function buildSignoffRequestEmail(input: SignoffRequestEmail): { subject:
       },
       {
         kind: "paragraph",
-        text: "You don't need an account or a password. The link below opens a page with the full statement, and you sign by typing your name.",
+        text: `The link below opens the full file to review. You can sign it there by typing your name, or send it back to ${input.agentName} with notes on anything that needs changing. You don't need an account or a password.`,
       },
       { kind: "label", text: "What you'll be signing against" },
       {
@@ -102,10 +102,11 @@ export function buildSignoffRequestEmail(input: SignoffRequestEmail): { subject:
           },
         ],
       },
-      { kind: "button", label: "Read the statement and sign", href: input.url },
+      { kind: "button", label: "Review the file", href: input.url },
       {
         kind: "note",
-        text: `This link is for you only and expires on ${input.expiresAt}. If you weren't expecting it, reply to this email — it goes straight to ${input.agentName}, not to an unattended mailbox.`,
+        // Adam's wording, 12 Oct 2026.
+        text: `This link is for you only and expires on ${input.expiresAt}. If you weren't expecting it, reply to this email and let us know.`,
       },
     ],
     footer: [

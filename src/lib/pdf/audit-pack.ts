@@ -220,8 +220,12 @@ export async function buildAuditPack(
   return { pdf, filename };
 }
 
-/** The download itself: one file in the Downloads folder, no dialog. */
-export function auditPackResponse(pack: { pdf: Uint8Array; filename: string }): Response {
+/**
+ * The download itself: one file in the Downloads folder, no dialog. Or, with
+ * inline, opened in the browser's own PDF viewer (the licensee reading the
+ * file on the sign-off page, 12 Oct 2026).
+ */
+export function auditPackResponse(pack: { pdf: Uint8Array; filename: string }, inline = false): Response {
   const { pdf, filename } = pack;
   return new Response(pdf as BodyInit, {
     headers: {
@@ -229,7 +233,7 @@ export function auditPackResponse(pack: { pdf: Uint8Array; filename: string }): 
       // Both forms: the plain one for older browsers, the UTF-8 one for
       // everything current. An address with an apostrophe in it should not
       // produce a file called "download".
-      "Content-Disposition": `attachment; filename="${filename.replace(/"/g, "")}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${filename.replace(/"/g, "")}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
       "Cache-Control": "no-store",
     },
   });

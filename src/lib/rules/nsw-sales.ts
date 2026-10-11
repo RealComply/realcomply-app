@@ -1498,8 +1498,9 @@ const items: ComplianceItem[] = [
     label: "Send to licensee",
     // The old wording said email delivery wasn't wired up. It has been since
     // 17 Sep, and sending the link now marks this done (10 Oct 2026).
+    // No "mark it sent" any more (Adam, 12 Oct 2026): the link is the only way.
     description:
-      "Hand the file to the licensee for sign-off. Sending the sign-off link below marks this done once the email goes. If you hand it over another way, mark it sent.",
+      "Send the file to the licensee for sign-off. Sending the sign-off link below marks this done once the email goes. The licensee reviews the file, then signs it or sends it back for changes.",
     legalBasis: "Supports s32, Property and Stock Agents Act 2002 (NSW) — duty to properly supervise the business",
     requiresDate: false,
     requiredForStageCompletion: true,

@@ -69,3 +69,15 @@ describe("sameInstant", () => {
     assert.equal(sameInstant(null, "2026-10-11T01:02:03Z"), false);
   });
 });
+
+describe("appBaseUrl", () => {
+  it("is the live site, or the branch's own address on a preview", async () => {
+    const { appBaseUrl } = await import("@/lib/site-url");
+    assert.equal(appBaseUrl({ NEXT_PUBLIC_SITE_URL: "https://www.realcomply.com.au" }), "https://www.realcomply.com.au");
+    assert.equal(
+      appBaseUrl({ VERCEL_ENV: "preview", VERCEL_BRANCH_URL: "x-git-b.vercel.app", NEXT_PUBLIC_SITE_URL: "https://www.realcomply.com.au" }),
+      "https://x-git-b.vercel.app",
+    );
+    assert.equal(appBaseUrl({ VERCEL_ENV: "production", VERCEL_BRANCH_URL: "x.vercel.app" }), "https://www.realcomply.com.au");
+  });
+});

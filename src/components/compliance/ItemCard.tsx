@@ -22,6 +22,7 @@ import {
 } from "@/lib/rules/aml-precommencement";
 import { FileDropZone } from "@/components/FileDropZone";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
+import { FlagNote, useFlagFor } from "@/components/compliance/SendBack";
 import { useViewerAccess } from "@/components/ViewerAccess";
 import type { SignoffLink } from "@/lib/data/signoff-links";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
@@ -49,7 +50,6 @@ import {
   setReserve,
   recordAuctionOutcome,
   signItem,
-  sendToLicensee,
   generateExport,
   uploadEvidence,
   removeEvidence,
@@ -225,7 +225,9 @@ function ItemShell({
     (current?.data as { aiDraft?: { autoCompleted?: boolean } } | undefined)?.aiDraft?.autoCompleted,
   );
   const [evidenceUnsaved, setEvidenceUnsaved] = useState(false);
-  const canFold = isDone && foldable && !evidenceUnsaved;
+  // A card the licensee sent back stays open until it is marked done (0063).
+  const flag = useFlagFor(item.key);
+  const canFold = isDone && foldable && !evidenceUnsaved && !flag;
   const [folded, setFolded] = useState(isDone && !autoCompleted);
   const [foldedFor, setFoldedFor] = useState(status);
   if (status !== foldedFor) {
@@ -236,7 +238,12 @@ function ItemShell({
   const bodyId = `item-body-${item.key}`;
 
   return (
-    <div className={`rounded-card border border-rc-border bg-white shadow-card ${collapsed ? "px-4 py-3" : "p-4"}`}>
+    // id: the send-back list jumps straight here (12 Oct 2026). The scroll
+    // margin keeps the card clear of the pinned address bar.
+    <div
+      id={`card-${item.key}`}
+      className={`scroll-mt-[calc(var(--rc-userbar-h,0px)+150px)] rounded-card border border-rc-border bg-white shadow-card ${collapsed ? "px-4 py-3" : "p-4"}`}
+    >
       <div
         className={`flex justify-between gap-3 ${collapsed ? "items-center" : "items-start"} ${canFold ? "cursor-pointer" : ""}`}
         // The whole row is a click target on a done card. The arrow button
@@ -315,6 +322,7 @@ function ItemShell({
       </div>
       <div id={bodyId} hidden={collapsed}>
       <DictationSuspended.Provider value={collapsed}>
+      {flag && <FlagNote flag={flag} />}
       <div className="mt-3">{children}</div>
       {/* An attached file always keeps its control, whatever the rule says.
           Hiding one would strand a document nobody can see or remove — and
@@ -2836,7 +2844,6 @@ function SendItem({
   current?: PropertyItem;
   signoffLinks: SignoffLink[];
 }) {
-  const action = sendToLicensee.bind(null, propertyId);
   const isSignLicensee = item.key === "send_licensee";
   return (
     <ItemShell
@@ -2848,18 +2855,11 @@ function SendItem({
       // it carries the link, its expiry and any email that failed to send.
       foldable={!isSignLicensee || signoffLinks.some((l) => l.signedAt !== null)}
     >
-      {current?.status === "done" ? (
-        <p className="text-sm text-rc-muted">Marked sent.</p>
-      ) : (
-        <form action={action}>
-          <button
-            type="submit"
-            className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
-          >
-            Mark sent to licensee
-          </button>
-        </form>
-      )}
+      {/* NO "Mark sent to licensee" (Adam, 12 Oct 2026). Sending the link is
+          the only way this step is done: on an agent's listing the licensee
+          signs only through the link, so a hand-ticked "sent" let the file
+          look finished without the licensee ever seeing it. The panel below
+          says when it went and when it was signed. */}
       {isSignLicensee && <SignoffLinkPanel propertyId={propertyId} links={signoffLinks} />}
     </ItemShell>
   );

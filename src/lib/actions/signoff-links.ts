@@ -1,5 +1,6 @@
 "use server";
 
+import { appBaseUrl } from "@/lib/site-url";
 import { createServiceClient } from "@/lib/supabase/service";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -12,7 +13,6 @@ import { buildSignoffRequestEmail } from "@/lib/email/signoff-request";
 import { formatAuDate } from "@/lib/format-date";
 import type { PropertyItem } from "@/lib/types";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
 
 // Issuing and revoking licensee sign-off links. See
 // RealComply-licensee-signoff-link.md and 0014_licensee_signoff_links.sql.
@@ -75,7 +75,10 @@ async function deliverSignoffEmail(
     agentName: args.agentName,
     agencyName: args.agencyName,
     propertyAddress: args.propertyAddress,
-    url: `${SITE_URL}/signoff/${token}`,
+    // Every licensee, with an account or not, gets the sign-off page: the
+    // file on the page, sign below it, or send it back (Adam, 12 Oct 2026).
+    // On an agent's listing the app has no Licensee signature card to land on.
+    url: `${appBaseUrl()}/signoff/${token}`,
     expiresAt: formatAuDate(args.expiresAt.slice(0, 10)),
     agreementDate: args.agreementDate ? formatAuDate(args.agreementDate.slice(0, 10)) : null,
     espLow: args.espLow,
@@ -183,6 +186,21 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
 
   if (!property) {
     return { error: "Couldn't find that property." };
+  }
+
+  // After the licensee sent the file back (0062): every flagged card fixed,
+  // then the agent signs again, before it goes back to them. The database
+  // refuses the link while a card is open; this says why in plain words.
+  const [{ data: openFlags }, { data: sendBacks }, { data: agentSig }] = await Promise.all([
+    supabase.from("listing_send_back_items").select("id").eq("property_id", propertyId).is("cleared_at", null).limit(1),
+    supabase.from("listing_send_backs").select("id").eq("property_id", propertyId).limit(1),
+    supabase.from("property_items").select("status").eq("property_id", propertyId).eq("item_key", "sign_agent").maybeSingle(),
+  ]);
+  if ((openFlags ?? []).length > 0) {
+    return { error: "Some cards your licensee sent back aren't done yet. Fix them and mark them done first." };
+  }
+  if ((sendBacks ?? []).length > 0 && (agentSig as { status?: string } | null)?.status !== "done") {
+    return { error: "Sign the file again (Agent signature, above) before sending it back to your licensee." };
   }
 
   const { data: agency } = await supabase

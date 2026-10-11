@@ -1,4 +1,5 @@
 import { unsubscribeToken } from "./early-access-ack";
+import { appBaseUrl } from "@/lib/site-url";
 
 // The two emails an early access registrant gets (brief, 10 Oct 2026, copy and
 // design approved by Adam):
@@ -21,22 +22,9 @@ export const ADMIN_COPY_ADDRESS = "admin@realcomply.com.au";
 export const SENDER_NAME = "RealComply";
 export const INVITATION_SUBJECT = "Your invitation to RealComply";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
-
-/**
- * Where links and pictures in these emails point.
- *
- * The live site, except on a Vercel preview, where it is that branch's own
- * stable address. Previews share the production database, so an invitation
- * sent from a preview to a test address must also be signed up through the
- * preview: that is where the new welcome code runs. On the live site this is
- * always NEXT_PUBLIC_SITE_URL.
- */
+/** Where links and pictures in these emails point. See lib/site-url.ts. */
 export function emailBaseUrl(): string {
-  if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_BRANCH_URL) {
-    return `https://${process.env.VERCEL_BRANCH_URL}`;
-  }
-  return SITE_URL;
+  return appBaseUrl();
 }
 
 export function invitationUrl(token: string, base = emailBaseUrl()): string {
