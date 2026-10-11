@@ -238,7 +238,12 @@ function ItemShell({
   const bodyId = `item-body-${item.key}`;
 
   return (
-    <div className={`rounded-card border border-rc-border bg-white shadow-card ${collapsed ? "px-4 py-3" : "p-4"}`}>
+    // id: the send-back list jumps straight here (12 Oct 2026). The scroll
+    // margin keeps the card clear of the pinned address bar.
+    <div
+      id={`card-${item.key}`}
+      className={`scroll-mt-[calc(var(--rc-userbar-h,0px)+150px)] rounded-card border border-rc-border bg-white shadow-card ${collapsed ? "px-4 py-3" : "p-4"}`}
+    >
       <div
         className={`flex justify-between gap-3 ${collapsed ? "items-center" : "items-start"} ${canFold ? "cursor-pointer" : ""}`}
         // The whole row is a click target on a done card. The arrow button

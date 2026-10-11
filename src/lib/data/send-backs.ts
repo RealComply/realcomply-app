@@ -17,6 +17,66 @@ export type OpenFlag = {
   sentBackAt: string;
 };
 
+/** One card from the latest send-back, for the agent's to-do list. */
+export type RoundCard = {
+  id: string;
+  itemKey: string;
+  label: string;
+  stage: number;
+  note: string;
+  mayBeBreach: boolean;
+  done: boolean;
+};
+
+/**
+ * The latest send-back on this listing, every card in it, done or not, so the
+ * agent's list can tick them off one by one (Adam, 12 Oct 2026). Null when
+ * the file was never sent back, or when it has already gone back to the
+ * licensee since (a sign-off link issued after the send-back).
+ */
+export async function sendBackRoundFor(
+  supabase: SupabaseClient,
+  propertyId: string,
+  latestLinkCreatedAt: string | null,
+): Promise<{ sentBackAt: string; cards: RoundCard[] } | null> {
+  const { data: back } = await supabase
+    .from("listing_send_backs")
+    .select("id, sent_back_at")
+    .eq("property_id", propertyId)
+    .order("sent_back_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const b = back as { id: string; sent_back_at: string } | null;
+  if (!b) return null;
+  if (latestLinkCreatedAt && new Date(latestLinkCreatedAt) > new Date(b.sent_back_at)) return null;
+
+  const { data: items } = await supabase
+    .from("listing_send_back_items")
+    .select("id, item_key, note, may_be_breach, cleared_at")
+    .eq("send_back_id", b.id);
+  const cards = ((items ?? []) as Array<{
+    id: string;
+    item_key: string;
+    note: string;
+    may_be_breach: boolean;
+    cleared_at: string | null;
+  }>)
+    .map((r) => {
+      const item = getItem(r.item_key);
+      return {
+        id: r.id,
+        itemKey: r.item_key,
+        label: item?.label ?? r.item_key,
+        stage: item?.stage ?? 0,
+        note: r.note,
+        mayBeBreach: r.may_be_breach,
+        done: r.cleared_at !== null,
+      };
+    })
+    .sort((a, b2) => a.stage - b2.stage || a.label.localeCompare(b2.label));
+  return { sentBackAt: b.sent_back_at, cards };
+}
+
 /** A card the licensee can flag. */
 export type ReviewCard = { key: string; label: string; stage: number };
 

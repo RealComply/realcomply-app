@@ -11,7 +11,7 @@ import { HandToAgent } from "@/components/compliance/HandToAgent";
 import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { signoffLinksFor } from "@/lib/data/signoff-links";
-import { openFlagsFor } from "@/lib/data/send-backs";
+import { openFlagsFor, sendBackRoundFor } from "@/lib/data/send-backs";
 import { SendBackBanner, SendBackProvider } from "@/components/compliance/SendBack";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
@@ -110,8 +110,16 @@ export default async function PropertyPage({
 
   const ruleCtx = await ruleContextFor(supabase, p);
 
-  // Cards the licensee sent back and the agent has not fixed yet (0062).
-  const openFlags = await openFlagsFor(supabase, id);
+  // Cards the licensee sent back and the agent has not fixed yet (0062), and
+  // the whole latest send-back for the to-do list at the top.
+  const latestLink = signoffLinks.reduce<string | null>(
+    (latest, l) => (!latest || l.createdAt > latest ? l.createdAt : latest),
+    null,
+  );
+  const [openFlags, round] = await Promise.all([
+    openFlagsFor(supabase, id),
+    sendBackRoundFor(supabase, id, latestLink),
+  ]);
 
   // Held at the first earlier stage with a required card not complete (Adam,
   // 3 Oct 2026). Later tabs lock and the page opens on that stage; the stored
@@ -184,7 +192,7 @@ export default async function PropertyPage({
 
   return (
     <SendBackProvider
-      value={{ propertyId: p.id, flags: openFlags }}
+      value={{ propertyId: p.id, flags: openFlags, round: round?.cards ?? [] }}
     >
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
