@@ -34,6 +34,9 @@ export function SendBackForm({
   }, [state.done, onSent]);
   const [open, setOpen] = useState(false);
   const [flags, setFlags] = useState<Record<string, Flag>>({});
+  // Said, not silently disabled (Adam, 12 Oct 2026: the button "isn't
+  // working" — it was greyed out because a ticked card had no note yet).
+  const [missing, setMissing] = useState<string | null>(null);
   const who = agentName?.trim() || "the agent";
 
   if (state.done) {
@@ -64,7 +67,21 @@ export function SendBackForm({
   const stages = [...new Set(cards.map((c) => c.stage))].sort((a, b) => a - b);
 
   return (
-    <form action={formAction} className="mt-6 rounded-card border border-rc-border bg-white p-4">
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        const blank = chosen.find(([, f]) => !f.note.trim());
+        if (blank) {
+          e.preventDefault();
+          const label = cards.find((c) => c.key === blank[0])?.label ?? "a ticked card";
+          setMissing(`Add a note to "${label}" saying what needs changing.`);
+          document.getElementById(`note-${blank[0]}`)?.focus();
+          return;
+        }
+        setMissing(null);
+      }}
+      className="mt-6 rounded-card border border-rc-border bg-white p-4"
+    >
       <h2 className="text-base font-bold text-rc-ink">Send back for changes</h2>
       <p className="mt-1 text-sm text-rc-muted">
         Tick each card that needs changing and say what. {who} gets an email with your notes, fixes the cards and
@@ -110,8 +127,11 @@ export function SendBackForm({
                             value={f.note}
                             maxLength={1000}
                             rows={2}
-                            required
-                            onChange={(e) => setFlags((prev) => ({ ...prev, [c.key]: { ...f, note: e.target.value } }))}
+                            placeholder="For example: the agreement date doesn't match the signed copy"
+                            onChange={(e) => {
+                              setMissing(null);
+                              setFlags((prev) => ({ ...prev, [c.key]: { ...f, note: e.target.value } }));
+                            }}
                             className="w-full rounded-md border border-rc-border px-2.5 py-1.5 text-sm text-rc-ink"
                           />
                           <label className="flex items-center gap-2 text-xs text-rc-muted">
@@ -135,15 +155,16 @@ export function SendBackForm({
       </div>
 
       <input type="hidden" name="flags" value={payload} />
-      {state.error && (
+      {(missing ?? state.error) && (
         <p role="alert" className="mt-3 text-sm font-medium text-rc-amber-deep">
-          {state.error}
+          {missing ?? state.error}
         </p>
       )}
+      {chosen.length === 0 && <p className="mt-3 text-xs text-rc-muted">Tick at least one card to send the file back.</p>}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           type="submit"
-          disabled={pending || chosen.length === 0 || chosen.some(([, f]) => !f.note.trim())}
+          disabled={pending || chosen.length === 0}
           className="rounded-full bg-rc-ink px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
         >
           {pending ? "Sending…" : `Send back to ${who}`}
