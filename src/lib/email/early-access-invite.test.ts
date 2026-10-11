@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildInvitationEmail, buildWelcomeEmail, welcomeSubject } from "./early-access-invite";
+import { buildInvitationEmail, buildPersonalInvitationEmail, buildWelcomeEmail, welcomeSubject } from "./early-access-invite";
 import { withSenderName } from "./send";
 
 const base = "https://www.realcomply.com.au";
@@ -53,6 +53,31 @@ describe("invitation email", () => {
 
   it("contains no em dashes", () => {
     const m = invite();
+    assert.doesNotMatch(m.subject + m.text + m.html, /—/);
+  });
+});
+
+describe("personal invitation email", () => {
+  const personal = (firstName: string | null = "dave") =>
+    buildPersonalInvitationEmail({ firstName, inviteUrl: `${base}/signup?founder=def456`, base });
+
+  it("uses the approved wording, signed by the team, and never says they registered", () => {
+    const m = personal();
+    assert.equal(m.subject, "Your invitation to RealComply");
+    for (const part of [m.text, m.html]) {
+      assert.match(part, /Hi Dave,/);
+      assert.match(part, /We'd like to invite you to try RealComply\. Your invitation is ready\./);
+      assert.match(part, /The RealComply team/);
+      assert.match(part, /You were invited personally by the RealComply team\./);
+      assert.doesNotMatch(part, /registered|early access|Adam/);
+    }
+    assert.match(m.text, /Set up your office: https:\/\/www\.realcomply\.com\.au\/signup\?founder=def456/);
+    assert.match(m.text, /To stop these emails, reply "unsubscribe"\.$/m);
+  });
+
+  it('says "Hi there," with no first name, and has no em dashes', () => {
+    const m = personal(null);
+    assert.match(m.text, /^Hi there,/);
     assert.doesNotMatch(m.subject + m.text + m.html, /—/);
   });
 });

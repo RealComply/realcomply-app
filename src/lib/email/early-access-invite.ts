@@ -5,6 +5,8 @@ import { appBaseUrl } from "@/lib/site-url";
 // design approved by Adam):
 //
 //   1. The invitation, sent by hand from the staff page, one person at a time.
+//      (A personal invitation, 1b, is the same email for people Adam invites
+//      himself.)
 //   2. The welcome, sent once they have signed up with that invitation's link.
 //
 // WORDING IS ADAM'S, VERBATIM. Do not tidy it, and keep em dashes out of
@@ -221,6 +223,44 @@ export function buildInvitationEmail(input: InvitationInput): { subject: string;
       input.unsubscribeUrl
         ? `RealComply Pty Ltd, ABN 61 700 934 792. You registered at realcomply.com.au. To stop these emails, reply "unsubscribe" or [unsubscribe here](${input.unsubscribeUrl}).`
         : `RealComply Pty Ltd, ABN 61 700 934 792. You registered at realcomply.com.au. To stop these emails, reply "unsubscribe".`,
+    ],
+  };
+  return { subject: INVITATION_SUBJECT, text: renderText(email), html: renderHtml(email, INVITATION_SUBJECT) };
+}
+
+// ── Email 1b: a personal invitation ───────────────────────────────────────
+//
+// The same email for somebody Adam invites himself from Personal invites on
+// the staff page (12 Oct 2026). They never registered, so the two lines that
+// say they did are changed. Wording approved by Adam on the preview, 12 Oct
+// 2026, signed "The RealComply team" at his request, not with his name.
+// Unsubscribe is by reply only: there is no early access row for the
+// one-click link to remove.
+
+export function buildPersonalInvitationEmail(input: Omit<InvitationInput, "unsubscribeUrl">): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const name = greetingName(input.firstName);
+  const email: Email = {
+    base: input.base ?? emailBaseUrl(),
+    preheader: "We'd like to invite you to try RealComply. Your invitation is ready.",
+    blocks: [
+      { kind: "p", text: name ? `Hi ${name},` : "Hi there," },
+      { kind: "p", text: "We'd like to invite you to try RealComply. Your invitation is ready." },
+      {
+        kind: "p",
+        text: "RealComply follows a NSW sales file from listing set-up to settled. It reads your documents, tracks each stage, and flags what needs a look.",
+      },
+      { kind: "button", label: "Set up your office", href: input.inviteUrl },
+      { kind: "p", small: true, text: "This link is just for you and works once. It expires in 60 days." },
+      { kind: "p", text: "Questions? Reply to this email." },
+      { kind: "p", text: "The RealComply team" },
+    ],
+    footer: [
+      "Diligence support, not legal advice. The licensee remains responsible for decisions and sign-off.",
+      `RealComply Pty Ltd, ABN 61 700 934 792. You were invited personally by the RealComply team. To stop these emails, reply "unsubscribe".`,
     ],
   };
   return { subject: INVITATION_SUBJECT, text: renderText(email), html: renderHtml(email, INVITATION_SUBJECT) };

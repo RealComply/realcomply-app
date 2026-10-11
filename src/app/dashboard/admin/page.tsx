@@ -72,6 +72,9 @@ type ProfileRow = {
 type InviteRow = {
   token: string;
   label: string;
+  email: string | null;
+  first_name: string | null;
+  sent_at: string | null;
   accepted_at: string | null;
   expires_at: string;
   agency_id: string | null;
@@ -107,7 +110,7 @@ export default async function AdminPage() {
         .order("created_at", { ascending: true }),
       supabase
         .from("founder_invites")
-        .select("token, label, accepted_at, expires_at, agency_id")
+        .select("token, label, email, first_name, sent_at, accepted_at, expires_at, agency_id")
         .order("label", { ascending: true }),
       // Activity, not just existence. An agency that signed up and never added
       // a listing has not tested anything, and that is the single most useful
@@ -192,9 +195,20 @@ export default async function AdminPage() {
     ((expiredRows ?? []) as Array<{ token: string }>).map((r) => r.token),
   );
 
+  const sydneyShort = (iso: string, withYear: boolean) =>
+    new Intl.DateTimeFormat("en-AU", {
+      timeZone: "Australia/Sydney",
+      day: "numeric",
+      month: "short",
+      ...(withYear ? { year: "numeric" } : {}),
+    }).format(new Date(iso));
+
   const inviteList: FounderInvite[] = invites.map((invite) => ({
     token: invite.token,
     label: invite.label,
+    email: invite.email,
+    firstName: invite.first_name,
+    sentLabel: invite.sent_at ? sydneyShort(invite.sent_at, false) : null,
     acceptedAt: invite.accepted_at,
     expiresAt: invite.expires_at,
     agencyName: agencies.find((a) => a.id === invite.agency_id)?.name ?? null,
@@ -202,6 +216,17 @@ export default async function AdminPage() {
   }));
 
   const unusedInvites = inviteList.filter((i) => !i.acceptedAt && !i.expired);
+
+  // Personal invites leaves out the links the early access list made: those
+  // are labelled with the registrant's email and are worked from Early
+  // access. Without this, every early access invitation would also show
+  // under Personal invites as "not emailed" (12 Oct 2026).
+  const earlyAccessEmails = new Set(
+    ((earlyAccessRows ?? []) as Array<{ email: string | null }>).map((r) => String(r.email).trim().toLowerCase()),
+  );
+  const personalInvites = inviteList.filter(
+    (i) => i.email !== null || !earlyAccessEmails.has(i.label.trim().toLowerCase()),
+  );
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
 
   // Whether an invited registrant has actually arrived. Read from the invite
@@ -212,14 +237,6 @@ export default async function AdminPage() {
   const acceptedAt = new Map(
     invites.filter((i) => i.accepted_at).map((i) => [i.token, i.accepted_at as string]),
   );
-
-  const sydneyShort = (iso: string, withYear: boolean) =>
-    new Intl.DateTimeFormat("en-AU", {
-      timeZone: "Australia/Sydney",
-      day: "numeric",
-      month: "short",
-      ...(withYear ? { year: "numeric" } : {}),
-    }).format(new Date(iso));
 
   const earlyAccess: EarlyAccessRow[] = ((earlyAccessRows ?? []) as Array<Record<string, string | null>>)
     // Adam's own test addresses are left off (brief, 10 Oct 2026).
@@ -286,13 +303,43 @@ export default async function AdminPage() {
         <Stat icon={<Inbox size={14} />} label="Not invited yet" value={waitingOnDecision} />
       </div>
 
+      {/* JUMP BAR. Adam, 12 Oct 2026: "right now it's just a long scroll down
+          to different sections ... I need buttons at the top of the page to
+          take me to each section." Sticky, so it is still there halfway down.
+          Plain links to the headings' ids: no script, and the browser's back
+          button returns to where you were. The headings carry a scroll
+          margin so the bar never covers them. */}
+      <nav
+        aria-label="Jump to a section"
+        className="sticky top-[var(--rc-userbar-h,0px)] z-10 -mx-4 mt-6 flex flex-wrap gap-1.5 border-b border-rc-border bg-rc-bg-alt/90 px-4 py-2.5 backdrop-blur-md"
+      >
+        {[
+          { href: "#backup", label: "Document backup" },
+          { href: "#agencies", label: "Agencies" },
+          { href: "#ended", label: "Ended subscriptions" },
+          { href: "#early-access", label: "Early access", count: waitingOnDecision },
+          { href: "#personal-invites", label: "Personal invites" },
+        ].map((link) => (
+          <a
+            key={link.href}
+            href={link.href}
+            className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-ink transition hover:border-rc-green-deep focus-visible:border-rc-green-deep focus-visible:outline-none"
+          >
+            {link.label}
+            {link.count ? (
+              <span className="rounded-full bg-[#fbf0dc] px-1.5 text-[11px] tabular-nums text-[#a3610a]">{link.count}</span>
+            ) : null}
+          </a>
+        ))}
+      </nav>
+
       {/* DOCUMENT BACKUP.
           Near the top because it is the thing that is silently fine until it
           is silently not. Supabase's own database backups exclude Storage —
           every uploaded agency agreement, contract and trust reconciliation —
           so this copy is the only one there is. See 0046 and
           lib/backup/storage-backup.ts. */}
-      <h2 className="mt-9 text-sm font-bold text-rc-ink">Document backup</h2>
+      <h2 id="backup" className={sectionHeading}>Document backup</h2>
       <div
         className={`mt-3 rounded-card border bg-white p-4 shadow-card ${
           !backupConfigured || backupFailures.length > 0 || backupIncomplete
@@ -358,7 +405,7 @@ export default async function AdminPage() {
       {/* AGENCIES, oldest first — so Cass stays at the top and each new tester
           appears underneath in the order they arrived, which is the order the
           question is usually asked in. */}
-      <h2 className="mt-9 text-sm font-bold text-rc-ink">Agencies</h2>
+      <h2 id="agencies" className={sectionHeading}>Agencies</h2>
       <div className="mt-3 space-y-3">
         {agencies.map((agency) => {
           const people = peopleIn(agency.id);
@@ -413,7 +460,7 @@ export default async function AdminPage() {
           the deletion log, so a deletion can be seen to have happened. The
           one place on this page that changes another agency: the hold only
           ever stops a deletion, it never causes one. */}
-      <h2 className="mt-9 text-sm font-bold text-rc-ink">Ended subscriptions</h2>
+      <h2 id="ended" className={sectionHeading}>Ended subscriptions</h2>
       <p className="mt-1 text-xs text-rc-muted">
         Records are deleted on the date shown, in the daily run. An agency on legal hold is skipped until the hold is
         lifted. Cass Property, Comply Real Estate, comped agencies and your own are never picked up.
@@ -468,7 +515,7 @@ export default async function AdminPage() {
           with work in it, and the invites below are mostly its output. Adam,
           18 Sep 2026 — "so I can either deny or accept anyone that's registered
           for early access." */}
-      <h2 className="mt-9 text-sm font-bold text-rc-ink">Early access</h2>
+      <h2 id="early-access" className={sectionHeading}>Early access</h2>
       <p className="mt-1 text-xs text-rc-muted">
         Everyone who registered at realcomply.com.au. Send each person their invitation when you&rsquo;re ready.
         Each email is BCC&rsquo;d to admin@realcomply.com.au.
@@ -478,21 +525,26 @@ export default async function AdminPage() {
         <EarlyAccessQueue rows={earlyAccess} />
       </div>
 
-      {/* INVITES. Making one lives here rather than in Team settings, which is
+      {/* PERSONAL INVITES (Founder invites until 12 Oct 2026). Making one lives here rather than in Team settings, which is
           where Adam went looking and where the only invite button puts somebody
           INSIDE this agency — see the note in lib/actions/founder-invites.ts. */}
-      <h2 className="mt-9 text-sm font-bold text-rc-ink">Founder invites</h2>
+      <h2 id="personal-invites" className={sectionHeading}>Personal invites</h2>
       <p className="mt-1 text-xs text-rc-muted">
-        Each link works once and creates one new agency. Signups stay closed to everyone else. Not the same
+        People you invite yourself. RealComply emails them their own link, the same way early access invitations
+        go, BCC&rsquo;d to admin@realcomply.com.au. Each link works once and creates one new agency. Not the same
         as a Team invite, which adds someone to <em>this</em> agency.
       </p>
 
       <div className="mt-3">
-        <FounderInvites invites={inviteList} siteUrl={siteUrl} />
+        <FounderInvites invites={personalInvites} siteUrl={siteUrl} />
       </div>
     </main>
   );
 }
+
+// Every section heading. The scroll margin keeps a heading clear of the
+// sticky jump bar when one of its buttons is pressed.
+const sectionHeading = "mt-9 scroll-mt-[calc(var(--rc-userbar-h,0px)+64px)] text-sm font-bold text-rc-ink";
 
 function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
