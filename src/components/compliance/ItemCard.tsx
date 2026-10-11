@@ -22,7 +22,7 @@ import {
 } from "@/lib/rules/aml-precommencement";
 import { FileDropZone } from "@/components/FileDropZone";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
-import { FlagNote, LicenseeReview, useFlagFor } from "@/components/compliance/SendBack";
+import { FlagNote, useFlagFor } from "@/components/compliance/SendBack";
 import { useViewerAccess } from "@/components/ViewerAccess";
 import type { SignoffLink } from "@/lib/data/signoff-links";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
@@ -2791,12 +2791,6 @@ function SignItem({
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      {/* The licensee reviews the file first, and can send it back (Adam,
-          12 Oct 2026). Not on their own listing: there is nobody to send it
-          back to. */}
-      {item.key === "sign_licensee" && profile.is_licensee_in_charge && listingAgentId !== profile.id && (
-        <LicenseeReview />
-      )}
       <form action={formAction} className="flex gap-2">
         <input
           type="text"

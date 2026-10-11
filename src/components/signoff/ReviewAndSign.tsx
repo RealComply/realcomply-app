@@ -33,23 +33,28 @@ export function ReviewAndSign({
           signature. Read it before signing.
         </p>
         {!sentBack && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <a
-              href={`/signoff/${token}/file`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600"
-            >
-              Open the file (PDF)
-            </a>
-            <a
-              href={`/signoff/${token}/file?download=1`}
-              rel="noreferrer"
-              className="rounded-full border border-rc-border bg-white px-4 py-2 text-sm font-semibold text-rc-ink transition hover:border-rc-ink/30"
-            >
-              Download
-            </a>
-          </div>
+          <>
+            {/* The file ON the page, read where it is signed (Adam, 12 Oct
+                2026: "I don't want them to have to download it"). The same
+                audit pack the agent downloads, from /signoff/[token]/file.
+                Some phones won't show a PDF inside a page, so opening it in
+                its own tab and saving it stay underneath. */}
+            <iframe
+              src={`/signoff/${token}/file`}
+              title={`The compliance file for ${propertyAddress}`}
+              className="mt-3 h-[75vh] min-h-[420px] w-full rounded-md border border-rc-border bg-rc-bg-alt"
+            />
+            <p className="mt-2 text-xs text-rc-muted">
+              Can&rsquo;t see the file above?{" "}
+              <a href={`/signoff/${token}/file`} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                Open it in a new tab
+              </a>
+              {" · "}
+              <a href={`/signoff/${token}/file?download=1`} rel="noreferrer" className="font-semibold underline">
+                Download a copy
+              </a>
+            </p>
+          </>
         )}
         <SendBackForm cards={cards} action={sendBack} agentName={agentName} onSent={() => setSentBack(true)} />
       </section>

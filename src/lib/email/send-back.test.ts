@@ -64,11 +64,4 @@ describe("sign-off request email to the licensee", () => {
     assert.match(m.text, /expires on 10 November 2026/);
   });
 
-  it("sends a licensee with an account into the app", () => {
-    const m = buildSignoffRequestEmail({ ...req, inApp: true, url: "https://www.realcomply.com.au/dashboard/p1?stage=5" });
-    assert.match(m.text, /Sign in to RealComply to review the full file/);
-    assert.match(m.text, /dashboard\/p1\?stage=5/);
-    assert.doesNotMatch(m.text, /don't need an account/);
-    assert.doesNotMatch(m.text, /expires on/);
-  });
 });

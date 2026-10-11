@@ -96,23 +96,6 @@ async function emailAgent(propertyId: string, flags: FlagInput[], licenseeName: 
   }
 }
 
-/** The licensee in charge, signed in, from the listing. */
-export async function sendBackInApp(propertyId: string, _prev: SendBackState, formData: FormData): Promise<SendBackState> {
-  const { supabase, profile } = await requireAuthContext();
-  if (profile.is_licensee_in_charge !== true) {
-    return { error: "Only the licensee in charge can send a file back." };
-  }
-  const flags = flagsFrom(formData);
-  if (typeof flags === "string") return { error: flags };
-
-  const { error } = await supabase.rpc("send_back_listing", { p_property_id: propertyId, p_items: flags });
-  if (error) return { error: refusal(error.message) };
-
-  await emailAgent(propertyId, flags, profile.full_name ?? null, profile.email ?? null);
-  revalidatePath(`/dashboard/${propertyId}`);
-  return { error: null, done: true };
-}
-
 /** The licensee with the emailed link and no account. The token is the credential. */
 export async function sendBackWithLink(token: string, _prev: SendBackState, formData: FormData): Promise<SendBackState> {
   const flags = flagsFrom(formData);

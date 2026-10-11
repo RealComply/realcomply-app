@@ -2,11 +2,12 @@
 
 import { createContext, useActionState, useContext, type ReactNode } from "react";
 import Link from "next/link";
-import { markChangesMade, sendBackInApp, type SendBackState } from "@/lib/actions/send-back";
-import type { OpenFlag, ReviewCard } from "@/lib/data/send-backs";
-import { SendBackForm } from "@/components/signoff/SendBackForm";
+import { markChangesMade, type SendBackState } from "@/lib/actions/send-back";
+import type { OpenFlag } from "@/lib/data/send-backs";
 
-// The licensee's review on the listing page (Adam, 12 Oct 2026).
+// A file the licensee sent back, on the listing page (Adam, 12 Oct 2026). The
+// licensee reviews and sends back on the emailed sign-off page; this is the
+// agent's side: the banner, and the note with "Changes made" on each card.
 //
 // One provider for the page, so every card can find its own flag without the
 // listing page threading another prop through each of ItemCard's card kinds.
@@ -14,9 +15,6 @@ import { SendBackForm } from "@/components/signoff/SendBackForm";
 type SendBackPage = {
   propertyId: string;
   flags: OpenFlag[];
-  /** Every card the licensee can flag; empty for anyone else. */
-  reviewCards: ReviewCard[];
-  agentName: string | null;
 };
 
 const SendBackContext = createContext<SendBackPage | null>(null);
@@ -103,34 +101,6 @@ export function SendBackBanner() {
         Fix each one and press Changes made on it. Then sign the file again on Settled and send it back for sign-off.
         {stages.length > 1 ? " The cards are on more than one stage." : ""}
       </p>
-    </div>
-  );
-}
-
-/**
- * On the Licensee signature card, for the licensee in charge before signing:
- * read the full file, then sign below or send it back.
- */
-export function LicenseeReview() {
-  const page = useContext(SendBackContext);
-  if (!page || page.reviewCards.length === 0) return null;
-  const action = sendBackInApp.bind(null, page.propertyId);
-  return (
-    <div className="mb-3">
-      <p className="text-sm text-rc-muted">
-        Review the full file before signing.{" "}
-        <a
-          href={`/dashboard/${page.propertyId}/summary/pdf`}
-          target="_blank"
-          rel="noopener"
-          className="font-semibold text-rc-green-deep underline"
-        >
-          Open the audit pack (PDF)
-        </a>
-      </p>
-      {page.flags.length === 0 && (
-        <SendBackForm cards={page.reviewCards} action={action} agentName={page.agentName} />
-      )}
     </div>
   );
 }

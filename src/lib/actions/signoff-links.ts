@@ -47,35 +47,6 @@ async function tokenFor(requestId: string): Promise<string | null> {
 }
 
 /**
- * Where the email sends the licensee (Adam, 12 Oct 2026). A licensee in
- * charge with an account in this office reviews and signs inside the app,
- * where they see the whole listing: the link goes to the listing's Settled
- * stage. Anyone else gets the emailed page, with the file to review on it.
- * Read with the server's access: an agent's session may not see the
- * licensee's email address. Null means the emailed page.
- */
-async function inAppListingUrl(requestId: string, sentTo: string): Promise<string | null> {
-  const service = createServiceClient();
-  const { data: request } = await service
-    .from("property_signoff_requests")
-    .select("agency_id, property_id")
-    .eq("id", requestId)
-    .maybeSingle();
-  const r = request as { agency_id: string; property_id: string } | null;
-  if (!r) return null;
-  const { data: licensee } = await service
-    .from("profiles")
-    .select("id")
-    .eq("agency_id", r.agency_id)
-    .eq("is_licensee_in_charge", true)
-    .is("archived_at", null)
-    .ilike("email", sentTo.trim())
-    .limit(1)
-    .maybeSingle();
-  return licensee ? `${appBaseUrl()}/dashboard/${r.property_id}?stage=5` : null;
-}
-
-/**
  * Sends the link, and records honestly whether it went.
  *
  * Separated from issuing so the resend path and the first send are the same
@@ -100,13 +71,14 @@ async function deliverSignoffEmail(
 ): Promise<boolean> {
   const token = await tokenFor(args.requestId);
   if (!token) return false;
-  const inAppUrl = await inAppListingUrl(args.requestId, args.sentTo);
   const { subject, text, html } = buildSignoffRequestEmail({
     agentName: args.agentName,
     agencyName: args.agencyName,
     propertyAddress: args.propertyAddress,
-    url: inAppUrl ?? `${appBaseUrl()}/signoff/${token}`,
-    inApp: inAppUrl !== null,
+    // Every licensee, with an account or not, gets the sign-off page: the
+    // file on the page, sign below it, or send it back (Adam, 12 Oct 2026).
+    // On an agent's listing the app has no Licensee signature card to land on.
+    url: `${appBaseUrl()}/signoff/${token}`,
     expiresAt: formatAuDate(args.expiresAt.slice(0, 10)),
     agreementDate: args.agreementDate ? formatAuDate(args.agreementDate.slice(0, 10)) : null,
     espLow: args.espLow,

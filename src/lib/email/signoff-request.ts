@@ -48,12 +48,6 @@ export type SignoffRequestEmail = {
   agreementDate: string | null;
   espLow: number | null;
   espHigh: number | null;
-  /**
-   * The licensee has an account in this office: the link opens the listing
-   * in RealComply, where they review and sign (12 Oct 2026). Otherwise it
-   * opens the emailed sign-off page, with the file to review on it.
-   */
-  inApp?: boolean;
 };
 
 const money = (n: number): string => `$${n.toLocaleString("en-AU")}`;
@@ -90,9 +84,7 @@ export function buildSignoffRequestEmail(input: SignoffRequestEmail): { subject:
       },
       {
         kind: "paragraph",
-        text: input.inApp
-          ? `Sign in to RealComply to review the full file for ${input.propertyAddress}. You can sign it on the Settled stage, or send it back to ${input.agentName} with notes on anything that needs changing.`
-          : `The link below opens the full file to review. You can sign it there by typing your name, or send it back to ${input.agentName} with notes on anything that needs changing. You don't need an account or a password.`,
+        text: `The link below opens the full file to review. You can sign it there by typing your name, or send it back to ${input.agentName} with notes on anything that needs changing. You don't need an account or a password.`,
       },
       { kind: "label", text: "What you'll be signing against" },
       {
@@ -113,9 +105,7 @@ export function buildSignoffRequestEmail(input: SignoffRequestEmail): { subject:
       { kind: "button", label: "Review the file", href: input.url },
       {
         kind: "note",
-        text: input.inApp
-          ? `If you weren't expecting this, reply to this email. It goes straight to ${input.agentName}, not to an unattended mailbox.`
-          : `This link is for you only and expires on ${input.expiresAt}. If you weren't expecting it, reply to this email — it goes straight to ${input.agentName}, not to an unattended mailbox.`,
+        text: `This link is for you only and expires on ${input.expiresAt}. If you weren't expecting it, reply to this email — it goes straight to ${input.agentName}, not to an unattended mailbox.`,
       },
     ],
     footer: [
