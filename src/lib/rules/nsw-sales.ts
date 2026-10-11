@@ -861,8 +861,11 @@ const items: ComplianceItem[] = [
     stage: 1,
     kind: "checklist",
     label: "Licensee approved the price statement before publication",
+    // The second sentence since 12 Oct 2026 (Adam, option (a)): an office
+    // whose licensee in charge is not on RealComply sends it to them by email
+    // from this card, and they approve the exact words there.
     description:
-      "The licensee in charge confirms the price statement on the marketing material (the advertised guide/range) is accurate, before it's published.",
+      "The licensee in charge confirms the price statement on the marketing material (the advertised guide/range) is accurate, before it's published. If your licensee in charge doesn't use RealComply, send it to them for approval by email from this card.",
     legalBasis: "Supports ss 73 & 73A, Property and Stock Agents Act 2002 (NSW); s32 (duty to properly supervise)",
     licenseeOnly: true,
     requiresDate: false,

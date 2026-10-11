@@ -75,14 +75,12 @@ disclosure and cooling-off status are both inside the signed agency agreement.
 The final stage has three steps in order: the agent signs, the file is sent to
 the licensee, and the licensee signs.
 
-A licensee who uses RealComply signs in the app. A licensee who does not — an
-agent-only subscription, where the licensee has never used the product — gets a
-link instead. "Create sign-off link" produces a link the agent copies and sends
-to their licensee, who opens it, reads a statement naming the property, the
-agency agreement date and the ESP, types their name and signs. No account
-needed. The file updates the moment they submit. Links last 30 days, work once,
-and can be revoked. The licensee's email is set once, at agency setup or on the
-Team page.
+A licensee who uses RealComply signs in the app. If they don't, you send them a
+link by email. They review the file, then sign it or send it back. The price
+statement works the same way before the listing is advertised: send it from its
+card and they approve it from the email. No account needed. Links last 30 days
+and can be withdrawn. The licensee's email is set at agency setup or on the Team
+page.
 
 ## Registers
 

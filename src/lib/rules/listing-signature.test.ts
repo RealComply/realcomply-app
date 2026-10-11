@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { linkRequestNeedingTime, listingSignature } from "./listing-signature";
+import { linkRequestNeedingTime, listingSignature, signatureOnCard } from "./listing-signature";
 
 describe("listingSignature", () => {
   it("reads a signature given in the app", () => {
@@ -30,5 +30,26 @@ describe("linkRequestNeedingTime", () => {
     assert.equal(linkRequestNeedingTime({ signedName: "Lee", signoffRequestId: "r1", signedAt: "2026-10-02" }), null);
     assert.equal(linkRequestNeedingTime({ typedName: "Ann", signedAt: "2026-10-01" }), null);
     assert.equal(linkRequestNeedingTime(undefined), null);
+  });
+});
+
+describe("signatureOnCard", () => {
+  it("is null on a card that is not done, whatever name is written on it", () => {
+    assert.equal(signatureOnCard({ status: "open", data: { typedName: "Lee Licensee", signedAt: "2026-10-02" } }), null);
+    assert.equal(
+      signatureOnCard({ status: "flagged", data: { signedName: "Lee Licensee", signoffRequestId: "r1" } }, "2026-10-02T03:00:00Z"),
+      null,
+    );
+    assert.equal(signatureOnCard(undefined), null);
+  });
+  it("reads the signature on a done card, either way it was given", () => {
+    assert.deepEqual(signatureOnCard({ status: "done", data: { typedName: "Ann Agent", signedAt: "2026-10-01T01:00:00Z" } }), {
+      typedName: "Ann Agent",
+      signedAt: "2026-10-01T01:00:00Z",
+    });
+    assert.deepEqual(
+      signatureOnCard({ status: "done", data: { signedName: "Lee Licensee", signoffRequestId: "r1" } }, "2026-10-02T03:00:00Z"),
+      { typedName: "Lee Licensee", signedAt: "2026-10-02T03:00:00Z" },
+    );
   });
 });

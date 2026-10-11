@@ -10,6 +10,12 @@ import type { Property, PropertyItem } from "@/lib/types";
 //
 // Server's own access, because the licensee has no session. Every read below
 // is scoped to the one listing and agency the token names.
+//
+// The final sign-off link only (0065, 12 Oct 2026). A price statement link
+// asks the licensee to approve one line before the listing is advertised: it
+// is not a review of the file, cannot send it back, and must not open the
+// audit pack at /signoff/[token]/file. With the filter below a b4 token finds
+// nothing here, and every one of those paths shows "not found".
 
 export type SignoffReview = {
   propertyId: string;
@@ -28,6 +34,7 @@ export async function signoffReviewFor(token: string): Promise<SignoffReview | n
     .from("property_signoff_requests")
     .select("property_id, agency_id, sent_to")
     .eq("token", token)
+    .eq("item_key", "sign_licensee")
     .is("signed_at", null)
     .is("revoked_at", null)
     .gt("expires_at", new Date().toISOString())

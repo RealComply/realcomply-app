@@ -16,9 +16,16 @@ import { signoffReviewFor } from "@/lib/data/signoff-review";
 //
 // The statement is rendered from the snapshot taken when the link was issued,
 // never regenerated — see src/lib/signoff/statement.ts.
+//
+// Two kinds of request since 0065 (Adam, 12 Oct 2026): the final sign-off on
+// the file, and the price statement (b4) before the listing is advertised.
+// The price statement page shows the words and the statement, and a box to
+// approve. No file, no send-back: those belong to the final sign-off, and a
+// price statement token cannot reach them (lib/data/signoff-review.ts).
 
 export const metadata: Metadata = {
-  title: "Sign-off request",
+  // Neutral, because the tab cannot know which kind of request is open.
+  title: "Licensee request",
   // Never index. The token is the only credential protecting this page, and a
   // crawled URL is a published one.
   robots: { index: false, follow: false },
@@ -44,8 +51,60 @@ export default async function SignoffPage({ params }: { params: Promise<{ token:
           This link is no longer valid
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-rc-muted">
-          It may have already been signed, been withdrawn, or expired. Contact the agent who sent it to you and
-          they can issue a new one.
+          It may have already been signed or approved, been withdrawn, or expired. Contact the agent who sent it
+          to you and they can issue a new one.
+        </p>
+      </main>
+    );
+  }
+
+  if (request.item_key === "b4") {
+    const requester = request.requested_by_name ?? request.agency_name;
+    return (
+      <main className="mx-auto max-w-2xl px-5 py-12 sm:py-16">
+        <Logo size={20} />
+
+        <h1 className="mt-8 text-2xl font-extrabold tracking-tight text-rc-ink sm:text-3xl">
+          Approve the price statement
+        </h1>
+        {/* The person first, as on the final sign-off page: someone the
+            licensee knows, then what they are asked to do. */}
+        <p className="mt-2 text-sm leading-relaxed text-rc-muted">
+          {requester} has asked you to approve the price statement for {request.property_address} before it is
+          advertised. Read it below, then approve it if it is right.
+        </p>
+
+        {/* The words being approved, on their own and large, so the one thing
+            checked is the first thing read. break-words: a long range with no
+            spaces must not push the page sideways on a phone. */}
+        {request.price_statement && (
+          <div className="mt-6 rounded-card border border-rc-green-deep/30 bg-rc-green-soft px-5 py-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rc-green-deep">
+              Price statement to be advertised
+            </p>
+            <p className="mt-1.5 break-words text-xl font-bold leading-snug text-rc-ink">
+              &ldquo;{request.price_statement}&rdquo;
+            </p>
+          </div>
+        )}
+
+        {/* The statement, exactly as the database built it when the request
+            was made (0065): the listing, the ESP on the file, the words, and
+            what approving means. */}
+        <div className="mt-4 whitespace-pre-line break-words rounded-card border border-rc-border bg-rc-bg-alt px-5 py-5 text-sm leading-relaxed text-rc-ink">
+          {request.statement}
+        </div>
+
+        <SignoffForm token={token} kind="b4" />
+
+        <p className="mt-4 text-sm leading-relaxed text-rc-muted">
+          Not right? Don&rsquo;t approve it. Reply to the email from {requester} and say what needs to change.
+        </p>
+
+        <p className="mt-8 border-t border-rc-border pt-5 text-xs leading-relaxed text-rc-muted">
+          This request was sent through RealComply, the compliance system {request.agency_name} uses. RealComply
+          provides diligence support to the agency. It does not certify compliance and does not provide legal
+          advice. If you did not expect this request, contact the agency directly rather than approving it.
         </p>
       </main>
     );

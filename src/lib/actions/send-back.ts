@@ -100,11 +100,14 @@ export async function sendBackWithLink(token: string, _prev: SendBackState, form
   if (typeof flags === "string") return { error: flags };
 
   // Read before the send-back revokes it: which listing, and who it went to.
+  // The final sign-off link only: a price statement link (b4, 0065) cannot
+  // send the file back, and send_back_by_token refuses one too.
   const service = createServiceClient();
   const { data: request } = await service
     .from("property_signoff_requests")
     .select("property_id, sent_to, agency_id")
     .eq("token", token)
+    .eq("item_key", "sign_licensee")
     .is("signed_at", null)
     .is("revoked_at", null)
     .gt("expires_at", new Date().toISOString())

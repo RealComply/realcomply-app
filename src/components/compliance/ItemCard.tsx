@@ -12,7 +12,7 @@ import {
 } from "react";
 import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
 import { selfManaged } from "@/lib/rules/nsw-sales";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, formatAuDateTimeShort, formatAuTimestamp } from "@/lib/format-date";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
 import {
@@ -22,9 +22,12 @@ import {
 } from "@/lib/rules/aml-precommencement";
 import { FileDropZone } from "@/components/FileDropZone";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
+import { PriceStatementLinkPanel } from "@/components/signoff/PriceStatementLinkPanel";
 import { FlagNote, useFlagFor } from "@/components/compliance/SendBack";
 import { useViewerAccess } from "@/components/ViewerAccess";
-import type { SignoffLink } from "@/lib/data/signoff-links";
+import { liveLink, signedLink, type SignoffLink } from "@/lib/data/signoff-links";
+import { withdrawPriceStatementLink } from "@/lib/actions/signoff-links";
+import type { PriceApproval } from "@/lib/rules/price-statement";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -72,7 +75,7 @@ import type { EspDraftInput } from "@/lib/data/esp-draft";
 import type { NoneOnMarketRecord, ReasoningAdoptionRecord } from "@/lib/rules/esp-reasoning-adoption";
 import { Disclaimer, ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import { espReasoningMissing } from "@/lib/rules/esp-reasoning-gate";
-import { linkRequestNeedingTime, listingSignature } from "@/lib/rules/listing-signature";
+import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
 const initialState: ActionState = { error: null };
@@ -2759,11 +2762,14 @@ function SignItem({
 
   // Signed comes first: whoever is looking, a signature on file is the answer.
   // Given in the app or through the emailed link, whose time is on the link
-  // (10 Oct 2026; see lib/rules/listing-signature.ts).
+  // (10 Oct 2026; see lib/rules/listing-signature.ts). Only on a card that is
+  // done (12 Oct 2026), and only a final sign-off link's time.
   const linkId = linkRequestNeedingTime(current?.data);
-  const signature = listingSignature(
-    current?.data,
-    linkId ? (signoffLinks.find((l) => l.id === linkId)?.signedAt ?? null) : null,
+  const signature = signatureOnCard(
+    current,
+    linkId
+      ? (signoffLinks.find((l) => l.id === linkId && l.itemKey === "sign_licensee")?.signedAt ?? null)
+      : null,
   );
   if (signature) {
     return (
@@ -2844,7 +2850,7 @@ function SendItem({
   current?: PropertyItem;
   signoffLinks: SignoffLink[];
 }) {
-  const isSignLicensee = item.key === "send_licensee";
+  const isSendLicensee = item.key === "send_licensee";
   return (
     <ItemShell
       item={item}
@@ -2853,14 +2859,16 @@ function SendItem({
       current={current}
       // The sign-off link panel stays in view until the licensee has signed:
       // it carries the link, its expiry and any email that failed to send.
-      foldable={!isSignLicensee || signoffLinks.some((l) => l.signedAt !== null)}
+      // The final sign-off's signature only: an approved price statement
+      // (b4, 0065) is not the licensee signing the file.
+      foldable={!isSendLicensee || signedLink(signoffLinks, "sign_licensee") !== null}
     >
       {/* NO "Mark sent to licensee" (Adam, 12 Oct 2026). Sending the link is
           the only way this step is done: on an agent's listing the licensee
           signs only through the link, so a hand-ticked "sent" let the file
           look finished without the licensee ever seeing it. The panel below
           says when it went and when it was signed. */}
-      {isSignLicensee && <SignoffLinkPanel propertyId={propertyId} links={signoffLinks} />}
+      {isSendLicensee && <SignoffLinkPanel propertyId={propertyId} links={signoffLinks} />}
     </ItemShell>
   );
 }
@@ -3411,11 +3419,45 @@ function AuctionOutcomeItem({
 // locked for the licensee too (guard_listing_signoff, 0058), so the form and
 // the file controls would only fail. setItemStatus refuses on the server
 // either way. The sign cards have their own version of this in SignItem.
-function LicenseeOnlyItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+//
+// Once done it says who approved, when, and how (12 Oct 2026): in the app, or
+// through the emailed link and to which address (0065). Until then it said
+// "Done by the licensee in charge" whichever way, with no name and no time.
+// Rows from before 0058 carry no time, and still read the old way.
+function LicenseeOnlyItem({
+  item,
+  propertyId,
+  current,
+  approval = null,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  approval?: PriceApproval | null;
+}) {
   const note = ((current?.data ?? {}) as { note?: string }).note;
+  const quoted = (text: string | null) =>
+    text ? (
+      <span className="mt-1 block break-words text-rc-ink">&ldquo;{text}&rdquo;</span>
+    ) : null;
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} evidenceReadOnly>
-      {current?.status === "done" ? (
+      {current?.status === "done" && approval?.via === "link" ? (
+        <p className="text-sm text-rc-muted">
+          Approved by <span className="font-medium text-rc-ink">{approval.name ?? "the licensee in charge"}</span>
+          {approval.at && <> on {formatAuDateTimeShort(approval.at)} (Sydney time)</>}, by email to{" "}
+          <span className="break-all">{approval.sentTo ?? "the licensee's email"}</span>
+          {approval.text ? ":" : "."}
+          {quoted(approval.text)}
+        </p>
+      ) : current?.status === "done" && approval?.at ? (
+        <p className="text-sm text-rc-muted">
+          Approved in RealComply by{" "}
+          <span className="font-medium text-rc-ink">{approval.name ?? "the licensee in charge"}</span> on{" "}
+          {formatAuDateTimeShort(approval.at)} (Sydney time){approval.text ? ":" : "."}
+          {quoted(approval.text)}
+        </p>
+      ) : current?.status === "done" ? (
         <p className="text-sm text-rc-muted">
           Done by the licensee in charge{note ? ": " : "."}
           {note && <span className="text-rc-ink">{note}</span>}
@@ -3427,7 +3469,145 @@ function LicenseeOnlyItem({ item, propertyId, current }: { item: ComplianceItem;
   );
 }
 
-export function ItemCard({
+// What the b4 card needs to know about the price statement going by email
+// (12 Oct 2026, 0065). Worked out once by the page, from reads it already
+// makes; see lib/rules/price-statement.ts for each rule.
+export type B4Route = {
+  /** Nobody in the office is an active licensee in charge on RealComply. */
+  byEmail: boolean;
+  /** The ESP reasoning card is complete, or the listing is a practice one. */
+  gateOpen: boolean;
+  testMode: boolean;
+  licenseeName: string | null;
+  licenseeEmail: string | null;
+  /** The viewer can add the licensee's email in Team. */
+  actsAsLicensee: boolean;
+  /** This listing's price statement requests only, newest first. */
+  links: SignoffLink[];
+  /** The live request can no longer be approved (the ESP or the ESP reasoning changed). */
+  stale: boolean;
+  /** Who approved b4, when and how. Null until it is done. */
+  approval: PriceApproval | null;
+};
+
+// b4 where the licensee in charge does not use RealComply: the card is the
+// request to them, sent by email, instead of a "Waiting on the licensee"
+// nobody could ever answer. ItemShell as on every card, so a flag the
+// licensee left on it still shows (FlagNote), and the file control is
+// read-only: the approval is the licensee's, by email, and a file put on the
+// card would sit beside it as if it were part of it.
+function PriceStatementByEmailItem({
+  item,
+  propertyId,
+  current,
+  route,
+  seed,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  route: B4Route;
+  seed: string | null;
+}) {
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} evidenceReadOnly>
+      <PriceStatementLinkPanel
+        propertyId={propertyId}
+        links={route.links}
+        gateOpen={route.gateOpen}
+        testMode={route.testMode}
+        licenseeName={route.licenseeName}
+        licenseeEmail={route.licenseeEmail}
+        actsAsLicensee={route.actsAsLicensee}
+        stale={route.stale}
+        seed={seed}
+      />
+    </ItemShell>
+  );
+}
+
+// A price statement request still out by email in an office whose licensee
+// in charge now uses RealComply (they joined, or came back, while it was
+// pending). Both ways stay open and the first approval counts: the link
+// stops working once b4 is done, and the app refuses an approval the link
+// already gave (0065). Said under the card, with a way to withdraw it.
+function PriceLinkAlsoOut({ propertyId, link }: { propertyId: string; link: SignoffLink }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-rc-muted">
+      <span>
+        A request also went to <span className="break-all">{link.sentTo}</span> on{" "}
+        {formatAuTimestamp(link.emailSentAt ?? link.createdAt)}. Whichever approval comes first counts.
+      </span>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          setError(null);
+          startTransition(async () => {
+            const result = await withdrawPriceStatementLink(link.id, propertyId);
+            if (result.error) setError(result.error);
+          });
+        }}
+        className="inline-flex items-center gap-1 font-semibold text-rc-muted underline transition hover:text-rc-ink disabled:opacity-60"
+      >
+        <X size={12} aria-hidden="true" />
+        {pending ? "Withdrawing…" : "Withdraw"}
+      </button>
+      {error && (
+        <span className="w-full font-medium text-rc-amber-deep" role="alert">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+type ItemCardProps = {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  profile: Profile;
+  allItems: Record<string, PropertyItem>;
+  /** Whose listing this is. The agent sign-off is theirs alone (Adam, 9 Oct 2026). */
+  listingAgentId?: string;
+  // The agency's standing position. Passed in rather than fetched here so the
+  // page does one agency lookup for the whole list instead of one per card.
+  amlPreCommencementEnabled?: boolean;
+  // The final sign-off's links for this file, read once by the page (the
+  // price statement's go in b4Route). The send_licensee card's panel uses
+  // them, and the sign card reads a link signature's time from them.
+  signoffLinks?: SignoffLink[];
+  // The listing's own attributes and its comparable sales. Only the ESP card
+  // and the ESP reasoning card use them.
+  subject?: SubjectAttributes | null;
+  comparables?: Comparable[];
+  // Properties on the market as at the agency agreement date (29 Sep 2026).
+  // Only the ESP reasoning card uses them.
+  marketListings?: MarketListing[];
+  // The price statement by email (0065). Only the b4 card uses it.
+  b4Route?: B4Route;
+};
+
+export function ItemCard(props: ItemCardProps) {
+  const { item, propertyId, current, b4Route } = props;
+  // In-app b4 with a request still out by email: the card as usual, and a
+  // line under it about the request.
+  const alsoOut =
+    item.key === "b4" && b4Route && !b4Route.byEmail && current?.status !== "done"
+      ? liveLink(b4Route.links, "b4")
+      : null;
+  if (!alsoOut) return <ItemCardBody {...props} />;
+  return (
+    <div>
+      <ItemCardBody {...props} />
+      <PriceLinkAlsoOut propertyId={propertyId} link={alsoOut} />
+    </div>
+  );
+}
+
+function ItemCardBody({
   item,
   propertyId,
   current,
@@ -3439,30 +3619,36 @@ export function ItemCard({
   comparables = [],
   marketListings = [],
   listingAgentId,
-}: {
-  item: ComplianceItem;
-  propertyId: string;
-  current?: PropertyItem;
-  profile: Profile;
-  allItems: Record<string, PropertyItem>;
-  /** Whose listing this is. The agent sign-off is theirs alone (Adam, 9 Oct 2026). */
-  listingAgentId?: string;
-  // The agency's standing position. Passed in rather than fetched here so the
-  // page does one agency lookup for the whole list instead of one per card.
-  amlPreCommencementEnabled?: boolean;
-  // Sign-off links issued for this file, read once by the page. Only the
-  // send_licensee card uses them.
-  signoffLinks?: SignoffLink[];
-  // The listing's own attributes and its comparable sales. Only the ESP card
-  // and the ESP reasoning card use them.
-  subject?: SubjectAttributes | null;
-  comparables?: Comparable[];
-  // Properties on the market as at the agency agreement date (29 Sep 2026).
-  // Only the ESP reasoning card uses them.
-  marketListings?: MarketListing[];
-}) {
+  b4Route,
+}: ItemCardProps) {
+  // b4 where nobody in the office is an active licensee in charge on
+  // RealComply: it goes to the licensee by email from this card (Adam, 12 Oct
+  // 2026, option (a)). Before the licensee-only branch below, which would
+  // otherwise show "Waiting on the licensee in charge" to a file nobody
+  // signed in can ever complete. Once done, that branch shows the approval.
+  if (item.key === "b4" && b4Route?.byEmail && current?.status !== "done") {
+    return (
+      <PriceStatementByEmailItem
+        item={item}
+        propertyId={propertyId}
+        current={current}
+        route={b4Route}
+        seed={
+          (allItems["a3"]?.data as { aiDraft?: { offerPrice?: string } } | undefined)?.aiDraft?.offerPrice ?? null
+        }
+      />
+    );
+  }
+
   if (item.licenseeOnly && item.kind !== "sign" && (!profile.is_licensee_in_charge || current?.status === "done")) {
-    return <LicenseeOnlyItem item={item} propertyId={propertyId} current={current} />;
+    return (
+      <LicenseeOnlyItem
+        item={item}
+        propertyId={propertyId}
+        current={current}
+        approval={item.key === "b4" ? (b4Route?.approval ?? null) : null}
+      />
+    );
   }
 
   switch (item.kind) {
