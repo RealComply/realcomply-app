@@ -15,7 +15,10 @@ import { buildSignoffRequestEmail } from "@/lib/email/signoff-request";
 import { buildPriceStatementRequestEmail } from "@/lib/email/price-statement-request";
 import { STAGE_GATE_MESSAGE } from "@/lib/rules/esp-reasoning-gate";
 import {
+  APPROVER_NAME_MAX,
   PRICE_STATEMENT_MAX,
+  approverNameTooLong,
+  noLicenseeEmailMessage,
   normalisePriceStatement,
   priceRequestStale,
   priceStatementByEmail,
@@ -475,6 +478,12 @@ export async function submitSignoff(
   if (!typedName) {
     return { error: approving ? "Type your full name to approve." : "Type your full name to sign.", signed: false };
   }
+  // The database refuses a longer name on a price statement link, and that
+  // refusal would read below as a link that no longer works. The page's box
+  // stops at the limit too; this is for a name that gets past it.
+  if (approving && approverNameTooLong(typedName)) {
+    return { error: `Type your name only, up to ${APPROVER_NAME_MAX} characters.`, signed: false };
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("submit_signoff", {
@@ -531,6 +540,19 @@ const toNumber = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** Whether b4 on this listing is already done, read with the caller's own access. */
+async function b4Done(supabase: Client, propertyId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("property_items")
+    .select("status")
+    .eq("property_id", propertyId)
+    .eq("item_key", "b4")
+    .maybeSingle();
+  return (data as { status?: string } | null)?.status === "done";
+}
+
+const ALREADY_APPROVED = "Your licensee has already approved the price statement.";
+
 export async function issuePriceStatementLink(
   propertyId: string,
   _prev: PriceLinkState,
@@ -559,13 +581,12 @@ export async function issuePriceStatementLink(
     return { error: "Your licensee in charge uses RealComply, so they approve the price statement in the app." };
   }
 
-  const { data: b4 } = await supabase
-    .from("property_items")
-    .select("status")
-    .eq("property_id", propertyId)
-    .eq("item_key", "b4")
-    .maybeSingle();
-  if ((b4 as { status?: string } | null)?.status === "done") {
+  // Already approved, or a request already out: the card was read before
+  // that happened (another tab, the assistant, the licensee). Both refresh
+  // it, so it shows where things are now. Without that, the button seems to
+  // do nothing and the form stays as it was.
+  if (await b4Done(supabase, propertyId)) {
+    revalidatePath(`/dashboard/${propertyId}`);
     return { error: "The price statement on this listing is already approved." };
   }
 
@@ -579,7 +600,12 @@ export async function issuePriceStatementLink(
   // approval. To change the words, withdraw it and send a new one.
   const outstanding = liveLink(await signoffLinksFor(supabase, propertyId), "b4");
   if (outstanding) {
-    return { error: null, sentTo: outstanding.sentTo, emailed: outstanding.emailSentAt !== null };
+    revalidatePath(`/dashboard/${propertyId}`);
+    return {
+      error: `A request is already out for this. It went to ${outstanding.sentTo}.`,
+      sentTo: outstanding.sentTo,
+      emailed: outstanding.emailSentAt !== null,
+    };
   }
 
   const { data: agency } = await supabase
@@ -589,14 +615,8 @@ export async function issuePriceStatementLink(
     .maybeSingle();
   const a = agency as { name?: string | null; licensee_email?: string | null } | null;
   if (!a?.licensee_email?.trim()) {
-    // On an agent's own plan the agent can add it in Team. In an office whose
-    // founder answered "No, someone else", nobody signed in can see Team, so
-    // support adds it (Adam's default, 12 Oct 2026).
-    return {
-      error: access.actsAsLicensee
-        ? "Add your licensee in charge's email in Team settings first."
-        : "There's no email on file for your licensee in charge. Contact RealComply support to add it.",
-    };
+    // Who can add it decides the words: see noLicenseeEmailMessage.
+    return { error: noLicenseeEmailMessage(access) };
   }
 
   // Only what the database cannot work out for itself. It sets the recipient,
@@ -665,21 +685,35 @@ export async function issuePriceStatementLink(
 export async function resendPriceStatementLink(propertyId: string): Promise<PriceLinkState> {
   const { supabase, profile } = await requireAuthContext();
 
+  // Each refusal below means the card was read before something changed:
+  // the licensee approved, the request expired or was withdrawn, the listing
+  // became a practice one, or the ESP moved. Each one refreshes the card so
+  // it shows where things are now.
   const outstanding = liveLink(await signoffLinksFor(supabase, propertyId), "b4");
   if (!outstanding || !outstanding.priceStatement) {
-    return { error: "There's no request waiting to send again. Send a new one." };
+    const approved = await b4Done(supabase, propertyId);
+    revalidatePath(`/dashboard/${propertyId}`);
+    return { error: approved ? ALREADY_APPROVED : "There's no request waiting to send again. Send a new one." };
   }
 
   const [{ data: property }, { data: rows }] = await Promise.all([
-    supabase.from("properties").select("address, agency_id").eq("id", propertyId).maybeSingle(),
+    supabase.from("properties").select("address, agency_id, test_mode").eq("id", propertyId).maybeSingle(),
     supabase
       .from("property_items")
       .select("item_key, status, data")
       .eq("property_id", propertyId)
       .in("item_key", ["a4", "d3", "a4c"]),
   ]);
-  const p = property as { address: string; agency_id: string } | null;
+  const p = property as { address: string; agency_id: string; test_mode: boolean } | null;
   if (!p) return { error: "Couldn't find that listing." };
+
+  // A listing switched to practice after the request went. Nothing more goes
+  // to the licensee from it, as nothing goes from a practice listing in the
+  // first place. The request already out can still be withdrawn.
+  if (p.test_mode) {
+    revalidatePath(`/dashboard/${propertyId}`);
+    return { error: "This is a practice listing, so nothing is sent to your licensee." };
+  }
 
   // A request the licensee can no longer approve is not worth sending again:
   // the link would open on "no longer valid".
@@ -687,6 +721,7 @@ export async function resendPriceStatementLink(propertyId: string): Promise<Pric
     ((rows ?? []) as Array<{ item_key: string; status: string; data: unknown }>).map((r) => [r.item_key, r]),
   );
   if (priceRequestStale(outstanding, items)) {
+    revalidatePath(`/dashboard/${propertyId}`);
     return {
       error:
         "The estimated selling price or the ESP reasoning has changed since this was sent, so your licensee can no longer approve it. Withdraw it and send a new one.",
@@ -748,8 +783,15 @@ export async function withdrawPriceStatementLink(
   if (error) {
     return { error: "Couldn't withdraw that request. Try again in a moment.", priceStatement: null };
   }
+  // Nothing to withdraw: the card was read before the licensee approved, or
+  // before someone else withdrew it. Refresh it so it shows which.
   if (!data || data.length === 0) {
-    return { error: "That request has already been approved or withdrawn.", priceStatement: null };
+    const approved = await b4Done(supabase, propertyId);
+    revalidatePath(`/dashboard/${propertyId}`);
+    return {
+      error: approved ? ALREADY_APPROVED : "That request has already been approved or withdrawn.",
+      priceStatement: null,
+    };
   }
 
   revalidatePath(`/dashboard/${propertyId}`);

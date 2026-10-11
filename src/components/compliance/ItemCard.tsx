@@ -3482,6 +3482,8 @@ export type B4Route = {
   licenseeEmail: string | null;
   /** The viewer can add the licensee's email in Team. */
   actsAsLicensee: boolean;
+  /** The office is on an agent plan, so the agent can add the email even when the viewer can't. */
+  agentPlan: boolean;
   /** This listing's price statement requests only, newest first. */
   links: SignoffLink[];
   /** The live request can no longer be approved (the ESP or the ESP reasoning changed). */
@@ -3519,6 +3521,7 @@ function PriceStatementByEmailItem({
         licenseeName={route.licenseeName}
         licenseeEmail={route.licenseeEmail}
         actsAsLicensee={route.actsAsLicensee}
+        agentPlan={route.agentPlan}
         stale={route.stale}
         seed={seed}
       />
@@ -3531,15 +3534,26 @@ function PriceStatementByEmailItem({
 // pending). Both ways stay open and the first approval counts: the link
 // stops working once b4 is done, and the app refuses an approval the link
 // already gave (0065). Said under the card, with a way to withdraw it.
-function PriceLinkAlsoOut({ propertyId, link }: { propertyId: string; link: SignoffLink }) {
+//
+// Unless the ESP or the ESP reasoning has changed since it went (stale).
+// Then the link no longer works and only the approval in the app can count,
+// so the line says so instead of offering a race the link can't win.
+function PriceLinkAlsoOut({ propertyId, link, stale }: { propertyId: string; link: SignoffLink; stale: boolean }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-rc-muted">
-      <span>
-        A request also went to <span className="break-all">{link.sentTo}</span> on{" "}
-        {formatAuTimestamp(link.emailSentAt ?? link.createdAt)}. Whichever approval comes first counts.
-      </span>
+      {stale ? (
+        <span>
+          An earlier request to <span className="break-all">{link.sentTo}</span> can no longer be approved.
+          Withdraw it.
+        </span>
+      ) : (
+        <span>
+          A request also went to <span className="break-all">{link.sentTo}</span> on{" "}
+          {formatAuTimestamp(link.emailSentAt ?? link.createdAt)}. Whichever approval comes first counts.
+        </span>
+      )}
       <button
         type="button"
         disabled={pending}
@@ -3592,17 +3606,20 @@ type ItemCardProps = {
 
 export function ItemCard(props: ItemCardProps) {
   const { item, propertyId, current, b4Route } = props;
+  if (item.key !== "b4") return <ItemCardBody {...props} />;
   // In-app b4 with a request still out by email: the card as usual, and a
   // line under it about the request.
+  //
+  // The b4 card is always inside the same div, line or no line. If the root
+  // changed when the line came or went, React would remount the card and
+  // throw away anything typed into it, such as a note the licensee was
+  // writing when they withdrew the emailed request.
   const alsoOut =
-    item.key === "b4" && b4Route && !b4Route.byEmail && current?.status !== "done"
-      ? liveLink(b4Route.links, "b4")
-      : null;
-  if (!alsoOut) return <ItemCardBody {...props} />;
+    b4Route && !b4Route.byEmail && current?.status !== "done" ? liveLink(b4Route.links, "b4") : null;
   return (
     <div>
       <ItemCardBody {...props} />
-      <PriceLinkAlsoOut propertyId={propertyId} link={alsoOut} />
+      {alsoOut && <PriceLinkAlsoOut propertyId={propertyId} link={alsoOut} stale={b4Route?.stale ?? false} />}
     </div>
   );
 }

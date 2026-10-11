@@ -68,10 +68,12 @@ export default async function SignoffPage({ params }: { params: Promise<{ token:
           Approve the price statement
         </h1>
         {/* The person first, as on the final sign-off page: someone the
-            licensee knows, then what they are asked to do. */}
+            licensee knows, then what they are asked to do. Nothing about
+            where the listing is up to: a request that follows a send-back
+            from the final sign-off goes to a listing already on the market. */}
         <p className="mt-2 text-sm leading-relaxed text-rc-muted">
-          {requester} has asked you to approve the price statement for {request.property_address} before it is
-          advertised. Read it below, then approve it if it is right.
+          {requester} has asked you, as licensee in charge, to approve the price statement for{" "}
+          {request.property_address}. Read it below, then approve it if it is right.
         </p>
 
         {/* The words being approved, on their own and large, so the one thing
@@ -97,8 +99,11 @@ export default async function SignoffPage({ params }: { params: Promise<{ token:
 
         <SignoffForm token={token} kind="b4" />
 
+        {/* Not "the email from {requester}": a resend comes from, and
+            replies go to, whoever pressed Send again, who may not be the
+            person who made the request. */}
         <p className="mt-4 text-sm leading-relaxed text-rc-muted">
-          Not right? Don&rsquo;t approve it. Reply to the email from {requester} and say what needs to change.
+          Not right? Don&rsquo;t approve it. Reply to the email you got about this and say what needs to change.
         </p>
 
         <p className="mt-8 border-t border-rc-border pt-5 text-xs leading-relaxed text-rc-muted">

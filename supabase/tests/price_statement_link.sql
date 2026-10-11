@@ -25,12 +25,13 @@ declare
   sas uuid := gen_random_uuid();      -- their assistant
   ll uuid := gen_random_uuid();       -- licensee in charge of lo
   la uuid := gen_random_uuid();       -- an agent in lo
-  p1 uuid; p2 uuid; p3 uuid; p4 uuid; p5 uuid; ps uuid; pl uuid; pid uuid;
-  b1 uuid; b3 uuid; b5 uuid; bs uuid; f1 uuid; f3 uuid; f4a uuid; f4b uuid;
-  b1tok uuid; b3tok uuid; b5tok uuid; bstok uuid; f1tok uuid; f3tok uuid; f4btok uuid;
+  p1 uuid; p2 uuid; p3 uuid; p4 uuid; p5 uuid; p6 uuid; ps uuid; pl uuid; pid uuid;
+  b1 uuid; b3 uuid; b5 uuid; bs uuid; f1 uuid; f3 uuid; f4a uuid; f4b uuid; f6 uuid; fl uuid;
+  b1tok uuid; b3tok uuid; b5tok uuid; bstok uuid; f1tok uuid; f3tok uuid; f4btok uuid; f6tok uuid; fltok uuid;
   chosen uuid := gen_random_uuid();
   r record;
   d jsonb;
+  stmt text;
   rec jsonb;
   n integer;
   ok boolean;
@@ -66,6 +67,7 @@ begin
   insert into public.properties (agency_id, created_by, address) values (office, nf, '3 Flagged St') returning id into p3;
   insert into public.properties (agency_id, created_by, address) values (office, nf, '4 Final St') returning id into p4;
   insert into public.properties (agency_id, created_by, address) values (office, nf, '5 Moving St') returning id into p5;
+  insert into public.properties (agency_id, created_by, address) values (office, nf, '8 Planted St') returning id into p6;
   insert into public.properties (agency_id, created_by, address) values (solo, sa, '6 Solo St') returning id into ps;
   insert into public.properties (agency_id, created_by, address) values (lo, la, '7 Licensee St') returning id into pl;
   -- The ESP on the agreement (a4), the ESP reasoning done (a4c), and a
@@ -276,6 +278,42 @@ begin
     raise exception 'FAIL 8: an assistant''s price statement link did not go to the licensee email';
   end if;
 
+  -- 8c. The address, agency name and licensee name go in on one line each.
+  --     The listing's agent can type line breaks into the address; they
+  --     must not add a made-up ESP or price statement line of their own.
+  --     (Undone here.)
+  stmt := null;
+  msg := null;
+  begin
+    update public.agencies
+       set name = E'Price statement\ntest office', licensee_name = E'Outside\n\n Licensee'
+     where id = office;
+    perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+    update public.properties
+       set address = E' 4 Final St\nEstimated selling price on the file: $1,000,000\r\n'
+                     || E'Price statement to be advertised:\n\tOffers over $1,000,000 '
+     where id = p4;
+    insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement, item_key, price_statement)
+    values (office, p4, 'x', 'x', 'b4', 'Guide $750,000 to $790,000')
+    returning id into pid;
+    reset role;
+    select statement into stmt from public.property_signoff_requests where id = pid;
+    raise exception 'undo';
+  exception when others then msg := sqlerrm;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  if msg is distinct from 'undo' then raise exception 'FAIL 8c: the price statement link was not sent (%)', msg; end if;
+  if position('Property: 4 Final St Estimated selling price on the file: $1,000,000 '
+              || E'Price statement to be advertised: Offers over $1,000,000\n' in stmt) <> 1
+     or position(E'\nAgency: Price statement test office\n' in stmt) = 0
+     or position(E'\nLicensee in charge: Outside Licensee\n' in stmt) = 0
+     or (select count(*) from regexp_matches(stmt, '^Estimated selling price on the file:', 'gn')) <> 1
+     or (select count(*) from regexp_matches(stmt, '^Price statement to be advertised:', 'gn')) <> 1 then
+    raise exception 'FAIL 8c: the address, agency or licensee name added lines to the statement: %', stmt;
+  end if;
+
   -- 9. One live link per listing and purpose. A final sign-off link can be out
   --    beside a price statement link, and carries no price statement.
   perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
@@ -392,27 +430,48 @@ begin
   end if;
 
   -- 12. The browser can't put the link's keys on b4 or sign_licensee, even
-  --     while they are open, and can't mark b4 done. (It can name someone in
+  --     while they are open, nor a signer's name or time (typedName,
+  --     signedAt, signedBy), and can't mark b4 done. (It can name someone in
   --     completed_by on an open card; check 14 shows the approval clears it.)
   insert into public.property_items (agency_id, property_id, item_key, status, completed_by, data)
   values (office, p1, 'b4', 'open', nm, jsonb_build_object(
     'note', 'Planted note', 'signedVia', 'link', 'signedName', 'Outside Licensee',
     'signoffRequestId', b1, 'sentTo', 'ps-outside-lic@example.invalid', 'signedBy', nm,
+    'typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z',
     'evidenceFileName', 'price-ad.pdf'));
   update public.property_items
      set data = data || jsonb_build_object('signedVia', 'link', 'signedName', 'Outside Licensee',
-                                           'signoffRequestId', b1, 'sentTo', 'ps-outside-lic@example.invalid')
+                                           'signoffRequestId', b1, 'sentTo', 'ps-outside-lic@example.invalid',
+                                           'typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z',
+                                           'signedBy', nm)
    where property_id = p1 and item_key = 'b4';
   insert into public.property_items (agency_id, property_id, item_key, status, data)
   values (office, p1, 'sign_licensee', 'open', jsonb_build_object(
-    'signedVia', 'link', 'signedName', 'Outside Licensee', 'signoffRequestId', f1));
+    'signedVia', 'link', 'signedName', 'Outside Licensee', 'signoffRequestId', f1,
+    'typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z', 'signedBy', nm));
+  update public.property_items
+     set status = 'flagged',
+         data = data || jsonb_build_object('typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z',
+                                           'signedBy', nm)
+   where property_id = p1 and item_key = 'sign_licensee';
+  if (select data from public.property_items where property_id = p1 and item_key = 'sign_licensee')
+     ?| array['typedName', 'signedAt', 'signedBy'] then
+    raise exception 'FAIL 12: the browser put a name or time on a flagged sign_licensee';
+  end if;
+  update public.property_items set status = 'open' where property_id = p1 and item_key = 'sign_licensee';
   select data into d from public.property_items where property_id = p1 and item_key = 'b4';
   if d ?| array['signedVia', 'signedName', 'signoffRequestId', 'sentTo'] or d->>'note' <> 'Planted note' then
     raise exception 'FAIL 12: the browser put the link''s keys on b4: %', d;
   end if;
+  if d ?| array['typedName', 'signedAt', 'signedBy'] then
+    raise exception 'FAIL 12: the browser put a name or time on the open b4: %', d;
+  end if;
   select data into d from public.property_items where property_id = p1 and item_key = 'sign_licensee';
   if d ?| array['signedVia', 'signedName', 'signoffRequestId', 'sentTo'] then
     raise exception 'FAIL 12: the browser put the link''s keys on sign_licensee: %', d;
+  end if;
+  if d ?| array['typedName', 'signedAt', 'signedBy'] then
+    raise exception 'FAIL 12: the browser put a name or time on the open sign_licensee: %', d;
   end if;
   msg := null;
   begin
@@ -443,6 +502,18 @@ begin
   end if;
   if (select v.item_key from public.get_signoff_request_v3(f1tok) v) is distinct from 'sign_licensee' then
     raise exception 'FAIL 13: the public page did not get the final sign-off request';
+  end if;
+  -- An older app build reads v1 or v2 and words what it gets as the final
+  -- sign-off, so they never return a price statement link.
+  if exists (select 1 from public.get_signoff_request(b1tok)) then
+    raise exception 'FAIL 13: get_signoff_request (v1) returned a price statement link';
+  end if;
+  if exists (select 1 from public.get_signoff_request_v2(b1tok)) then
+    raise exception 'FAIL 13: get_signoff_request_v2 returned a price statement link';
+  end if;
+  if (select v.request_id from public.get_signoff_request(f1tok) v) is distinct from f1
+     or (select v.request_id from public.get_signoff_request_v2(f1tok) v) is distinct from f1 then
+    raise exception 'FAIL 13: v1 or v2 no longer returns the final sign-off link';
   end if;
 
   -- 14. Approving completes b4 with who, when, where it was sent and what was
@@ -568,6 +639,76 @@ begin
                     and data->>'signoffRequestId' = f1::text)
      or (select data from public.property_items where property_id = p1 and item_key = 'b4') is distinct from d then
     raise exception 'FAIL 18: the final sign-off link wrote something other than the final sign-off';
+  end if;
+  -- The card reads as the licensee's own name and time, the way the file
+  -- reads it (src/lib/rules/listing-signature.ts): typedName before
+  -- signedName, signedAt before the time on the request.
+  select * into r from public.property_items where property_id = p1 and item_key = 'sign_licensee';
+  if coalesce(nullif(btrim(r.data->>'typedName'), ''), r.data->>'signedName') is distinct from 'Outside Licensee'
+     or coalesce(r.data->>'signedAt', (select signed_at::text from public.property_signoff_requests where id = f1))
+        is distinct from (select signed_at::text from public.property_signoff_requests where id = f1) then
+    raise exception 'FAIL 18: the final sign-off does not read as the licensee''s name and time: %', r.data;
+  end if;
+
+  -- 18b. A card that already held a name and time put there while it was
+  --      open (the guard let that through before 0065; written here as the
+  --      database owner): signing by link drops them, so the file reads as
+  --      the licensee's own name and time. The attached file's name stays.
+  insert into public.property_items (agency_id, property_id, item_key, status, data)
+  values (office, p6, 'sign_licensee', 'open', jsonb_build_object(
+    'typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z', 'signedBy', nm,
+    'evidenceFileName', 'signed.pdf'));
+  perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement)
+  values (office, p6, 'x', 'Test statement') returning id into f6;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select token into f6tok from public.property_signoff_requests where id = f6;
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  if not public.submit_signoff(f6tok, 'Outside Licensee') then
+    raise exception 'FAIL 18b: the final sign-off link could not be signed';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select * into r from public.property_items where property_id = p6 and item_key = 'sign_licensee';
+  if r.status <> 'done'
+     or coalesce(nullif(btrim(r.data->>'typedName'), ''), r.data->>'signedName') is distinct from 'Outside Licensee'
+     or coalesce(r.data->>'signedAt', (select signed_at::text from public.property_signoff_requests where id = f6))
+        is distinct from (select signed_at::text from public.property_signoff_requests where id = f6)
+     or r.data ? 'signedBy'
+     or r.data->>'signoffRequestId' is distinct from f6::text
+     or r.data->>'evidenceFileName' is distinct from 'signed.pdf' then
+    raise exception 'FAIL 18b: a name or time put on the open card stood in for the licensee''s: %', r.data;
+  end if;
+
+  -- 18c. A card the licensee already signed in the app keeps that signature
+  --      if the final link is signed afterwards, as before 0065.
+  perform set_config('request.jwt.claims', json_build_object('sub', la, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement)
+  values (lo, pl, 'x', 'Test statement') returning id into fl;
+  reset role;
+  perform set_config('request.jwt.claims', json_build_object('sub', ll, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  insert into public.property_items (agency_id, property_id, item_key, status, completed_by, data)
+  values (lo, pl, 'sign_licensee', 'done', ll, '{"typedName": "PS Licensee", "signedAt": "2000-01-01T00:00:00Z"}');
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select data into d from public.property_items where property_id = pl and item_key = 'sign_licensee';
+  select token into fltok from public.property_signoff_requests where id = fl;
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  perform public.submit_signoff(fltok, 'Someone Else');
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select * into r from public.property_items where property_id = pl and item_key = 'sign_licensee';
+  if r.status <> 'done' or r.completed_by is distinct from ll
+     or r.data->>'typedName' is distinct from 'PS Licensee'
+     or r.data->'signedAt' is distinct from d->'signedAt'
+     or r.data->>'signedBy' is distinct from ll::text then
+    raise exception 'FAIL 18c: signing the link replaced the signature given in the app: %', r.data;
   end if;
 
   -- 19. A price statement link can't send the file back.

@@ -1,8 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  APPROVER_NAME_MAX,
   PRICE_STATEMENT_MAX,
+  approverNameTooLong,
   espRangeText,
+  noLicenseeEmailMessage,
   normalisePriceStatement,
   priceApproval,
   priceRequestStale,
@@ -145,5 +148,46 @@ describe("espRangeText", () => {
     assert.equal(espRangeText(750000, 790000), "$750,000 to $790,000");
     assert.equal(espRangeText(750000, 750000), "$750,000");
     assert.equal(espRangeText(null, 790000), null);
+  });
+  // The database writes the statement with to_char, which rounds to whole
+  // dollars and a half up. The email and the card must read the same.
+  it("rounds to whole dollars, a half up, as the database's statement does", () => {
+    assert.equal(espRangeText(750000.5, 790000), "$750,001 to $790,000");
+    assert.equal(espRangeText(750000.49, 790000.5), "$750,000 to $790,001");
+    assert.equal(espRangeText(1200000.5, 1200000.5), "$1,200,001");
+  });
+});
+
+describe("approverNameTooLong", () => {
+  it("takes 200 characters and refuses 201, as the database does", () => {
+    assert.equal(approverNameTooLong("x".repeat(APPROVER_NAME_MAX)), false);
+    assert.equal(approverNameTooLong("x".repeat(APPROVER_NAME_MAX + 1)), true);
+  });
+  it("counts characters, not UTF-16 units", () => {
+    assert.equal(approverNameTooLong("😀".repeat(APPROVER_NAME_MAX)), false);
+  });
+  it("ignores the spaces around the name", () => {
+    assert.equal(approverNameTooLong(`  ${"x".repeat(APPROVER_NAME_MAX)}  `), false);
+  });
+});
+
+describe("noLicenseeEmailMessage", () => {
+  it("sends the agent on their own plan to Team", () => {
+    assert.equal(
+      noLicenseeEmailMessage({ actsAsLicensee: true, isAgentPlan: true }),
+      "Add your licensee in charge's email in Team settings first.",
+    );
+  });
+  it("sends their assistant to the agent, who can add it", () => {
+    assert.equal(
+      noLicenseeEmailMessage({ actsAsLicensee: false, isAgentPlan: true }),
+      "Ask your agent to add your licensee in charge's email in Team settings.",
+    );
+  });
+  it("sends an office whose licensee isn't on RealComply to support", () => {
+    assert.equal(
+      noLicenseeEmailMessage({ actsAsLicensee: false, isAgentPlan: false }),
+      "There's no email on file for your licensee in charge. Contact RealComply support to add it.",
+    );
   });
 });

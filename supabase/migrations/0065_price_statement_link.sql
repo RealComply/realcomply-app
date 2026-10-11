@@ -22,10 +22,12 @@
 --      licensee reads is built here, never by the browser.
 --   4. One live link per listing and purpose, even with two clicks at once.
 --   5. A withdrawn link can't be brought back; a signed one can't be withdrawn.
---   6. The browser can't put the link's keys on b4 or sign_licensee.
---   7. get_signoff_request_v3 for the public page (v1 and v2 left as they
---      are). submit_signoff completes b4 for a b4 link; its sign_licensee
---      half is 0014's, unchanged.
+--   6. The browser can't put the link's keys on b4 or sign_licensee, nor a
+--      name or time on either card while it is not done.
+--   7. get_signoff_request_v3 for the public page. v1 and v2, which older
+--      app builds read, now return final sign-off links only. submit_signoff
+--      completes b4 for a b4 link; its sign_licensee half is 0014's, except
+--      that a name or time already on an open card is dropped.
 --   8. send_back_by_token (0062) takes final sign-off links only. A b4 link is
 --      exempt from 0062's flagged-card lock, so a flagged b4 can be approved
 --      again and its flag cleared.
@@ -38,7 +40,7 @@
 --
 -- Safe while the app now live is in use: it creates final sign-off links
 -- only, without an item_key, and reads them through get_signoff_request_v2,
--- which is not changed.
+-- which still returns every one of them.
 --
 -- Run after 0064. SAFE TO RUN TWICE. One transaction.
 --
@@ -140,6 +142,11 @@ $fn$;
 -- the final sign-off statement (src/lib/signoff/statement.ts), including its
 -- liability sentence, which is with Natalie Melia for review. Changing the
 -- words is a one-function migration.
+--
+-- The address, agency name and licensee name are each put on one line, the
+-- same way as the ruleset name. Any agent who can see the listing can edit
+-- its address, line breaks included, and a line break there could put a
+-- made-up ESP or price statement line above the real ones.
 create or replace function public.price_statement_text(
   p_address text, p_agency text, p_licensee text, p_price text,
   p_low numeric, p_high numeric, p_ruleset text, p_on date)
@@ -149,9 +156,12 @@ stable
 set search_path = public
 as $fn$
   select concat_ws(E'\n',
-    'Property: ' || coalesce(nullif(btrim(p_address), ''), 'not recorded in the file'),
-    'Agency: ' || coalesce(nullif(btrim(p_agency), ''), 'not recorded in the file'),
-    'Licensee in charge: ' || coalesce(nullif(btrim(p_licensee), ''), 'not recorded in the file'),
+    'Property: ' || coalesce(nullif(btrim(regexp_replace(coalesce(p_address, ''), '\s+', ' ', 'g')), ''),
+                             'not recorded in the file'),
+    'Agency: ' || coalesce(nullif(btrim(regexp_replace(coalesce(p_agency, ''), '\s+', ' ', 'g')), ''),
+                           'not recorded in the file'),
+    'Licensee in charge: ' || coalesce(nullif(btrim(regexp_replace(coalesce(p_licensee, ''), '\s+', ' ', 'g')), ''),
+                                       'not recorded in the file'),
     'Estimated selling price on the file: ' || case
       when p_low is null or p_high is null then 'not recorded in the file'
       when p_low = p_high then '$' || to_char(p_low, 'FM999,999,999,990')
@@ -399,6 +409,16 @@ begin
   -- the browser, even on a card that is not done yet.
   if new.item_key in ('sign_licensee', 'b4') then
     new.data := coalesce(new.data, '{}'::jsonb) - array['signedVia', 'signedName', 'signoffRequestId', 'sentTo'];
+    -- Nor a name or time on a card nobody has signed. The file reads
+    -- typedName before the link's name and signedAt before the link's time
+    -- (src/lib/rules/listing-signature.ts), so a name typed onto the open
+    -- card would stand in for the licensee's once they signed by link.
+    -- Signing in the app writes typedName with status done in one write,
+    -- and the lines below stamp signedAt and signedBy, so nothing real is
+    -- lost.
+    if new.status is distinct from 'done' then
+      new.data := new.data - array['typedName', 'signedAt', 'signedBy'];
+    end if;
   end if;
 
   if new.status = 'done' then
@@ -428,7 +448,67 @@ end
 $$;
 revoke execute on function public.guard_listing_signoff() from public, anon, authenticated;
 
--- ── 6. The public page reads v3 (v1 and v2 left as they are) ───────────
+-- ── 6. The public page reads v3; v1 and v2 read final links only ───────
+-- An older app build reads v2 (and before that v1) and words whatever comes
+-- back as the final sign-off. Say the app is rolled back after a b4 link
+-- has gone out: the licensee would be shown the b4 link as the sign-off on
+-- the whole file. So v1 and v2 now return final sign-off links only. Same
+-- columns as before, so the grants stay. Every link the live app makes is a
+-- final sign-off link, so it sees no change.
+create or replace function public.get_signoff_request(p_token uuid)
+returns table (
+  request_id uuid,
+  statement text,
+  ruleset_version text,
+  property_address text,
+  agency_name text,
+  expires_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select r.id, r.statement, r.ruleset_version, p.address, a.name, r.expires_at
+  from public.property_signoff_requests r
+  join public.properties p on p.id = r.property_id
+  join public.agencies a on a.id = r.agency_id
+  where r.token = p_token
+    and r.signed_at is null
+    and r.revoked_at is null
+    and r.expires_at > now()
+    and r.item_key = 'sign_licensee';
+$$;
+
+create or replace function public.get_signoff_request_v2(p_token uuid)
+returns table (
+  request_id uuid,
+  statement text,
+  ruleset_version text,
+  property_address text,
+  agency_name text,
+  requested_by_name text,
+  expires_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select r.id, r.statement, r.ruleset_version, p.address, a.name,
+         nullif(trim(coalesce(pr.full_name, '')), ''),
+         r.expires_at
+  from public.property_signoff_requests r
+  join public.properties p on p.id = r.property_id
+  join public.agencies a on a.id = r.agency_id
+  left join public.profiles pr on pr.id = r.created_by
+  where r.token = p_token
+    and r.signed_at is null
+    and r.revoked_at is null
+    and r.expires_at > now()
+    and r.item_key = 'sign_licensee';
+$$;
+
 -- A b4 link that can no longer be approved (approved already, the ESP
 -- changed, or the ESP reasoning reopened) reads as no longer valid.
 create or replace function public.get_signoff_request_v3(p_token uuid)
@@ -521,7 +601,7 @@ begin
     return true;
   end if;
 
-  -- The final sign-off: 0014, unchanged.
+  -- The final sign-off: 0014, except for the one line marked 0065.
   update public.property_signoff_requests
      set signed_at = now(),
          signed_name = btrim(p_typed_name)
@@ -547,9 +627,15 @@ begin
       'signoffRequestId', v_request.id
     )
   )
+  -- 0065: a name or time put on the card while it was open (before 0065
+  -- the guard let it through) would read as the licensee's. Dropped here,
+  -- so cards already holding one are covered. A card already signed in the
+  -- app keeps its signature, as before.
   on conflict (property_id, item_key) do update
     set status = 'done',
-        data = public.property_items.data || excluded.data;
+        data = case when public.property_items.status = 'done' then public.property_items.data
+                    else public.property_items.data - array['typedName', 'signedAt', 'signedBy']
+               end || excluded.data;
 
   return true;
 end;
@@ -847,5 +933,9 @@ select
   exists (select 1 from pg_trigger where tgname = 'agencies_licensee_contact_log')                  as contact_log,
   position('''b4''' in pg_get_functiondef('public.submit_signoff(uuid, text)'::regprocedure)) > 0    as submit_knows_b4,
   position('sign_licensee' in pg_get_functiondef('public.send_back_by_token(uuid, jsonb)'::regprocedure)) > 0 as send_back_final_only,
+  position('sign_licensee' in pg_get_functiondef('public.get_signoff_request(uuid)'::regprocedure)) > 0
+    and position('sign_licensee' in pg_get_functiondef('public.get_signoff_request_v2(uuid)'::regprocedure)) > 0 as v1_v2_final_only,
+  position('typedName' in pg_get_functiondef('public.guard_listing_signoff()'::regprocedure)) > 0
+    and position('typedName' in pg_get_functiondef('public.submit_signoff(uuid, text)'::regprocedure)) > 0 as open_card_name_dropped,
   position('''item'', r.item_key' in
            pg_get_functiondef('public.build_activity_record_core(uuid)'::regprocedure)) > 0          as record_says_what_for;

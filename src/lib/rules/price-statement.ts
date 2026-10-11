@@ -96,11 +96,50 @@ export function priceApproval(
   return { text: note, via: "app", name, at, sentTo: null };
 }
 
-/** "$750,000 to $790,000", or "$750,000" when both ends are the same. Null when not recorded. */
+/**
+ * "$750,000 to $790,000", or "$750,000" when both ends are the same. Null
+ * when not recorded.
+ *
+ * Whole dollars, rounding a half up, because that is how the database writes
+ * the same figures into the statement the licensee approves (to_char in
+ * 0065's price_statement_text). An ESP typed with cents would otherwise read
+ * as one figure in the email and on the card, and another on the page.
+ */
 export function espRangeText(low: number | null, high: number | null): string | null {
   if (low === null || high === null) return null;
-  const money = (n: number) => `$${n.toLocaleString("en-AU")}`;
+  const money = (n: number) =>
+    `$${n.toLocaleString("en-AU", { maximumFractionDigits: 0, roundingMode: "halfExpand" })}`;
   return low === high ? money(low) : `${money(low)} to ${money(high)}`;
+}
+
+/**
+ * The longest name the licensee can type to approve a price statement. The
+ * database refuses longer (0065), and its refusal reads on the page as a
+ * link that no longer works, so the page says it first.
+ */
+export const APPROVER_NAME_MAX = 200;
+
+/**
+ * Whether a typed name is too long to approve with. Counted in characters,
+ * as the database counts them, not in UTF-16 units. The name is trimmed
+ * first, as it is before it goes to the database.
+ */
+export function approverNameTooLong(name: string): boolean {
+  return [...name.trim()].length > APPROVER_NAME_MAX;
+}
+
+/**
+ * What to do when there is no email on file for the licensee in charge.
+ *
+ * Who can add it decides the words. The agent on their own plan can, in
+ * Team. Their assistant can't, but their agent can, so that is who to ask.
+ * In an office whose founder answered "No, someone else", nobody signed in
+ * can see Team, so support adds it (Adam's default, 12 Oct 2026).
+ */
+export function noLicenseeEmailMessage(viewer: { actsAsLicensee: boolean; isAgentPlan: boolean }): string {
+  if (viewer.actsAsLicensee) return "Add your licensee in charge's email in Team settings first.";
+  if (viewer.isAgentPlan) return "Ask your agent to add your licensee in charge's email in Team settings.";
+  return "There's no email on file for your licensee in charge. Contact RealComply support to add it.";
 }
 
 type StaleInput = { espLow: number | null; espHigh: number | null };

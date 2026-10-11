@@ -9,7 +9,7 @@ import {
   type PriceLinkState,
 } from "@/lib/actions/signoff-links";
 import { liveLink, type SignoffLink } from "@/lib/data/signoff-links";
-import { PRICE_STATEMENT_MAX, espRangeText } from "@/lib/rules/price-statement";
+import { PRICE_STATEMENT_MAX, espRangeText, noLicenseeEmailMessage } from "@/lib/rules/price-statement";
 import { STAGE_GATE_MESSAGE } from "@/lib/rules/esp-reasoning-gate";
 import { formatAuTimestamp } from "@/lib/format-date";
 
@@ -39,6 +39,7 @@ export function PriceStatementLinkPanel({
   licenseeName,
   licenseeEmail,
   actsAsLicensee,
+  agentPlan,
   stale,
   seed,
 }: {
@@ -52,6 +53,8 @@ export function PriceStatementLinkPanel({
   licenseeEmail: string | null;
   /** The viewer can add the licensee's email in Team (the agent on their own plan). */
   actsAsLicensee: boolean;
+  /** The office is on an agent plan: whoever can't add the email can ask their agent to. */
+  agentPlan: boolean;
   /** The live request can no longer be approved: the ESP or the ESP reasoning changed. */
   stale: boolean;
   /** The offering price read from the agency agreement (a3), to start the box with. */
@@ -60,6 +63,9 @@ export function PriceStatementLinkPanel({
   const live = liveLink(links, "b4");
   // The newest request that is not live: expired, or approved on a card the
   // licensee later sent back. Its words are the best start for a new one.
+  // Withdrawn requests are not in links, so a newer one may have been
+  // withdrawn since: the expired note names when this one was sent, not
+  // "your last request", and holds either way.
   const last = live ? null : (links[0] ?? null);
   const expired = last !== null && last.signedAt === null;
 
@@ -77,8 +83,6 @@ export function PriceStatementLinkPanel({
   // The send's error stays in its state until the next send. Once the agent
   // has done something else on the card, it is old news and is not shown.
   const [settled, setSettled] = useState<PriceLinkState | null>(null);
-  // Withdrawn here: an older expired request is not "your last request".
-  const [withdrawn, setWithdrawn] = useState(false);
 
   function resend() {
     setError(null);
@@ -101,7 +105,6 @@ export function PriceStatementLinkPanel({
         setError(result.error);
         return;
       }
-      setWithdrawn(true);
       // "Change wording": the words go back in the box, to edit and send again.
       if (refill && result.priceStatement) setText(result.priceStatement);
     });
@@ -149,8 +152,11 @@ export function PriceStatementLinkPanel({
         <p className="mt-1.5 break-words text-sm font-semibold text-rc-ink">&ldquo;{live.priceStatement}&rdquo;</p>
         {esp && <p className="mt-1 text-xs text-rc-muted">Estimated selling price shown: {esp}.</p>}
 
+        {/* On a listing switched to practice after it went, only Withdraw:
+            nothing more goes to the licensee from a practice listing, and
+            new wording could not be sent. */}
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          {!stale && (
+          {!stale && !testMode && (
             <button
               type="button"
               onClick={resend}
@@ -161,15 +167,17 @@ export function PriceStatementLinkPanel({
               {pending ? "Working…" : justSent ? "Sent again" : "Send again"}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => withdraw(live.id, true)}
-            disabled={pending}
-            className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-ink transition hover:border-rc-green-deep/40 disabled:opacity-60"
-          >
-            <PenLine size={12} aria-hidden="true" />
-            Change wording
-          </button>
+          {!testMode && (
+            <button
+              type="button"
+              onClick={() => withdraw(live.id, true)}
+              disabled={pending}
+              className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-ink transition hover:border-rc-green-deep/40 disabled:opacity-60"
+            >
+              <PenLine size={12} aria-hidden="true" />
+              Change wording
+            </button>
+          )}
           <button
             type="button"
             onClick={() => withdraw(live.id, false)}
@@ -185,6 +193,7 @@ export function PriceStatementLinkPanel({
           <p className="mt-2 text-xs leading-relaxed text-rc-muted">
             Not approved yet. Expires {formatAuTimestamp(live.expiresAt)}. When they approve, this card completes on
             its own. Replies to that email go to you.
+            {testMode && " This is now a practice listing, so nothing more is sent to your licensee."}
           </p>
         )}
         {errorLine}
@@ -204,16 +213,15 @@ export function PriceStatementLinkPanel({
   }
 
   const email = licenseeEmail?.trim() || null;
-  const noEmail = actsAsLicensee
-    ? "Add your licensee in charge's email in Team settings first."
-    : "There's no email on file for your licensee in charge. Contact RealComply support to add it.";
+  const noEmail = noLicenseeEmailMessage({ actsAsLicensee, isAgentPlan: agentPlan });
   const canSend = gateOpen && email !== null;
 
   return (
     <form action={send}>
-      {expired && last && !withdrawn && (
+      {expired && last && (
         <p className="mb-2 rounded-md border border-rc-border bg-rc-bg-alt px-3 py-2 text-xs leading-relaxed text-rc-muted">
-          Your last request expired on {formatAuTimestamp(last.expiresAt)} without approval. Send a new one.
+          A request sent on {formatAuTimestamp(last.emailSentAt ?? last.createdAt)} expired without approval. Send
+          a new one.
         </p>
       )}
       <p className="text-sm text-rc-muted">

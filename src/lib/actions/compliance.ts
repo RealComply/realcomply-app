@@ -19,6 +19,7 @@ import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { agencyPeople } from "@/lib/data/people";
 import { priceStatementByEmail } from "@/lib/rules/price-statement";
+import { liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
 import { stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
@@ -2284,12 +2285,17 @@ export async function completeStage(
     // Where b4 is one of the cards in the way and nobody in the office is a
     // licensee in charge on RealComply, say how it gets done: it goes to the
     // licensee by email from its card (Adam, 12 Oct 2026). Without this the
-    // agent is told to complete a card only the licensee can complete.
+    // agent is told to complete a card only the licensee can complete. Once
+    // a request is out, telling them to send it reads as if it never went.
     const b4Label = getItem("b4")?.label;
-    const b4Hint = async (labels: string[]) =>
-      b4Label && labels.includes(b4Label) && priceStatementByEmail(await agencyPeople(supabase))
-        ? " Send the price statement to your licensee for approval on its card."
-        : "";
+    const b4Hint = async (labels: string[]) => {
+      if (!b4Label || !labels.includes(b4Label) || !priceStatementByEmail(await agencyPeople(supabase))) {
+        return "";
+      }
+      return liveLink(await signoffLinksFor(supabase, propertyId), "b4")
+        ? " Your licensee hasn't approved the price statement yet."
+        : " Send the price statement to your licensee for approval on its card.";
+    };
 
     if (hold.stage !== property.stage) {
       return {

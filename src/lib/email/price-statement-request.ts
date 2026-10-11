@@ -43,15 +43,18 @@ export function priceStatementRequestSubject(input: PriceStatementRequestEmail):
 
 export function priceStatementRequestDocument(input: PriceStatementRequestEmail): EmailDocument {
   const esp = espRangeText(input.espLow, input.espHigh);
+  // Nothing about where the listing is up to. Most requests go before it is
+  // advertised, but the licensee can send b4 back from the final sign-off,
+  // and the request that follows goes to a listing already on the market.
   return {
-    preheader: `${input.agentName} of ${input.agencyName} needs your approval of the price statement for ${input.propertyAddress} before it is advertised.`,
+    preheader: `${input.agentName} of ${input.agencyName} needs your approval of the price statement for ${input.propertyAddress}.`,
     title: "A price statement needs your approval",
     meta: `${input.agencyName} · ${input.propertyAddress}`,
     sections: [
       {
         kind: "paragraph",
         lead: true,
-        text: `${input.agentName} is getting ${input.propertyAddress} ready for market. Before it is advertised, they need you, as licensee in charge, to approve the price statement.`,
+        text: `${input.agentName} needs you, as licensee in charge, to approve the price statement for ${input.propertyAddress}.`,
       },
       { kind: "label", text: "The price statement" },
       {

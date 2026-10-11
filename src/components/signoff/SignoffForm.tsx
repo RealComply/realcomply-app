@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { submitSignoff } from "@/lib/actions/signoff-links";
+import { APPROVER_NAME_MAX } from "@/lib/rules/price-statement";
 
 // The signing control on the public sign-off page.
 //
@@ -66,6 +67,9 @@ export function SignoffForm({ token, kind = "sign_licensee" }: { token: string; 
         required
         autoComplete="name"
         placeholder="Jane Smith"
+        // The database refuses a longer name on a price statement approval
+        // (0065). The final sign-off has no limit, and keeps none here.
+        maxLength={approving ? APPROVER_NAME_MAX : undefined}
         className="mt-1 w-full max-w-sm rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
       />
       <p className="mt-1.5 text-xs leading-relaxed text-rc-muted">

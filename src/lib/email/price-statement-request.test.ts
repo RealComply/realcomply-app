@@ -33,6 +33,29 @@ describe("the price statement request email", () => {
     assert.ok(text.includes("expires on 11 November 2026"));
   });
 
+  // b4 can be asked again after the licensee sends it back from the final
+  // sign-off, when the listing is already on the market.
+  it("says nothing about where the listing is up to", () => {
+    const doc = priceStatementRequestDocument(base);
+    assert.equal(
+      doc.preheader,
+      "Sam Agent of Hornsby Realty needs your approval of the price statement for 42 Landra Ave, Mount Colah.",
+    );
+    const lead = doc.sections.find((s) => s.kind === "paragraph" && s.lead);
+    assert.ok(lead && lead.kind === "paragraph");
+    assert.equal(
+      lead.text,
+      "Sam Agent needs you, as licensee in charge, to approve the price statement for 42 Landra Ave, Mount Colah.",
+    );
+    const { text } = buildPriceStatementRequestEmail(base);
+    assert.ok(!/advertised|ready for market/.test(text));
+  });
+
+  it("writes an ESP with cents in whole dollars, as the statement does", () => {
+    const { text } = buildPriceStatementRequestEmail({ ...base, espLow: 750000.5, espHigh: 790000 });
+    assert.ok(text.includes("Estimated selling price on the file: $750,001 to $790,000"));
+  });
+
   it("escapes what was typed, in the HTML", () => {
     const { html } = buildPriceStatementRequestEmail({
       ...base,
