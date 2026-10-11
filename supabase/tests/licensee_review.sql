@@ -1,6 +1,7 @@
 -- ===== READ ONLY. Licensee review and send back test, 12 October 2026 =====
 --
--- Proves supabase/migrations/0062_licensee_review.sql. Run after 0062. Safe on
+-- Proves supabase/migrations/0062_licensee_review.sql and 0063 (a flagged
+-- card goes back to not done; marking it done clears the flag). Run after 0063. Safe on
 -- the live database: everything happens inside one transaction that is rolled
 -- back at the end.
 --
@@ -87,6 +88,8 @@ begin
   if n <> 1 then raise exception 'FAIL 4: the superseded signature was not recorded'; end if;
   select id into flag from public.listing_send_back_items where property_id = p1 and cleared_at is null;
   if flag is null then raise exception 'FAIL 4: the flagged card was not recorded'; end if;
+  select count(*) into n from public.property_items where property_id = p1 and item_key = 'a3' and status = 'open';
+  if n <> 1 then raise exception 'FAIL 4: the flagged card did not go back to not done'; end if;
 
   -- ══════════════ As agent 1, while the card is open ══════════════
   perform set_config('request.jwt.claims', json_build_object('sub', ag1, 'role', 'authenticated')::text, true);
@@ -130,10 +133,11 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', ag1, 'role', 'authenticated')::text, true);
   set local role authenticated;
 
-  -- 7. Clears it, signs again and sends a new link.
-  if not public.clear_send_back_item(flag, 'Corrected') then
-    raise exception 'FAIL 7: the agent could not mark Changes made';
-  end if;
+  -- 7. Marks the flagged card done as usual, which clears the flag (0063),
+  --    then signs again and sends a new link.
+  update public.property_items set status = 'done' where property_id = p1 and item_key = 'a3';
+  select count(*) into n from public.listing_send_back_items where id = flag and cleared_at is not null and cleared_by = ag1;
+  if n <> 1 then raise exception 'FAIL 7: marking the card done did not clear the flag'; end if;
   update public.property_items set status = 'done', data = '{"typedName":"Test Agent One"}'
    where property_id = p1 and item_key = 'sign_agent';
   insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement, created_by)
@@ -200,7 +204,7 @@ begin
   if jsonb_array_length(rec->'superseded_agent_signatures') <> 2 then
     raise exception 'FAIL 12: the activity record does not have both superseded signatures';
   end if;
-  if rec::text like '%Agreement date is wrong%' or rec::text like '%Still wrong%' or rec::text like '%Corrected%' then
+  if rec::text like '%Agreement date is wrong%' or rec::text like '%Still wrong%' then
     raise exception 'FAIL 12: a note or reply was copied into the activity record';
   end if;
 

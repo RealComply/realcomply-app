@@ -1,17 +1,15 @@
 "use server";
 
 import { appBaseUrl } from "@/lib/site-url";
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { requireAuthContext } from "@/lib/actions/compliance";
 import { sendEmail } from "@/lib/email/send";
 import { buildSendBackEmail } from "@/lib/email/send-back";
 import { getItem } from "@/lib/rules/nsw-sales";
 import { STAGE_LABELS, type PropertyStage } from "@/lib/types";
 
-// Sending a file back for changes, and marking a flagged card "Changes made"
-// (0062; Adam, 12 Oct 2026).
+// Sending a file back for changes (0062, 0063; Adam, 12 Oct 2026). A flagged
+// card is cleared by marking it done as usual (0063), not from here.
 //
 // THE DATABASE DECIDES. Who may send back (the licensee in charge, or whoever
 // holds a live emailed link), what it resets (the outstanding link, "Send to
@@ -121,23 +119,5 @@ export async function sendBackWithLink(token: string, _prev: SendBackState, form
 
   const { data: agency } = await service.from("agencies").select("licensee_name").eq("id", r.agency_id).maybeSingle();
   await emailAgent(r.property_id, flags, (agency as { licensee_name?: string | null } | null)?.licensee_name ?? null, r.sent_to);
-  return { error: null, done: true };
-}
-
-/** "Changes made" on one flagged card, with an optional reply. */
-export async function markChangesMade(
-  propertyId: string,
-  flagId: string,
-  _prev: SendBackState,
-  formData: FormData,
-): Promise<SendBackState> {
-  const { supabase } = await requireAuthContext();
-  const reply = String(formData.get("reply") ?? "").trim();
-  if (reply.length > 1000) return { error: "Keep the reply under 1,000 characters." };
-
-  const { error } = await supabase.rpc("clear_send_back_item", { p_item_id: flagId, p_reply: reply || null });
-  if (error) return { error: refusal(error.message) };
-
-  revalidatePath(`/dashboard/${propertyId}`);
   return { error: null, done: true };
 }

@@ -225,7 +225,7 @@ function ItemShell({
     (current?.data as { aiDraft?: { autoCompleted?: boolean } } | undefined)?.aiDraft?.autoCompleted,
   );
   const [evidenceUnsaved, setEvidenceUnsaved] = useState(false);
-  // A card the licensee sent back stays open until "Changes made" (0062).
+  // A card the licensee sent back stays open until it is marked done (0063).
   const flag = useFlagFor(item.key);
   const canFold = isDone && foldable && !evidenceUnsaved && !flag;
   const [folded, setFolded] = useState(isDone && !autoCompleted);

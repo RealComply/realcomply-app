@@ -45,7 +45,7 @@ export function buildSendBackEmail(input: SendBackEmail): { subject: string; tex
       },
       {
         kind: "paragraph",
-        text: "Fix each card, then press Changes made on it. When every card is done, sign the file again and send it back to your licensee for sign-off.",
+        text: "Each card is back to not done. Fix it and mark it done as usual. When every card is done, sign the file again and send it back to your licensee for sign-off.",
       },
       ...(anyBreach
         ? [

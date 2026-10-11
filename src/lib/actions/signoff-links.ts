@@ -197,7 +197,7 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
     supabase.from("property_items").select("status").eq("property_id", propertyId).eq("item_key", "sign_agent").maybeSingle(),
   ]);
   if ((openFlags ?? []).length > 0) {
-    return { error: "Some cards your licensee sent back aren't marked Changes made yet. Fix them first." };
+    return { error: "Some cards your licensee sent back aren't done yet. Fix them and mark them done first." };
   }
   if ((sendBacks ?? []).length > 0 && (agentSig as { status?: string } | null)?.status !== "done") {
     return { error: "Sign the file again (Agent signature, above) before sending it back to your licensee." };

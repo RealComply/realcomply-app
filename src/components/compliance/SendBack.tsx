@@ -1,13 +1,12 @@
 "use client";
 
-import { createContext, useActionState, useContext, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import Link from "next/link";
-import { markChangesMade, type SendBackState } from "@/lib/actions/send-back";
 import type { OpenFlag } from "@/lib/data/send-backs";
 
 // A file the licensee sent back, on the listing page (Adam, 12 Oct 2026). The
 // licensee reviews and sends back on the emailed sign-off page; this is the
-// agent's side: the banner, and the note with "Changes made" on each card.
+// agent's side: the banner, and the note on each flagged card.
 //
 // One provider for the page, so every card can find its own flag without the
 // listing page threading another prop through each of ItemCard's card kinds.
@@ -29,14 +28,12 @@ export function useFlagFor(itemKey: string): OpenFlag | null {
 }
 
 /**
- * On a flagged card, above its body: the licensee's note, the breach prompt
- * where they ticked it, and "Changes made" with an optional reply.
+ * On a flagged card, above its body: the licensee's note, and the breach
+ * prompt where they ticked it. No button of its own (Adam, 12 Oct 2026: two
+ * buttons on one card was confusing). The card went back to not done when it
+ * was sent back; marking it done the normal way clears this note (0063).
  */
 export function FlagNote({ flag }: { flag: OpenFlag }) {
-  const page = useContext(SendBackContext);
-  const action = markChangesMade.bind(null, page?.propertyId ?? "", flag.id);
-  const [state, formAction, pending] = useActionState(action, { error: null } as SendBackState);
-
   return (
     <div className="mt-3 rounded-md border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5 text-sm">
       <p className="font-semibold text-rc-amber-deep">Your licensee sent this back</p>
@@ -50,27 +47,7 @@ export function FlagNote({ flag }: { flag: OpenFlag }) {
           as well as fixing this card.
         </p>
       )}
-      <form action={formAction} className="mt-2 flex flex-wrap items-center gap-2">
-        <input
-          name="reply"
-          maxLength={1000}
-          placeholder="Reply to your licensee (optional)"
-          aria-label="Reply to your licensee (optional)"
-          className="min-w-0 flex-1 rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-xs text-rc-ink"
-        />
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
-        >
-          {pending ? "Saving…" : "Changes made"}
-        </button>
-      </form>
-      {state.error && (
-        <p role="alert" className="mt-1 text-xs font-medium text-rc-amber-deep">
-          {state.error}
-        </p>
-      )}
+      <p className="mt-1.5 text-xs text-rc-muted">Fix it, then mark this card done as usual. That clears this note.</p>
     </div>
   );
 }
@@ -98,7 +75,7 @@ export function SendBackBanner() {
         ))}
       </ul>
       <p className="mt-1.5 text-xs text-rc-muted">
-        Fix each one and press Changes made on it. Then sign the file again on Settled and send it back for sign-off.
+        Fix each one and mark it done as usual. Then sign the file again on Settled and send it back for sign-off.
         {stages.length > 1 ? " The cards are on more than one stage." : ""}
       </p>
     </div>

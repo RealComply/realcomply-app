@@ -6,7 +6,7 @@ import type { Property, PropertyItem } from "@/lib/types";
 // The licensee's review: the cards they can flag, and the cards they flagged
 // that are still to be fixed (0062; Adam, 12 Oct 2026).
 
-/** A card the licensee flagged that the agent has not marked "Changes made". */
+/** A card the licensee flagged that the agent has not marked done again (0063). */
 export type OpenFlag = {
   id: string;
   itemKey: string;
