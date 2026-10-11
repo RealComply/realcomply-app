@@ -39,10 +39,14 @@ export function ReviewAndSign({
                 audit pack the agent downloads, from /signoff/[token]/file.
                 Some phones won't show a PDF inside a page, so opening it in
                 its own tab and saving it stay underneath. */}
+            {/* Full width, no thumbnail sidebar (Adam, 12 Oct 2026: "it needs to
+                show the full size copy"). The #… settings are read by the
+                browser's own PDF viewer: navpanes=0 hides the page sidebar,
+                view=FitH fits the page to the width. */}
             <iframe
-              src={`/signoff/${token}/file`}
+              src={`/signoff/${token}/file#navpanes=0&view=FitH`}
               title={`The compliance file for ${propertyAddress}`}
-              className="mt-3 h-[75vh] min-h-[420px] w-full rounded-md border border-rc-border bg-rc-bg-alt"
+              className="mt-3 h-[90vh] min-h-[480px] w-full rounded-md border border-rc-border bg-rc-bg-alt"
             />
             <p className="mt-2 text-xs text-rc-muted">
               Can&rsquo;t see the file above?{" "}

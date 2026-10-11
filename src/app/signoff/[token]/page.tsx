@@ -52,7 +52,9 @@ export default async function SignoffPage({ params }: { params: Promise<{ token:
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-5 py-12 sm:py-16">
+    // Wider than the "no longer valid" page: the file is read here, at close
+    // to full size (Adam, 12 Oct 2026).
+    <main className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
       <Logo size={20} />
 
       <h1 className="mt-8 text-2xl font-extrabold tracking-tight text-rc-ink sm:text-3xl">
