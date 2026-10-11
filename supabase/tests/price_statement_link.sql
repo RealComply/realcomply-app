@@ -25,7 +25,7 @@ declare
   sas uuid := gen_random_uuid();      -- their assistant
   ll uuid := gen_random_uuid();       -- licensee in charge of lo
   la uuid := gen_random_uuid();       -- an agent in lo
-  p1 uuid; p2 uuid; p3 uuid; p4 uuid; p5 uuid; p6 uuid; ps uuid; pl uuid; pid uuid;
+  p1 uuid; p2 uuid; p3 uuid; p4 uuid; p5 uuid; p6 uuid; p7 uuid; ps uuid; pl uuid; pid uuid;
   b1 uuid; b3 uuid; b5 uuid; bs uuid; f1 uuid; f3 uuid; f4a uuid; f4b uuid; f6 uuid; fl uuid;
   b1tok uuid; b3tok uuid; b5tok uuid; bstok uuid; f1tok uuid; f3tok uuid; f4btok uuid; f6tok uuid; fltok uuid;
   chosen uuid := gen_random_uuid();
@@ -68,6 +68,7 @@ begin
   insert into public.properties (agency_id, created_by, address) values (office, nf, '4 Final St') returning id into p4;
   insert into public.properties (agency_id, created_by, address) values (office, nf, '5 Moving St') returning id into p5;
   insert into public.properties (agency_id, created_by, address) values (office, nf, '8 Planted St') returning id into p6;
+  insert into public.properties (agency_id, created_by, address) values (office, nf, '9 Other Card St') returning id into p7;
   insert into public.properties (agency_id, created_by, address) values (solo, sa, '6 Solo St') returning id into ps;
   insert into public.properties (agency_id, created_by, address) values (lo, la, '7 Licensee St') returning id into pl;
   -- The ESP on the agreement (a4), the ESP reasoning done (a4c), and a
@@ -149,6 +150,17 @@ begin
   end;
   if msg is distinct from 'Your licensee in charge uses RealComply, so they approve the price statement in the app.' then
     raise exception 'FAIL 3: a price statement link went out in an office whose licensee uses RealComply (%)', coalesce(msg, 'not refused');
+  end if;
+
+  -- 3b. Another office's ESP reads as nothing. listing_effective_esp is
+  --     open to everyone signed in and runs as the caller; with the owner's
+  --     rights it would give anyone any office's ESP by listing id.
+  if (select e.esp_low from public.listing_effective_esp(pl) e) is distinct from 750000 then
+    raise exception 'FAIL 3b: an agent could not read their own listing''s ESP';
+  end if;
+  select * into r from public.listing_effective_esp(p1);
+  if r.esp_low is not null or r.esp_high is not null then
+    raise exception 'FAIL 3b: an agent read another office''s ESP: %', row_to_json(r);
   end if;
 
   -- ══════════════ The licensee email belongs to someone in the office ══════════════
@@ -581,8 +593,9 @@ begin
 
   -- 12d. A file on b4 or sign_licensee comes from the licensee in charge.
   --      With nobody in charge on RealComply, nobody signed in can put one
-  --      there. A file already on the card stays through other changes,
-  --      and can be taken off.
+  --      there, including another card's file on the same listing. A file
+  --      already on the card stays through other changes, and can be taken
+  --      off.
   msg := null;
   begin
     insert into public.property_items (agency_id, property_id, item_key, status, evidence_path)
@@ -598,8 +611,22 @@ begin
   insert into public.property_items (agency_id, property_id, item_key, status, evidence_path, data)
   values (office, p6, 'b4', 'open', office::text || '/' || p6::text || '/b4/approval.pdf',
           '{"evidenceFileName": "approval.pdf"}');
+  -- Another card's file, on a listing with no b4 yet. It is the only card
+  -- on p7, so it is the only file there to be mistaken for b4's own.
+  insert into public.property_items (agency_id, property_id, item_key, status, evidence_path, data)
+  values (office, p7, 'a3', 'done', office::text || '/' || p7::text || '/a3/agreement.pdf',
+          '{"evidenceFileName": "agreement.pdf"}');
   perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
   set local role authenticated;
+  msg := null;
+  begin
+    insert into public.property_items (agency_id, property_id, item_key, status, evidence_path)
+    values (office, p7, 'b4', 'open', office::text || '/' || p7::text || '/a3/agreement.pdf');
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is distinct from 'Only the licensee in charge can attach a file to this card.' then
+    raise exception 'FAIL 12d: someone other than the licensee put another card''s file on b4 (%)', coalesce(msg, 'accepted');
+  end if;
   msg := null;
   begin
     update public.property_items set data = data || '{"note": "Guide $750,000"}'
@@ -688,11 +715,15 @@ begin
     raise exception 'FAIL 12d: an agent who is their own licensee could not put a file on b4 (%)', msg;
   end if;
 
-  -- A b4 that already held a completer and a date when 0065 ran (the guard
-  -- let them through before), written here as the database owner. Check 14
-  -- shows the emailed approval drops both.
+  -- A b4 that already held a completer, a date and an agent's file when
+  -- 0065 ran (the guard let the first two through before, and until 10
+  -- October the app let an agent attach a file to an open b4), written
+  -- here as the database owner. Check 14 shows the emailed approval drops
+  -- all three.
   perform set_config('request.jwt.claims', '', true);
-  update public.property_items set completed_by = nm, event_date = '2026-01-05'
+  update public.property_items
+     set completed_by = nm, event_date = '2026-01-05',
+         evidence_path = office::text || '/' || p1::text || '/b4/price-ad.pdf'
    where property_id = p1 and item_key = 'b4';
 
   -- ══════════════ Signed out, with the emailed links ══════════════
@@ -756,8 +787,10 @@ begin
 
   -- 14. Approving completes b4 with who, when, where it was sent and what was
   --     approved, all from the request. What the browser planted is gone,
-  --     and so is the completer and date already on the card. The attached
-  --     file's name stays, and the final sign-off is untouched.
+  --     and so are the completer, the date and the file already on the
+  --     card, with the file's name: the licensee never saw that file. The
+  --     file is kept on record as having been on a card. The final sign-off
+  --     is untouched.
   if not public.submit_signoff(b1tok, '  Outside Licensee  ') then
     raise exception 'FAIL 14: the licensee could not approve the price statement';
   end if;
@@ -771,12 +804,18 @@ begin
      or r.data->>'signoffRequestId' is distinct from b1::text
      or (r.data->>'signedAt')::timestamptz is distinct from (select signed_at from public.property_signoff_requests where id = b1)
      or r.data->>'sentTo' is distinct from 'ps-outside-lic@example.invalid'
-     or r.data ? 'signedBy'
-     or r.data->>'evidenceFileName' is distinct from 'price-ad.pdf' then
+     or r.data ? 'signedBy' then
     raise exception 'FAIL 14: b4 was not recorded as approved by the link: %', row_to_json(r);
   end if;
+  if r.evidence_path is not null or r.data ? 'evidenceFileName' then
+    raise exception 'FAIL 14: a file the licensee never saw stayed under the emailed approval: %', row_to_json(r);
+  end if;
+  if not exists (select 1 from public.evidence_files_once_on_record
+                  where name = office::text || '/' || p1::text || '/b4/price-ad.pdf' and agency_id = office) then
+    raise exception 'FAIL 14: the file taken off b4 was not kept on record';
+  end if;
   if (select array_agg(k order by k) from jsonb_object_keys(r.data) k)
-     is distinct from array['evidenceFileName', 'note', 'sentTo', 'signedAt', 'signedName', 'signedVia', 'signoffRequestId'] then
+     is distinct from array['note', 'sentTo', 'signedAt', 'signedName', 'signedVia', 'signoffRequestId'] then
     raise exception 'FAIL 14: the approved b4 kept something the browser put on the open card: %', r.data;
   end if;
   if (select data from public.property_items where property_id = p1 and item_key = 'sign_licensee') is distinct from d
@@ -794,7 +833,8 @@ begin
     raise exception 'FAIL 14: the request was not marked approved';
   end if;
 
-  -- 15. The link is spent.
+  -- 15. The link is spent, and no new price statement link can go out now
+  --     that b4 is approved.
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   set local role anon;
   if public.submit_signoff(b1tok, 'Outside Licensee') then
@@ -802,6 +842,18 @@ begin
   end if;
   if exists (select 1 from public.get_signoff_request_v3(b1tok)) then
     raise exception 'FAIL 15: a used price statement link still opens';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  msg := null;
+  begin
+    insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement, item_key, price_statement)
+    values (office, p1, 'x', 'x', 'b4', 'Guide $750,000 to $790,000');
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is distinct from 'The price statement on this listing is already approved.' then
+    raise exception 'FAIL 15: a price statement link went out after b4 was approved (%)', coalesce(msg, 'accepted');
   end if;
 
   -- 16. b4 approved in the app first: the link no longer opens or approves.
@@ -1078,7 +1130,7 @@ begin
   -- 23. Each change is logged, with who made it: the email, the name on its
   --     own, and a change made straight on the table (the agent on their
   --     own plan may). The account holder can read the log; another member
-  --     can't. No change, no row.
+  --     can't. No change, no row. Nobody reads another office's log.
   select count(*) into n from public.licensee_contact_changes
    where agency_id = office and changed_by = nf
      and old_email = 'ps-outside-lic@example.invalid' and new_email = 'ps-new-lic@example.invalid'
@@ -1111,6 +1163,29 @@ begin
      and old_name = 'Solo Licensee' and new_name = 'Solo Licensee Senior'
      and old_email = 'ps-solo-lic@example.invalid' and new_email = 'ps-solo-lic@example.invalid';
   if n <> 1 then raise exception 'FAIL 23: a change to the licensee''s name alone, made on the table, was not logged'; end if;
+  -- The licensee in charge of another office, and the agent on their own
+  -- plan, each read their own office's log and nothing else. The rows hold
+  -- the old and new licensee's names and email addresses.
+  update public.agencies set licensee_name = 'Test Licensee Senior' where id = lo;
+  perform set_config('request.jwt.claims', json_build_object('sub', ll, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  if not exists (select 1 from public.licensee_contact_changes where agency_id = lo) then
+    raise exception 'FAIL 23: a licensee in charge could not read their own office''s log';
+  end if;
+  if exists (select 1 from public.licensee_contact_changes where agency_id <> lo) then
+    raise exception 'FAIL 23: a licensee in charge read another office''s log';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claims', json_build_object('sub', sa, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  if not exists (select 1 from public.licensee_contact_changes where agency_id = solo) then
+    raise exception 'FAIL 23: an agent on their own plan could not read their own log';
+  end if;
+  if exists (select 1 from public.licensee_contact_changes where agency_id <> solo) then
+    raise exception 'FAIL 23: an agent on their own plan read another office''s log';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
 
   -- ══════════════ The 7-year record ══════════════
   -- 24. Each link says what it was for. Contact changes are ids and dates,

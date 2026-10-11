@@ -192,7 +192,7 @@ export function PriceStatementLinkPanel({
         {!stale && (
           <p className="mt-2 text-xs leading-relaxed text-rc-muted">
             Not approved yet. Expires {formatAuTimestamp(live.expiresAt)}. When they approve, this card completes on
-            its own. Replies to that email go to you.
+            its own. Replies to that email go to whoever sent it.
             {testMode && " This is now a practice listing, so nothing more is sent to your licensee."}
           </p>
         )}

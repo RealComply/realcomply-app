@@ -150,7 +150,7 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
 
           <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">
             Not signed yet. Expires {formatAuTimestamp(live.expiresAt)}. When they sign, this file updates on
-            its own. Replies to that email go to you, not to RealComply.
+            its own. Replies to that email go to whoever sent it, not to RealComply.
           </p>
         </div>
       ) : (

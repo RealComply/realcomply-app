@@ -3497,7 +3497,10 @@ export type B4Route = {
 // nobody could ever answer. ItemShell as on every card, so a flag the
 // licensee left on it still shows (FlagNote), and the file control is
 // read-only: the approval is the licensee's, by email, and a file put on the
-// card would sit beside it as if it were part of it.
+// card would sit beside it as if it were part of it. A file an agent put on
+// b4 before the card was read-only to them comes off when the licensee
+// approves by link, and stays on record (submit_signoff, 0065): the licensee
+// never saw it.
 function PriceStatementByEmailItem({
   item,
   propertyId,

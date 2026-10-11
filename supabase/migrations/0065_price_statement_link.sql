@@ -29,9 +29,11 @@
 --      time the card was recorded is the database's.
 --   7. get_signoff_request_v3 for the public page. v1 and v2, which older
 --      app builds read, now return final sign-off links only. submit_signoff
---      completes b4 for a b4 link; its sign_licensee half is 0014's, except
---      that a name, time, completer or date already on an open card is
---      dropped.
+--      completes b4 for a b4 link, and takes off any file already on the
+--      card, which the licensee approving by email never saw. Its
+--      sign_licensee half is 0014's,
+--      except that a name, time, completer or date already on an open card
+--      is dropped.
 --   8. send_back_by_token (0062) takes final sign-off links only. A b4 link is
 --      exempt from 0062's flagged-card lock, so a flagged b4 can be approved
 --      again and its flag cleared.
@@ -455,10 +457,11 @@ begin
     end if;
 
     -- A file on either card comes from the licensee in charge, as in
-    -- uploadEvidence. An emailed approval keeps a file already on the card,
-    -- so an agent's file would sit under the licensee's approval as if it
-    -- were part of it. Taking a file off is not refused here. An upsert
-    -- that carries the card's own file forward is not a new file.
+    -- uploadEvidence. The emailed final sign-off keeps a file already on
+    -- the card, so an agent's file would sit under the licensee's signature
+    -- as if it were part of it. (The emailed b4 approval takes the file
+    -- off: see submit_signoff.) Taking a file off is not refused here. An
+    -- upsert that carries the card's own file forward is not a new file.
     if new.evidence_path is not null then
       if tg_op = 'UPDATE' then
         v_file_before := old.evidence_path;
@@ -623,9 +626,20 @@ begin
   -- guard_listing_signoff doesn't run; its rules for b4 are kept here: b4
   -- only, never over an approval already recorded, and who, when and what
   -- come from the request row, never the browser. The card's data is
-  -- replaced, keeping only the name of a file already attached. b4 takes
-  -- no date, so a date already on the open card (the guard let one through
-  -- before 0065) goes too, or it would print as the approval date.
+  -- replaced in full. b4 takes no date, so a date already on the open card
+  -- (the guard let one through before 0065) goes too, or it would print as
+  -- the approval date.
+  --
+  -- A file already on the open card comes off too, with its name. The
+  -- licensee approving by email never saw it (a b4 link opens no files), so
+  -- under the approval, and in the pack, it would read as part of what they
+  -- approved. That holds even in the rare case where someone was made
+  -- licensee in charge after the link went and attached a file: what the
+  -- outside licensee approved is the words alone. Until the
+  -- app made b4 read-only for everyone but the licensee (10 October 2026),
+  -- an agent could attach one to an open b4. The file itself is not
+  -- deleted: property_items_record_evidence_leaving (0060) writes its path
+  -- into evidence_files_once_on_record, as for any file that leaves a card.
   if v_request.item_key = 'b4' then
     if char_length(btrim(p_typed_name)) > 200 or not public.price_request_current(v_request.id) then
       return false;
@@ -647,8 +661,8 @@ begin
       set status = 'done',
           completed_by = null,
           event_date = null,
-          data = excluded.data || jsonb_strip_nulls(jsonb_build_object(
-                   'evidenceFileName', public.property_items.data -> 'evidenceFileName'))
+          evidence_path = null,
+          data = excluded.data
       where public.property_items.status is distinct from 'done';
     get diagnostics v_rows = row_count;
     if v_rows = 0 then
@@ -998,6 +1012,7 @@ select
     and position('event_date = case' in pg_get_functiondef('public.submit_signoff(uuid, text)'::regprocedure)) > 0 as open_card_fields_dropped,
   position('attach a file to this card' in pg_get_functiondef('public.guard_listing_signoff()'::regprocedure)) > 0
     and position('new.recorded_at := old.recorded_at' in pg_get_functiondef('public.guard_listing_signoff()'::regprocedure)) > 0 as sign_cards_guarded,
+  position('evidence_path = null' in pg_get_functiondef('public.submit_signoff(uuid, text)'::regprocedure)) > 0 as b4_link_takes_file_off,
   position('p.email' in pg_get_functiondef('public.licensee_email_is_a_member()'::regprocedure)) = 0 as member_login_only,
   position('''item'', r.item_key' in
            pg_get_functiondef('public.build_activity_record_core(uuid)'::regprocedure)) > 0          as record_says_what_for;

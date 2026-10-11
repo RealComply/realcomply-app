@@ -58,7 +58,8 @@ export function priceStatementByEmail(
  * in can mark it done: the database lets only an active licensee in charge
  * do that, and the office has none. The way forward is the send form on the
  * card, and the licensee's approval clears the note (0063). Shared by the
- * note on the card and the to-do list at the top, so they say the same.
+ * note on the card, the to-do list at the top and the send-back email to the
+ * agent, so all three say the same.
  */
 export function sentBackPriceStatementLine(itemKey: string, byEmail: boolean): string | null {
   if (itemKey !== "b4" || !byEmail) return null;
