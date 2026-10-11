@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { formatSignedAt } from "./sign-stamp";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { formatAuDate } from "@/lib/format-date";
@@ -46,7 +47,7 @@ const MARGIN = 56;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const BOTTOM = 64; // leave room for the footer rule and page number
 
-type Fonts = { regular: PDFFont; bold: PDFFont };
+type Fonts = { regular: PDFFont; bold: PDFFont; italic: PDFFont };
 
 /** Greedy wrap. pdf-lib has no text layout, so lines are measured by hand. */
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
@@ -352,6 +353,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   const fonts: Fonts = {
     regular: await doc.embedFont(StandardFonts.Helvetica),
     bold: await doc.embedFont(StandardFonts.HelveticaBold),
+    italic: await doc.embedFont(StandardFonts.HelveticaOblique),
   };
 
   const c = new Cursor(doc, fonts);
@@ -618,12 +620,22 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         c.y -= 8;
         return;
       }
-      c.text(sig.typedName, { size: 12, bold: true });
-      c.text(role, { size: 8.5, color: FAINT });
+      // THE SIGNATURE ON THE PAGE (Adam, 12 Oct 2026: "There's no actual
+      // signature on it ... same way we do for bank recs"). The adopted name
+      // drawn large in the italic face on a green signature line, then the
+      // role and the date and time it was given: the trust reconciliation's
+      // signature block (sign-stamp.ts), so the two read the same.
+      const SIG = 24;
+      c.need(SIG * 1.3 + 12 + 9.5 * 1.45 + 9 * 1.45 + 10);
+      c.page.drawText(ascii(sig.typedName), { x: MARGIN, y: c.y - SIG, size: SIG, font: c.fonts.italic, color: INK });
+      c.y -= SIG * 1.3;
+      c.page.drawLine({ start: { x: MARGIN, y: c.y }, end: { x: MARGIN + 260, y: c.y }, thickness: 1, color: GREEN });
+      c.y -= 12;
+      c.text(role, { size: 9.5, bold: true });
       if (sig.signedAt) {
-        c.text(`Signed ${formatAuDate(sig.signedAt.slice(0, 10))}`, { size: 8.5, color: MUTED });
+        c.text(`Signed ${formatSignedAt(sig.signedAt)} (Sydney time)`, { size: 9, color: MUTED });
       }
-      c.y -= 8;
+      c.y -= 12;
     };
 
     block("Agent", signatures.agent);

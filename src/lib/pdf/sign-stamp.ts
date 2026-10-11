@@ -152,7 +152,7 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
   return lines;
 }
 
-function formatSignedAt(iso: string): string {
+export function formatSignedAt(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   // Sydney, because that is where the licensee signed and where the obligation
