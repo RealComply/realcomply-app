@@ -10,6 +10,7 @@ import {
   priceApproval,
   priceRequestStale,
   priceStatementByEmail,
+  sentBackPriceStatementLine,
 } from "./price-statement";
 
 describe("normalisePriceStatement", () => {
@@ -46,8 +47,30 @@ describe("priceStatementByEmail", () => {
   it("goes by email when the only licensee in charge has left", () => {
     assert.equal(priceStatementByEmail([person({ is_licensee_in_charge: true, archived_at: "2026-09-01T00:00:00Z" })]), true);
   });
-  it("goes by email for an agent and their assistants", () => {
-    assert.equal(priceStatementByEmail([person({}), person({}), person({})]), true);
+  it("stays in the app while one licensee in charge is active, whoever else has left", () => {
+    const left = person({ is_licensee_in_charge: true, archived_at: "2026-09-01T00:00:00Z" });
+    assert.equal(priceStatementByEmail([left, person({ is_licensee_in_charge: true })]), false);
+    assert.equal(priceStatementByEmail([person({ is_licensee_in_charge: true }), left]), false);
+  });
+  it("goes by email when every licensee in charge has left", () => {
+    const left = (at: string) => person({ is_licensee_in_charge: true, archived_at: at });
+    assert.equal(priceStatementByEmail([left("2026-08-01T00:00:00Z"), left("2026-09-01T00:00:00Z"), person({})]), true);
+  });
+});
+
+describe("sentBackPriceStatementLine", () => {
+  // Nobody signed in can mark b4 done when it goes by email, so the note on
+  // the card and the to-do list can't tell the agent to.
+  it("sends the agent to the send form on b4 when it goes by email", () => {
+    assert.equal(
+      sentBackPriceStatementLine("b4", true),
+      "Send the price statement to your licensee again from this card. Their approval clears this note.",
+    );
+  });
+  it("leaves b4 in the app, and every other card, to the usual words", () => {
+    assert.equal(sentBackPriceStatementLine("b4", false), null);
+    assert.equal(sentBackPriceStatementLine("a4", true), null);
+    assert.equal(sentBackPriceStatementLine("sign_licensee", true), null);
   });
 });
 

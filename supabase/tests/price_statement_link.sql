@@ -152,7 +152,10 @@ begin
   end if;
 
   -- ══════════════ The licensee email belongs to someone in the office ══════════════
-  -- 4. A past member's login, then a current member's profile email.
+  -- 4. A past member's login, then a current member's login, are refused.
+  --    A member who types the licensee's address into their own profile
+  --    email doesn't stop the link: anyone can type any address there, and
+  --    it would let one member block b4 by email for the whole office.
   reset role;
   perform set_config('request.jwt.claims', '', true);
   update public.agencies set licensee_email = 'PS-NX-Login@example.invalid' where id = office;
@@ -169,7 +172,7 @@ begin
   end if;
   reset role;
   perform set_config('request.jwt.claims', '', true);
-  update public.agencies set licensee_email = 'ps-nm@example.invalid' where id = office;
+  update public.agencies set licensee_email = ' Ps-Nm-Login@Example.invalid ' where id = office;
   perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
   set local role authenticated;
   msg := null;
@@ -179,11 +182,31 @@ begin
   exception when others then msg := sqlerrm;
   end;
   if msg is distinct from 'The licensee email on file belongs to someone in this office. It has to be your licensee in charge''s own address.' then
-    raise exception 'FAIL 4: a price statement link went to a member''s own email (%)', coalesce(msg, 'not refused');
+    raise exception 'FAIL 4: a price statement link went to a member''s login (%)', coalesce(msg, 'not refused');
   end if;
   reset role;
   perform set_config('request.jwt.claims', '', true);
   update public.agencies set licensee_email = 'ps-outside-lic@example.invalid' where id = office;
+  msg := null;
+  begin
+    perform set_config('request.jwt.claims', json_build_object('sub', nm, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+    update public.profiles set email = 'PS-Outside-Lic@example.invalid' where id = nm;
+    get diagnostics n = row_count;
+    if n <> 1 then raise exception 'a member could not change their own profile email'; end if;
+    reset role;
+    perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+    insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement, item_key, price_statement)
+    values (office, p1, 'x', 'x', 'b4', 'Guide $750,000 to $790,000');
+    raise exception 'undo';
+  exception when others then msg := sqlerrm;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  if msg is distinct from 'undo' then
+    raise exception 'FAIL 4: a member''s own profile email stopped the price statement link (%)', msg;
+  end if;
   perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
   set local role authenticated;
 
@@ -239,12 +262,13 @@ begin
   end if;
 
   -- 8. The browser sends its own statement, ESP, recipient and author, with a
-  --    ruleset name that tries to add a line. The database builds the
-  --    statement from the listing and keeps the ESP on foot.
+  --    ruleset name that tries to add a line and runs past 80 characters.
+  --    The database builds the statement from the listing, keeps the ESP on
+  --    foot, and puts the ruleset name on one line of at most 80.
   insert into public.property_signoff_requests
     (agency_id, property_id, sent_to, statement, created_by, item_key, price_statement, esp_low, esp_high, ruleset_version)
   values (office, p1, 'me@example.invalid', 'FAKE', nm, 'b4', E'  Guide\n $750,000   to   $790,000 ', 1, 2,
-          E'NSW Sales Ruleset 2026.2\n\nI also approve the commission.')
+          E'NSW Sales Ruleset 2026.2\n\nI also approve the commission, the marketing budget and every other term.')
   returning id into b1;
   reset role;
   perform set_config('request.jwt.claims', '', true);
@@ -260,9 +284,15 @@ begin
      or position('Requested: ' || to_char((now() at time zone 'Australia/Sydney')::date, 'FMDD FMMonth YYYY') in r.statement) = 0 then
     raise exception 'FAIL 8: the price statement link was not built by the database: %', row_to_json(r);
   end if;
-  if position(E'\n' in r.ruleset_version) > 0 or char_length(r.ruleset_version) > 80
+  if position(E'\n' in r.ruleset_version) > 0
      or position(E'\n\nI also approve' in r.statement) > 0 then
     raise exception 'FAIL 8: the ruleset name added its own lines to the statement';
+  end if;
+  if r.ruleset_version is distinct from
+       left('NSW Sales Ruleset 2026.2 I also approve the commission, the marketing budget and every other term.', 80)
+     or char_length(r.ruleset_version) <> 80
+     or position(E'\nRuleset: ' || r.ruleset_version || E'\n' in r.statement) = 0 then
+    raise exception 'FAIL 8: the ruleset name was not cut to 80 characters: %', r.ruleset_version;
   end if;
 
   -- 8b. Anyone who can see the listing can send it, an assistant included.
@@ -411,6 +441,18 @@ begin
   if (select revoked_at from public.property_signoff_requests where id = f4a) is distinct from now() then
     raise exception 'FAIL 11: the withdrawal time came from the browser';
   end if;
+  -- Everything here happens at one moment (now() is fixed for the whole
+  -- transaction), so put the first withdrawal in the past, as the owner,
+  -- before withdrawing again.
+  update public.property_signoff_requests set revoked_at = '2000-01-01' where id = f4a;
+  perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  update public.property_signoff_requests set revoked_at = now() where id = f4a;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  if (select revoked_at from public.property_signoff_requests where id = f4a) is distinct from '2000-01-01'::timestamptz then
+    raise exception 'FAIL 11: withdrawing again moved the time of the first withdrawal';
+  end if;
   select token into f4btok from public.property_signoff_requests where id = f4b;
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   set local role anon;
@@ -431,32 +473,50 @@ begin
 
   -- 12. The browser can't put the link's keys on b4 or sign_licensee, even
   --     while they are open, nor a signer's name or time (typedName,
-  --     signedAt, signedBy), and can't mark b4 done. (It can name someone in
-  --     completed_by on an open card; check 14 shows the approval clears it.)
-  insert into public.property_items (agency_id, property_id, item_key, status, completed_by, data)
-  values (office, p1, 'b4', 'open', nm, jsonb_build_object(
+  --     signedAt, signedBy), a completer (completed_by) or a date
+  --     (event_date), and can't mark b4 done. When b4 went on the file
+  --     (recorded_at) is the database's time.
+  insert into public.property_items (agency_id, property_id, item_key, status, completed_by, event_date, recorded_at, data)
+  values (office, p1, 'b4', 'open', nm, '2026-01-05', '2000-01-01', jsonb_build_object(
     'note', 'Planted note', 'signedVia', 'link', 'signedName', 'Outside Licensee',
     'signoffRequestId', b1, 'sentTo', 'ps-outside-lic@example.invalid', 'signedBy', nm,
     'typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z',
-    'evidenceFileName', 'price-ad.pdf'));
+    'evidenceFileName', 'price-ad.pdf', 'approvedBy', 'Planted Approver'));
+  select * into r from public.property_items where property_id = p1 and item_key = 'b4';
+  if r.completed_by is not null or r.event_date is not null or r.recorded_at is distinct from now() then
+    raise exception 'FAIL 12: the browser put a completer, a date or its own recorded time on the open b4: %', row_to_json(r);
+  end if;
   update public.property_items
      set data = data || jsonb_build_object('signedVia', 'link', 'signedName', 'Outside Licensee',
                                            'signoffRequestId', b1, 'sentTo', 'ps-outside-lic@example.invalid',
                                            'typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z',
-                                           'signedBy', nm)
+                                           'signedBy', nm),
+         completed_by = nm, event_date = '2026-01-05', recorded_at = '2000-01-01'
    where property_id = p1 and item_key = 'b4';
-  insert into public.property_items (agency_id, property_id, item_key, status, data)
-  values (office, p1, 'sign_licensee', 'open', jsonb_build_object(
+  select * into r from public.property_items where property_id = p1 and item_key = 'b4';
+  if r.completed_by is not null or r.event_date is not null or r.recorded_at is distinct from now() then
+    raise exception 'FAIL 12: the browser changed the completer, date or recorded time on the open b4: %', row_to_json(r);
+  end if;
+  insert into public.property_items (agency_id, property_id, item_key, status, completed_by, event_date, data)
+  values (office, p1, 'sign_licensee', 'open', nm, '2026-01-05', jsonb_build_object(
     'signedVia', 'link', 'signedName', 'Outside Licensee', 'signoffRequestId', f1,
     'typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z', 'signedBy', nm));
+  select * into r from public.property_items where property_id = p1 and item_key = 'sign_licensee';
+  if r.completed_by is not null or r.event_date is not null then
+    raise exception 'FAIL 12: the browser put a completer or a date on the open sign_licensee: %', row_to_json(r);
+  end if;
   update public.property_items
      set status = 'flagged',
          data = data || jsonb_build_object('typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z',
-                                           'signedBy', nm)
+                                           'signedBy', nm),
+         completed_by = nm, event_date = '2026-01-05'
    where property_id = p1 and item_key = 'sign_licensee';
-  if (select data from public.property_items where property_id = p1 and item_key = 'sign_licensee')
-     ?| array['typedName', 'signedAt', 'signedBy'] then
+  select * into r from public.property_items where property_id = p1 and item_key = 'sign_licensee';
+  if r.data ?| array['typedName', 'signedAt', 'signedBy'] then
     raise exception 'FAIL 12: the browser put a name or time on a flagged sign_licensee';
+  end if;
+  if r.completed_by is not null or r.event_date is not null then
+    raise exception 'FAIL 12: the browser put a completer or a date on a flagged sign_licensee: %', row_to_json(r);
   end if;
   update public.property_items set status = 'open' where property_id = p1 and item_key = 'sign_licensee';
   select data into d from public.property_items where property_id = p1 and item_key = 'b4';
@@ -481,6 +541,159 @@ begin
   if msg is distinct from 'Only the licensee in charge can sign this.' then
     raise exception 'FAIL 12: someone other than the licensee approved b4 (%)', coalesce(msg, 'accepted');
   end if;
+
+  -- 12b. On the three sign-off cards the status is open, done or flagged.
+  --      'Done' skipped the licensee check and still printed as done.
+  for r in select * from (values ('b4', 'Done'), ('sign_agent', 'DONE'), ('sign_licensee', 'done ')) v(k, st) loop
+    msg := null;
+    begin
+      insert into public.property_items (agency_id, property_id, item_key, status)
+      values (office, p6, r.k, r.st);
+    exception when others then msg := sqlerrm;
+    end;
+    if msg is distinct from 'This card can only be open, done or flagged.' then
+      raise exception 'FAIL 12b: % was stored as "%" (%)', r.k, r.st, coalesce(msg, 'accepted');
+    end if;
+  end loop;
+  msg := null;
+  begin
+    update public.property_items set status = 'Flagged' where property_id = p1 and item_key = 'sign_licensee';
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is distinct from 'This card can only be open, done or flagged.' then
+    raise exception 'FAIL 12b: sign_licensee was changed to "Flagged" (%)', coalesce(msg, 'accepted');
+  end if;
+
+  -- 12c. When the agent's sign-off went on the file is the database's time
+  --      too, on the way in, while open and once signed.
+  insert into public.property_items (agency_id, property_id, item_key, status, recorded_at)
+  values (office, p6, 'sign_agent', 'open', '2000-01-01');
+  if (select recorded_at from public.property_items where property_id = p6 and item_key = 'sign_agent') is distinct from now() then
+    raise exception 'FAIL 12c: the browser chose when sign_agent went on the file';
+  end if;
+  update public.property_items set recorded_at = '2000-01-01' where property_id = p6 and item_key = 'sign_agent';
+  update public.property_items set status = 'done', recorded_at = '2000-01-01', data = '{"typedName": "PS Founder"}'
+   where property_id = p6 and item_key = 'sign_agent';
+  select * into r from public.property_items where property_id = p6 and item_key = 'sign_agent';
+  if r.status <> 'done' or r.recorded_at is distinct from now() then
+    raise exception 'FAIL 12c: the browser changed when sign_agent went on the file: %', row_to_json(r);
+  end if;
+
+  -- 12d. A file on b4 or sign_licensee comes from the licensee in charge.
+  --      With nobody in charge on RealComply, nobody signed in can put one
+  --      there. A file already on the card stays through other changes,
+  --      and can be taken off.
+  msg := null;
+  begin
+    insert into public.property_items (agency_id, property_id, item_key, status, evidence_path)
+    values (office, p6, 'b4', 'open', office::text || '/' || p6::text || '/b4/planted.pdf');
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is distinct from 'Only the licensee in charge can attach a file to this card.' then
+    raise exception 'FAIL 12d: someone other than the licensee put a file on b4 (%)', coalesce(msg, 'accepted');
+  end if;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  -- A file already there when 0065 ran, written as the database owner.
+  insert into public.property_items (agency_id, property_id, item_key, status, evidence_path, data)
+  values (office, p6, 'b4', 'open', office::text || '/' || p6::text || '/b4/approval.pdf',
+          '{"evidenceFileName": "approval.pdf"}');
+  perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  msg := null;
+  begin
+    update public.property_items set data = data || '{"note": "Guide $750,000"}'
+     where property_id = p6 and item_key = 'b4';
+    -- The app's upsert, carrying the card's own file forward.
+    insert into public.property_items (agency_id, property_id, item_key, status, evidence_path, data)
+    values (office, p6, 'b4', 'open', office::text || '/' || p6::text || '/b4/approval.pdf',
+            '{"evidenceFileName": "approval.pdf", "note": "Guide $760,000"}')
+    on conflict (property_id, item_key) do update
+      set status = excluded.status, evidence_path = excluded.evidence_path, data = excluded.data;
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is not null
+     or (select evidence_path from public.property_items where property_id = p6 and item_key = 'b4')
+        is distinct from office::text || '/' || p6::text || '/b4/approval.pdf' then
+    raise exception 'FAIL 12d: a change to b4 that kept its file was refused (%)', coalesce(msg, 'the file changed');
+  end if;
+  msg := null;
+  begin
+    update public.property_items set evidence_path = office::text || '/' || p6::text || '/b4/planted.pdf'
+     where property_id = p6 and item_key = 'b4';
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is distinct from 'Only the licensee in charge can attach a file to this card.' then
+    raise exception 'FAIL 12d: someone other than the licensee swapped the file on b4 (%)', coalesce(msg, 'accepted');
+  end if;
+  msg := null;
+  begin
+    update public.property_items set evidence_path = null where property_id = p6 and item_key = 'b4';
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is not null or (select evidence_path from public.property_items where property_id = p6 and item_key = 'b4') is not null then
+    raise exception 'FAIL 12d: the file could not be taken off b4 (%)', coalesce(msg, 'still there');
+  end if;
+  -- An agent in an office whose licensee uses RealComply can't either, on
+  -- the final sign-off card too. The licensee can.
+  reset role;
+  perform set_config('request.jwt.claims', json_build_object('sub', la, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  msg := null;
+  begin
+    insert into public.property_items (agency_id, property_id, item_key, status, evidence_path)
+    values (lo, pl, 'sign_licensee', 'open', lo::text || '/' || pl::text || '/sign_licensee/planted.pdf');
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is distinct from 'Only the licensee in charge can attach a file to this card.' then
+    raise exception 'FAIL 12d: an agent put a file on sign_licensee (%)', coalesce(msg, 'accepted');
+  end if;
+  msg := null;
+  begin
+    insert into public.property_items (agency_id, property_id, item_key, status, evidence_path)
+    values (lo, pl, 'b4', 'open', lo::text || '/' || pl::text || '/b4/planted.pdf');
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is distinct from 'Only the licensee in charge can attach a file to this card.' then
+    raise exception 'FAIL 12d: an agent put a file on b4 in an office whose licensee uses RealComply (%)', coalesce(msg, 'accepted');
+  end if;
+  reset role;
+  msg := null;
+  begin
+    perform set_config('request.jwt.claims', json_build_object('sub', ll, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+    insert into public.property_items (agency_id, property_id, item_key, status, evidence_path)
+    values (lo, pl, 'b4', 'open', lo::text || '/' || pl::text || '/b4/approval.pdf');
+    raise exception 'undo';
+  exception when others then msg := sqlerrm;
+  end;
+  reset role;
+  if msg is distinct from 'undo' then
+    raise exception 'FAIL 12d: the licensee in charge could not put a file on b4 (%)', msg;
+  end if;
+  -- An agent on their own plan who is their own licensee in charge can.
+  perform set_config('request.jwt.claims', '', true);
+  msg := null;
+  begin
+    update public.profiles set is_licensee_in_charge = true where id = sa;
+    perform set_config('request.jwt.claims', json_build_object('sub', sa, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+    insert into public.property_items (agency_id, property_id, item_key, status, evidence_path)
+    values (solo, ps, 'b4', 'open', solo::text || '/' || ps::text || '/b4/approval.pdf');
+    raise exception 'undo';
+  exception when others then msg := sqlerrm;
+  end;
+  reset role;
+  if msg is distinct from 'undo' then
+    raise exception 'FAIL 12d: an agent who is their own licensee could not put a file on b4 (%)', msg;
+  end if;
+
+  -- A b4 that already held a completer and a date when 0065 ran (the guard
+  -- let them through before), written here as the database owner. Check 14
+  -- shows the emailed approval drops both.
+  perform set_config('request.jwt.claims', '', true);
+  update public.property_items set completed_by = nm, event_date = '2026-01-05'
+   where property_id = p1 and item_key = 'b4';
 
   -- ══════════════ Signed out, with the emailed links ══════════════
   reset role;
@@ -516,16 +729,42 @@ begin
     raise exception 'FAIL 13: v1 or v2 no longer returns the final sign-off link';
   end if;
 
+  -- 13b. The approver's name is at most 200 characters, the same limit as
+  --      the page (APPROVER_NAME_MAX in the app). A longer one approves
+  --      nothing; exactly 200 approves (undone here).
+  if public.submit_signoff(b1tok, repeat('n', 201)) then
+    raise exception 'FAIL 13b: a price statement was approved with a 201-character name';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  if exists (select 1 from public.property_signoff_requests where id = b1 and signed_at is not null)
+     or exists (select 1 from public.property_items where property_id = p1 and item_key = 'b4' and status = 'done') then
+    raise exception 'FAIL 13b: a 201-character name left the request or b4 approved';
+  end if;
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  ok := false;
+  msg := null;
+  begin
+    ok := public.submit_signoff(b1tok, '  ' || repeat('n', 200) || '  ');
+    raise exception 'undo';
+  exception when others then msg := sqlerrm;
+  end;
+  if not ok or msg is distinct from 'undo' then
+    raise exception 'FAIL 13b: a 200-character name could not approve (%)', msg;
+  end if;
+
   -- 14. Approving completes b4 with who, when, where it was sent and what was
   --     approved, all from the request. What the browser planted is gone,
-  --     the attached file's name stays, and the final sign-off is untouched.
+  --     and so is the completer and date already on the card. The attached
+  --     file's name stays, and the final sign-off is untouched.
   if not public.submit_signoff(b1tok, '  Outside Licensee  ') then
     raise exception 'FAIL 14: the licensee could not approve the price statement';
   end if;
   reset role;
   perform set_config('request.jwt.claims', '', true);
   select * into r from public.property_items where property_id = p1 and item_key = 'b4';
-  if r.status <> 'done' or r.completed_by is not null
+  if r.status <> 'done' or r.completed_by is not null or r.event_date is not null
      or r.data->>'note' is distinct from 'Guide $750,000 to $790,000'
      or r.data->>'signedVia' is distinct from 'link'
      or r.data->>'signedName' is distinct from 'Outside Licensee'
@@ -535,6 +774,10 @@ begin
      or r.data ? 'signedBy'
      or r.data->>'evidenceFileName' is distinct from 'price-ad.pdf' then
     raise exception 'FAIL 14: b4 was not recorded as approved by the link: %', row_to_json(r);
+  end if;
+  if (select array_agg(k order by k) from jsonb_object_keys(r.data) k)
+     is distinct from array['evidenceFileName', 'note', 'sentTo', 'signedAt', 'signedName', 'signedVia', 'signoffRequestId'] then
+    raise exception 'FAIL 14: the approved b4 kept something the browser put on the open card: %', r.data;
   end if;
   if (select data from public.property_items where property_id = p1 and item_key = 'sign_licensee') is distinct from d
      or not exists (select 1 from public.property_items
@@ -650,12 +893,13 @@ begin
     raise exception 'FAIL 18: the final sign-off does not read as the licensee''s name and time: %', r.data;
   end if;
 
-  -- 18b. A card that already held a name and time put there while it was
-  --      open (the guard let that through before 0065; written here as the
-  --      database owner): signing by link drops them, so the file reads as
-  --      the licensee's own name and time. The attached file's name stays.
-  insert into public.property_items (agency_id, property_id, item_key, status, data)
-  values (office, p6, 'sign_licensee', 'open', jsonb_build_object(
+  -- 18b. A card that already held a name, time, completer and date put
+  --      there while it was open (the guard let them through before 0065;
+  --      written here as the database owner): signing by link drops them,
+  --      so the file reads as the licensee's own name and time and names no
+  --      one else as completing it. The attached file's name stays.
+  insert into public.property_items (agency_id, property_id, item_key, status, completed_by, event_date, data)
+  values (office, p6, 'sign_licensee', 'open', nm, '2026-01-05', jsonb_build_object(
     'typedName', 'Planted Name', 'signedAt', '2026-01-01T00:00:00Z', 'signedBy', nm,
     'evidenceFileName', 'signed.pdf'));
   perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
@@ -673,6 +917,9 @@ begin
   reset role;
   perform set_config('request.jwt.claims', '', true);
   select * into r from public.property_items where property_id = p6 and item_key = 'sign_licensee';
+  if r.completed_by is not null or r.event_date is not null then
+    raise exception 'FAIL 18b: a completer or date put on the open card stayed after the link was signed: %', row_to_json(r);
+  end if;
   if r.status <> 'done'
      or coalesce(nullif(btrim(r.data->>'typedName'), ''), r.data->>'signedName') is distinct from 'Outside Licensee'
      or coalesce(r.data->>'signedAt', (select signed_at::text from public.property_signoff_requests where id = f6))
@@ -683,8 +930,10 @@ begin
     raise exception 'FAIL 18b: a name or time put on the open card stood in for the licensee''s: %', r.data;
   end if;
 
-  -- 18c. A card the licensee already signed in the app keeps that signature
-  --      if the final link is signed afterwards, as before 0065.
+  -- 18c. A card the licensee already signed in the app keeps that signature,
+  --      its completer and its date if the final link is signed afterwards,
+  --      as before 0065. The final link takes a name of any length, as
+  --      0014 did (only the price statement link stops at 200).
   perform set_config('request.jwt.claims', json_build_object('sub', la, 'role', 'authenticated')::text, true);
   set local role authenticated;
   insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement)
@@ -692,23 +941,29 @@ begin
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', ll, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  insert into public.property_items (agency_id, property_id, item_key, status, completed_by, data)
-  values (lo, pl, 'sign_licensee', 'done', ll, '{"typedName": "PS Licensee", "signedAt": "2000-01-01T00:00:00Z"}');
+  insert into public.property_items (agency_id, property_id, item_key, status, completed_by, event_date, data)
+  values (lo, pl, 'sign_licensee', 'done', ll, '2026-01-05', '{"typedName": "PS Licensee", "signedAt": "2000-01-01T00:00:00Z"}');
   reset role;
   perform set_config('request.jwt.claims', '', true);
   select data into d from public.property_items where property_id = pl and item_key = 'sign_licensee';
   select token into fltok from public.property_signoff_requests where id = fl;
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   set local role anon;
-  perform public.submit_signoff(fltok, 'Someone Else');
+  if not public.submit_signoff(fltok, repeat('n', 201)) then
+    raise exception 'FAIL 18c: a final sign-off link refused a 201-character name';
+  end if;
   reset role;
   perform set_config('request.jwt.claims', '', true);
+  if (select signed_name from public.property_signoff_requests where id = fl) is distinct from repeat('n', 201) then
+    raise exception 'FAIL 18c: the final sign-off link did not keep the name as typed';
+  end if;
   select * into r from public.property_items where property_id = pl and item_key = 'sign_licensee';
   if r.status <> 'done' or r.completed_by is distinct from ll
+     or r.event_date is distinct from '2026-01-05'::date
      or r.data->>'typedName' is distinct from 'PS Licensee'
      or r.data->'signedAt' is distinct from d->'signedAt'
      or r.data->>'signedBy' is distinct from ll::text then
-    raise exception 'FAIL 18c: signing the link replaced the signature given in the app: %', r.data;
+    raise exception 'FAIL 18c: signing the link replaced the signature given in the app: %', row_to_json(r);
   end if;
 
   -- 19. A price statement link can't send the file back.
@@ -772,10 +1027,43 @@ begin
   begin perform public.set_agency_licensee_email('ps-fake@example.invalid');
   exception when others then msg := sqlerrm; end;
   if msg is null then raise exception 'FAIL 21: a member who is not the account holder changed the licensee''s email'; end if;
+  -- In an office whose licensee in charge uses RealComply, only the
+  -- licensee can, even where an agent is the account holder (a founder the
+  -- licensee later made an agent).
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  update public.profiles set created_at = now() - interval '1 day' where id = la;
+  perform set_config('request.jwt.claims', json_build_object('sub', la, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  if not public.is_account_holder() then
+    raise exception 'FAIL 21: the test agent is not the account holder';
+  end if;
+  msg := null;
+  begin perform public.set_agency_licensee_email('ps-fake@example.invalid');
+  exception when others then msg := sqlerrm; end;
+  if msg is null then raise exception 'FAIL 21: an account holder who is not the licensee changed the licensee''s email'; end if;
+  msg := null;
+  begin perform public.set_agency_licensee('Fake Licensee', 'ps-fake@example.invalid');
+  exception when others then msg := sqlerrm; end;
+  if msg is null then raise exception 'FAIL 21: an account holder who is not the licensee changed the licensee''s details'; end if;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  update public.profiles set created_at = now() + interval '1 minute' where id = la;
+  if (select licensee_email from public.agencies where id = lo) is distinct from 'ps-l-lic@example.invalid' then
+    raise exception 'FAIL 21: the licensee''s email changed';
+  end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', nm, 'role', 'authenticated')::text, true);
+  set local role authenticated;
 
-  -- 22. Nobody signed in can make themselves licensee in charge.
+  -- 22. Nobody signed in can make themselves licensee in charge. Only the
+  --     database itself runs price_request_current: it reads every office's
+  --     requests with the owner's rights.
   if has_function_privilege('authenticated', 'public.set_licensee_in_charge(boolean)', 'execute') then
     raise exception 'FAIL 22: signed-in people can still run set_licensee_in_charge';
+  end if;
+  if has_function_privilege('authenticated', 'public.price_request_current(uuid)', 'execute')
+     or has_function_privilege('anon', 'public.price_request_current(uuid)', 'execute') then
+    raise exception 'FAIL 22: price_request_current can be run from the browser';
   end if;
   msg := null;
   begin perform public.set_licensee_in_charge(true);
@@ -787,13 +1075,21 @@ begin
   set local role authenticated;
   perform public.set_agency_licensee('Outside Licensee', 'ps-new-lic@example.invalid');
 
-  -- 23. Each change is logged, with who made it. The account holder can read
-  --     the log; another member can't. No change, no row.
+  -- 23. Each change is logged, with who made it: the email, the name on its
+  --     own, and a change made straight on the table (the agent on their
+  --     own plan may). The account holder can read the log; another member
+  --     can't. No change, no row.
   select count(*) into n from public.licensee_contact_changes
    where agency_id = office and changed_by = nf
      and old_email = 'ps-outside-lic@example.invalid' and new_email = 'ps-new-lic@example.invalid'
      and old_name = 'Outside Licensee' and new_name = 'Outside Licensee';
   if n <> 1 then raise exception 'FAIL 23: the change to the licensee''s email was not logged'; end if;
+  perform public.set_agency_licensee('Outside Licensee Senior', 'ps-new-lic@example.invalid');
+  select count(*) into n from public.licensee_contact_changes
+   where agency_id = office and changed_by = nf
+     and old_email = 'ps-new-lic@example.invalid' and new_email = 'ps-new-lic@example.invalid'
+     and old_name = 'Outside Licensee' and new_name = 'Outside Licensee Senior';
+  if n <> 1 then raise exception 'FAIL 23: a change to the licensee''s name alone was not logged'; end if;
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', nm, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -805,6 +1101,16 @@ begin
   if exists (select 1 from public.licensee_contact_changes where agency_id = solo) then
     raise exception 'FAIL 23: an unchanged email was logged as a change';
   end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', sa, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  update public.agencies set licensee_name = 'Solo Licensee Senior' where id = solo;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into n from public.licensee_contact_changes
+   where agency_id = solo and changed_by = sa
+     and old_name = 'Solo Licensee' and new_name = 'Solo Licensee Senior'
+     and old_email = 'ps-solo-lic@example.invalid' and new_email = 'ps-solo-lic@example.invalid';
+  if n <> 1 then raise exception 'FAIL 23: a change to the licensee''s name alone, made on the table, was not logged'; end if;
 
   -- ══════════════ The 7-year record ══════════════
   -- 24. Each link says what it was for. Contact changes are ids and dates,
@@ -839,6 +1145,31 @@ begin
   end;
   if msg is null or msg not like '%subscription has ended%' then
     raise exception 'FAIL 25: a price statement was approved after the subscription ended (%)', coalesce(msg, 'accepted');
+  end if;
+
+  -- ══════════════ What counts as an ESP figure ══════════════
+  -- 26. A JSON number, or a string of digits (with optional decimals) once
+  --     spaces are trimmed from the ends. Nothing else: no line breaks, tabs
+  --     or non-breaking spaces, signs or exponents. The app's figure()
+  --     (src/lib/data/effective-esp.ts) accepts exactly the same, so the ESP
+  --     the licensee is shown is the one the app treats as on foot.
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  if public.jsonb_to_numeric('900000') is distinct from 900000
+     or public.jsonb_to_numeric('900000.5') is distinct from 900000.5
+     or public.jsonb_to_numeric('"900000"') is distinct from 900000
+     or public.jsonb_to_numeric('"  900000.50  "') is distinct from 900000.50 then
+    raise exception 'FAIL 26: a plain ESP figure was not read';
+  end if;
+  foreach s in array array[E'900000\n', E'\t900000', E'900000\r', E'900000 ', '9e5', '-900000',
+                           '+900000', '900,000', '$900000', '900000.', '.5', '', ' '] loop
+    if public.jsonb_to_numeric(to_jsonb(s)) is not null then
+      raise exception 'FAIL 26: "%" was read as an ESP figure', s;
+    end if;
+  end loop;
+  if public.jsonb_to_numeric('true') is not null or public.jsonb_to_numeric('null') is not null
+     or public.jsonb_to_numeric('[900000]') is not null or public.jsonb_to_numeric(null) is not null then
+    raise exception 'FAIL 26: something other than a number or a string was read as an ESP figure';
   end if;
 
   reset role;

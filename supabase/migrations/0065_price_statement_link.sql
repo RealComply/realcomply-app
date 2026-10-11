@@ -17,17 +17,21 @@
 --   2. Every new link's token, expiry and email status still come from the
 --      database (0064's lines, kept as they are).
 --   3. A b4 link is refused when the office has an active licensee in charge,
---      when the licensee email on file belongs to someone in this office, on
---      a practice listing, and once b4 is approved. The statement the
---      licensee reads is built here, never by the browser.
+--      when the licensee email on file is the login of someone in this
+--      office, on a practice listing, and once b4 is approved. The statement
+--      the licensee reads is built here, never by the browser.
 --   4. One live link per listing and purpose, even with two clicks at once.
 --   5. A withdrawn link can't be brought back; a signed one can't be withdrawn.
 --   6. The browser can't put the link's keys on b4 or sign_licensee, nor a
---      name or time on either card while it is not done.
+--      name, time, completer or date on either card while it is not done.
+--      Only the licensee in charge can put a file on either card. On the
+--      three sign-off cards the status is open, done or flagged, and the
+--      time the card was recorded is the database's.
 --   7. get_signoff_request_v3 for the public page. v1 and v2, which older
 --      app builds read, now return final sign-off links only. submit_signoff
 --      completes b4 for a b4 link; its sign_licensee half is 0014's, except
---      that a name or time already on an open card is dropped.
+--      that a name, time, completer or date already on an open card is
+--      dropped.
 --   8. send_back_by_token (0062) takes final sign-off links only. A b4 link is
 --      exempt from 0062's flagged-card lock, so a flagged b4 can be approved
 --      again and its flag cleared.
@@ -196,9 +200,14 @@ as $fn$
                     and p.is_licensee_in_charge and p.archived_at is null);
 $fn$;
 
--- Whether the licensee email on file is the address (profile or login) of
--- someone in this office who is not an active licensee in charge, past
--- members included: an archived person's inbox still works.
+-- Whether the licensee email on file is the login of someone in this
+-- office who is not an active licensee in charge, past members included:
+-- an archived person's inbox still works.
+--
+-- The login only, not the profile's email. Any member can type any address
+-- into their own profile, so matching it let one member stop b4 by email
+-- for the whole office. It never showed whose inbox it was either. A login
+-- can't be changed without the new inbox confirming it.
 create or replace function public.licensee_email_is_a_member()
 returns boolean
 language sql
@@ -210,12 +219,11 @@ as $fn$
     select 1
       from public.agencies a
       join public.profiles p on p.agency_id = a.id
-      left join auth.users u on u.id = p.id
+      join auth.users u on u.id = p.id
      where a.id = public.current_agency_id()
        and nullif(btrim(a.licensee_email), '') is not null
        and not (p.is_licensee_in_charge and p.archived_at is null)
-       and (lower(btrim(p.email)) = lower(btrim(a.licensee_email))
-            or lower(btrim(u.email)) = lower(btrim(a.licensee_email))));
+       and lower(btrim(u.email)) = lower(btrim(a.licensee_email)));
 $fn$;
 
 -- Whether a b4 request can still be approved: b4 not approved yet, the ESP
@@ -393,6 +401,7 @@ set search_path = public
 as $$
 declare
   v_agent uuid;
+  v_file_before text;
 begin
   if current_user not in ('authenticated', 'anon') then
     return new;
@@ -403,6 +412,23 @@ begin
 
   if tg_op = 'UPDATE' and old.status = 'done' then
     raise exception 'This sign-off is already recorded and can''t be changed.';
+  end if;
+
+  -- 0065: the app only ever writes these three. Any other spelling, such as
+  -- 'Done', would skip the signer check below and still print as done in
+  -- the pack and on the summary.
+  if new.status not in ('open', 'done', 'flagged') then
+    raise exception 'This card can only be open, done or flagged.';
+  end if;
+
+  -- 0065: when the card went on the file is the database's time. 0001 says
+  -- recorded_at is set by the server and never changed; the app never
+  -- writes it. On these cards it sits in the 7-year record beside who
+  -- signed, so nobody else writes it either.
+  if tg_op = 'INSERT' then
+    new.recorded_at := now();
+  else
+    new.recorded_at := old.recorded_at;
   end if;
 
   -- 0065: what the emailed link records (submit_signoff) never comes from
@@ -416,8 +442,36 @@ begin
     -- Signing in the app writes typedName with status done in one write,
     -- and the lines below stamp signedAt and signedBy, so nothing real is
     -- lost.
+    --
+    -- Nor a completer or a date. The emailed link keeps the columns it
+    -- doesn't set, so the 7-year record and the end-of-subscription export
+    -- would name an agent as completing the licensee's own card, and the
+    -- pack would print a date the agent chose as the approval date. b4
+    -- takes no date, and signing in the app stamps completed_by below.
     if new.status is distinct from 'done' then
       new.data := new.data - array['typedName', 'signedAt', 'signedBy'];
+      new.completed_by := null;
+      new.event_date := null;
+    end if;
+
+    -- A file on either card comes from the licensee in charge, as in
+    -- uploadEvidence. An emailed approval keeps a file already on the card,
+    -- so an agent's file would sit under the licensee's approval as if it
+    -- were part of it. Taking a file off is not refused here. An upsert
+    -- that carries the card's own file forward is not a new file.
+    if new.evidence_path is not null then
+      if tg_op = 'UPDATE' then
+        v_file_before := old.evidence_path;
+      else
+        select i.evidence_path into v_file_before from public.property_items i
+         where i.property_id = new.property_id and i.item_key = new.item_key;
+      end if;
+      if new.evidence_path is distinct from v_file_before
+         and not exists (select 1 from public.profiles me
+                          where me.id = auth.uid() and me.agency_id = new.agency_id
+                            and me.is_licensee_in_charge and me.archived_at is null) then
+        raise exception 'Only the licensee in charge can attach a file to this card.';
+      end if;
     end if;
   end if;
 
@@ -569,7 +623,9 @@ begin
   -- guard_listing_signoff doesn't run; its rules for b4 are kept here: b4
   -- only, never over an approval already recorded, and who, when and what
   -- come from the request row, never the browser. The card's data is
-  -- replaced, keeping only the name of a file already attached.
+  -- replaced, keeping only the name of a file already attached. b4 takes
+  -- no date, so a date already on the open card (the guard let one through
+  -- before 0065) goes too, or it would print as the approval date.
   if v_request.item_key = 'b4' then
     if char_length(btrim(p_typed_name)) > 200 or not public.price_request_current(v_request.id) then
       return false;
@@ -590,6 +646,7 @@ begin
     on conflict (property_id, item_key) do update
       set status = 'done',
           completed_by = null,
+          event_date = null,
           data = excluded.data || jsonb_strip_nulls(jsonb_build_object(
                    'evidenceFileName', public.property_items.data -> 'evidenceFileName'))
       where public.property_items.status is distinct from 'done';
@@ -601,7 +658,7 @@ begin
     return true;
   end if;
 
-  -- The final sign-off: 0014, except for the one line marked 0065.
+  -- The final sign-off: 0014, except for the lines marked 0065.
   update public.property_signoff_requests
      set signed_at = now(),
          signed_name = btrim(p_typed_name)
@@ -627,15 +684,17 @@ begin
       'signoffRequestId', v_request.id
     )
   )
-  -- 0065: a name or time put on the card while it was open (before 0065
-  -- the guard let it through) would read as the licensee's. Dropped here,
-  -- so cards already holding one are covered. A card already signed in the
-  -- app keeps its signature, as before.
+  -- 0065: a name, time, completer or date put on the card while it was
+  -- open (before 0065 the guard let them through) would read as the
+  -- licensee's. Dropped here, so cards already holding one are covered. A
+  -- card already signed in the app keeps its signature, as before.
   on conflict (property_id, item_key) do update
     set status = 'done',
         data = case when public.property_items.status = 'done' then public.property_items.data
                     else public.property_items.data - array['typedName', 'signedAt', 'signedBy']
-               end || excluded.data;
+               end || excluded.data,
+        completed_by = case when public.property_items.status = 'done' then public.property_items.completed_by end,
+        event_date = case when public.property_items.status = 'done' then public.property_items.event_date end;
 
   return true;
 end;
@@ -935,7 +994,10 @@ select
   position('sign_licensee' in pg_get_functiondef('public.send_back_by_token(uuid, jsonb)'::regprocedure)) > 0 as send_back_final_only,
   position('sign_licensee' in pg_get_functiondef('public.get_signoff_request(uuid)'::regprocedure)) > 0
     and position('sign_licensee' in pg_get_functiondef('public.get_signoff_request_v2(uuid)'::regprocedure)) > 0 as v1_v2_final_only,
-  position('typedName' in pg_get_functiondef('public.guard_listing_signoff()'::regprocedure)) > 0
-    and position('typedName' in pg_get_functiondef('public.submit_signoff(uuid, text)'::regprocedure)) > 0 as open_card_name_dropped,
+  position('new.completed_by := null' in pg_get_functiondef('public.guard_listing_signoff()'::regprocedure)) > 0
+    and position('event_date = case' in pg_get_functiondef('public.submit_signoff(uuid, text)'::regprocedure)) > 0 as open_card_fields_dropped,
+  position('attach a file to this card' in pg_get_functiondef('public.guard_listing_signoff()'::regprocedure)) > 0
+    and position('new.recorded_at := old.recorded_at' in pg_get_functiondef('public.guard_listing_signoff()'::regprocedure)) > 0 as sign_cards_guarded,
+  position('p.email' in pg_get_functiondef('public.licensee_email_is_a_member()'::regprocedure)) = 0 as member_login_only,
   position('''item'', r.item_key' in
            pg_get_functiondef('public.build_activity_record_core(uuid)'::regprocedure)) > 0          as record_says_what_for;

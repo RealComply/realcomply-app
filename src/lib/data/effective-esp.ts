@@ -45,13 +45,24 @@ type RevisionDraft = {
 };
 
 // A figure as the database reads it (jsonb_to_numeric in 0065): a number, or
-// a string of digits. Anything else is no figure at all. The two have to agree
-// to the dollar: the price statement link is refused once the ESP on foot
-// stops matching the one the licensee was shown (12 Oct 2026).
+// a string of digits, with or without decimals, once the spaces round it are
+// trimmed. Anything else is no figure at all. The two have to agree to the
+// dollar: the price statement link is refused once the ESP on foot stops
+// matching the one the licensee was shown (12 Oct 2026).
+//
+// Spaces only, because the database's btrim trims spaces only. JavaScript's
+// trim() also took tabs, line breaks and non-breaking spaces, so "900000\n"
+// was a revised ESP here and no figure there. The app then measured against
+// the revision, while the licensee was shown a4's ESP and approved against
+// it (review, 11 Oct 2026). The app only ever writes numbers. This is for a
+// row written some other way.
+const FIGURE = /^ *([0-9]+(?:\.[0-9]+)?) *$/;
+
 function figure(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value === "string" && /^[0-9]+(\.[0-9]+)?$/.test(value.trim())) return Number(value.trim());
-  return null;
+  if (typeof value !== "string") return null;
+  const match = FIGURE.exec(value);
+  return match ? Number(match[1]) : null;
 }
 
 /**

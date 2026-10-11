@@ -228,7 +228,12 @@ export default async function PropertyPage({
 
   return (
     <SendBackProvider
-      value={{ propertyId: p.id, flags: openFlags, round: round?.cards ?? [] }}
+      value={{
+        propertyId: p.id,
+        flags: openFlags,
+        round: round?.cards ?? [],
+        priceStatementByEmail: b4Route.byEmail,
+      }}
     >
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">

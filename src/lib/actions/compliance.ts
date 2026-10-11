@@ -2076,6 +2076,11 @@ export async function uploadEvidence(
   // to attach since 9 Oct, but the action itself never checked, so a file
   // could be put on b4 by calling it directly. On a price statement approved
   // by email the file would then sit beside an approval it was never part of.
+  //
+  // The database refuses the same on b4 and sign_licensee (0065's guard), in
+  // the same sentence. A refusal there comes back through
+  // finalizeEvidenceRecord word for word, so the agent reads one message
+  // whichever side says no first. Change both together.
   if (getItem(itemKey)?.licenseeOnly && !profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can attach a file to this card." };
   }

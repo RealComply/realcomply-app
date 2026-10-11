@@ -3,6 +3,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import Link from "next/link";
 import type { OpenFlag, RoundCard } from "@/lib/data/send-backs";
+import { sentBackPriceStatementLine } from "@/lib/rules/price-statement";
 
 // A file the licensee sent back, on the listing page (Adam, 12 Oct 2026). The
 // licensee reviews and sends back on the emailed sign-off page; this is the
@@ -16,6 +17,8 @@ type SendBackPage = {
   flags: OpenFlag[];
   /** The latest send-back, done and not done, for the list at the top. */
   round: RoundCard[];
+  /** b4 goes to the licensee by email, so it can't be marked done here (0065). */
+  priceStatementByEmail: boolean;
 };
 
 const SendBackContext = createContext<SendBackPage | null>(null);
@@ -34,8 +37,14 @@ export function useFlagFor(itemKey: string): OpenFlag | null {
  * prompt where they ticked it. No button of its own (Adam, 12 Oct 2026: two
  * buttons on one card was confusing). The card went back to not done when it
  * was sent back; marking it done the normal way clears this note (0063).
+ * Except b4 when it goes by email, which nobody here can mark done: see
+ * sentBackPriceStatementLine.
  */
 export function FlagNote({ flag }: { flag: OpenFlag }) {
+  const byEmail = useContext(SendBackContext)?.priceStatementByEmail ?? false;
+  const howToClear =
+    sentBackPriceStatementLine(flag.itemKey, byEmail) ??
+    "Fix it, then mark this card done as usual. That clears this note.";
   return (
     <div className="mt-3 rounded-md border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5 text-sm">
       <p className="font-semibold text-rc-amber-deep">Your licensee sent this back</p>
@@ -50,7 +59,7 @@ export function FlagNote({ flag }: { flag: OpenFlag }) {
         </p>
       )}
       <p className="mt-1.5 text-xs text-rc-muted">
-        Fix it, then mark this card done as usual. That clears this note.{" "}
+        {howToClear}{" "}
         <a href="#send-back-list" className="font-semibold text-rc-ink underline">
           Back to the list
         </a>
@@ -74,6 +83,9 @@ export function SendBackBanner() {
   if (!page || page.round.length === 0) return null;
   const left = page.round.filter((c) => !c.done).length;
   const cardHref = (stage: number, key: string) => `/dashboard/${page.propertyId}?stage=${stage}#card-${key}`;
+  // The header's "mark it done" can't be done on b4 when it goes by email,
+  // so that card says what to do instead, in the same words as its note.
+  const resendLine = (key: string) => sentBackPriceStatementLine(key, page.priceStatementByEmail);
 
   return (
     <section
@@ -107,6 +119,9 @@ export function SendBackBanner() {
               )}
               <span className="ml-1.5 text-xs text-rc-muted">{STAGE_NAMES[c.stage] ?? ""}</span>
               {!c.done && <p className="text-xs text-rc-ink">{c.note}</p>}
+              {!c.done && resendLine(c.itemKey) && (
+                <p className="text-xs text-rc-muted">{resendLine(c.itemKey)}</p>
+              )}
               <span className="sr-only">{c.done ? "Done" : "Still to fix"}</span>
             </div>
           </li>

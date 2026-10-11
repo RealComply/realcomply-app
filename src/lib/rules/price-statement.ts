@@ -50,6 +50,21 @@ export function priceStatementByEmail(
   return !people.some((p) => p.is_licensee_in_charge && !p.archived_at);
 }
 
+/**
+ * What the agent does about a card the licensee sent back, where the usual
+ * "fix it and mark it done" is wrong. Null for every other card.
+ *
+ * b4 that goes by email is the one case (review, 11 Oct 2026). Nobody signed
+ * in can mark it done: the database lets only an active licensee in charge
+ * do that, and the office has none. The way forward is the send form on the
+ * card, and the licensee's approval clears the note (0063). Shared by the
+ * note on the card and the to-do list at the top, so they say the same.
+ */
+export function sentBackPriceStatementLine(itemKey: string, byEmail: boolean): string | null {
+  if (itemKey !== "b4" || !byEmail) return null;
+  return "Send the price statement to your licensee again from this card. Their approval clears this note.";
+}
+
 export type PriceApproval = {
   /** The price statement approved. Null on an older row approved with a file and no note. */
   text: string | null;
