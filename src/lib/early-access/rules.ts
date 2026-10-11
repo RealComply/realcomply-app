@@ -75,3 +75,24 @@ export function sameInstant(db: string | null, seen: string): boolean {
   if (!db || !seen) return !db && !seen;
   return new Date(db).getTime() === new Date(seen).getTime();
 }
+
+/**
+ * Whether a personal invite (staff page, Personal invites) may be emailed.
+ *
+ * Adam, 12 Oct 2026, approving the personal invites preview: these work for
+ * any address on the live site from day one. Unlike the early access list,
+ * nobody can send one by accident: Adam types the address himself. Preview
+ * sites share the live database, so there they stay locked to his own
+ * plus-addresses, the same as early access.
+ */
+export function personalInviteMaySendTo(
+  email: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.VERCEL_ENV === "production" || isTestAddress(email);
+}
+
+/** Good enough to catch a typo before an email goes. The provider is the real check. */
+export function looksLikeEmail(email: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+}

@@ -1,6 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { earlyAccessStatus, hiddenFromList, isTestAddress, maySendTo, sameInstant, welcomeSwitchedOn } from "./rules";
+import {
+  earlyAccessStatus,
+  hiddenFromList,
+  isTestAddress,
+  looksLikeEmail,
+  maySendTo,
+  personalInviteMaySendTo,
+  sameInstant,
+  welcomeSwitchedOn,
+} from "./rules";
 
 const blank = { invitedAt: null, unsubscribedAt: null, declinedAt: null, signedUpAt: null };
 
@@ -46,6 +55,28 @@ describe("who an invitation may go to", () => {
     assert.equal(maySendTo("sam@harbourre.com.au", { EARLY_ACCESS_INVITES: "live", VERCEL_ENV: "production" }), true);
     assert.equal(maySendTo("sam@harbourre.com.au", { EARLY_ACCESS_INVITES: "live", VERCEL_ENV: "preview" }), false);
     assert.equal(maySendTo("sam@harbourre.com.au", { EARLY_ACCESS_INVITES: "on", VERCEL_ENV: "production" }), false);
+  });
+});
+
+describe("who a personal invite may go to", () => {
+  it("anyone on the live site, with no switch needed", () => {
+    assert.equal(personalInviteMaySendTo("dave@example-realty.com.au", { VERCEL_ENV: "production" }), true);
+  });
+
+  it("only Adam's plus-addresses anywhere else", () => {
+    assert.equal(personalInviteMaySendTo("dave@example-realty.com.au", { VERCEL_ENV: "preview" }), false);
+    assert.equal(personalInviteMaySendTo("dave@example-realty.com.au", {}), false);
+    assert.equal(personalInviteMaySendTo("getadamc3+dave@gmail.com", { VERCEL_ENV: "preview" }), true);
+  });
+});
+
+describe("looksLikeEmail", () => {
+  it("catches the obvious typos", () => {
+    assert.equal(looksLikeEmail("dave@example.com.au"), true);
+    assert.equal(looksLikeEmail(" dave@example.com.au "), true);
+    assert.equal(looksLikeEmail("dave@example"), false);
+    assert.equal(looksLikeEmail("dave example.com.au"), false);
+    assert.equal(looksLikeEmail("Dave Smith"), false);
   });
 });
 
