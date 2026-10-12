@@ -22,6 +22,10 @@ const env: Record<string, string> = {
 type Behaviour = {
   preview: "ok" | "no_upcoming_invoice";
   resend: "ok" | "down";
+  /** The subscription as Stripe has it now (part A: the route asks Stripe). */
+  subscription: Record<string, unknown>;
+  /** The office's current subscription on file. */
+  onFile?: string;
 };
 
 let calls: string[];
@@ -34,6 +38,9 @@ function stub(behaviour: Behaviour) {
     const json = (body: unknown, status = 200) =>
       new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+    if (url.startsWith("https://api.stripe.com/v1/subscriptions/")) {
+      return json(behaviour.subscription);
+    }
     if (url.startsWith("https://api.stripe.com/v1/invoices/create_preview")) {
       return behaviour.preview === "ok"
         ? json({ amount_due: 24_900, currency: "aud" })
@@ -49,7 +56,13 @@ function stub(behaviour: Behaviour) {
           );
     }
     if (url.startsWith("https://db.test/rest/v1/agencies")) {
-      return json({ id: "agency-1", name: "Hornsby Realty", stripe_customer_id: "cus_test", status: "trialing" });
+      return json({
+        id: "agency-1",
+        name: "Hornsby Realty",
+        stripe_customer_id: "cus_test",
+        stripe_subscription_id: behaviour.onFile ?? "sub_test",
+        status: "trialing",
+      });
     }
     if (url.startsWith("https://db.test/rest/v1/profiles")) {
       return json({ email: "licensee@example.com" });
@@ -104,7 +117,7 @@ afterEach(() => mock.restoreAll());
 
 describe("POST /api/stripe/webhook — customer.subscription.trial_will_end", () => {
   it("normal: 200, and the email names the amount", async () => {
-    stub({ preview: "ok", resend: "ok" });
+    stub({ preview: "ok", resend: "ok", subscription: trialingSubscription() });
 
     const response = await POST(signedEvent(trialingSubscription()));
 
@@ -114,17 +127,17 @@ describe("POST /api/stripe/webhook — customer.subscription.trial_will_end", ()
   });
 
   it("cancelling at trial end: 200, Stripe never asked for a preview, no email", async () => {
-    stub({ preview: "no_upcoming_invoice", resend: "ok" });
+    stub({ preview: "no_upcoming_invoice", resend: "ok", subscription: trialingSubscription({ cancel_at_period_end: true }) });
 
     const response = await POST(signedEvent(trialingSubscription({ cancel_at_period_end: true })));
 
     assert.equal(response.status, 200);
-    assert.equal(calls.filter((u) => u.includes("api.stripe.com")).length, 0);
+    assert.equal(calls.filter((u) => u.includes("/invoices/create_preview")).length, 0);
     assert.equal(emails.length, 0);
   });
 
   it("preview refused (no upcoming invoice): 200, not 500, and the email goes without an amount", async () => {
-    stub({ preview: "no_upcoming_invoice", resend: "ok" });
+    stub({ preview: "no_upcoming_invoice", resend: "ok", subscription: trialingSubscription() });
 
     const response = await POST(signedEvent(trialingSubscription()));
 
@@ -135,10 +148,29 @@ describe("POST /api/stripe/webhook — customer.subscription.trial_will_end", ()
   });
 
   it("mail provider down: 500, so Stripe retries", async () => {
-    stub({ preview: "ok", resend: "down" });
+    stub({ preview: "ok", resend: "down", subscription: trialingSubscription() });
 
     const response = await POST(signedEvent(trialingSubscription()));
 
     assert.equal(response.status, 500);
+  });
+
+  // Part A: the reminder goes by Stripe as it is now, not by the message.
+  it("cancelled since the message was sent: 200, no email", async () => {
+    stub({ preview: "ok", resend: "ok", subscription: trialingSubscription({ cancel_at_period_end: true }) });
+
+    const response = await POST(signedEvent(trialingSubscription()));
+
+    assert.equal(response.status, 200);
+    assert.equal(emails.length, 0);
+  });
+
+  it("not the office's current subscription: 200, no email", async () => {
+    stub({ preview: "ok", resend: "ok", subscription: trialingSubscription(), onFile: "sub_newer" });
+
+    const response = await POST(signedEvent(trialingSubscription()));
+
+    assert.equal(response.status, 200);
+    assert.equal(emails.length, 0);
   });
 });
