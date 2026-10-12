@@ -54,7 +54,7 @@ const LICENCE_FOOTER = [
   "RealComply sends reminders. Renewals are made by the holder with NSW Fair Trading. RealComply " +
     "doesn't lodge them for you, and the licensee in charge remains responsible for making sure " +
     "everyone in the office is properly licensed.",
-  `<a href="${REGISTERS_URL}" style="color:#8a9a93">See the register any time</a>`,
+  { text: "See the register any time", href: REGISTERS_URL },
 ];
 
 function subjectsForAgency(agency: Agency, profiles: Profile[]): Subject[] {

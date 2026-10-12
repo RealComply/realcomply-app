@@ -107,7 +107,7 @@ export function retentionDocument(subject: PmRetentionSubject, agencyName: strin
     ],
     footer: [
       "RealComply sends this reminder once, on the date. The licensee in charge and the property manager each get a copy.",
-      `<a href="${PM_URL}" style="color:#8a9a93">Property management</a>`,
+      { text: "Property management", href: PM_URL },
     ],
   };
 }

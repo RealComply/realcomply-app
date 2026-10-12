@@ -34,8 +34,6 @@ export type PriceStatementRequestEmail = {
   espHigh: number | null;
 };
 
-const noTags = (value: string): string => value.replace(/[<>]/g, "");
-
 /** Agent, then address: both things the licensee can check in an inbox list without opening anything. */
 export function priceStatementRequestSubject(input: PriceStatementRequestEmail): string {
   return `${input.agentName} has asked you to approve the price for ${input.propertyAddress}`;
@@ -80,11 +78,11 @@ export function priceStatementRequestDocument(input: PriceStatementRequestEmail)
         text: `If the price statement isn't right, don't approve it. Reply to this email and say what needs to change. This link is for you only and expires on ${input.expiresAt}. If you weren't expecting it, reply to this email and let us know.`,
       },
     ],
-    // The same footer as the final sign-off email. Footer lines go into the
-    // HTML as they are (they may carry links), so the two names typed by the
-    // agency lose any angle brackets here rather than becoming markup.
+    // The same footer as the final sign-off email. The layout escapes footer
+    // lines like everything else, so the two names typed by the agency print
+    // exactly as typed and never become markup.
     footer: [
-      `Sent by ${noTags(input.agencyName)} through RealComply, the compliance system ${noTags(input.agentName)} uses to prepare sales files.`,
+      `Sent by ${input.agencyName} through RealComply, the compliance system ${input.agentName} uses to prepare sales files.`,
       DILIGENCE_LINE,
     ],
   };

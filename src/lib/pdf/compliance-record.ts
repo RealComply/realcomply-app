@@ -2,6 +2,7 @@ import { photoNoticeRecordLines, type TenantPhotoData } from "@/lib/rules/tenant
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { formatSignedAt } from "./sign-stamp";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
+import { pdfText } from "./text";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import type { PriceApproval } from "@/lib/rules/price-statement";
@@ -71,10 +72,9 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
   return lines;
 }
 
-// Standard PDF fonts are WinAnsi-encoded and throw on characters outside it —
-// including the en dashes and curly quotes used throughout the app's copy. A
-// compliance export must never fail because someone typed a nice apostrophe, so
-// everything is flattened on the way in.
+// Text on the page goes through pdfText (./text.ts), which keeps every letter
+// the font can draw. This plain-ASCII version is for the file name only, which
+// has to survive every browser, mail client and zip tool it passes through.
 function ascii(text: string): string {
   return text
     .replace(/[‘’‛]/g, "'")
@@ -132,7 +132,7 @@ class Cursor {
       thickness: 0.5,
       color: BORDER,
     });
-    this.page.drawText(ascii(`Page ${this.pageNo}`), {
+    this.page.drawText(pdfText(`Page ${this.pageNo}`, this.fonts.regular), {
       x: PAGE_W - MARGIN - this.fonts.regular.widthOfTextAtSize(`Page ${this.pageNo}`, 8),
       y: BOTTOM - 26,
       size: 8,
@@ -140,7 +140,7 @@ class Cursor {
       color: FAINT,
     });
     if (this.draftMark) {
-      this.page.drawText(ascii(this.draftMark), {
+      this.page.drawText(pdfText(this.draftMark, this.fonts.bold), {
         x: MARGIN,
         y: BOTTOM - 26,
         size: 8,
@@ -158,7 +158,7 @@ class Cursor {
     const font = opts.bold ? this.fonts.bold : this.fonts.regular;
     const indent = opts.indent ?? 0;
     const lineHeight = size * 1.4;
-    const lines = wrap(ascii(content), font, size, CONTENT_W - indent);
+    const lines = wrap(pdfText(content, font), font, size, CONTENT_W - indent);
     this.need(lines.length * lineHeight);
     for (const line of lines) {
       this.page.drawText(line, {
@@ -539,14 +539,14 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       ]
         .filter(Boolean)
         .join(", ");
-      c.text(ascii(comp.address), { size: 9.5, bold: true });
+      c.text(comp.address, { size: 9.5, bold: true });
       if (facts) c.text(facts, { size: 8.5, color: MUTED, indent: 12 });
       c.text(
         comp.weighting ? WEIGHTING_LABEL[comp.weighting] : "Not marked by the agent",
         { size: 8.5, color: comp.weighting ? MUTED : FAINT, indent: 12 },
       );
       if (comp.agentNote?.trim()) {
-        c.text(ascii(comp.agentNote.trim()), { size: 8.5, color: MUTED, indent: 12 });
+        c.text(comp.agentNote.trim(), { size: 8.5, color: MUTED, indent: 12 });
       }
       c.y -= 4;
     }
@@ -585,15 +585,15 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       ]
         .filter(Boolean)
         .join(", ");
-      c.text(ascii(l.address), { size: 9.5, bold: true });
-      c.text(ascii(facts), { size: 8.5, color: MUTED, indent: 12 });
+      c.text(l.address, { size: 9.5, bold: true });
+      c.text(facts, { size: 8.5, color: MUTED, indent: 12 });
       c.text(l.weighting ? LISTING_WEIGHTING_LABEL[l.weighting] : "Not marked by the agent", {
         size: 8.5,
         color: l.weighting ? MUTED : FAINT,
         indent: 12,
       });
       if (l.agentNote?.trim()) {
-        c.text(ascii(l.agentNote.trim()), { size: 8.5, color: MUTED, indent: 12 });
+        c.text(l.agentNote.trim(), { size: 8.5, color: MUTED, indent: 12 });
       }
       c.y -= 4;
     }
@@ -613,7 +613,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   if (espReasoningElsewhere) {
     c.rule(6, 10);
     c.text("How the estimated selling price was formed", { size: 11, bold: true, gap: 4 });
-    c.text(`Recorded by the agent in: ${ascii(espReasoningElsewhere)}`, {
+    c.text(`Recorded by the agent in: ${espReasoningElsewhere}`, {
       size: 9.5,
       color: MUTED,
       gap: 2,
@@ -669,7 +669,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       const hand = signatureFontCanDraw(c.fonts.signature, sig.typedName);
       const SIG = hand ? 30 : 24;
       c.need(SIG * 1.3 + 12 + 9.5 * 1.45 + 9 * 1.45 + 10);
-      c.page.drawText(hand ? sig.typedName.trim() : ascii(sig.typedName), {
+      c.page.drawText(hand ? sig.typedName.trim() : pdfText(sig.typedName, c.fonts.italic).trim(), {
         x: MARGIN,
         y: c.y - SIG,
         size: SIG,
@@ -743,28 +743,28 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
 
     const sep = doc.addPage([PAGE_W, PAGE_H]);
     sep.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: GREEN });
-    sep.drawText(ascii(`Attachment ${attachmentNo}`), {
+    sep.drawText(`Attachment ${attachmentNo}`, {
       x: MARGIN,
       y: PAGE_H - 120,
       size: 9,
       font: fonts.regular,
       color: FAINT,
     });
-    sep.drawText(ascii(a.title), {
+    sep.drawText(pdfText(a.title, fonts.bold), {
       x: MARGIN,
       y: PAGE_H - 146,
       size: 18,
       font: fonts.bold,
       color: INK,
     });
-    sep.drawText(ascii(a.fileName), {
+    sep.drawText(pdfText(a.fileName, fonts.regular), {
       x: MARGIN,
       y: PAGE_H - 168,
       size: 9.5,
       font: fonts.regular,
       color: MUTED,
     });
-    sep.drawText(ascii(property.address), {
+    sep.drawText(pdfText(property.address, fonts.regular), {
       x: MARGIN,
       y: PAGE_H - 190,
       size: 9.5,
@@ -789,7 +789,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         });
       }
     } catch {
-      sep.drawText(ascii("This document could not be opened and is held on file in RealComply."), {
+      sep.drawText("This document could not be opened and is held on file in RealComply.", {
         x: MARGIN,
         y: PAGE_H - 220,
         size: 9.5,

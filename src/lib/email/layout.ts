@@ -77,6 +77,18 @@ export type EmailSection =
   | { kind: "counter"; n: number; caption: string; tone: "good" | "warn" }
   | { kind: "button"; label: string; href: string };
 
+/** A link in a footer line: drawn as a link in HTML, as "text: href" in plain text. */
+export type FooterLink = { text: string; href: string };
+
+/**
+ * One footer line. Plain text only, never markup: every string is escaped like
+ * the rest of the email, so a name typed into the app can't become a link
+ * (code review finding 7, 12 Oct 2026: an agency named with an <a href=...>
+ * planted a link in the sign-off email sent to the licensee). A link the email
+ * itself offers is a FooterLink, built here from its text and address.
+ */
+export type FooterLine = string | FooterLink | Array<string | FooterLink>;
+
 export type EmailDocument = {
   /** The grey line beside the subject in an inbox list. Written, never inherited. */
   preheader: string;
@@ -85,8 +97,10 @@ export type EmailDocument = {
   title?: string;
   sections: EmailSection[];
   /** Footer lines. The diligence-support line belongs in every one of them. */
-  footer: string[];
+  footer: FooterLine[];
 };
+
+const footerPartsOf = (line: FooterLine): Array<string | FooterLink> => (Array.isArray(line) ? line : [line]);
 
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -172,12 +186,16 @@ export function renderEmailHtml(doc: EmailDocument): string {
   const body = doc.sections.map(renderSection).join("");
 
   const footer = doc.footer
-    .map(
-      (line, i) =>
-        `<div style="font-size:12px;line-height:1.55;color:${
-          i === 0 ? BRAND.muted : BRAND.faint
-        };padding-bottom:9px">${line}</div>`,
-    )
+    .map((line, i) => {
+      const color = i === 0 ? BRAND.muted : BRAND.faint;
+      return `<div style="font-size:12px;line-height:1.55;color:${color};padding-bottom:9px">${footerPartsOf(line)
+        .map((part) =>
+          typeof part === "string"
+            ? esc(part)
+            : `<a href="${esc(part.href)}" style="color:${color}">${esc(part.text)}</a>`,
+        )
+        .join(" ")}</div>`;
+    })
     .join("");
 
   return `<!doctype html>
@@ -277,9 +295,12 @@ export function renderEmailText(doc: EmailDocument): string {
   }
 
   out.push("---");
-  // Footer lines carry <a> tags for the HTML side; strip them for text.
   for (const line of doc.footer) {
-    out.push(line.replace(/<[^>]+>/g, "").trim());
+    out.push(
+      footerPartsOf(line)
+        .map((part) => (typeof part === "string" ? part : `${part.text}: ${part.href}`))
+        .join(" "),
+    );
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
