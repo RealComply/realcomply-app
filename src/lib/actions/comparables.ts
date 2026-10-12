@@ -18,10 +18,11 @@ export type ComparableActionState = { error: string | null };
 /**
  * Marks how the agent treated one sale.
  *
- * Pressing the same button again clears it, which matters more than it looks:
- * a weighting set by a mis-tap must be removable, and "no answer yet" has to
- * stay reachable. An unweighted row is an honest state — a defaulted one is
- * a record of a decision nobody made.
+ * Null clears it, which matters more than it looks: a weighting set by a
+ * mis-tap must be removable, and "no answer yet" has to stay reachable. An
+ * unweighted row is an honest state — a defaulted one is a record of a
+ * decision nobody made. Since sales fold once marked (13 Oct 2026), that is
+ * "Clear" on a card opened with "Change" (ComparablesPanel).
  */
 export async function setComparableWeighting(
   propertyId: string,

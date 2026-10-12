@@ -133,6 +133,51 @@ export function hasSubjectDetail(s: SubjectAttributes): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Marked sales fold to one line (Adam, 13 Oct 2026; job 4)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Pressing "Relied on" or "Considered" folds that sale's card, the same way a
+// finished compliance card folds, and "Change" opens it again. Folding hides
+// the card; it changes nothing in the record.
+
+/** The two answers that fold a sale's card. The retired "not comparable" mark does not. */
+export function foldsWhenMarked(weighting: Weighting | null): weighting is "relied" | "considered" {
+  return weighting === "relied" || weighting === "considered";
+}
+
+/**
+ * Whether a sale's card shows as its folded line.
+ *
+ * Never folded while something on it would be missed out of sight: an error
+ * from the last save, or a note typed but not saved yet. Same rule as the
+ * compliance cards' fold (ItemShell), for the same reason.
+ */
+export function comparableFolded(input: {
+  weighting: Weighting | null;
+  /** The agent pressed "Change" and has not answered again since. */
+  reopened: boolean;
+  noteUnsaved: boolean;
+  hasError: boolean;
+}): boolean {
+  return foldsWhenMarked(input.weighting) && !input.reopened && !input.noteUnsaved && !input.hasError;
+}
+
+/**
+ * "N of N done" above the list. A sale is done once it carries a mark, the
+ * retired "not comparable" included: that was a decision, recorded before the
+ * option went, and counting it as undone would ask for it to be made again.
+ */
+export function weighingProgress(comparables: Array<Pick<Comparable, "weighting">>): {
+  done: number;
+  total: number;
+} {
+  return {
+    done: comparables.filter((c) => c.weighting !== null).length,
+    total: comparables.length,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // How a comparable differs from the subject
 // ─────────────────────────────────────────────────────────────────────────
 //
