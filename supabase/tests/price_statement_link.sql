@@ -1236,7 +1236,7 @@ begin
      or public.jsonb_to_numeric('"  900000.50  "') is distinct from 900000.50 then
     raise exception 'FAIL 26: a plain ESP figure was not read';
   end if;
-  foreach s in array array[E'900000\n', E'\t900000', E'900000\r', E'900000 ', '9e5', '-900000',
+  foreach s in array array[E'900000\n', E'\t900000', E'900000\r', E'900000\u00a0', '9e5', '-900000',
                            '+900000', '900,000', '$900000', '900000.', '.5', '', ' '] loop
     if public.jsonb_to_numeric(to_jsonb(s)) is not null then
       raise exception 'FAIL 26: "%" was read as an ESP figure', s;
