@@ -235,16 +235,45 @@ export async function finalizeEvidenceRecord(
 ): Promise<{ error: string | null }> {
   const { agencyId, propertyId, itemKey, path, fileName } = params;
 
-  const { data: existingRow } = await supabase
+  const { data: existingRow, error: readError } = await supabase
     .from("property_items")
     .select("*")
     .eq("property_id", propertyId)
     .eq("item_key", itemKey)
     .maybeSingle();
+  // A read that fails is not an empty card. Taken as one, the save below
+  // would write the card back as "open" with nothing on it, losing what the
+  // agent had done on it (code review fixes, part E, 12 Oct 2026).
+  if (readError) return { error: "Couldn't attach the file just now, and nothing was changed. Try again." };
 
-  // Only remove the old file once the new one is confirmed in place, so a
-  // problem here never leaves an item with no evidence at all.
-  //
+  // THE NEW FILE IS ON THE CARD BEFORE THE OLD ONE GOES (code review fixes,
+  // part E, 12 Oct 2026). The new file is already in Storage under its own
+  // name (uploadEvidenceObject never overwrites), so the card is pointed at
+  // it first. Only once the database confirms the card now names the new
+  // file is the old one removed. If the save fails, or is quietly refused,
+  // the card still names the old file and the old file is still there. It
+  // used to be the other way round: the old file was removed first, and a
+  // save that then failed left the card pointing at nothing.
+  const { data: saved, error } = await supabase
+    .from("property_items")
+    .upsert(
+      {
+        agency_id: agencyId,
+        property_id: propertyId,
+        item_key: itemKey,
+        status: existingRow?.status ?? "open",
+        data: { ...(existingRow?.data ?? {}), evidenceFileName: fileName },
+        event_date: existingRow?.event_date ?? null,
+        completed_by: existingRow?.completed_by ?? null,
+        evidence_path: path,
+      },
+      { onConflict: "property_id,item_key" },
+    )
+    .select("evidence_path");
+  if (error) return { error: error.message };
+  const onCard = ((saved ?? []) as Array<{ evidence_path: string | null }>).some((r) => r.evidence_path === path);
+  if (!onCard) return { error: "Couldn't attach the file just now, and nothing was changed. Try again." };
+
   // Since 0058 only the licensee deletes files, so for anyone else the
   // database quietly refuses this and the old file stays in the listing's
   // folder with nothing pointing at it. Deleting the listing sweeps the whole
@@ -257,21 +286,7 @@ export async function finalizeEvidenceRecord(
     await supabase.storage.from(EVIDENCE_BUCKET).remove([existingRow.evidence_path]);
   }
 
-  const { error } = await supabase.from("property_items").upsert(
-    {
-      agency_id: agencyId,
-      property_id: propertyId,
-      item_key: itemKey,
-      status: existingRow?.status ?? "open",
-      data: { ...(existingRow?.data ?? {}), evidenceFileName: fileName },
-      event_date: existingRow?.event_date ?? null,
-      completed_by: existingRow?.completed_by ?? null,
-      evidence_path: path,
-    },
-    { onConflict: "property_id,item_key" },
-  );
-
-  return { error: error?.message ?? null };
+  return { error: null };
 }
 
 // Every object in one listing's folder, {agency}/{property}/{item}/{file}.
