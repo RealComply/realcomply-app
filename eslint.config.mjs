@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Copies of the repo that coding sessions check out locally. Not ours to
+    // lint, and never in a fresh checkout.
+    ".claude/**",
   ]),
 ]);
 
