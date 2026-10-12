@@ -24,6 +24,13 @@ export const ADMIN_COPY_ADDRESS = "admin@realcomply.com.au";
 export const SENDER_NAME = "RealComply";
 export const INVITATION_SUBJECT = "Your invitation to RealComply";
 
+/**
+ * The private Facebook group for RealComply members, offered in the welcome
+ * email only (Adam, 12 Oct 2026; spec claude/RealComply-community-group-12-Oct.md
+ * in the project). The invitation does not mention it.
+ */
+export const COMMUNITY_GROUP_URL = "https://www.facebook.com/groups/realcomplymembers/";
+
 /** Where links and pictures in these emails point. See lib/site-url.ts. */
 export function emailBaseUrl(): string {
   return appBaseUrl();
@@ -70,6 +77,8 @@ const C = {
   green: "#0b7d50",
   tick: "#0f9a63",
   ground: "#f3f5f4",
+  boxFill: "#eaf6f0",
+  boxLine: "#cfe7db",
 };
 
 const esc = (s: string): string =>
@@ -80,6 +89,7 @@ type Block =
   | { kind: "button"; label: string; href: string }
   | { kind: "video"; href: string; src: string; alt: string; title: string; length: string }
   | { kind: "steps"; items: string[] }
+  | { kind: "box"; heading: string; text: string; button: { label: string; href: string } }
   | { kind: "signoff"; lines: string[] };
 
 type Email = {
@@ -115,6 +125,20 @@ function blockHtml(b: Block): string {
     case "steps":
       return `<tr><td style="padding:0 28px 16px;font-family:${FONT};font-size:16px;line-height:1.6;color:${C.body}">
 <ol style="margin:0;padding-left:22px">${b.items.map((i) => `<li style="margin-bottom:6px">${esc(i)}</li>`).join("")}</ol></td></tr>`;
+    case "box":
+      // A light green box with an outlined pill button, so it doesn't compete
+      // with the main green button (the community group, Adam, 12 Oct 2026).
+      // Table-wrapped like the main button: Outlook ignores padding on a link.
+      return `<tr><td style="padding:0 28px 20px">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:${C.boxFill};border:1px solid ${C.boxLine};border-radius:12px">
+<tr><td style="padding:18px 20px;font-family:${FONT};font-size:16px;line-height:1.6;color:${C.body}">
+<p style="margin:0 0 12px;font-weight:700;color:${C.ink}">${esc(b.heading)}</p>
+<p style="margin:0 0 14px">${esc(b.text)}</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="background:#ffffff;border:2px solid ${C.green};border-radius:999px"><a href="${esc(b.button.href)}" style="display:inline-block;padding:9px 22px;font-family:${FONT};font-size:15px;font-weight:700;color:${C.green};text-decoration:none">${esc(
+        b.button.label,
+      )}</a></td></tr></table>
+</td></tr></table></td></tr>`;
     case "signoff":
       return `<tr><td style="padding:0 28px 16px;font-family:${FONT};font-size:16px;line-height:1.6;color:${C.body}">${b.lines
         .map(esc)
@@ -177,6 +201,9 @@ function renderText(e: Email): string {
       case "steps":
         b.items.forEach((item, i) => out.push(`${i + 1}. ${item}`));
         out.push("");
+        break;
+      case "box":
+        out.push(b.heading, b.text, "", `${b.button.label}: ${b.button.href}`, "");
         break;
       case "signoff":
         out.push(...b.lines, "");
@@ -287,7 +314,10 @@ export function buildWelcomeEmail(input: WelcomeInput): { subject: string; text:
     preheader: "Welcome aboard. Your office is all set up, and we're really glad to have you with us.",
     blocks: [
       { kind: "p", text: name ? `Hi ${name},` : "Hi there," },
-      { kind: "p", text: "Welcome aboard. Your office is all set up, and we're really glad to have you with us." },
+      {
+        kind: "p",
+        text: "Welcome aboard. Your office is all set up, and we're really glad to have you with us. We look forward to helping you keep on top of your compliance obligations.",
+      },
       {
         kind: "p",
         text: "To help you find your feet, we've made a short video that walks through RealComply on a made-up listing. Grab a coffee. It takes less than four minutes.",
@@ -309,9 +339,12 @@ export function buildWelcomeEmail(input: WelcomeInput): { subject: string; text:
         ],
       },
       {
-        kind: "p",
-        text: "If anything's unclear or you get stuck, just reply to this email. We read every one and we're always happy to help.",
+        kind: "box",
+        heading: "Join other agents in the RealComply group",
+        text: "We've started a private Facebook group for agents and licensees who use RealComply in NSW. Ask how others handle a tricky file, share what's working, and hear about new features first. Only members can see what's posted.",
+        button: { label: "Join the group", href: COMMUNITY_GROUP_URL },
       },
+      { kind: "p", text: "If anything's unclear or you get stuck, just reply to this email. We're always happy to help." },
       { kind: "signoff", lines: ["Warm regards,", "The RealComply team"] },
     ],
     footer: [

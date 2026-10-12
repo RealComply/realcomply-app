@@ -1,6 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildInvitationEmail, buildPersonalInvitationEmail, buildWelcomeEmail, welcomeSubject } from "./early-access-invite";
+import {
+  COMMUNITY_GROUP_URL,
+  buildInvitationEmail,
+  buildPersonalInvitationEmail,
+  buildWelcomeEmail,
+  welcomeSubject,
+} from "./early-access-invite";
 import { withSenderName } from "./send";
 
 const base = "https://www.realcomply.com.au";
@@ -87,10 +93,14 @@ describe("welcome email", () => {
     const m = buildWelcomeEmail({ firstName: "Priya", base });
     assert.equal(m.subject, "Welcome to RealComply, Priya");
     for (const part of [m.text, m.html]) {
-      assert.match(part, /Welcome aboard\. Your office is all set up, and we're really glad to have you with us\./);
+      assert.match(
+        part,
+        /Welcome aboard\. Your office is all set up, and we're really glad to have you with us\. We look forward to helping you keep on top of your compliance obligations\./,
+      );
       assert.match(part, /Grab a coffee\. It takes less than four minutes\./);
       assert.match(part, /Click New listing at the top of any page\./);
-      assert.match(part, /We read every one and we're always happy to help\./);
+      assert.match(part, /If anything's unclear or you get stuck, just reply to this email\. We're always happy to help\./);
+      assert.doesNotMatch(part, /We read every one/);
       assert.match(part, /Warm regards,/);
     }
     assert.match(m.html, /href="https:\/\/www\.realcomply\.com\.au\/dashboard\/getting-started"/);
@@ -99,6 +109,41 @@ describe("welcome email", () => {
     assert.match(m.html, /3 min 40/);
     assert.doesNotMatch(m.html + m.text, /unsubscribe/i, "the welcome footer has no unsubscribe line");
     assert.doesNotMatch(m.subject + m.text + m.html, /—/);
+  });
+
+  // The community group (Adam, 12 Oct 2026): a light green box after the two
+  // steps and before the help line, with an outlined button so it doesn't
+  // compete with the main green one.
+  it("invites them to the RealComply group, between the steps and the help line", () => {
+    const m = buildWelcomeEmail({ firstName: "Priya", base });
+    const heading = "Join other agents in the RealComply group";
+    const text =
+      "We've started a private Facebook group for agents and licensees who use RealComply in NSW. Ask how others handle a tricky file, share what's working, and hear about new features first. Only members can see what's posted.";
+
+    for (const part of [m.text, m.html]) {
+      const steps = part.indexOf("Drop in the agency agreement");
+      const box = part.indexOf(heading);
+      const help = part.indexOf("If anything's unclear");
+      assert.ok(steps > 0 && steps < box && box < help, "steps, then the group, then the help line");
+      assert.ok(part.includes(text));
+    }
+
+    // HTML: the box's colours, and a white pill with a green border and green text.
+    assert.match(m.html, /background:#eaf6f0;border:1px solid #cfe7db;border-radius:12px/);
+    assert.match(m.html, new RegExp(`font-weight:700;color:#16302a">${heading}</p>`));
+    assert.match(
+      m.html,
+      /<td style="background:#ffffff;border:2px solid #0b7d50;border-radius:999px"><a href="https:\/\/www\.facebook\.com\/groups\/realcomplymembers\/" style="[^"]*color:#0b7d50[^"]*">Join the group<\/a>/,
+    );
+    assert.equal(COMMUNITY_GROUP_URL, "https://www.facebook.com/groups/realcomplymembers/");
+
+    // Plain text: the heading, the text, then the link written out.
+    assert.ok(m.text.includes(`${heading}\n${text}\n\nJoin the group: https://www.facebook.com/groups/realcomplymembers/\n`));
+  });
+
+  it("the invitation does not mention the group", () => {
+    const invite = buildInvitationEmail({ firstName: "Sam", inviteUrl: `${base}/signup?founder=tok`, unsubscribeUrl: null, base });
+    assert.doesNotMatch(invite.html + invite.text, /facebook|RealComply group/i);
   });
 
   it("works without a first name", () => {
