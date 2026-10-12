@@ -96,7 +96,7 @@ function acknowledgementDocument(email: string, firstName?: string | null): Emai
   return {
     // Written, not inherited. Left alone, the client fills this line with the
     // first words of the body, which here would just repeat the subject.
-    preheader: "You're on the list. We'll be onboarding over the next two weeks.",
+    preheader: "You're on the list. One of our team members will be in touch shortly.",
     sections: [
       { kind: "paragraph", lead: true, text: `Hi ${greetingName(firstName)},` },
       {
@@ -105,8 +105,7 @@ function acknowledgementDocument(email: string, firstName?: string | null): Emai
       },
       {
         kind: "paragraph",
-        text:
-          "We will be onboarding new clients over the next two weeks and will be in touch to get you set up.",
+        text: "One of our team members will be in touch with you shortly to get you set up.",
       },
       {
         kind: "paragraph",
