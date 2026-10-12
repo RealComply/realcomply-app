@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Send, X, RotateCw, AlertTriangle } from "lucide-react";
 import { issueSignoffLink, resendSignoffLink, revokeSignoffLink } from "@/lib/actions/signoff-links";
-import { liveLink, signedLink, type SignoffLink } from "@/lib/data/signoff-links";
+import { linksFor, liveLink, signedLink, type SignoffLink } from "@/lib/data/signoff-links";
 import { formatAuTimestamp } from "@/lib/format-date";
 
 // The agent's half of licensee sign-off by link.
@@ -49,9 +49,11 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
   const [error, setError] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
 
-  const signed = signedLink(links);
-  const live = liveLink(links);
-  const expired = !signed && !live && links.length > 0;
+  // The final sign-off's links only. The page passes only those; this keeps
+  // a price statement request (b4, 0066) from ever reading as the signature.
+  const signed = signedLink(links, "sign_licensee");
+  const live = liveLink(links, "sign_licensee");
+  const expired = !signed && !live && linksFor(links, "sign_licensee").length > 0;
 
   // Attempted and not delivered. Distinct from "not attempted", which only
   // happens on rows created before 0047.
@@ -148,7 +150,7 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
 
           <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">
             Not signed yet. Expires {formatAuTimestamp(live.expiresAt)}. When they sign, this file updates on
-            its own. Replies to that email go to you, not to RealComply.
+            its own. Replies to that email go to whoever sent it, not to RealComply.
           </p>
         </div>
       ) : (

@@ -892,8 +892,11 @@ const items: ComplianceItem[] = [
     stage: 1,
     kind: "checklist",
     label: "Licensee approved the price statement before publication",
+    // The second sentence since 12 Oct 2026 (Adam, option (a)): an office
+    // whose licensee in charge is not on RealComply sends it to them by email
+    // from this card, and they approve the exact words there.
     description:
-      "The licensee in charge confirms the price statement on the marketing material (the advertised guide/range) is accurate, before it's published.",
+      "The licensee in charge confirms the price statement on the marketing material (the advertised guide/range) is accurate, before it's published. If your licensee in charge doesn't use RealComply, send it to them for approval by email from this card.",
     legalBasis: "Supports ss 73 & 73A, Property and Stock Agents Act 2002 (NSW); s32 (duty to properly supervise)",
     licenseeOnly: true,
     requiresDate: false,
@@ -911,6 +914,14 @@ const items: ComplianceItem[] = [
     requiresNote: true,
     noteLabel: "The price statement being approved",
     notePlaceholder: "e.g. Guide $750,000 – $790,000",
+    // No upload box (Adam, 12 Oct 2026): "I don't think this is necessary
+    // as evidence would have already been provided in RealComply up to that
+    // point." The approval is the typed price statement itself; the
+    // documents behind it are already on the earlier cards. Even marked
+    // optional, a box on the licensee's own card read as one more thing to
+    // supply first. A predicate rather than hideEvidence, so a file already
+    // on a b4 card keeps its control and is never stranded out of sight.
+    hideEvidenceWhen: () => true,
   },
 
   // ── Stage 2 — On market ───────────────────────────────────────────────

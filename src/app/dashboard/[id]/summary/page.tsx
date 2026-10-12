@@ -6,10 +6,11 @@ import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, formatAuDateTimeShort } from "@/lib/format-date";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
-import { listingSignature } from "@/lib/rules/listing-signature";
+import { signatureOnCard } from "@/lib/rules/listing-signature";
+import { priceApproval } from "@/lib/rules/price-statement";
 
 
 
@@ -44,8 +45,11 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   // note in lib/pdf/compliance-record.ts for why an unsigned pack has to say so
   // on its own face rather than relying on somebody noticing a missing section.
   // A licensee who signed through the emailed link counts too (10 Oct 2026):
-  // see lib/rules/listing-signature.ts.
-  const signed = (key: string) => listingSignature(allItems[key]?.data) !== null;
+  // see lib/rules/listing-signature.ts. Only a card that is done (12 Oct 2026).
+  const signed = (key: string) => signatureOnCard(allItems[key]) !== null;
+  // The price statement the licensee approved, and how (b4; the same line as
+  // the PDF, lib/pdf/compliance-record.ts).
+  const approval = priceApproval(allItems["b4"]);
   const missingSignatures = [
     signed("sign_agent") ? null : "the agent",
     signed("sign_licensee") ? null : "the licensee in charge",
@@ -120,6 +124,20 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                         {current?.event_date ? ` · ${formatAuDate(current.event_date)}` : ""}
                       </span>
                       {item.legalBasis && <span className="ml-1 text-xs text-rc-faint">({item.legalBasis})</span>}
+                      {item.key === "b4" && approval && (
+                        <p className="mt-0.5 text-xs text-rc-muted">
+                          {approval.text && (
+                            <>
+                              Approved price statement: <span className="text-rc-ink">&ldquo;{approval.text}&rdquo;</span>
+                              {" · "}
+                            </>
+                          )}
+                          {approval.via === "link"
+                            ? `Approved by ${approval.name ?? "the licensee in charge"} through the emailed link to ${approval.sentTo ?? "the licensee's email"}`
+                            : "Approved in RealComply by the licensee in charge"}
+                          {approval.at && `, ${formatAuDateTimeShort(approval.at)} (Sydney time)`}
+                        </p>
+                      )}
                       {flaggedNote && <p className="mt-0.5 text-xs text-rc-amber-deep">Open flag: {flaggedNote}</p>}
                     </li>
                   );

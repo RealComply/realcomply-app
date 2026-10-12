@@ -4,6 +4,7 @@ import { formatSignedAt } from "./sign-stamp";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
+import type { PriceApproval } from "@/lib/rules/price-statement";
 import { formatAuDate } from "@/lib/format-date";
 
 // The finalised compliance record, as an actual PDF file.
@@ -255,6 +256,14 @@ export type ComplianceRecordInput = {
   noneOnMarket?: boolean;
   /** The agency agreement date (a3), which the on-market list is "as at". */
   agreementDate?: string | null;
+  /**
+   * The licensee's approval of the price statement (b4): the words, who, when,
+   * and whether in the app or through the emailed link (12 Oct 2026). Printed
+   * under the b4 line, because a tick that says "approved" without saying what
+   * was approved is the gap b4's note was added to close. Optional so older
+   * callers keep working; null prints nothing.
+   */
+  priceApproval?: PriceApproval | null;
   /** Typed-name attestations, reproduced with the date each was given. */
   signatures: {
     agent: { typedName: string; signedAt: string | null } | null;
@@ -316,6 +325,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     marketListings = [],
     noneOnMarket = false,
     agreementDate = null,
+    priceApproval = null,
     signatures,
     attachments,
     rulesetVersion,
@@ -479,6 +489,21 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         color: status === "flagged" ? AMBER : MUTED,
         indent: 12,
       });
+      if (item.key === "b4" && status === "done" && priceApproval) {
+        // Two lines rather than one joined with a dot: the PDF's standard
+        // fonts drop the dot, and the reader needs the words and the who on
+        // their own lines anyway.
+        if (priceApproval.text) {
+          c.text(`Approved price statement: "${priceApproval.text}"`, { size: 9, indent: 12 });
+        }
+        const when = priceApproval.at ? `, ${formatSignedAt(priceApproval.at)} (Sydney time)` : "";
+        c.text(
+          priceApproval.via === "link"
+            ? `Approved by ${priceApproval.name ?? "the licensee in charge"} through the emailed link to ${priceApproval.sentTo ?? "the licensee's email"}${when}`
+            : `Approved in RealComply by the licensee in charge${when}`,
+          { size: 8.5, color: MUTED, indent: 12 },
+        );
+      }
       if (item.legalBasis) c.text(item.legalBasis, { size: 8, color: FAINT, indent: 12 });
       // t5 keeps its shoot date and the tenant's permission on the item, not
       // in the note, so the record prints them here.

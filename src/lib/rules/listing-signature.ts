@@ -9,7 +9,8 @@
 // The audit pack and the summary read typedName only, so a file the licensee
 // signed by link printed as "Compliance record - DRAFT" with "Not yet signed"
 // in the licensee's block, while the app had already closed it out on that
-// same signature (10 Oct 2026). Every reader of a sign-off goes through here.
+// same signature (10 Oct 2026). Every reader of a sign-off goes through here,
+// by way of signatureOnCard, which also asks whether the card is done.
 
 export type ListingSignature = { typedName: string; signedAt: string | null };
 
@@ -40,4 +41,21 @@ export function listingSignature(data: unknown, linkSignedAt?: string | null): L
 export function linkRequestNeedingTime(data: unknown): string | null {
   const d = (data ?? {}) as SignatureData;
   return text(d.signedAt) ? null : text(d.signoffRequestId);
+}
+
+/**
+ * The signature on a sign-off card, only if the card is done.
+ *
+ * What the audit pack, the summary and the sign card read (12 Oct 2026).
+ * listingSignature on its own reads the data, and anyone who can see a
+ * listing can write an open card's data: a typedName planted on an open
+ * sign_licensee card printed the audit pack as finalised. A signature counts
+ * only on a card the database has locked as done (0058).
+ */
+export function signatureOnCard(
+  row: { status?: string | null; data?: unknown } | null | undefined,
+  linkSignedAt?: string | null,
+): ListingSignature | null {
+  if (!row || row.status !== "done") return null;
+  return listingSignature(row.data, linkSignedAt);
 }

@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { sendEmail } from "@/lib/email/send";
 import { buildSendBackEmail } from "@/lib/email/send-back";
 import { getItem } from "@/lib/rules/nsw-sales";
+import { priceStatementByEmail } from "@/lib/rules/price-statement";
 import { STAGE_LABELS, type PropertyStage } from "@/lib/types";
 
 // Sending a file back for changes (0062, 0063; Adam, 12 Oct 2026). A flagged
@@ -53,6 +54,9 @@ function refusal(message: string | undefined): string {
  * Tells the listing's agent, by email, what was sent back. Uses the server's
  * own access: an outside licensee has no session, and in the app the agent's
  * address may not be readable to the licensee's session. Never throws.
+ *
+ * Called only from sendBackWithLink, the token holder's request, so every
+ * read here is for a request with no session behind it.
  */
 async function emailAgent(propertyId: string, flags: FlagInput[], licenseeName: string | null, replyTo: string | null) {
   try {
@@ -73,6 +77,24 @@ async function emailAgent(propertyId: string, flags: FlagInput[], licenseeName: 
     const a = agent as { full_name: string | null; email: string | null } | null;
     if (!a?.email) return;
 
+    // Whether b4 goes by email in this office (0066), asked only when b4 is
+    // one of the cards. Then nobody signed in can mark it done, and the email
+    // says to send the price statement again instead (review, 11 Oct 2026).
+    // The same rule as the listing page, on the same rows; agency_people()
+    // needs a session, so this reads them directly. A failed read keeps the
+    // usual words, as before.
+    let byEmail = false;
+    if (flags.some((f) => f.item_key === "b4")) {
+      const { data: people, error: peopleError } = await service
+        .from("profiles")
+        .select("is_licensee_in_charge, archived_at")
+        .eq("agency_id", p.agency_id)
+        .eq("is_licensee_in_charge", true);
+      if (!peopleError && people) {
+        byEmail = priceStatementByEmail(people as Array<{ is_licensee_in_charge: boolean; archived_at: string | null }>);
+      }
+    }
+
     const { subject, text, html } = buildSendBackEmail({
       agentName: a.full_name?.split(" ")[0] ?? null,
       licenseeName,
@@ -81,12 +103,14 @@ async function emailAgent(propertyId: string, flags: FlagInput[], licenseeName: 
       cards: flags.map((f) => {
         const item = getItem(f.item_key);
         return {
+          itemKey: f.item_key,
           label: item?.label ?? f.item_key,
           stageLabel: item ? STAGE_LABELS[item.stage as PropertyStage] : "",
           note: f.note,
           mayBeBreach: f.may_be_breach,
         };
       }),
+      priceStatementByEmail: byEmail,
     });
     await sendEmail({ to: a.email, subject, text, html, ...(replyTo ? { replyTo } : {}) });
   } catch (err) {
@@ -100,11 +124,14 @@ export async function sendBackWithLink(token: string, _prev: SendBackState, form
   if (typeof flags === "string") return { error: flags };
 
   // Read before the send-back revokes it: which listing, and who it went to.
+  // The final sign-off link only: a price statement link (b4, 0066) cannot
+  // send the file back, and send_back_by_token refuses one too.
   const service = createServiceClient();
   const { data: request } = await service
     .from("property_signoff_requests")
     .select("property_id, sent_to, agency_id")
     .eq("token", token)
+    .eq("item_key", "sign_licensee")
     .is("signed_at", null)
     .is("revoked_at", null)
     .gt("expires_at", new Date().toISOString())

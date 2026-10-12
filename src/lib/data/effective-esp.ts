@@ -37,12 +37,64 @@ export type EffectiveEsp = {
   revisedOn: string | null;
 };
 
-type EspData = { espLow?: number; espHigh?: number };
+type EspData = { espLow?: unknown; espHigh?: unknown };
 type RevisionDraft = {
-  revisedEspLow?: number;
-  revisedEspHigh?: number;
+  revisedEspLow?: unknown;
+  revisedEspHigh?: unknown;
   noticeServedOn?: string;
 };
+
+// A figure as the database reads it (jsonb_to_numeric in 0066): a number, or
+// a string of digits, with or without decimals, once the spaces round it are
+// trimmed. Anything else is no figure at all. The two have to agree to the
+// dollar: the price statement link is refused once the ESP on foot stops
+// matching the one the licensee was shown (12 Oct 2026).
+//
+// Spaces only, because the database's btrim trims spaces only. JavaScript's
+// trim() also took tabs, line breaks and non-breaking spaces, so "900000\n"
+// was a revised ESP here and no figure there. The app then measured against
+// the revision, while the licensee was shown a4's ESP and approved against
+// it (review, 11 Oct 2026). The app only ever writes numbers. This is for a
+// row written some other way.
+const FIGURE = /^ *([0-9]+(?:\.[0-9]+)?) *$/;
+
+function figure(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const match = FIGURE.exec(value);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * The rule itself, from the a4 and d3 records the caller already has: d3's
+ * revised figures when both are there, otherwise a4's. Pure, so the page can
+ * use it without another query, and so it can be held against
+ * listing_effective_esp in 0066, which applies the same rule in the database.
+ */
+export function espFrom(a4Data: unknown, d3Data: unknown): EffectiveEsp {
+  const revision = ((d3Data ?? {}) as RevisionDraft | null) ?? {};
+  const revisedLow = figure(revision.revisedEspLow);
+  const revisedHigh = figure(revision.revisedEspHigh);
+  // Both figures, or neither. A revision carrying only one end of a range is
+  // a half-read document, and silently mixing a revised low with the original
+  // high would invent a range nobody ever set.
+  if (revisedLow !== null && revisedHigh !== null) {
+    return {
+      low: revisedLow,
+      high: revisedHigh,
+      revised: true,
+      revisedOn: revision.noticeServedOn ?? null,
+    };
+  }
+
+  const original = ((a4Data ?? {}) as EspData | null) ?? {};
+  return {
+    low: figure(original.espLow),
+    high: figure(original.espHigh),
+    revised: false,
+    revisedOn: null,
+  };
+}
 
 /**
  * Reads d3 first, then falls back to a4.
@@ -65,27 +117,7 @@ export async function effectiveEsp(
   const byKey = new Map(
     ((rows ?? []) as Array<{ item_key: string; data: unknown }>).map((r) => [r.item_key, r.data]),
   );
-
-  const revision = ((byKey.get("d3") ?? {}) as RevisionDraft | null) ?? {};
-  // Both figures, or neither. A revision carrying only one end of a range is
-  // a half-read document, and silently mixing a revised low with the original
-  // high would invent a range nobody ever set.
-  if (revision.revisedEspLow != null && revision.revisedEspHigh != null) {
-    return {
-      low: revision.revisedEspLow,
-      high: revision.revisedEspHigh,
-      revised: true,
-      revisedOn: revision.noticeServedOn ?? null,
-    };
-  }
-
-  const original = ((byKey.get("a4") ?? {}) as EspData | null) ?? {};
-  return {
-    low: original.espLow ?? null,
-    high: original.espHigh ?? null,
-    revised: false,
-    revisedOn: null,
-  };
+  return espFrom(byKey.get("a4"), byKey.get("d3"));
 }
 
 /** For messages: "the ESP" or "the revised ESP", so a finding says which it measured against. */

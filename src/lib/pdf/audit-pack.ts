@@ -5,7 +5,8 @@ import { buildComplianceRecordPdf, complianceRecordFilename, type Attachment } f
 import { comparablesFor } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
-import { linkRequestNeedingTime, listingSignature } from "@/lib/rules/listing-signature";
+import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
+import { priceApproval } from "@/lib/rules/price-statement";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem } from "@/lib/types";
@@ -98,7 +99,10 @@ export async function buildAuditPack(
   };
 
   // Either way it was given: in the app, or through the emailed sign-off link,
-  // whose time is on the request (lib/rules/listing-signature.ts).
+  // whose time is on the request (lib/rules/listing-signature.ts). Only a
+  // final sign-off request: a price statement request (b4, 0066) is never a
+  // signature on the file. And only on a card that is done (12 Oct 2026): a
+  // name written on an open card is not a signature.
   const linkSignedAt = async (key: string): Promise<string | null> => {
     const requestId = linkRequestNeedingTime(byKey[key]?.data);
     if (!requestId) return null;
@@ -107,10 +111,12 @@ export async function buildAuditPack(
       .select("signed_at")
       .eq("id", requestId)
       .eq("agency_id", agencyId)
+      .eq("item_key", "sign_licensee")
       .maybeSingle();
     return (request as { signed_at?: string | null } | null)?.signed_at ?? null;
   };
-  const signatureOf = async (key: string) => listingSignature(byKey[key]?.data, await linkSignedAt(key));
+  const signatureOf = async (key: string) =>
+    byKey[key]?.status === "done" ? signatureOnCard(byKey[key], await linkSignedAt(key)) : null;
 
   // Whether this pack is a draft, decided here as well as inside the PDF —
   // because the FILENAME has to know too, and the filename is set out here.
@@ -209,6 +215,9 @@ export async function buildAuditPack(
     })),
     noneOnMarket: Boolean((byKey["a4c"]?.data as { noneOnMarket?: boolean } | undefined)?.noneOnMarket),
     agreementDate: byKey["a3"]?.event_date ?? null,
+    // What the licensee approved before the listing was advertised, and how:
+    // in the app, or through the emailed link (b4, 0066).
+    priceApproval: priceApproval(byKey["b4"]),
     signatures: { agent: agentSignature, licensee: licenseeSignature },
     attachments,
     rulesetVersion: RULESET_VERSION,

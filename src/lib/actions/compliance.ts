@@ -5,10 +5,10 @@ import { a4cSave, EDIT_FIRST, editedInWording, pendingFromForm } from "@/lib/rul
 import {
   ESP_REASONING_KEY,
   STAGE_GATE_MESSAGE,
-  espReasoningComplete,
   espReasoningMissing,
   waitsForEspReasoning,
 } from "@/lib/rules/esp-reasoning-gate";
+import { espGateFor, loadProperty } from "@/lib/data/esp-gate";
 import { draftEspReasoning } from "@/lib/data/esp-draft";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
@@ -17,6 +17,9 @@ import { accessFrom } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
+import { agencyPeople } from "@/lib/data/people";
+import { priceStatementByEmail } from "@/lib/rules/price-statement";
+import { liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
 import { stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
@@ -25,7 +28,6 @@ import { cardFileRemovable, finalizeEvidenceRecord, EVIDENCE_BUCKET } from "@/li
 import type {
   AuctionOutcomeData,
   AuctionOutcomeKind,
-  Property,
   PropertyItem,
   PropertyItemStatus,
   PropertyStage,
@@ -120,51 +122,6 @@ export async function requireAuthContext() {
   const access = accessFrom(profile as { is_licensee_in_charge: boolean; is_assistant: boolean; archived_at?: string | null }, (agency as { plan?: string } | null)?.plan);
 
   return { supabase, user, profile, access };
-}
-
-async function loadProperty(supabase: Awaited<ReturnType<typeof createClient>>, propertyId: string) {
-  const { data: property } = await supabase
-    .from("properties")
-    .select("*")
-    .eq("id", propertyId)
-    .maybeSingle();
-  return property as Property | null;
-}
-
-// Where the ESP reasoning card stands on this file, read fresh from the
-// database. See lib/rules/esp-reasoning-gate.ts for the rule itself.
-async function espGateFor(supabase: Awaited<ReturnType<typeof createClient>>, propertyId: string) {
-  const [{ data: rows }, { count }, property] = await Promise.all([
-    supabase
-      .from("property_items")
-      .select("item_key, status, data")
-      .eq("property_id", propertyId)
-      .in("item_key", [ESP_REASONING_KEY, "sign_licensee"]),
-    supabase
-      .from("property_market_listings")
-      .select("id", { count: "exact", head: true })
-      .eq("property_id", propertyId)
-      .is("as_at", null),
-    loadProperty(supabase, propertyId),
-  ]);
-  const byKey = new Map(
-    ((rows ?? []) as { item_key: string; status: string; data: Record<string, unknown> | null }[]).map((r) => [
-      r.item_key,
-      r,
-    ]),
-  );
-  const a4c = byKey.get(ESP_REASONING_KEY);
-  const input = {
-    status: a4c?.status ?? "open",
-    data: a4c?.data ?? null,
-    onMarketCount: count ?? 0,
-    signedOff: byKey.get("sign_licensee")?.status === "done",
-  };
-  return {
-    complete: espReasoningComplete(input),
-    missing: espReasoningMissing(input),
-    testMode: Boolean(property?.test_mode),
-  };
 }
 
 // The draft "Draft my reasoning" would write for this file right now, worked
@@ -2221,6 +2178,20 @@ export async function uploadEvidence(
 ): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
 
+  // A licensee-only card (b4) takes a file from the licensee only (12 Oct
+  // 2026). The card has shown everyone else the file as a link and nothing
+  // to attach since 9 Oct, but the action itself never checked, so a file
+  // could be put on b4 by calling it directly. On a price statement approved
+  // by email the file would then sit beside an approval it was never part of.
+  //
+  // The database refuses the same on b4 and sign_licensee (0066's guard), in
+  // the same sentence. A refusal there comes back through
+  // finalizeEvidenceRecord word for word, so the agent reads one message
+  // whichever side says no first. Change both together.
+  if (getItem(itemKey)?.licenseeOnly && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can attach a file to this card." };
+  }
+
   const path = String(formData.get("path") ?? "").trim();
   const fileName = String(formData.get("fileName") ?? "").trim();
   if (!path || !fileName) {
@@ -2423,17 +2394,33 @@ export async function completeStage(
           .filter((i) => i.requiredForStageCompletion && !isComplete(i.key))
           .map((i) => i.label),
     });
+    // Where b4 is one of the cards in the way and nobody in the office is a
+    // licensee in charge on RealComply, say how it gets done: it goes to the
+    // licensee by email from its card (Adam, 12 Oct 2026). Without this the
+    // agent is told to complete a card only the licensee can complete. Once
+    // a request is out, telling them to send it reads as if it never went.
+    const b4Label = getItem("b4")?.label;
+    const b4Hint = async (labels: string[]) => {
+      if (!b4Label || !labels.includes(b4Label) || !priceStatementByEmail(await agencyPeople(supabase))) {
+        return "";
+      }
+      return liveLink(await signoffLinksFor(supabase, propertyId), "b4")
+        ? " Your licensee hasn't approved the price statement yet."
+        : " Send the price statement to your licensee for approval on its card.";
+    };
+
     if (hold.stage !== property.stage) {
       return {
-        error: `${STAGE_LABELS[hold.stage]} needs finishing first: ${hold.waitingOn.join(", ")}.`,
+        error: `${STAGE_LABELS[hold.stage]} needs finishing first: ${hold.waitingOn.join(", ")}.${await b4Hint(hold.waitingOn)}`,
       };
     }
 
     const incomplete = required.filter((r) => !isComplete(r.key));
 
     if (incomplete.length > 0) {
+      const labels = incomplete.map((i) => i.label);
       return {
-        error: `Complete these first: ${incomplete.map((i) => i.label).join(", ")}.`,
+        error: `Complete these first: ${labels.join(", ")}.${await b4Hint(labels)}`,
       };
     }
   }
