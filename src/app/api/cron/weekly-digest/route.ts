@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runWeeklyDigest } from "@/lib/email/weekly-digest";
+import { monitoredJob, reminderProblems } from "@/lib/monitoring/check-in";
 
 // Vercel Cron calls this every Monday (see vercel.json — fixed at 21:00
 // UTC Sunday) with an "Authorization: Bearer <CRON_SECRET>" header it adds
@@ -25,6 +26,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await runWeeklyDigest();
+  const result = await monitoredJob("weekly-digest", () => runWeeklyDigest(), reminderProblems);
   return NextResponse.json(result);
 }
