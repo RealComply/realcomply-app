@@ -2,6 +2,10 @@
 # (code review fixes, part G, 12 Oct 2026; finding 12). A pull request shows
 # a green tick or a red cross before anyone merges it.
 #
+# Also once a week on main (Adam, 12 Oct 2026), so a check that has stopped
+# working is found in a quiet week too, not at the next urgent change. A
+# failed run emails the RealComply account, like any other failed run.
+#
 # The same three commands a contributor runs locally. The tests need no
 # secrets and no network: Supabase, Stripe, the mailer and the web are
 # stand-ins in every test file.
@@ -12,6 +16,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Mondays 7:17am Sydney in summer, 6:17am in winter (GitHub runs on UTC).
+  schedule:
+    - cron: "17 20 * * 0"
+  # A "Run workflow" button on the Actions tab, to run it by hand.
+  workflow_dispatch:
 
 permissions:
   contents: read
