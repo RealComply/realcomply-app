@@ -13,6 +13,7 @@ import {
   greetingName,
 } from "@/lib/email/early-access-invite";
 import { maySendTo, sameInstant } from "@/lib/early-access/rules";
+import { sendTestWelcome } from "@/lib/early-access/welcome";
 
 // Working the early-access list: send an invitation, resend one, or decline.
 //
@@ -281,4 +282,17 @@ export async function declineEarlyAccess(_prev: DecisionState, formData: FormDat
 
   revalidatePath("/dashboard/admin");
   return { error: null, notice: "Declined. Nothing was sent to them." };
+}
+
+/**
+ * A test copy of the welcome email, to one of Adam's test addresses, from the
+ * staff page. The rules are in sendTestWelcome (lib/early-access/welcome.ts).
+ * Reads and writes nothing in the database, so no service key.
+ */
+export async function sendTestWelcomeEmail(_prev: DecisionState, formData: FormData): Promise<DecisionState> {
+  const profile = await requireProfile();
+  if (profile.is_platform_admin !== true) return { error: notStaff };
+
+  const firstName = (profile.full_name ?? "").trim().split(/\s+/)[0] || null;
+  return sendTestWelcome({ to: String(formData.get("email") ?? ""), firstName });
 }
