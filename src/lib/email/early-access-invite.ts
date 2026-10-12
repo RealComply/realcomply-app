@@ -133,7 +133,7 @@ function blockHtml(b: Block): string {
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:${C.boxFill};border:1px solid ${C.boxLine};border-radius:12px">
 <tr><td style="padding:18px 20px;font-family:${FONT};font-size:16px;line-height:1.6;color:${C.body}">
 <p style="margin:0 0 12px;font-weight:700;color:${C.ink}">${esc(b.heading)}</p>
-<p style="margin:0 0 14px">${esc(b.text)}</p>
+<p style="margin:0 0 12px">${esc(b.text)}</p>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
 <td style="background:#ffffff;border:2px solid ${C.green};border-radius:999px"><a href="${esc(b.button.href)}" style="display:inline-block;padding:9px 22px;font-family:${FONT};font-size:15px;font-weight:700;color:${C.green};text-decoration:none">${esc(
         b.button.label,
