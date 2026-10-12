@@ -7,6 +7,7 @@ import {
   type EmailDocument,
   type EmailSection,
   type EmailRow,
+  type FooterLine,
 } from "./layout";
 import {
   computePropertyDigests,
@@ -374,8 +375,8 @@ export function digestLink(actsAsLicensee: boolean): { label: string; href: stri
     : { label: "Open your listings", href: LISTINGS_URL };
 }
 
-function digestFooter(href: string): string[] {
-  return [DILIGENCE_LINE, `<a href="${href}" style="color:#8a9a93">View the live picture any time</a>`];
+function digestFooter(href: string): FooterLine[] {
+  return [DILIGENCE_LINE, { text: "View the live picture any time", href }];
 }
 
 // Runs the whole weekly digest: one pass per agency, one email per

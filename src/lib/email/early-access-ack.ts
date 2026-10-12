@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { renderEmailHtml, renderEmailText, type EmailDocument } from "./layout";
+import { renderEmailHtml, renderEmailText, type EmailDocument, type FooterLine } from "./layout";
 
 // The acknowledgement a registrant receives after joining the early-access
 // list, and the unsubscribe machinery that has to travel with it.
@@ -89,9 +89,9 @@ function greetingName(firstName?: string | null): string {
 function acknowledgementDocument(email: string, firstName?: string | null): EmailDocument {
   const link = unsubscribeUrl(email);
 
-  const optOut = link
-    ? `You are receiving this because you registered for early access at realcomply.com.au.<br><a href="${link}" style="color:#5c6f68">Unsubscribe</a>`
-    : "You are receiving this because you registered for early access at realcomply.com.au. To stop receiving these, reply to this email with UNSUBSCRIBE and we will remove you.";
+  const optOut: FooterLine[] = link
+    ? ["You are receiving this because you registered for early access at realcomply.com.au.", { text: "Unsubscribe", href: link }]
+    : ["You are receiving this because you registered for early access at realcomply.com.au. To stop receiving these, reply to this email with UNSUBSCRIBE and we will remove you."];
 
   return {
     // Written, not inherited. Left alone, the client fills this line with the
@@ -115,7 +115,7 @@ function acknowledgementDocument(email: string, firstName?: string | null): Emai
     ],
     footer: [
       "RealComply provides diligence support. It is not legal advice, and the licensee remains responsible for decisions and sign-off.",
-      optOut,
+      ...optOut,
     ],
   };
 }

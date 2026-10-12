@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { pdfText } from "@/lib/pdf/text";
 import { longDate, longDateTime, sydneyDate } from "./dates";
 
 // The deletion certificate (brief, item 7; DPA cl 4.8).
@@ -60,6 +61,9 @@ export type CertificateInput = {
 export const CERTIFICATE_CLOSING =
   "This certificate records categories and counts only. It does not record the contents of anything deleted. A copy is kept by RealComply.";
 
+/** In place of a subscriber name the certificate's font cannot draw at all. */
+export const NAME_NOT_DRAWABLE = "Named in the covering email (this document's font can't print it)";
+
 export function backupsSentence(): string {
   return "Copies held in backups are deleted as those backups expire, within 90 days of the date above.";
 }
@@ -82,19 +86,8 @@ const PAGE_H = 841.89;
 const MARGIN = 56;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 
-// Standard fonts are WinAnsi only. A subscriber name with a curly apostrophe
-// must never stop a certificate being written.
-function ascii(text: string): string {
-  return text
-    .replace(/[‘’‛]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[–—]/g, "-")
-    .replace(/…/g, "...")
-    .replace(/[^\x20-\x7e]/g, "");
-}
-
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = ascii(text).split(/\s+/).filter(Boolean);
+  const words = pdfText(text, font).split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
   const lines: string[] = [];
   let line = words[0];
@@ -121,7 +114,7 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Uint
   let y = PAGE_H - MARGIN;
 
   const text = (s: string, opts: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; x?: number } = {}) => {
-    page.drawText(ascii(s), {
+    page.drawText(pdfText(s, opts.font ?? regular), {
       x: opts.x ?? MARGIN,
       y,
       size: opts.size ?? 10.5,
@@ -153,9 +146,17 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Uint
     ["Records deleted", `${longDateTime(input.deletedAt)} (Sydney)`],
     ["Certificate number", input.certificateNumber],
   ];
+  // A long name wraps inside its column rather than running off the page. A
+  // name the font cannot draw any of (one written wholly in Chinese, say) says
+  // so, rather than leaving the subscriber line blank.
   for (const [k, v] of kv) {
     text(k, { color: MUTED });
-    text(v, { x: MARGIN + 150 });
+    const value = pdfText(v, regular).trim() ? v : NAME_NOT_DRAWABLE;
+    const lines = wrap(value, regular, 10.5, CONTENT_W - 150);
+    lines.forEach((line, i) => {
+      if (i > 0) y -= 10.5 * 1.45;
+      text(line, { x: MARGIN + 150 });
+    });
     y -= 17;
   }
   y -= 12;

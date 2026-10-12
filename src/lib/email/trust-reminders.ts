@@ -76,7 +76,7 @@ const TRUST_FOOTER = [
   "RealComply provides diligence support to help you stay on top of compliance. It doesn't prepare " +
     "your reconciliation or lodge anything for you, and the licensee in charge remains responsible " +
     "for the agency's trust account records.",
-  `<a href="${TRUST_URL}" style="color:#8a9a93">See it any time</a>`,
+  { text: "See it any time", href: TRUST_URL },
 ];
 
 export type TrustReminderResult = {

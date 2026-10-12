@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
+import { pdfText } from "./text";
 
 // Putting the signature ON the document.
 //
@@ -95,47 +96,7 @@ export type SignatureStamp = {
   legalBasis?: string;
 };
 
-// Standard PDF fonts are WinAnsi-encoded and throw on anything outside it.
-// A compliance document must never fail to produce because somebody's name or
-// a file name carries a curly apostrophe.
-//
-// KEEP WHAT THE FONT CAN DRAW (10 Oct 2026). This used to strip everything
-// outside plain ASCII, so "José Müller" signed as "Jos Mller" and a name
-// written in Chinese left an empty signature line — the page naming the signer
-// wrongly, or not at all. WinAnsi covers é, ü, ë and the rest of Western
-// European Latin, so those now stay. A letter it cannot draw is tried without
-// its accent (ễ → e, Ş → S) before it is dropped, so a name is spelt as near
-// as the font allows rather than with holes in it.
-function drawable(ch: string, font: PDFFont): boolean {
-  try {
-    font.encodeText(ch);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function pdfText(text: string, font: PDFFont): string {
-  const cleaned = text
-    .replace(/[‘’‛]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[–—]/g, "-")
-    .replace(/…/g, "...")
-    .replace(/ /g, " ")
-    .replace(/[\x00-\x1F\x7F]/g, "");
-  let out = "";
-  for (const ch of cleaned) {
-    if (drawable(ch, font)) {
-      out += ch;
-      continue;
-    }
-    for (const bare of ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) {
-      if (drawable(bare, font)) out += bare;
-    }
-  }
-  return out;
-}
-
+// Typed text goes through pdfText (./text.ts): what the font can draw, never an error.
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const words = pdfText(text, font).split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
