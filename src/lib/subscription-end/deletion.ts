@@ -71,11 +71,14 @@ export type DeletionReport = { dryRun: boolean; outcomes: AgencyOutcome[] };
 
 type RunContext = {
   agencyName: string;
+  /** The end this run was started for. A run belongs to that one end only. */
   endedAt: string;
   userIds: string[];
   recipients: string[];
   counts: DeletionCounts;
   emailed?: boolean;
+  /** Started with force (testing, one agency) before its deletion date. */
+  forced?: boolean;
 };
 
 type AgencyRow = {
@@ -101,7 +104,7 @@ export async function runDeletionJob(options: DeletionOptions): Promise<Deletion
       .eq("dry_run", false);
     for (const run of (open ?? []) as Array<{ id: number; agency_ref: string; context: RunContext | null }>) {
       if (options.agencyId && run.agency_ref !== options.agencyId) continue;
-      outcomes.push(await resumeRun(supabase, run.id, run.agency_ref, run.context));
+      outcomes.push(await resumeRun(supabase, run.id, run.agency_ref, run.context, now));
     }
   }
 
@@ -119,7 +122,7 @@ export async function runDeletionJob(options: DeletionOptions): Promise<Deletion
     const forced = options.force && options.agencyId === agency.id;
     const preview = options.dryRun && options.allEnded;
     if (!due && !forced && !preview) continue;
-    outcomes.push(await processAgency(supabase, agency, options.dryRun));
+    outcomes.push(await processAgency(supabase, agency, options.dryRun, { now, forced: Boolean(forced) }));
   }
 
   return { dryRun: options.dryRun, outcomes };
@@ -127,7 +130,12 @@ export async function runDeletionJob(options: DeletionOptions): Promise<Deletion
 
 // ── One agency ─────────────────────────────────────────────────────────────
 
-async function processAgency(supabase: SupabaseClient, agency: AgencyRow, dryRun: boolean): Promise<AgencyOutcome> {
+async function processAgency(
+  supabase: SupabaseClient,
+  agency: AgencyRow,
+  dryRun: boolean,
+  run: { now: Date; forced: boolean },
+): Promise<AgencyOutcome> {
   const base = { agencyRef: agency.id, name: agency.name };
 
   // 1. The guards. Two locks, both checked, before anything is read for
@@ -161,18 +169,19 @@ async function processAgency(supabase: SupabaseClient, agency: AgencyRow, dryRun
     userIds: ((people ?? []) as Array<{ id: string }>).map((p) => p.id),
     recipients: await endedRecipients(supabase, agency.id),
     counts,
+    ...(run.forced ? { forced: true } : {}),
   };
 
-  const { data: run, error } = await supabase
+  const { data: row, error } = await supabase
     .from("deletion_runs")
     .insert({ agency_ref: agency.id, dry_run: false, status: "started", step: "activity", counts, context })
     .select("id")
     .single();
-  if (error || !run) {
+  if (error || !row) {
     return { ...base, status: "failed", reason: `could not log the run: ${error?.message ?? "no row"}` };
   }
 
-  return resumeRun(supabase, (run as { id: number }).id, agency.id, context);
+  return resumeRun(supabase, (row as { id: number }).id, agency.id, context, run.now);
 }
 
 async function resumeRun(
@@ -180,6 +189,7 @@ async function resumeRun(
   runId: number,
   agencyRef: string,
   context: RunContext | null,
+  now: Date,
 ): Promise<AgencyOutcome> {
   const base = { agencyRef, name: context?.agencyName ?? null };
 
@@ -197,22 +207,44 @@ async function resumeRun(
     return { ...base, status: "failed", reason: `${step}: ${reason}` };
   };
 
-  // While the agency row still exists, it can still be reactivated, made
-  // protected, or put on hold. Check again: a resumed run must not act on a
-  // state that has changed since it started.
-  const { data: still } = await supabase
-    .from("agencies")
-    .select("id, name, status, comped_by, ended_at, legal_hold")
-    .eq("id", agencyRef)
-    .maybeSingle();
-  if (still) {
-    const row = still as AgencyRow;
-    const refusal = !row.ended_at ? "reactivated" : await refusalFor(supabase, row);
-    if (refusal) {
-      await finishRun(supabase, runId, { status: "skipped", reason: refusal, clearContext: true });
-      return { ...base, status: "skipped", reason: refusal };
-    }
-  }
+  // THE RUN BELONGS TO ONE END (code review fixes, part B, 12 Oct 2026).
+  // While the agency row still exists, it can still be reactivated, end
+  // again, be made protected, or be put on hold. So the office is checked
+  // when the run starts or resumes, and again right before each step that
+  // deletes. The run stops, deleting nothing more, unless the office is
+  // still ended, on the same end date the run started for, past its 14 days,
+  // and not protected or on hold. A cancel, resubscribe and cancel again
+  // therefore never lets an unfinished run delete early: the new end has its
+  // own 14 days and gets a run of its own. Every stop is emailed to Adam.
+  //
+  // Null: go on (including when the agency row is already gone, which only
+  // happens to a run resumed after its rows step).
+  let agencyPresent = false;
+  const stopIfChanged = async (step: string): Promise<AgencyOutcome | null> => {
+    const { data, error } = await supabase
+      .from("agencies")
+      .select("id, name, status, comped_by, ended_at, legal_hold")
+      .eq("id", agencyRef)
+      .maybeSingle();
+    if (error) return fail(step, `could not check the agency again before deleting: ${error.message}`);
+    agencyPresent = Boolean(data);
+    if (!data) return null;
+    const row = data as AgencyRow;
+    const reason = stopReason(row, context, now) ?? (await refusalFor(supabase, row));
+    if (!reason) return null;
+    await finishRun(supabase, runId, { status: "skipped", step, reason, clearContext: true });
+    await alertAdmin(
+      `Deletion stopped for ${context.agencyName}: nothing more deleted`,
+      `The day-14 deletion for ${context.agencyName} stopped before "${step}" because ${reason}. ` +
+        "Nothing more was deleted, and this run is closed. If its 14 days come round again, a new run starts " +
+        "for the new end date. If the run had already removed backup copies, the hourly backup copies the " +
+        `files again. Agency ref ${agencyRef}.`,
+    );
+    return { ...base, status: "skipped", reason };
+  };
+
+  const stopped = await stopIfChanged("start");
+  if (stopped) return stopped;
 
   // 2. The activity record, copied and read back before anything is deleted.
   const { data: existing } = await supabase
@@ -221,7 +253,7 @@ async function resumeRun(
     .eq("agency_ref", agencyRef)
     .maybeSingle();
   if (!existing) {
-    if (!still) return fail("activity", "the agency is gone but no activity record exists");
+    if (!agencyPresent) return fail("activity", "the agency is gone but no activity record exists");
     const copied = await copyActivityRecord(supabase, agencyRef, context);
     if (!copied.ok) {
       // Blocked, not failed: nothing has been touched, and the brief says to
@@ -237,6 +269,8 @@ async function resumeRun(
 
   // 4a. Backup copies in AWS.
   await setStep(supabase, runId, "backups");
+  const beforeBackups = await stopIfChanged("backups");
+  if (beforeBackups) return beforeBackups;
   const livePaths = await listPaths(supabase, agencyRef).catch((e) => e as Error);
   if (livePaths instanceof Error) return fail("backups", `could not list files: ${livePaths.message}`);
   const backups = await deleteBackupCopies(supabase, agencyRef, livePaths);
@@ -244,6 +278,8 @@ async function resumeRun(
 
   // 4b. Files in Supabase Storage.
   await setStep(supabase, runId, "files");
+  const beforeFiles = await stopIfChanged("files");
+  if (beforeFiles) return beforeFiles;
   for (let i = 0; i < livePaths.length; i += 100) {
     const { error } = await supabase.storage.from(EVIDENCE_BUCKET).remove(livePaths.slice(i, i + 100));
     if (error) return fail("files", error.message);
@@ -254,6 +290,8 @@ async function resumeRun(
   // 4c. The rows. One delete of the agency cascades to every table (every
   // agency table references agencies on delete cascade).
   await setStep(supabase, runId, "rows");
+  const beforeRows = await stopIfChanged("rows");
+  if (beforeRows) return beforeRows;
   {
     const { error } = await supabase.from("agencies").delete().eq("id", agencyRef);
     if (error) return fail("rows", error.message);
@@ -293,6 +331,32 @@ async function resumeRun(
 }
 
 // ── Steps ──────────────────────────────────────────────────────────────────
+
+/**
+ * Why a run must not delete anything more for this office, judged on the
+ * agency row as it is now; null if it may. Protection and legal hold are
+ * refusalFor's, which asks the database.
+ */
+export function stopReason(
+  agency: { ended_at: string | null },
+  run: { endedAt: string; forced?: boolean },
+  now: Date,
+): string | null {
+  if (!agency.ended_at) return "the office has resubscribed, so it has no end date now";
+
+  const current = new Date(agency.ended_at);
+  const started = new Date(run.endedAt);
+  if (current.getTime() !== started.getTime()) {
+    return (
+      `the office's end date has changed since this run started (it was ${longDate(sydneyDate(started))}, ` +
+      `it is now ${longDate(sydneyDate(current))}): it resubscribed and ended again, so its 14 days run from the new end`
+    );
+  }
+
+  const due = deletionDate(current);
+  if (!run.forced && !onOrAfter(due, now)) return `its deletion date, ${longDate(due)}, has not arrived`;
+  return null;
+}
 
 async function refusalFor(supabase: SupabaseClient, agency: AgencyRow): Promise<string | null> {
   const { data: admins } = await supabase
