@@ -2,11 +2,16 @@
 // with a green tick inside") — lifted straight from the marketing site
 // (RealComply-landing-page.html header/footer) rather than redrawn, so the
 // product uses the same asset as the marketing site instead of a lookalike.
-// "light" = dark house on a light background (nav, cards); "dark" = lifted
-// fill on a dark background, for any future ink-dark surface.
+// "light" = dark house on a light background (nav, cards); "dark" = white
+// house on a dark background (the sidebar).
+//
+// The dark variant was a dark green house with a faint outline (#1d3a31 on
+// the #24453a sidebar). Only the tick and the word showed, which is part of
+// why Adam found the RealComply brand "completely gone" (12 Oct 2026). White
+// with the deeper green tick is the mark at full strength on a dark surface.
 export function LogoMark({ size = 28, variant = "light" }: { size?: number; variant?: "light" | "dark" }) {
-  const fill = variant === "dark" ? "#1d3a31" : "#16302a";
-  const stroke = variant === "dark" ? "rgba(255,255,255,.18)" : "none";
+  const fill = variant === "dark" ? "#ffffff" : "#16302a";
+  const tick = variant === "dark" ? "#0ca678" : "#2ecc8f";
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
       {/* The marketing-site glyph's raw bounding box is 30 wide x 36 tall
@@ -19,14 +24,12 @@ export function LogoMark({ size = 28, variant = "light" }: { size?: number; vari
         <path
           d="M13 43 L13 21 L9 21 L24 7 L39 21 L35 21 L35 43 Z"
           fill={fill}
-          stroke={stroke}
-          strokeWidth={stroke !== "none" ? 1.2 : undefined}
           strokeLinejoin="round"
         />
         <path
           d="M17 31 l5 5 L31 25.5"
           fill="none"
-          stroke="#2ecc8f"
+          stroke={tick}
           strokeWidth={4}
           strokeLinecap="round"
           strokeLinejoin="round"

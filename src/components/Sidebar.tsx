@@ -105,6 +105,8 @@ export function Sidebar({
   isPlatformAdmin = false,
   pmEnabled = false,
   counts = EMPTY_NAV_COUNTS,
+  agencyName = null,
+  agencyLogoUrl = null,
 }: {
   actsAsLicensee?: boolean;
   /** For the Billing link only (lib/nav.ts). */
@@ -112,6 +114,9 @@ export function Sidebar({
   isPlatformAdmin?: boolean;
   pmEnabled?: boolean;
   counts?: NavCounts;
+  agencyName?: string | null;
+  /** A signed URL for the agency's logo, or null when it has none. */
+  agencyLogoUrl?: string | null;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -157,21 +162,45 @@ export function Sidebar({
         href="/dashboard/home"
         onClick={() => setOpen(false)}
         data-rail-center
-        className="flex items-center gap-2.5 px-2.5 pb-5 pt-0.5"
+        className={`flex items-center gap-2.5 px-2.5 pt-0.5 ${agencyLogoUrl ? "pb-3" : "pb-5"}`}
       >
         {/* LogoMark, not Logo. Logo bundles the mark WITH a "RealComply"
             wordmark in text-rc-ink — near-invisible on this surface, and it
             rendered a second time underneath the white one below, which is
             exactly what it looked like in production. variant="dark" is the
-            lifted fill the mark already provides for ink surfaces. */}
-        <LogoMark size={26} variant="dark" />
+            white mark for dark surfaces. Sized up with the agency's logo
+            (12 Oct 2026), so RealComply holds its own above it. */}
+        <LogoMark size={32} variant="dark" />
         <span
           data-rail-hide
-          className="whitespace-nowrap text-[17px] font-extrabold tracking-tight text-white"
+          className="whitespace-nowrap text-[20px] font-extrabold tracking-tight text-white"
         >
           Real<span className="text-rc-green">Comply</span>
         </span>
       </Link>
+
+      {/* The agency's own logo, under RealComply (Adam, 12 Oct 2026: both
+          logos, RealComply first, "we're not at the point of white
+          labelling"). The same height as RealComply's mark, in a white strip
+          because an agency logo is drawn for a white page. No label: it is
+          plainly theirs. Hidden on the collapsed rail, which has no room for
+          a wordmark. Nothing at all until a logo is uploaded (Profile
+          settings, under the picture top right). */}
+      {agencyLogoUrl && (
+        <div
+          data-rail-hide
+          className="mx-1 mb-3 flex h-[46px] items-center rounded-[10px] bg-white px-3"
+        >
+          {/* Deliberately a plain img: a short-lived signed URL to a private
+              bucket, which next/image cannot optimise. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={agencyLogoUrl}
+            alt={agencyName ? `${agencyName} logo` : "Agency logo"}
+            className="max-h-8 max-w-full object-contain"
+          />
+        </div>
+      )}
 
       {/* An agent's and an assistant's nav is a subset, and a group that loses
           all its links loses its heading too — otherwise "Agency" sits there

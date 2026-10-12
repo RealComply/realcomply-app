@@ -2,8 +2,6 @@ import Link from "next/link";
 import { Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { LicenseeEmailForm } from "@/components/team/LicenseeEmailForm";
-import { AgencyLogoForm } from "@/components/team/AgencyLogoForm";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { requireLicenseePage } from "@/lib/data/current-profile";
 import { InviteAgentForm } from "@/components/team/InviteAgentForm";
 import { PendingInvitesList } from "@/components/team/PendingInvitesList";
@@ -34,19 +32,13 @@ export default async function TeamPage() {
   // with a plain prop, not another round trip.
   const { data: agencyRow } = await supabase
     .from("agencies")
-    .select("licensee_email, licensee_name, website_url, logo_path")
+    .select("licensee_email, licensee_name, website_url")
     .eq("id", profile.agency_id)
     .maybeSingle();
-  const agencyDetails = agencyRow as { licensee_email?: string | null; licensee_name?: string | null; website_url?: string | null; logo_path?: string | null } | null;
+  const agencyDetails = agencyRow as { licensee_email?: string | null; licensee_name?: string | null; website_url?: string | null } | null;
   const licenseeEmail = agencyDetails?.licensee_email ?? null;
   const licenseeName = agencyDetails?.licensee_name ?? null;
 
-  // Signed here rather than in the client component: the bucket is private, and
-  // doing it on the server means the form needs no effect and no loading state.
-  const logoPath = agencyDetails?.logo_path ?? null;
-  const logoUrl = logoPath
-    ? (await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrl(logoPath, 3600)).data?.signedUrl ?? null
-    : null;
   const websiteUrl = agencyDetails?.website_url ?? null;
 
   const staff = (staffRows ?? []) as Profile[];
@@ -91,18 +83,14 @@ export default async function TeamPage() {
         {/* The licensee's details on access, not the raw flag (10 Oct 2026),
             so the agent on their own plan can correct the address every
             sign-off link goes to, as the database already allows (0058). The
-            logo stays with the licensee in charge, the same as
-            set_agency_logo: an individual agent's record has the office name
-            and theirs, without a logo (Adam, 23 Aug 2026). */}
+            agency logo moved to Profile settings, under the picture top
+            right (12 Oct 2026). */}
         {access.actsAsLicensee && (
           <div className="mt-6">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">
               Sign-off
             </h3>
             <LicenseeEmailForm current={licenseeEmail} currentName={licenseeName} website={websiteUrl} />
-            {profile.is_licensee_in_charge && (
-              <AgencyLogoForm currentPath={agencyDetails?.logo_path ?? null} currentUrl={logoUrl} />
-            )}
           </div>
         )}
 

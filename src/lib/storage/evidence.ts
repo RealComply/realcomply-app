@@ -150,6 +150,27 @@ export function buildAgencyLogoPath(agencyId: string, fileName: string): string 
   return `${agencyId}/_brand/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+/**
+ * A link the browser can load the agency's logo from, or null when there is
+ * none or it can't be signed. Signed with the viewer's own client: every
+ * member of the agency may read its _brand folder (0058,
+ * evidence_path_readable). A day, not an hour: the sidebar keeps its first
+ * render while someone moves from page to page, and an expired link would
+ * leave a broken image in it.
+ */
+export async function agencyLogoUrl(
+  supabase: SupabaseClient,
+  path: string | null | undefined,
+): Promise<string | null> {
+  if (!path) return null;
+  try {
+    const { data } = await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrl(path, 60 * 60 * 24);
+    return data?.signedUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildSgManualPath(agencyId: string, fileName: string): string {
   return `${agencyId}/_sg-manual/${Date.now()}-${sanitizeFileName(fileName)}`;
 }

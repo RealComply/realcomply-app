@@ -256,7 +256,8 @@ export async function saveLicenseeEmail(
   return { error: null, saved: true, licenseeChanged };
 }
 
-// The agency's own logo, drawn on the finalised compliance record.
+// The agency's own logo: in the sidebar under RealComply's, and on the
+// compliance record (Profile settings, 12 Oct 2026).
 //
 // Adam, 23 Aug 2026: "when an office subscription is set up, they're going to
 // have to add their logo. If it's an individual agent, then perhaps what we do
@@ -298,7 +299,8 @@ export async function saveAgencyLogo(
     return { error: "Couldn't save the logo. Try again.", saved: false };
   }
 
-  revalidatePath("/dashboard/team");
+  // The whole dashboard: the logo is in the sidebar on every page.
+  revalidatePath("/dashboard", "layout");
   return { error: null, saved: true };
 }
 
