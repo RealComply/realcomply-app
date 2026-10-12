@@ -13,6 +13,9 @@ export function ReactivatedNotice() {
     <div className="rec-box" role="status">
       <p style={{ margin: 0 }}>
         Thanks. Stripe is confirming your payment, and this page returns to normal within a minute.{" "}
+        {/* A full page load on purpose: the dashboard has to read the
+            subscription again, which a <Link> navigation would not do. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a href="/dashboard/home">Refresh</a>
       </p>
     </div>

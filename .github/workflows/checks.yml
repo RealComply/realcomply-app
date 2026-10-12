@@ -1,0 +1,47 @@
+# Lint, types and tests on every pull request, and on main after each merge
+# (code review fixes, part G, 12 Oct 2026; finding 12). A pull request shows
+# a green tick or a red cross before anyone merges it.
+#
+# The same three commands a contributor runs locally. The tests need no
+# secrets and no network: Supabase, Stripe, the mailer and the web are
+# stand-ins in every test file.
+
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request makes the older run pointless.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 runs the TypeScript tests itself (scripts/test/register.mjs).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
