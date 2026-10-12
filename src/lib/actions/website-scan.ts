@@ -10,6 +10,7 @@ import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { reopenStaleNoRevision } from "@/lib/data/no-revision-reask";
 import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import { PRICE_CHECK_FROM, scanModeAt } from "@/lib/listing-scan-schedule";
+import { fetchPublicPage } from "@/lib/net/public-page";
 import type { PropertyItem } from "@/lib/types";
 
 // The advertised-price check.
@@ -183,47 +184,6 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
   },
 };
 
-/**
- * Rejects anything that is not a plain public https URL.
- *
- * The URL is supplied by a user and fetched by our server, which is the classic
- * shape of a server-side request forgery: left unchecked, someone could point a
- * listing at an internal address and use our infrastructure to reach it. Cloud
- * metadata endpoints are the usual target, hence the explicit block on the
- * link-local range as well as the private ones.
- */
-function assertSafeUrl(raw: string): URL {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error("That doesn't look like a valid web address.");
-  }
-
-  if (url.protocol !== "https:") {
-    throw new Error("The listing address must start with https://");
-  }
-
-  const host = url.hostname.toLowerCase();
-  const isPrivate =
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host.endsWith(".internal") ||
-    /^127\./.test(host) ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^169\.254\./.test(host) ||
-    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host) ||
-    host === "[::1]" ||
-    host === "0.0.0.0";
-
-  if (isPrivate) {
-    throw new Error("That address can't be checked.");
-  }
-
-  return url;
-}
-
 /** HTML to something a model can read. No parser dependency for one job. */
 function toText(html: string): string {
   return html
@@ -237,28 +197,6 @@ function toText(html: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 20000);
-}
-
-async function readListingPage(url: URL): Promise<string> {
-  // A listing page that hangs should fail the check, not the whole daily run.
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  try {
-    const res = await fetch(url.toString(), {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        // Identifies us honestly. A site owner reading their logs should be
-        // able to tell who this is, and it is the agency's own website.
-        "User-Agent": "RealComply-AdvertisedPriceCheck/1.0 (+https://www.realcomply.com.au)",
-        Accept: "text/html",
-      },
-    });
-    if (!res.ok) throw new Error(`The page returned ${res.status}.`);
-    return await res.text();
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 type Db = Awaited<ReturnType<typeof createClient>>;
@@ -286,8 +224,8 @@ export async function scanOneProperty(
   let finding: ScanFinding;
 
   try {
-    const url = assertSafeUrl(property.listing_url);
-    const text = toText(await readListingPage(url));
+    // Public pages only, checked at every redirect (fetchPublicPage).
+    const text = toText((await fetchPublicPage(property.listing_url)).html);
 
     if (text.length < 200) {
       finding = { ...base, ok: false, summary: "Couldn't read that page — there was almost nothing on it.", issues: [] };
@@ -884,14 +822,14 @@ async function discoverListingUrl(
   if (!website) return null;
 
   try {
-    let current = assertSafeUrl(website);
+    let current = website;
 
     // Two passes at most: the site's own page, then one index it points at.
     // Anything deeper is a crawl, and a crawl of someone's website is not a
     // thing to start doing quietly on a schedule.
     for (let hop = 0; hop < 2; hop++) {
-      const html = await readListingPage(current);
-      const links = linksFrom(html, current);
+      const page = await fetchPublicPage(current);
+      const links = linksFrom(page.html, page.url);
       if (links.length === 0) return null;
 
       const response = await anthropic.messages.create({
@@ -905,7 +843,7 @@ async function discoverListingUrl(
           {
             role: "user",
             content:
-              `Property: ${property.address}\n\nLinks on ${current.toString()}:\n` +
+              `Property: ${property.address}\n\nLinks on ${page.url.toString()}:\n` +
               links.map((l) => `${l.href} — ${l.text}`).join("\n"),
           },
         ],
@@ -926,7 +864,7 @@ async function discoverListingUrl(
         return choice.listingUrl;
       }
       if (choice.indexUrl && known.has(choice.indexUrl)) {
-        current = new URL(choice.indexUrl);
+        current = choice.indexUrl;
         continue;
       }
       return null;
