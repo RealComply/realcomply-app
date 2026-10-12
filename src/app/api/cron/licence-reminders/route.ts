@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runLicenceReminders } from "@/lib/email/licence-reminders";
+import { monitoredJob, reminderProblems } from "@/lib/monitoring/check-in";
 
 // Daily at 21:30 UTC (see vercel.json), which is roughly 7:30–8:30am in
 // Sydney depending on daylight saving — the same fixed-UTC drift the weekly
@@ -25,6 +26,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await runLicenceReminders();
+  const result = await monitoredJob("licence-reminders", () => runLicenceReminders(), reminderProblems);
   return NextResponse.json(result);
 }

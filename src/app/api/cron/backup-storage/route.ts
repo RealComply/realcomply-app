@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runStorageBackup } from "@/lib/backup/storage-backup";
+import { backupProblems, monitoredJob } from "@/lib/monitoring/check-in";
 
 // Copies uploaded documents out to the independent backup bucket.
 //
@@ -33,11 +34,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await runStorageBackup({ limit: 50 });
+  const result = await monitoredJob("backup-storage", () => runStorageBackup({ limit: 50 }), backupProblems);
 
   // 200 even when the backup is unconfigured or a file failed. The body says
   // what happened, and Vercel's cron view showing red for "not set up yet"
   // would train exactly the wrong reflex about a job whose whole purpose is
-  // that somebody notices when it stops.
+  // that somebody notices when it stops. Somebody now does: the check-in
+  // reports a failure and Adam is emailed (part F2, 12 Oct 2026).
   return NextResponse.json(result);
 }

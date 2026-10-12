@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runTrustReminders } from "@/lib/email/trust-reminders";
+import { monitoredJob, reminderProblems } from "@/lib/monitoring/check-in";
 
 // Daily at 21:40 UTC (see vercel.json) — ten minutes behind the licence
 // reminders, so the two jobs do not contend and a bad morning is easy to tell
@@ -25,6 +26,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await runTrustReminders();
+  const result = await monitoredJob("trust-reminders", () => runTrustReminders(), reminderProblems);
   return NextResponse.json(result);
 }

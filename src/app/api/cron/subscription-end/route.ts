@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runEndedNotices } from "@/lib/subscription-end/notices";
 import { expireActivityStore, runDeletionJob } from "@/lib/subscription-end/deletion";
+import { monitoredJob, subscriptionEndProblems } from "@/lib/monitoring/check-in";
 
 // When a subscription ends: the day 0 and day 7 emails, the day-14 deletion,
 // and the end of RealComply's own 7-year activity record. See
@@ -35,9 +36,17 @@ export async function GET(request: Request) {
   const force = url.searchParams.get("force") === "1" && Boolean(agencyId);
 
   // A dry run is only a look: no emails, no expiry.
-  const notices = dryRun ? null : await runEndedNotices();
-  const deletion = await runDeletionJob({ dryRun, agencyId, force });
-  const expired = dryRun ? null : await expireActivityStore();
+  const run = async () => {
+    const notices = dryRun ? null : await runEndedNotices();
+    const deletion = await runDeletionJob({ dryRun, agencyId, force });
+    const expired = dryRun ? null : await expireActivityStore();
+    return { notices, deletion, expired };
+  };
 
-  return NextResponse.json({ notices, deletion, expired });
+  // Only the daily run checks in. A dry run or a run for one office, by hand,
+  // must not count as the day's run.
+  const scheduled = !dryRun && !agencyId;
+  const result = scheduled ? await monitoredJob("subscription-end", run, subscriptionEndProblems) : await run();
+
+  return NextResponse.json(result);
 }

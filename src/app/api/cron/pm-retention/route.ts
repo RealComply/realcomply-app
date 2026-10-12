@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runPmRetentionReminders } from "@/lib/email/pm-retention";
+import { monitoredJob, reminderProblems } from "@/lib/monitoring/check-in";
 
 // Daily at 21:50 UTC (see vercel.json), before the working day in Sydney. The
 // 3-year property management file reminder (brief B4). Sends only on the day
@@ -14,6 +15,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await runPmRetentionReminders();
+  const result = await monitoredJob("pm-retention", () => runPmRetentionReminders(), reminderProblems);
   return NextResponse.json(result);
 }

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { emailCheckIn } from "@/lib/monitoring/check-in";
 
 // One way out of the app for every email, with a swappable provider behind it.
 //
@@ -176,6 +177,7 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
   const from = configuredFrom && input.fromName ? withSenderName(configuredFrom, input.fromName) : configuredFrom;
   if (!from) {
     console.error("sendEmail: EMAIL_FROM is not set — skipping send.", { subject: input.subject });
+    await emailCheckIn(false);
     return false;
   }
 
@@ -187,6 +189,11 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
     } else {
       await sendViaSes(from, input);
     }
+    // Every send reports, so a mail provider that stops working is noticed
+    // the first time an email fails, not weeks later (part F2, 12 Oct 2026).
+    // The check-in says only "email" and success or fail: never who to, never
+    // what about.
+    await emailCheckIn(true);
     return true;
   } catch (error) {
     // The provider is named in the log. Without it, a misconfigured switch
@@ -198,6 +205,7 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
       to: input.to,
       error,
     });
+    await emailCheckIn(false);
     return false;
   }
 }
