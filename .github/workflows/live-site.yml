@@ -1,0 +1,40 @@
+# After each merge into main, check the live site got it (Adam, 12 Oct 2026).
+#
+# #36 was merged and never reached the live site: Vercel didn't start a build,
+# so nothing failed and nobody was told. This waits up to 15 minutes for
+# Vercel's live build of the merged commit to succeed. If it doesn't, this run
+# fails and GitHub emails the RealComply account, like any other failed run.
+# The reason and the fix are in the run's error. See scripts/ci/live-site-updated.sh.
+#
+# It runs after the merge, so it never holds up a pull request.
+
+name: Live site
+
+on:
+  push:
+    branches: [main]
+  # A "Run workflow" button on the Actions tab, to check the latest by hand.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: read
+
+# Only the newest merge matters: if two land close together, the live site
+# should end up with the second, so the check of the first is dropped.
+concurrency:
+  group: live-site
+  cancel-in-progress: true
+
+jobs:
+  live-site:
+    name: Live site updated
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for the live build of this commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/ci/live-site-updated.sh "$GITHUB_REPOSITORY" "$GITHUB_SHA" 15
