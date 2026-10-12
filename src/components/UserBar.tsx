@@ -3,6 +3,7 @@ import { UserBarHeight } from "@/components/UserBarHeight";
 import { Plus } from "lucide-react";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { UserMenu } from "@/components/UserMenu";
+import { LogoMark } from "@/components/Logo";
 import type { Profile } from "@/lib/types";
 
 // The top bar.
@@ -27,7 +28,7 @@ import type { Profile } from "@/lib/types";
 // used in the staff register (LICENCE_TYPE_LABELS in StaffRegisterCard.tsx /
 // registers export) so the wording is consistent with how roles are described
 // everywhere else in the app.
-function roleLabel(profile: Profile): string {
+export function roleLabel(profile: Profile): string {
   if (profile.is_licensee_in_charge) return "Licensee in charge";
   // An assistant is not an agent, so it fell through to "Team member" (10 Oct
   // 2026). Same order as the people results in global search.
@@ -46,11 +47,13 @@ function roleLabel(profile: Profile): string {
 
 export function UserBar({
   profile,
+  agencyName = null,
   pmEnabled = false,
   actsAsLicensee = false,
   isAccountHolder = false,
 }: {
   profile: Profile;
+  agencyName?: string | null;
   pmEnabled?: boolean;
   actsAsLicensee?: boolean;
   isAccountHolder?: boolean;
@@ -65,6 +68,16 @@ export function UserBar({
       id="rc-userbar"
       className="rc-app-chrome sticky top-0 z-20 flex items-center gap-3 border-b border-rc-border bg-white/85 py-3 pl-16 pr-4 backdrop-blur-md md:pl-6 md:pr-6">
       <UserBarHeight targetId="rc-userbar" />
+      {/* RealComply on a phone (12 Oct 2026). The sidebar, where the logo
+          lives on a computer, is a drawer behind the menu button there, so
+          nothing on screen said RealComply. The word goes on the narrowest
+          phones, where it would push the buttons off the edge. */}
+      <Link href="/dashboard/home" className="flex shrink-0 items-center gap-1.5 md:hidden">
+        <LogoMark size={24} />
+        <span className="text-[16px] font-extrabold tracking-tight text-rc-ink max-[359px]:hidden">
+          Real<span className="text-rc-green-deep">Comply</span>
+        </span>
+      </Link>
       <GlobalSearch actsAsLicensee={actsAsLicensee} pmEnabled={pmEnabled} isAccountHolder={isAccountHolder} />
 
       <Link
@@ -96,6 +109,7 @@ export function UserBar({
       <UserMenu
         name={name}
         role={role}
+        agencyName={agencyName}
         isLicensee={profile.is_licensee_in_charge}
         initial={name.charAt(0).toUpperCase()}
       />

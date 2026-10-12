@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ClipboardCheck, KeyRound, LogOut } from "lucide-react";
+import { ChevronDown, ClipboardCheck, KeyRound, LogOut, Settings } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
 
 // Who you are, and the way out.
@@ -18,11 +18,13 @@ import { logout } from "@/lib/actions/auth";
 export function UserMenu({
   name,
   role,
+  agencyName = null,
   isLicensee,
   initial,
 }: {
   name: string;
   role: string;
+  agencyName?: string | null;
   isLicensee: boolean;
   initial: string;
 }) {
@@ -73,13 +75,27 @@ export function UserMenu({
           <div className="border-b border-rc-border px-2.5 pb-2.5 pt-2">
             <p className="truncate text-sm font-semibold text-rc-ink">{name}</p>
             <p className={`text-xs font-medium ${isLicensee ? "text-rc-green-deep" : "text-rc-muted"}`}>{role}</p>
+            {agencyName && <p className="truncate text-xs text-rc-muted">{agencyName}</p>}
           </div>
+
+          {/* Where the agency logo goes in (Adam, 12 Oct 2026: "if you click
+              on the agent's icon in the top right corner, there should be an
+              option there for profile settings where you have your company
+              logo"). */}
+          <Link
+            href="/dashboard/profile"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="mt-1 flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-rc-muted transition hover:bg-rc-bg-alt hover:text-rc-ink"
+          >
+            <Settings size={15} aria-hidden="true" /> Profile settings
+          </Link>
 
           <Link
             href="/dashboard/cpd"
             role="menuitem"
             onClick={() => setOpen(false)}
-            className="mt-1 flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-rc-muted transition hover:bg-rc-bg-alt hover:text-rc-ink"
+            className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-rc-muted transition hover:bg-rc-bg-alt hover:text-rc-ink"
           >
             <ClipboardCheck size={15} aria-hidden="true" /> Your CPD record
           </Link>

@@ -16,6 +16,7 @@ import { RecordsView } from "@/components/records/RecordsView";
 import { TrialStartView } from "@/components/billing/TrialStartView";
 import { needsTrialStart, PLANS, type Plan } from "@/lib/billing/entitlement";
 import { isAccountHolder } from "@/lib/subscription-end/access";
+import { agencyLogoUrl } from "@/lib/storage/evidence";
 
 // Shared across every /dashboard/* page. Now owns the whole application
 // shell — sidebar, user bar, page background — rather than only the "Ask the
@@ -56,7 +57,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // trial (Adam, 9 Oct 2026). See TrialStartView.
   const { data: billingRow } = await supabase
     .from("agencies")
-    .select("name, plan, status, stripe_subscription_id")
+    .select("name, plan, status, stripe_subscription_id, logo_path")
     .eq("id", profile.agency_id)
     .maybeSingle();
   const billing = billingRow as {
@@ -64,6 +65,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     plan: string | null;
     status: string | null;
     stripe_subscription_id: string | null;
+    logo_path: string | null;
   } | null;
   if (billing && needsTrialStart(billing)) {
     const mayStart =
@@ -84,7 +86,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // The sidebar badges. Computed here rather than fetched from the browser so
   // the number is correct in the first paint — a count that appears a second
   // late reads as the page changing its mind.
-  const [counts, pm, accountHolder] = await Promise.all([
+  const [counts, pm, accountHolder, logoUrl] = await Promise.all([
     navCountsFor(supabase, profile),
     // Whether this agency has property management switched on (0052), for
     // the "Property management" entry beside sales.
@@ -93,6 +95,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // Billing page lets them in, so the menu and search show it (10 Oct
     // 2026). Only asked when it could change anything.
     access.actsAsLicensee ? Promise.resolve(false) : isAccountHolder(supabase),
+    // The agency's logo, under RealComply's at the top of the sidebar (12 Oct
+    // 2026). Signed here, once, for the sidebar to show.
+    agencyLogoUrl(supabase, billing?.logo_path),
   ]);
 
   return (
@@ -110,6 +115,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
         isPlatformAdmin={profile.is_platform_admin === true}
         pmEnabled={pm.enabled}
         counts={counts}
+        agencyName={billing?.name ?? null}
+        agencyLogoUrl={logoUrl}
       />
       {/* min-w-0: a grid column's 1fr track will not shrink below its
           content's widest line, so without this anything wide inside a page
@@ -119,6 +126,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex min-h-screen min-w-0 flex-col">
         <UserBar
           profile={profile}
+          agencyName={billing?.name ?? null}
           pmEnabled={pm.enabled}
           actsAsLicensee={access.actsAsLicensee}
           isAccountHolder={accountHolder}

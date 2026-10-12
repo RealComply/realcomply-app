@@ -1,5 +1,5 @@
 import { photoNoticeRecordLines, type TenantPhotoData } from "@/lib/rules/tenant-photo-notice";
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { LineCapStyle, PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { formatSignedAt } from "./sign-stamp";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { pdfText } from "./text";
@@ -44,12 +44,15 @@ const MUTED = rgb(0.361, 0.435, 0.408); // #5c6f68
 const FAINT = rgb(0.561, 0.639, 0.608); // #8fa39b
 const AMBER = rgb(0.753, 0.49, 0.098); // #c07d19
 const BORDER = rgb(0.894, 0.914, 0.902); // #e4e9e6
+const HOUSE = rgb(0.086, 0.188, 0.165); // #16302a, RealComply's mark
+const TICK = rgb(0.18, 0.8, 0.561); // #2ecc8f
 
 const PAGE_W = 595.28; // A4 portrait, points
 const PAGE_H = 841.89;
 const MARGIN = 56;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const BOTTOM = 64; // leave room for the footer rule and page number
+const BAND_H = 48; // the RealComply band at the foot of every page
+const BOTTOM = 66; // content stops here, clear of the band
 
 type Fonts = { regular: PDFFont; bold: PDFFont; italic: PDFFont; signature: PDFFont };
 
@@ -90,7 +93,8 @@ class Cursor {
   fonts: Fonts;
   page: PDFPage;
   y: number;
-  pageNo = 1;
+  /** Every page of the record itself, for the footers stamped at the end. */
+  pages: PDFPage[] = [];
   /**
    * Marks EVERY page when the file has not been signed off.
    *
@@ -112,53 +116,98 @@ class Cursor {
     this.doc = doc;
     this.fonts = fonts;
     this.page = doc.addPage([PAGE_W, PAGE_H]);
+    this.pages.push(this.page);
     this.y = PAGE_H - MARGIN;
   }
 
   /** Start a new page if the next block would not fit. */
   need(height: number) {
     if (this.y - height < BOTTOM) {
-      this.stampFooter();
       this.page = this.doc.addPage([PAGE_W, PAGE_H]);
-      this.pageNo += 1;
+      this.pages.push(this.page);
       this.y = PAGE_H - MARGIN;
     }
   }
 
-  stampFooter() {
-    this.page.drawLine({
-      start: { x: MARGIN, y: BOTTOM - 14 },
-      end: { x: PAGE_W - MARGIN, y: BOTTOM - 14 },
-      thickness: 0.5,
-      color: BORDER,
+  /**
+   * The RealComply band at the foot of every page of the record (Adam, 12 Oct
+   * 2026): the agency leads at the top, and RealComply signs every page at the
+   * bottom, "Page 1 of 6" beside it. Stamped once the record is finished,
+   * because "of 6" is not known until then. Appended documents are other
+   * people's pages and are left alone.
+   */
+  stampFooters() {
+    const total = this.pages.length;
+    this.pages.forEach((page, i) => this.footer(page, i + 1, total));
+  }
+
+  private footer(page: PDFPage, pageNo: number, total: number) {
+    const { regular, bold } = this.fonts;
+    page.drawLine({ start: { x: 0, y: BAND_H }, end: { x: PAGE_W, y: BAND_H }, thickness: 0.75, color: BORDER });
+
+    // The mark, from the same paths as components/Logo.tsx, with its 1.2
+    // horizontal stretch worked into the numbers. 48 units square.
+    const MARK = 19.5;
+    const s = MARK / 48;
+    const top = BAND_H / 2 + MARK / 2;
+    page.drawSvgPath("M10.8 43 L10.8 21 L6 21 L24 7 L42 21 L37.2 21 L37.2 43 Z", {
+      x: MARGIN,
+      y: top,
+      scale: s,
+      color: HOUSE,
     });
-    this.page.drawText(pdfText(`Page ${this.pageNo}`, this.fonts.regular), {
-      x: PAGE_W - MARGIN - this.fonts.regular.widthOfTextAtSize(`Page ${this.pageNo}`, 8),
-      y: BOTTOM - 26,
+    page.drawSvgPath("M15.6 31 L21.6 36 L32.4 25.5", {
+      x: MARGIN,
+      y: top,
+      scale: s,
+      borderColor: TICK,
+      borderWidth: 4,
+      borderLineCap: LineCapStyle.Round,
+    });
+
+    const textX = MARGIN + MARK + 8;
+    page.drawText("Real", { x: textX, y: 26, size: 10.5, font: bold, color: INK });
+    page.drawText("Comply", { x: textX + bold.widthOfTextAtSize("Real", 10.5), y: 26, size: 10.5, font: bold, color: GREEN });
+    page.drawText(pdfText("Compliance records for NSW real estate agencies · realcomply.com.au", regular), {
+      x: textX,
+      y: 15,
+      size: 7.5,
+      font: regular,
+      color: MUTED,
+    });
+
+    const label = `Page ${pageNo} of ${total}`;
+    const right = PAGE_W - MARGIN;
+    page.drawText(label, {
+      x: right - regular.widthOfTextAtSize(label, 8),
+      y: this.draftMark ? 15 : 21,
       size: 8,
-      font: this.fonts.regular,
+      font: regular,
       color: FAINT,
     });
     if (this.draftMark) {
-      this.page.drawText(pdfText(this.draftMark, this.fonts.bold), {
-        x: MARGIN,
-        y: BOTTOM - 26,
-        size: 8,
-        font: this.fonts.bold,
-        color: AMBER,
-      });
+      const mark = pdfText(this.draftMark, bold);
+      page.drawText(mark, { x: right - bold.widthOfTextAtSize(mark, 8), y: 27, size: 8, font: bold, color: AMBER });
     }
   }
 
   text(
     content: string,
-    opts: { size?: number; bold?: boolean; color?: ReturnType<typeof rgb>; indent?: number; gap?: number } = {},
+    opts: {
+      size?: number;
+      bold?: boolean;
+      color?: ReturnType<typeof rgb>;
+      indent?: number;
+      gap?: number;
+      /** Narrower than the page, for the agency's name beside its logo. */
+      width?: number;
+    } = {},
   ) {
     const size = opts.size ?? 10;
     const font = opts.bold ? this.fonts.bold : this.fonts.regular;
     const indent = opts.indent ?? 0;
     const lineHeight = size * 1.4;
-    const lines = wrap(pdfText(content, font), font, size, CONTENT_W - indent);
+    const lines = wrap(pdfText(content, font), font, size, (opts.width ?? CONTENT_W) - indent);
     this.need(lines.length * lineHeight);
     for (const line of lines) {
       this.page.drawText(line, {
@@ -374,38 +423,44 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
 
   // Masthead.
   //
-  // The AGENCY leads, not us (Adam, 23 Aug 2026): their logo if they have one,
-  // then the office name, then the agent whose file this is, then the title,
-  // with RealComply credited underneath as the platform. This is the document
-  // the agency hands to Fair Trading and it should read as theirs.
+  // The AGENCY leads, not us (Adam, 23 Aug 2026): this is the document the
+  // agency hands to Fair Trading and it should read as theirs. Laid out to
+  // the design Adam approved on 12 Oct 2026 (audit pack 4): the office name
+  // and the agent on the left, their logo on the right, level with them; the
+  // title under both, then a line. RealComply is no longer a line up here: it
+  // signs the foot of every page instead (Cursor.stampFooters).
   //
   // No logo is not a fallback. An individual agent has no office branding to
   // apply, and a text masthead is the right output for them rather than a
   // second-class version of somebody else's.
   c.page.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: GREEN });
 
+  let nameWidth = CONTENT_W;
+  let logoBottom = c.y;
   if (logo) {
     const image = logo.type === "png" ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes);
     // Fit inside a box rather than forcing a size, so a wide wordmark and a
-    // square badge both come out looking deliberate.
-    const MAX_W = 190;
-    const MAX_H = 52;
+    // square badge both come out looking deliberate. About the height of the
+    // name and the agent's line beside it.
+    const MAX_W = 160;
+    const MAX_H = 44;
     const scale = Math.min(MAX_W / image.width, MAX_H / image.height, 1);
     const w = image.width * scale;
     const h = image.height * scale;
-    c.page.drawImage(image, { x: MARGIN, y: c.y - h, width: w, height: h });
-    c.y -= h + 14;
+    c.page.drawImage(image, { x: PAGE_W - MARGIN - w, y: c.y - h, width: w, height: h });
+    logoBottom = c.y - h;
+    nameWidth = CONTENT_W - w - 20;
   }
 
-  c.text(agencyName, { size: 17, bold: true });
-  if (agentName) c.text(agentName, { size: 11, color: MUTED });
-  c.y -= 4;
+  c.text(agencyName, { size: 17, bold: true, width: nameWidth });
+  if (agentName) c.text(agentName, { size: 11, color: MUTED, width: nameWidth });
+  c.y = Math.min(c.y, logoBottom) - 6;
   c.text(isDraft ? "Compliance record - DRAFT" : "Finalised compliance record", {
     size: 12.5,
     bold: true,
     color: isDraft ? AMBER : INK,
   });
-  c.text("Powered by RealComply", { size: 8.5, bold: true, color: GREEN, gap: 6 });
+  c.rule(6, 12);
   c.text(property.address, { size: 11, bold: true });
   c.text(
     `Generated ${formatAuDate(generatedAt.toISOString().slice(0, 10))} · ${rulesetVersion}`,
@@ -415,7 +470,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     size: 8.5,
     color: FAINT,
   });
-  c.rule(10, 14);
+  c.y -= 16;
 
   // THE DRAFT NOTICE, above the open flags and above everything else.
   //
@@ -646,6 +701,9 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   // to say here"; an outstanding one that names who is still to sign says what
   // is actually true and what has to happen next.
   {
+    // The heading goes with the first signature: on its own at the foot of a
+    // page, with the signatures overleaf, it reads as a page left unsigned.
+    c.need(10 + 12 + 11 * 1.4 + 6 + 46);
     c.rule(10, 12);
     c.text(isDraft ? "Signatures" : "Signed", { size: 11, bold: true, gap: 6 });
 
@@ -725,7 +783,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     { size: 8, color: FAINT },
   );
 
-  c.stampFooter();
+  c.stampFooters();
 
   // ── Appended source documents ────────────────────────────────────────────
   //

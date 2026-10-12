@@ -6,7 +6,10 @@ import { FileDropZone } from "@/components/FileDropZone";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildAgencyLogoPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 
-// The agency's own logo, drawn at the top of the finalised compliance record.
+// The agency's own logo: at the top of the sidebar, under RealComply's, and
+// at the top of every compliance record (12 Oct 2026). On Profile settings,
+// under the picture top right, since 12 Oct 2026: it sat on the Team page,
+// where Adam never found it.
 //
 // Adam, 23 Aug 2026: an office subscription adds their logo; an individual
 // agent gets the office name and their own name with no logo. So the absence of
@@ -101,9 +104,8 @@ export function AgencyLogoForm({
     <form action={action} className="mt-2 rounded-card border border-rc-border bg-white p-4 shadow-card">
       <p className="text-sm font-medium text-rc-ink">Agency logo</p>
       <p className="mt-1 text-xs leading-relaxed text-rc-muted">
-        Drawn at the top of the finalised compliance record, above your office name. PNG or JPG.
-        Leave it empty and the record shows your office name and the agent&rsquo;s name instead, which is
-        what an individual agent wants.
+        Shows under RealComply at the top of the menu, for everyone in your office, and at the top of every
+        compliance record. PNG or JPG, up to 2 MB. A wide logo on a white or clear background works best.
       </p>
 
       <input type="hidden" name="logoPath" value={path} />
