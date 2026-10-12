@@ -914,6 +914,14 @@ const items: ComplianceItem[] = [
     requiresNote: true,
     noteLabel: "The price statement being approved",
     notePlaceholder: "e.g. Guide $750,000 – $790,000",
+    // No upload box (Adam, 12 Oct 2026): "I don't think this is necessary
+    // as evidence would have already been provided in RealComply up to that
+    // point." The approval is the typed price statement itself; the
+    // documents behind it are already on the earlier cards. Even marked
+    // optional, a box on the licensee's own card read as one more thing to
+    // supply first. A predicate rather than hideEvidence, so a file already
+    // on a b4 card keeps its control and is never stranded out of sight.
+    hideEvidenceWhen: () => true,
   },
 
   // ── Stage 2 — On market ───────────────────────────────────────────────
