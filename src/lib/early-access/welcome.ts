@@ -1,6 +1,7 @@
 import { sendEmail, type SendEmailInput } from "@/lib/email/send";
 import { ADMIN_COPY_ADDRESS, SENDER_NAME, buildWelcomeEmail } from "@/lib/email/early-access-invite";
-import { welcomeSwitchedOn } from "./rules";
+import { appBaseUrl } from "@/lib/site-url";
+import { isTestAddress, welcomeSwitchedOn } from "./rules";
 
 // The welcome email (brief Part C, 10 Oct 2026), sent once to someone from the
 // early access list after they have set up their office with their invitation
@@ -114,4 +115,43 @@ export async function sendEarlyAccessWelcome(
     console.error("early access welcome failed:", agencyId, err);
     return "failed";
   }
+}
+
+/**
+ * A test copy of the welcome email, from the staff page (Adam, 12 Oct 2026:
+ * "Show me the email as received in Gmail on a phone").
+ *
+ * The welcome has no send button of its own: it goes only when a new office's
+ * card is in. This sends the same email, through the same mail service, so
+ * what arrives is what a new office gets. The differences are deliberate:
+ *   - Only to Adam's test addresses (getadamc3+…@gmail.com), on the live site
+ *     too. Never a registrant, so it cannot welcome a real person by mistake.
+ *   - "[Test]" in front of the subject, and no copy to admin@.
+ *   - Links and pictures point at the live site even from a preview, as in the
+ *     real email. A preview's own address sits behind Vercel's login, so
+ *     Gmail could not load the pictures from it.
+ *   - It ignores the welcome switch and writes nothing.
+ */
+export async function sendTestWelcome(
+  input: { to: string; firstName: string | null },
+  deps: {
+    send?: (input: SendEmailInput) => Promise<boolean>;
+    env?: Record<string, string | undefined>;
+  } = {},
+): Promise<{ error: string | null; notice?: string }> {
+  const send = deps.send ?? sendEmail;
+  const env = deps.env ?? process.env;
+
+  const to = input.to.trim();
+  if (!isTestAddress(to)) {
+    return { error: "Test copies only go to your test addresses (getadamc3+…@gmail.com)." };
+  }
+
+  const { subject, text, html } = buildWelcomeEmail({
+    firstName: input.firstName,
+    base: appBaseUrl({ NEXT_PUBLIC_SITE_URL: env.NEXT_PUBLIC_SITE_URL }),
+  });
+  const sent = await send({ to, replyTo: ADMIN_COPY_ADDRESS, fromName: SENDER_NAME, subject: `[Test] ${subject}`, text, html });
+  if (!sent) return { error: "The test email couldn't be sent. Try again in a minute." };
+  return { error: null, notice: `Test welcome sent to ${to}.` };
 }

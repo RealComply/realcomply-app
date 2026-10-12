@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { SendEmailInput } from "@/lib/email/send";
-import { sendEarlyAccessWelcome } from "./welcome";
+import { buildWelcomeEmail } from "@/lib/email/early-access-invite";
+import { sendEarlyAccessWelcome, sendTestWelcome } from "./welcome";
 
 // A small in-memory stand-in for the Supabase query builder: just the calls
 // welcome.ts makes (select, update, eq, is, in, not-is-null, maybeSingle).
@@ -93,5 +94,45 @@ describe("early access welcome", () => {
     const r = recorder(false);
     assert.equal(await sendEarlyAccessWelcome(db, "ag1", { send: r.send, env: ON }), "failed");
     assert.equal(db.tables.early_access[0].welcome_sent_at, null);
+  });
+});
+
+describe("a test copy of the welcome, from the staff page", () => {
+  it("goes only to a test address, marked [Test], with no copy to admin@", async () => {
+    const r = recorder();
+    const out = await sendTestWelcome({ to: " getadamc3+test1@gmail.com ", firstName: "adam" }, { send: r.send, env: {} });
+
+    assert.equal(out.error, null);
+    assert.equal(r.sent.length, 1);
+    assert.equal(r.sent[0].to, "getadamc3+test1@gmail.com");
+    assert.equal(r.sent[0].subject, "[Test] Welcome to RealComply, Adam");
+    assert.equal(r.sent[0].bcc, undefined);
+    assert.equal(r.sent[0].replyTo, "admin@realcomply.com.au");
+  });
+
+  it("is the real welcome, word for word, with its pictures and links on the live site, even from a preview", async () => {
+    const r = recorder();
+    const preview = { VERCEL_ENV: "preview", VERCEL_BRANCH_URL: "realcomply-app-git-x.vercel.app" };
+    await sendTestWelcome({ to: "getadamc3+test1@gmail.com", firstName: "Adam" }, { send: r.send, env: preview });
+
+    const real = buildWelcomeEmail({ firstName: "Adam", base: "https://www.realcomply.com.au" });
+    assert.equal(r.sent[0].html, real.html);
+    assert.equal(r.sent[0].text, real.text);
+    assert.ok(!r.sent[0].html!.includes("vercel.app"));
+  });
+
+  it("refuses anyone else, the live site included, and sends nothing", async () => {
+    const r = recorder();
+    const live = { VERCEL_ENV: "production", EARLY_ACCESS_INVITES: "live", EARLY_ACCESS_WELCOME_EMAIL: "on" };
+    for (const to of ["sam@harbourrealty.example", "admin@realcomply.com.au", "getadamc3@gmail.com", ""]) {
+      const out = await sendTestWelcome({ to, firstName: "Sam" }, { send: r.send, env: live });
+      assert.match(out.error ?? "", /only go to your test addresses/, to);
+    }
+    assert.equal(r.sent.length, 0);
+  });
+
+  it("says so when the mail service fails", async () => {
+    const out = await sendTestWelcome({ to: "getadamc3+test1@gmail.com", firstName: null }, { send: recorder(false).send, env: {} });
+    assert.match(out.error ?? "", /couldn't be sent/);
   });
 });

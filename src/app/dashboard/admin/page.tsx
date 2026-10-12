@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { formatAuDate } from "@/lib/format-date";
 import { FounderInvites, type FounderInvite } from "@/components/admin/FounderInvites";
 import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyAccessQueue";
+import { WelcomeTest } from "@/components/admin/WelcomeTest";
 import { earlyAccessStatus, hiddenFromList } from "@/lib/early-access/rules";
 import { storageBackupConfigured, countEvidenceObjects } from "@/lib/backup/storage-backup";
 import {
@@ -523,6 +524,10 @@ export default async function AdminPage() {
 
       <div className="mt-3">
         <EarlyAccessQueue rows={earlyAccess} />
+      </div>
+
+      <div className="mt-3">
+        <WelcomeTest />
       </div>
 
       {/* PERSONAL INVITES (Founder invites until 12 Oct 2026). Making one lives here rather than in Team settings, which is
