@@ -55,15 +55,17 @@ export default async function HomeDashboardPage({
 
   const cpdYear = currentCpdYear();
 
-  // Until the annexure is adopted (brief, 14 Oct 2026), the licensee's Home
-  // asks for it. Shown only on a clean read that finds no adoption of this
-  // version: if the table can't be read, no card, rather than a button that
-  // leads nowhere.
+  // Until the annexure is adopted (brief, 14 Oct 2026), the Home of an
+  // office's licensee in charge asks for it. Shown only on a clean read that
+  // finds no adoption of this version: if the table can't be read, no card,
+  // rather than a button that leads nowhere. Never on an agent plan
+  // (CORRECTION, Adam, 14 Oct 2026, restoring the 22 Sep 2026 rule): nothing
+  // asks an agent on their own plan to get the annexure signed.
   const [{ data: adoptionRows, error: adoptionError }, query] = await Promise.all([
     supabase.from("sg_annexure_adoptions").select("id").eq("annexure_version", SG_ANNEXURE_VERSION),
     searchParams,
   ]);
-  const annexureOutstanding = !adoptionError && (adoptionRows ?? []).length === 0;
+  const annexureOutstanding = access.officeLicensee && !adoptionError && (adoptionRows ?? []).length === 0;
 
   const { data: properties } = await supabase.from("properties").select("*").order("created_at", { ascending: false });
   const propertyList = (properties ?? []) as Property[];

@@ -49,12 +49,13 @@ export async function adoptAnnexure(_prev: AdoptState, formData: FormData): Prom
 
 /**
  * "Review and sign" on the Home card: a fresh link for the signed-in licensee
- * in charge (or an agent on their own plan), and straight to it. The database
- * checks who is asking (0067's create_sg_annexure_link).
+ * in charge of an office, and straight to it. Not an agent on their own plan
+ * (CORRECTION, Adam, 14 Oct 2026). The database checks who is asking too
+ * (create_sg_annexure_link, 0068).
  */
 export async function openAnnexureSigning(): Promise<void> {
   const { access } = await requireAccess();
-  if (!access.actsAsLicensee) redirect("/dashboard/home");
+  if (!access.officeLicensee) redirect("/dashboard/home");
 
   const supabase = await createClient();
   const { data: token, error } = await supabase.rpc("create_sg_annexure_link");

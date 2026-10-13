@@ -118,23 +118,42 @@ export const ANNEXURE_BOX_SMALL = "Opens a secure page. Takes about two minutes.
 /** Shown in the box when no licence number is on file. The signing page asks for it. */
 export const ANNEXURE_NO_LICENCE = "Add it when you sign";
 
+// An agent on their own plan (CORRECTION, Adam, 14 Oct 2026, restoring the
+// 22 Sep 2026 rule): RealComply never contacts their licensee, so the box
+// gives the agent the annexure to hand over themselves. No heading and no
+// signing: a link to the PDF and one line, word for word.
+export const ANNEXURE_DOWNLOAD_LINK = "Download the annexure for your licensee";
+export const ANNEXURE_DOWNLOAD_LINE =
+  "Please give this to your licensee in charge. It explains how RealComply fits within your agency's supervision system.";
+
 export type AnnexureBox =
-  /** The reader is the licensee in charge: the details and the button. */
+  /** Office plan, the reader is the licensee in charge: the details and the button. */
   | { kind: "sign"; agencyName: string; licenceNumber: string | null; date: string; url: string }
-  /** The reader signed up but is not the licensee: the link went to the licensee. */
-  | { kind: "sent"; licenseeName: string };
+  /** Office plan, the reader signed up but is not the licensee: the link went to the licensee. */
+  | { kind: "sent"; licenseeName: string }
+  /** Agent on their own plan: the PDF to give their licensee. Nothing goes to the licensee. */
+  | { kind: "download"; url: string };
 
 export function annexureSentLine(licenseeName: string): string {
   return `We've sent the annexure to ${licenseeName.trim() || "your licensee in charge"} to sign.`;
 }
 
 function annexureBoxHtml(box: AnnexureBox): string {
-  const top = `<tr><td style="padding:0 28px 22px">
+  const frame = `<tr><td style="padding:0 28px 22px">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#ffffff;border:2px solid ${C.green};border-radius:12px">
-<tr><td style="padding:18px 20px;font-family:${FONT};font-size:16px;line-height:1.6;color:${C.body}">
+<tr><td style="padding:18px 20px;font-family:${FONT};font-size:16px;line-height:1.6;color:${C.body}">`;
+  const top = `${frame}
 <p style="margin:0 0 10px;font-weight:700;color:${C.ink}">${esc(ANNEXURE_BOX_HEADING)}</p>
 <p style="margin:0 0 14px">${esc(ANNEXURE_BOX_TEXT)}</p>`;
   const bottom = `</td></tr></table></td></tr>`;
+  if (box.kind === "download") {
+    return `${frame}
+<p style="margin:0 0 8px"><a href="${esc(box.url)}" style="font-weight:700;color:${C.green};text-decoration:underline">${esc(
+      ANNEXURE_DOWNLOAD_LINK,
+    )}</a> <span style="font-size:14px;color:${C.muted}">(PDF)</span></p>
+<p style="margin:0">${esc(ANNEXURE_DOWNLOAD_LINE)}</p>
+${bottom}`;
+  }
   if (box.kind === "sent") {
     return `${top}
 <p style="margin:0;font-weight:700;color:${C.ink}">${esc(annexureSentLine(box.licenseeName))}</p>
@@ -163,6 +182,7 @@ ${bottom}`;
 }
 
 function annexureBoxText(box: AnnexureBox): string[] {
+  if (box.kind === "download") return [`${ANNEXURE_DOWNLOAD_LINK} (PDF): ${box.url}`, ANNEXURE_DOWNLOAD_LINE];
   if (box.kind === "sent") return [ANNEXURE_BOX_HEADING, ANNEXURE_BOX_TEXT, annexureSentLine(box.licenseeName)];
   return [
     ANNEXURE_BOX_HEADING,
@@ -384,8 +404,9 @@ export type WelcomeInput = {
   firstName: string | null;
   base?: string;
   /**
-   * The annexure box under the video (brief, 14 Oct 2026): the button for the
-   * licensee in charge, or "We've sent the annexure to ..." for anyone else.
+   * The annexure box under the video (brief, 14 Oct 2026). Office plans: the
+   * button for the licensee in charge, or "We've sent the annexure to ..." for
+   * anyone else. Agent plans: the PDF to give their licensee (14 Oct 2026).
    * Left out, the email is exactly as it was before the annexure.
    */
   annexure?: AnnexureBox | null;

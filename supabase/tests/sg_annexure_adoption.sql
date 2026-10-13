@@ -2,9 +2,10 @@
 --
 -- Proves supabase/migrations/0067_sg_annexure_adoption.sql (the licensee in
 -- charge adopts the RealComply annexure to the Supervision Guidelines from a
--- link). Run after 0067. Safe on the live database: everything happens inside
--- one transaction that is rolled back at the end, so the made-up offices,
--- people and links it creates never exist outside it.
+-- link) and 0068 (office plans only: never an agent on their own plan). Run
+-- after both. Safe on the live database: everything happens inside one
+-- transaction that is rolled back at the end, so the made-up offices, people
+-- and links it creates never exist outside it.
 --
 -- Pass: the last line says "SG annexure adoption: all checks passed".
 -- Fail: it stops with an error naming the check that failed.
@@ -68,11 +69,19 @@ begin
     raise exception 'FAIL 2: an agent made a link (%)', coalesce(msg, 'no error');
   end if;
 
-  -- 3. An agent on their own plan can; their assistant cannot.
+  -- 3. Neither an agent on their own plan nor their assistant can (0068:
+  --    RealComply never contacts an agent plan's licensee).
+  msg := null;
   perform set_config('request.jwt.claims', json_build_object('sub', sa, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  stok := public.create_sg_annexure_link();
+  begin
+    stok := public.create_sg_annexure_link();
+  exception when others then msg := sqlerrm;
+  end;
   reset role;
+  if msg is distinct from 'Only the licensee in charge can adopt the annexure.' then
+    raise exception 'FAIL 3: an agent on their own plan made a link (%)', coalesce(msg, 'no error');
+  end if;
   msg := null;
   perform set_config('request.jwt.claims', json_build_object('sub', sas, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -81,22 +90,29 @@ begin
   exception when others then msg := sqlerrm;
   end;
   reset role;
-  if stok is null or msg is null then
-    raise exception 'FAIL 3: agent''s own plan link %, assistant refused: %', stok, coalesce(msg, 'no');
+  if msg is null then
+    raise exception 'FAIL 3b: an agent plan''s assistant made a link';
+  end if;
+
+  -- 3c. No link for an agent plan even from the server, which bypasses the
+  --     row rules (0068's trigger): the new-office flow can never send one.
+  msg := null;
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  begin
+    insert into public.sg_annexure_links (agency_id, sent_to, purpose) values (solo, 'sga-solo@example.invalid', 'new_office');
+  exception when others then msg := sqlerrm;
+  end;
+  if msg is distinct from 'The annexure is not sent for an agent on their own plan.' then
+    raise exception 'FAIL 3c: the server made a link for an agent plan (%)', coalesce(msg, 'no error');
   end if;
 
   -- 4. Signed out: the page reads the office and an open link. No licence
-  --    number on file here, so the page will ask; the agent's own plan uses
-  --    the agent's licence.
+  --    number on file here, so the page will ask.
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   set local role anon;
   select * into r from public.sg_annexure_link_details(tok, v);
   if r.agency_name is distinct from 'SG annexure test office' or r.state <> 'open' or r.licence_number is not null then
     raise exception 'FAIL 4: details read % / % / %', r.agency_name, r.state, r.licence_number;
-  end if;
-  select * into r from public.sg_annexure_link_details(stok, v);
-  if r.licence_number is distinct from '20067890' then
-    raise exception 'FAIL 4b: the agent''s own licence was not filled in (%)', r.licence_number;
   end if;
 
   -- 5. Signed out, neither table can be read directly.

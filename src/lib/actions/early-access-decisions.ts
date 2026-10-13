@@ -17,6 +17,7 @@ import { sendTestWelcome } from "@/lib/early-access/welcome";
 import { createClient } from "@/lib/supabase/server";
 import { annexureDate } from "@/lib/legal/sg-annexure";
 import { appBaseUrl } from "@/lib/site-url";
+import { annexureDownloadUrl } from "@/lib/sg-annexure/new-office";
 
 // Working the early-access list: send an invitation, resend one, or decline.
 //
@@ -321,15 +322,23 @@ export async function sendTestWelcomeEmail(_prev: DecisionState, formData: FormD
     url: `${appBaseUrl()}/annexure/preview`,
   };
   // "Signed up by someone else": the box says who it went to, and the
-  // licensee's own signing email follows to the same test address.
-  const someoneElse = formData.get("signer") === "someone_else";
+  // licensee's own signing email follows to the same test address. "Agent on
+  // their own plan": the download box, and nothing for a licensee
+  // (CORRECTION, Adam, 14 Oct 2026).
+  const signer = String(formData.get("signer") ?? "");
+  const someoneElse = signer === "someone_else";
+  const agentPlan = signer === "agent_plan";
   const licenseeName = office?.licensee_name?.trim() || "your licensee in charge";
 
   const firstName = (profile.full_name ?? "").trim().split(/\s+/)[0] || null;
   return sendTestWelcome({
     to: String(formData.get("email") ?? ""),
     firstName,
-    annexure: someoneElse ? { kind: "sent", licenseeName } : box,
+    annexure: agentPlan
+      ? { kind: "download", url: annexureDownloadUrl() }
+      : someoneElse
+        ? { kind: "sent", licenseeName }
+        : box,
     licenseeRequest: someoneElse ? { licenseeName, box } : null,
   });
 }

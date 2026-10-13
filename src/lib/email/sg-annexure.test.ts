@@ -98,6 +98,30 @@ describe("the welcome email's annexure box", () => {
   });
 });
 
+describe("the box for an agent on their own plan (CORRECTION, 14 Oct 2026)", () => {
+  const download: AnnexureBox = { kind: "download", url: `${base}/annexure/download` };
+
+  it("is the download link and the one line, word for word, under the video", () => {
+    const { html, text } = buildWelcomeEmail({ firstName: "Sam", base, annexure: download });
+    assert.ok(html.includes(`href="${base}/annexure/download"`));
+    assert.ok(html.includes("Download the annexure for your licensee"));
+    const line = "Please give this to your licensee in charge. It explains how RealComply fits within your agency's supervision system.";
+    assert.ok(html.includes(line.replace("'", "&#39;")) || html.includes(line));
+    assert.ok(text.includes(`Download the annexure for your licensee (PDF): ${base}/annexure/download`));
+    assert.ok(text.includes(line));
+    assert.equal(sha(videoBlock(html)), BEFORE.video, "the video untouched");
+    assert.ok(html.indexOf("email-video.png") < html.indexOf("Download the annexure for your licensee"));
+  });
+
+  it("asks nothing of a licensee: no heading about adopting, no button, nothing about sending", () => {
+    const { html, text } = buildWelcomeEmail({ firstName: "Sam", base, annexure: download });
+    for (const words of ["One last step", "Review and sign", "We've sent the annexure", "We&#39;ve sent the annexure"]) {
+      assert.ok(!html.includes(words) && !text.includes(words), words);
+    }
+    assert.ok(!/[—–]/.test(text));
+  });
+});
+
 describe("the short email asking the licensee to sign", () => {
   it("greets the licensee, names the office, and carries the same box", () => {
     const { subject, html, text } = buildAnnexureRequestEmail({

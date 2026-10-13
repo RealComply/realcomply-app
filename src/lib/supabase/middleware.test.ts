@@ -50,6 +50,8 @@ const SIGNED_OUT_OK = [
   // Adopting the SG annexure from an email (0067), and its PDF.
   "/annexure/x",
   "/annexure/x/pdf",
+  // The annexure an agent on their own plan gives their licensee (14 Oct 2026).
+  "/annexure/download",
   "/unsubscribe",
   "/api/cron/backup-storage",
   "/api/cron/licence-reminders",

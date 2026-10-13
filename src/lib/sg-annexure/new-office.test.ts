@@ -6,7 +6,8 @@ import { onNewOfficeTrialStarted } from "./new-office";
 // What a new office gets when its trial starts (brief, 14 Oct 2026; Adam,
 // 14 Oct 2026): the welcome with the annexure box for an early access office
 // whose licensee signed up, and the short signing email to the licensee in
-// every other case. Once, however many times Stripe calls.
+// every other case. Once, however many times Stripe calls. Never anything to
+// the licensee of an agent on their own plan (CORRECTION, 14 Oct 2026).
 
 type Row = Record<string, unknown>;
 
@@ -163,12 +164,41 @@ describe("a new office's annexure request", () => {
     assert.ok(r.sent[0].subject.startsWith("Adopt the RealComply annexure"));
   });
 
-  it("an agent on their own plan counts as the licensee", async () => {
-    const db = office({ founderIsLicensee: false, earlyAccess: true, plan: "agent_1", licenseeEmail: null });
-    const r = recorder();
-    const out = await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: ON, now: NOW });
-    assert.deepEqual(out, { welcome: "sent", annexure: "in_welcome" });
-    assert.equal(links(db)[0].sent_to, "getadamc3+founder@gmail.com");
+  describe("an agent on their own plan (CORRECTION, 14 Oct 2026: never their licensee)", () => {
+    it("early access: the welcome has the download link and one line, no signing, and nothing goes to the licensee", async () => {
+      // The licensee they named at sign-up is on file, and still gets nothing.
+      const db = office({ founderIsLicensee: false, earlyAccess: true, plan: "agent_1" });
+      const r = recorder();
+      const out = await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: ON, now: NOW });
+      assert.deepEqual(out, { welcome: "sent", annexure: "agent_plan" });
+      assert.equal(r.sent.length, 1, "the welcome only");
+      const [welcome] = r.sent;
+      assert.equal(welcome.to, "getadamc3+founder@gmail.com");
+      assert.ok(welcome.html?.includes("Download the annexure for your licensee"));
+      assert.ok(welcome.html?.includes("https://www.realcomply.com.au/annexure/download"));
+      assert.ok(welcome.text.includes("Please give this to your licensee in charge. It explains how RealComply fits within your agency's supervision system."));
+      assert.ok(!welcome.html?.includes("Review and sign"));
+      assert.ok(!welcome.text.includes("We've sent the annexure"));
+      assert.equal(links(db).length, 0, "no signing link is made");
+      assert.ok(!r.sent.some((m) => m.to === "getadamc3+licensee@gmail.com"));
+    });
+
+    it("not through early access: nothing at all, to anyone", async () => {
+      const db = office({ founderIsLicensee: false, earlyAccess: false, plan: "agent_1" });
+      const r = recorder();
+      const out = await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: ON, now: NOW });
+      assert.deepEqual(out, { welcome: "not_early_access", annexure: "agent_plan" });
+      assert.equal(r.sent.length, 0);
+      assert.equal(links(db).length, 0);
+    });
+
+    it("not counted as the licensee even when marked licensee in charge on their own account", async () => {
+      const db = office({ founderIsLicensee: true, earlyAccess: false, plan: "agent_1" });
+      const r = recorder();
+      const out = await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: ON, now: NOW });
+      assert.equal(out.annexure, "agent_plan");
+      assert.equal(r.sent.length, 0);
+    });
   });
 
   it("goes once, however many times Stripe calls", async () => {

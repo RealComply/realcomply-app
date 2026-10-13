@@ -34,9 +34,10 @@ export function WelcomeTest() {
           defaultValue="getadamc3+test1@gmail.com"
           className={input}
         />
-        {/* The two versions of the annexure box (brief, 14 Oct 2026). "Someone
+        {/* The versions of the annexure box (brief, 14 Oct 2026). "Someone
             else" also sends the licensee's own signing email to the same test
-            address, so both can be seen as received. */}
+            address, so both can be seen as received. "Agent on their own
+            plan" shows the download link and sends nothing else (14 Oct). */}
         <label className="sr-only" htmlFor="welcome-test-signer">
           Who signed up
         </label>
@@ -48,6 +49,7 @@ export function WelcomeTest() {
         >
           <option value="licensee">Signed up by the licensee</option>
           <option value="someone_else">Signed up by someone else</option>
+          <option value="agent_plan">Agent on their own plan</option>
         </select>
         <button
           type="submit"

@@ -11,12 +11,24 @@ import { appBaseUrl } from "@/lib/site-url";
 // access. Early access offices get the box in the welcome email; any other
 // new office gets the short signing email on its own").
 //
-//   - Early access, and the person who signed up is the licensee in charge
-//     (or an agent on their own plan): the welcome carries the box with the
-//     "Review and sign" button. Nothing else is sent.
+// ⚠️ CORRECTION, 14 Oct 2026 (Adam), restoring the 22 Sep 2026 rule:
+// individual agent plans. RealComply never emails or contacts the agent's
+// licensee at sign-up. Was (earlier on 14 Oct): an agent on their own plan
+// counted as the licensee, got the "Review and sign" button, and the signing
+// email could go to the licensee recorded at sign-up. Now: on an agent plan no
+// signing link is made and nothing goes to the licensee. If the early access
+// welcome goes, its box is a "Download the annexure for your licensee" link to
+// the PDF with one line, for the agent to hand over themselves. (The agent's
+// own acknowledgement at sign-up is a separate job.) The database refuses an
+// annexure link for an agent plan whoever asks (0068).
+//
+// OFFICE PLANS, as built. The licensee in charge is the subscriber:
+//   - Early access, and the person who signed up is the licensee in charge:
+//     the welcome carries the box with the "Review and sign" button. Nothing
+//     else is sent.
 //   - Early access, signed up by someone else: the welcome's box says "We've
 //     sent the annexure to [licensee] to sign", and the short signing email
-//     goes to the licensee's recorded email.
+//     goes to the office's licensee.
 //   - Any other new office, or a welcome that did not go: the short signing
 //     email goes to the licensee on its own.
 //
@@ -36,6 +48,7 @@ type Client = {
 export type AnnexureRequestOutcome =
   | "in_welcome" // the welcome's button is the link
   | "emailed" // the short signing email went to the licensee
+  | "agent_plan" // nothing to the licensee; the welcome, if it went, has the download
   | "already_requested"
   | "already_adopted"
   | "no_licensee_email"
@@ -44,7 +57,7 @@ export type AnnexureRequestOutcome =
 export type NewOfficePlan = {
   agencyName: string;
   licenceNumber: string | null;
-  /** The person who signed up is the licensee in charge, or an agent on their own plan. */
+  /** The person who signed up is the office's licensee in charge. */
   signerIsLicensee: boolean;
   licensee: { name: string | null; email: string };
 };
@@ -66,13 +79,14 @@ const clean = (s: string | null | undefined): string | null => {
 };
 
 /**
- * Who the annexure goes to, and who signed up. Null when there is nothing to
- * ask: the office has adopted already, or has no licensee email on file.
+ * Who the annexure goes to, and who signed up, on an office plan. Null when
+ * there is nothing to ask: an agent plan (never their licensee), an office
+ * that has adopted already, or one with no licensee email on file.
  */
 export async function annexurePlanFor(
   supabase: Client,
   agencyId: string,
-): Promise<{ plan: NewOfficePlan | null; reason?: "already_adopted" | "no_licensee_email" }> {
+): Promise<{ plan: NewOfficePlan | null; reason?: "agent_plan" | "already_adopted" | "no_licensee_email" }> {
   const [{ data: agency }, { data: people }, { data: adopted }, { data: invites }] = await Promise.all([
     supabase
       .from("agencies")
@@ -86,8 +100,6 @@ export async function annexurePlanFor(
     supabase.from("sg_annexure_adoptions").select("id").eq("agency_id", agencyId),
     supabase.from("founder_invites").select("accepted_by").eq("agency_id", agencyId).not("accepted_at", "is", null),
   ]);
-  if (((adopted ?? []) as unknown[]).length > 0) return { plan: null, reason: "already_adopted" };
-
   const a = (agency ?? {}) as {
     name?: string;
     plan?: string | null;
@@ -95,17 +107,20 @@ export async function annexurePlanFor(
     licensee_email?: string | null;
     corporation_licence_number?: string | null;
   };
+  // Never the licensee of an agent on their own plan (CORRECTION, 14 Oct 2026).
+  if (isAgentPlan(a.plan)) return { plan: null, reason: "agent_plan" };
+  if (((adopted ?? []) as unknown[]).length > 0) return { plan: null, reason: "already_adopted" };
+
   const present = ((people ?? []) as ProfileRow[])
     .filter((p) => !p.archived_at)
     .sort((x, y) => x.created_at.localeCompare(y.created_at));
-  const agentPlan = (a.plan ?? "").startsWith("agent_");
 
   // The person who signed up: the one the invitation was accepted by, or the
   // account holder (the first person in the office, as 0059 counts it).
   const acceptedBy = ((invites ?? []) as Array<{ accepted_by: string | null }>).find((i) => i.accepted_by)?.accepted_by;
   const signer = present.find((p) => p.id === acceptedBy) ?? present[0] ?? null;
-  const actsAsLicensee = (p: ProfileRow) => p.is_licensee_in_charge || (agentPlan && !p.is_assistant);
-  const signerIsLicensee = Boolean(signer && actsAsLicensee(signer));
+  const isLicensee = (p: ProfileRow) => p.is_licensee_in_charge;
+  const signerIsLicensee = Boolean(signer && isLicensee(signer));
 
   // The licensee: the person who signed up, if it's them; otherwise a
   // licensee in charge in the office; otherwise the one recorded at sign-up.
@@ -116,7 +131,7 @@ export async function annexurePlanFor(
   const licensee = { name: clean(member?.full_name) ?? clean(a.licensee_name), email: email.toLowerCase() };
   const licenceNumber =
     clean(a.corporation_licence_number) ??
-    clean(present.find((p) => actsAsLicensee(p) && clean(p.licence_number))?.licence_number);
+    clean(present.find((p) => isLicensee(p) && clean(p.licence_number))?.licence_number);
 
   return {
     plan: {
@@ -130,6 +145,15 @@ export async function annexurePlanFor(
 
 export function annexureSignUrl(token: string, base = appBaseUrl()): string {
   return `${base}/annexure/${token}`;
+}
+
+/** The annexure PDF an agent on their own plan gives their licensee (app/annexure/download). */
+export function annexureDownloadUrl(base = appBaseUrl()): string {
+  return `${base}/annexure/download`;
+}
+
+export function isAgentPlan(plan: string | null | undefined): boolean {
+  return typeof plan === "string" && plan.startsWith("agent_");
 }
 
 export async function onNewOfficeTrialStarted(
@@ -186,11 +210,13 @@ export async function onNewOfficeTrialStarted(
   const base = appBaseUrl(env);
   const date = annexureDate(now);
   const box: AnnexureBox | null =
-    plan && link
-      ? plan.signerIsLicensee
-        ? { kind: "sign", agencyName: plan.agencyName, licenceNumber: plan.licenceNumber, date, url: annexureSignUrl(link.token, base) }
-        : { kind: "sent", licenseeName: plan.licensee.name ?? "your licensee in charge" }
-      : null;
+    annexure === "agent_plan"
+      ? { kind: "download", url: annexureDownloadUrl(base) }
+      : plan && link
+        ? plan.signerIsLicensee
+          ? { kind: "sign", agencyName: plan.agencyName, licenceNumber: plan.licenceNumber, date, url: annexureSignUrl(link.token, base) }
+          : { kind: "sent", licenseeName: plan.licensee.name ?? "your licensee in charge" }
+        : null;
 
   const welcome = await sendEarlyAccessWelcome(supabase, agencyId, { send, env, annexure: box });
 
