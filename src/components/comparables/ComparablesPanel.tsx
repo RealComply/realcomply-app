@@ -1,9 +1,9 @@
 "use client";
 
 import { useViewerAccess } from "@/components/ViewerAccess";
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useContext, useState, useTransition } from "react";
 import { Plus, X, Check } from "lucide-react";
-import { DictateButton, appendDictated } from "@/components/Dictate";
+import { DictateButton, DictationSuspended, appendDictated } from "@/components/Dictate";
 import {
   addComparable,
   confirmSubjectAttributes,
@@ -13,9 +13,12 @@ import {
   type ComparableActionState,
 } from "@/lib/actions/comparables";
 import {
+  comparableFolded,
   differencesFrom,
+  foldsWhenMarked,
   hasSubjectDetail,
   similaritiesFrom,
+  weighingProgress,
   type Comparable,
   type SubjectAttributes,
   type Weighting,
@@ -92,7 +95,7 @@ export function ComparablesPanel({
 
   return (
     <div className="mt-3 space-y-3">
-      <SubjectRow propertyId={propertyId} subject={subject} />
+      <SubjectDetailsMissing propertyId={propertyId} subject={subject} />
 
       {comparables.length === 0 ? (
         <p className="text-[11px] leading-relaxed text-rc-muted">
@@ -101,6 +104,7 @@ export function ComparablesPanel({
         </p>
       ) : (
         <div className="space-y-2">
+          <WeighingCounter comparables={comparables} />
           {comparables.map((c) => (
             <ComparableRow key={c.id} propertyId={propertyId} subject={subject} comparable={c} />
           ))}
@@ -125,51 +129,40 @@ export function ComparablesPanel({
 
 // ── The subject property ──────────────────────────────────────────────────
 //
-// READ-ONLY SINCE 7 Sep 2026. This used to be a form asking for beds, baths,
-// car, land, internal area and condition. Those are now captured with the
-// address at listing set-up (Adam: "that needs to be moved into the initial
-// listing setup page"), so asking again here would be exactly the double entry
-// this product exists to remove.
+// THE SUBJECT BOX IS REMOVED (Adam, 13 Oct 2026). Was: a small box at the top
+// of this card, under the "In your own words" note, repeating this listing's
+// address, beds, baths and cars. Now: removed, because the address is pinned
+// at the top of the page, and the figures are in Edit listing details beside
+// it. The box only said again what the agent could already see.
 //
-// What stays is the one thing that cannot happen at set-up: the comparables
-// report often states the subject's own figures, and where the agent left a
-// box empty the report can fill it — offered as a suggestion they accept, not
-// applied. A figure a model read off a PDF and a figure the agent stands
-// behind are still different things, and attributes_confirmed_at is what tells
-// them apart.
+// What stays is the part that was never a repeat. The figures have been
+// captured at listing set-up since 7 Sep 2026 and are never asked for here,
+// but they are optional there. Where a listing has none, the sales below have
+// nothing to be compared against, so this still says so, and still offers
+// the figures the comparables report gave. Those are offered, not applied: a
+// figure a model read off a PDF and a figure the agent stands behind are
+// different things, and attributes_confirmed_at is what tells them apart.
 
-function SubjectRow({ propertyId, subject }: { propertyId: string; subject: SubjectAttributes }) {
+function SubjectDetailsMissing({ propertyId, subject }: { propertyId: string; subject: SubjectAttributes }) {
   const boundAction = confirmSubjectAttributes.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initial);
 
+  if (hasSubjectDetail(subject)) return null;
+
   const suggested = subject.suggestions;
-  const missing = !hasSubjectDetail(subject);
-  const canSuggest = missing && Boolean(suggested);
+  const canSuggest = Boolean(suggested);
 
   return (
-    <div className="rounded-md border border-rc-border bg-white px-2.5 py-2">
-      {/* The address, not "This property" (Adam, 8 Sep 2026).
-          Every sale below is named by its address, so a row headed "This
-          property" was the one line on the panel the agent had to translate.
-          It also matters on a strata listing, where the subject and the sales
-          share a street and the unit number is the whole distinction —
-          18/4-10 Pound Road above 3/4-10 Pound Road says something a generic
-          label cannot. Falls back to the old wording only if a listing somehow
-          has no address. */}
-      <p className="text-[11px] font-semibold text-rc-ink">{subject.address?.trim() || "This property"}</p>
-      <p className="mt-0.5 text-[11px] text-rc-muted">
-        {hasSubjectDetail(subject) ? subjectSpec(subject) : "No details recorded yet."}
-      </p>
-
-      {missing && !canSuggest && (
-        <p className="mt-1 text-[11px] leading-relaxed text-rc-faint">
+    <div>
+      {!canSuggest && (
+        <p className="text-[11px] leading-relaxed text-rc-muted">
           Add the beds, baths, car spaces and land size in <strong>Edit listing details</strong> at the top of
           this page, and each sale below will be compared against them.
         </p>
       )}
 
       {canSuggest && (
-        <form action={formAction} className="mt-1.5">
+        <form action={formAction}>
           {/* Hidden, because the agent is accepting figures they can see in
               the sentence above rather than filling in a form. Every value is
               carried through so accepting cannot silently blank one. */}
@@ -198,18 +191,6 @@ function SubjectRow({ propertyId, subject }: { propertyId: string; subject: Subj
       )}
     </div>
   );
-}
-
-function subjectSpec(s: SubjectAttributes): string {
-  const bits: string[] = [];
-  if (s.bedrooms !== null) bits.push(`${s.bedrooms} bed`);
-  if (s.bathrooms !== null) bits.push(`${s.bathrooms} bath`);
-  if (s.carSpaces !== null) bits.push(`${s.carSpaces} car`);
-  if (s.landSizeSqm !== null) bits.push(`${Math.round(s.landSizeSqm)}m² land`);
-  // Shown where a file already carries it, never asked for. See PropertyFigures.
-  if (s.internalAreaSqm !== null) bits.push(`${Math.round(s.internalAreaSqm)}m² internal`);
-  const spec = bits.join(" · ");
-  return s.conditionNote ? `${spec}${spec ? " · " : ""}${s.conditionNote}` : spec || "No details recorded yet.";
 }
 
 function suggestedSpec(s: SubjectAttributes["suggestions"]): string {
@@ -244,7 +225,52 @@ function Field({
   );
 }
 
+// ── How many sales are done ───────────────────────────────────────────────
+//
+// "N of N done" above the list (Adam, 13 Oct 2026, approved mockup), so the
+// agent sees the open cards shrink as each sale folds away.
+
+function WeighingCounter({ comparables }: { comparables: Comparable[] }) {
+  const { done, total } = weighingProgress(comparables);
+  return (
+    <div className="flex items-center gap-2.5 text-[11px] font-semibold tabular-nums text-rc-muted">
+      <span aria-live="polite">
+        {done} of {total} done
+      </span>
+      <div aria-hidden="true" className="h-1.5 flex-1 overflow-hidden rounded-full border border-rc-border bg-rc-bg-alt">
+        <div
+          className="h-full rounded-full bg-rc-green-deep transition-[width] duration-300"
+          style={{ width: `${total > 0 ? (done / total) * 100 : 0}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── One sale ──────────────────────────────────────────────────────────────
+//
+// FOLDS ONCE MARKED (Adam, 13 Oct 2026; approved mockup). Pressing "Relied on"
+// or "Considered" folds the card to one line, the same way a finished
+// compliance card folds: a green tick, the address, the mark, the sold price
+// and date, and "Change", which opens it again. Folding hides the card and
+// keeps it mounted, so nothing on it is lost, and it waits until the mark is
+// saved: the line only ever shows an answer that is on the record.
+//
+// Brand green only. "Relied on" is solid green and "Considered" is a green
+// outline, as buttons and as the folded label, so the two read apart at a
+// glance without a second colour.
+
+function MarkLabel({ weighting }: { weighting: "relied" | "considered" }) {
+  return weighting === "relied" ? (
+    <span className="shrink-0 rounded-full border border-rc-green-deep bg-rc-green-deep px-2 py-0.5 text-[10px] font-bold text-white">
+      Relied on
+    </span>
+  ) : (
+    <span className="shrink-0 rounded-full border border-rc-green-deep bg-white px-2 py-0.5 text-[10px] font-bold text-rc-green-deep">
+      Considered
+    </span>
+  );
+}
 
 function ComparableRow({
   propertyId,
@@ -265,13 +291,47 @@ function ComparableRow({
   const canCompare = similar.length > 0 || different.length > 0;
   const dimmed = comparable.weighting === "not_comparable";
 
+  // "Change" opens a folded card until it is answered again. Reset whenever
+  // the saved mark changes, during render rather than in an effect (as in
+  // ItemShell), so a card never paints one frame open after its mark lands.
+  const [reopened, setReopened] = useState(false);
+  const [shownFor, setShownFor] = useState(comparable.weighting);
+  if (comparable.weighting !== shownFor) {
+    setShownFor(comparable.weighting);
+    setReopened(false);
+  }
+  const folded = comparableFolded({
+    weighting: comparable.weighting,
+    reopened,
+    noteUnsaved: note !== savedNote,
+    hasError: error !== null,
+  });
+  // Dictation stops when this card folds, or when the whole ESP card does.
+  const cardFolded = useContext(DictationSuspended);
+
   function weigh(value: Weighting) {
     setError(null);
+    // The answer already on the card, pressed again after "Change": keep it
+    // and fold the card back. Taking a mark off is "Clear", below.
+    if (value === comparable.weighting && foldsWhenMarked(value)) {
+      setReopened(false);
+      return;
+    }
     startTransition(async () => {
-      // Pressing the current answer again clears it. A mis-tap has to be
-      // undoable, and "not answered yet" has to stay reachable.
+      // The retired "not comparable" mark still clears when pressed, as every
+      // mark used to.
       const next = comparable.weighting === value ? null : value;
       const result = await setComparableWeighting(propertyId, comparable.id, next);
+      if (result.error) setError(result.error);
+    });
+  }
+
+  // A mis-tap has to be undoable, and "not answered yet" has to stay
+  // reachable: an unweighted row is an honest state.
+  function clearMark() {
+    setError(null);
+    startTransition(async () => {
+      const result = await setComparableWeighting(propertyId, comparable.id, null);
       if (result.error) setError(result.error);
     });
   }
@@ -297,12 +357,38 @@ function ComparableRow({
 
   return (
     <div
-      className={`rounded-md border px-2.5 py-2 transition ${
-        comparable.weighting === "relied"
-          ? "border-rc-green-deep/35 bg-rc-green-soft/40"
-          : "border-rc-border bg-white"
+      className={`rounded-md border transition ${
+        folded
+          ? "border-rc-green-deep/25 bg-rc-green-soft"
+          : comparable.weighting === "relied"
+            ? "border-rc-green-deep/35 bg-rc-green-soft/40 px-2.5 py-2"
+            : "border-rc-border bg-white px-2.5 py-2"
       } ${dimmed ? "opacity-60" : ""}`}
     >
+      {folded && foldsWhenMarked(comparable.weighting) && (
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-2.5 py-2">
+          <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rc-green-deep text-white">
+            <Check size={12} strokeWidth={3} aria-hidden="true" />
+          </span>
+          <span className="min-w-0 truncate text-[13px] font-semibold text-rc-ink">{comparable.address}</span>
+          <MarkLabel weighting={comparable.weighting} />
+          <span className="ml-auto text-[11px] tabular-nums text-rc-muted">
+            {money(comparable.salePrice)}
+            {comparable.saleDate ? ` · ${shortDate(comparable.saleDate)}` : ""}
+          </span>
+          <button
+            type="button"
+            onClick={() => setReopened(true)}
+            aria-label={`Change ${comparable.address}`}
+            className="text-[11px] font-semibold text-rc-muted underline underline-offset-2 transition hover:text-rc-ink"
+          >
+            Change
+          </button>
+        </div>
+      )}
+
+      <div hidden={folded}>
+      <DictationSuspended.Provider value={cardFolded || folded}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-[13px] font-semibold text-rc-ink">{comparable.address}</p>
@@ -395,25 +481,43 @@ function ComparableRow({
         </p>
       )}
 
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {(comparable.weighting === "not_comparable" ? [...WEIGHTINGS, LEGACY_NOT_COMPARABLE] : WEIGHTINGS).map((w) => (
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {(comparable.weighting === "not_comparable" ? [...WEIGHTINGS, LEGACY_NOT_COMPARABLE] : WEIGHTINGS).map((w) => {
+          const chosen = comparable.weighting === w.value;
+          return (
+            <button
+              key={w.value}
+              type="button"
+              onClick={() => weigh(w.value)}
+              disabled={pending}
+              title={w.help}
+              aria-pressed={chosen}
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition disabled:opacity-60 ${
+                w.value === "relied"
+                  ? "border-rc-green-deep bg-rc-green-deep text-white hover:border-rc-green-deep-600 hover:bg-rc-green-deep-600"
+                  : w.value === "considered"
+                    ? "border-rc-green-deep bg-white text-rc-green-deep hover:bg-rc-green-soft"
+                    : chosen
+                      ? "border-rc-green-deep bg-rc-green-deep text-white"
+                      : "border-rc-border bg-white text-rc-muted hover:border-rc-ink/20 hover:text-rc-ink"
+              } ${chosen && foldsWhenMarked(w.value) ? "ring-2 ring-rc-green-deep/30 ring-offset-1" : ""}`}
+            >
+              {chosen && <Check size={10} aria-hidden="true" />}
+              {w.label}
+            </button>
+          );
+        })}
+        {foldsWhenMarked(comparable.weighting) && (
           <button
-            key={w.value}
             type="button"
-            onClick={() => weigh(w.value)}
+            onClick={clearMark}
             disabled={pending}
-            title={w.help}
-            aria-pressed={comparable.weighting === w.value}
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition disabled:opacity-60 ${
-              comparable.weighting === w.value
-                ? "bg-rc-green-deep text-white"
-                : "border border-rc-border bg-white text-rc-muted hover:border-rc-ink/20 hover:text-rc-ink"
-            }`}
+            title="Take the mark off this sale"
+            className="ml-1 text-[11px] font-semibold text-rc-muted underline underline-offset-2 transition hover:text-rc-ink disabled:opacity-60"
           >
-            {comparable.weighting === w.value && <Check size={10} aria-hidden="true" />}
-            {w.label}
+            Clear
           </button>
-        ))}
+        )}
       </div>
 
       {comparable.weighting && (
@@ -451,6 +555,8 @@ function ComparableRow({
           {error}
         </p>
       )}
+      </DictationSuspended.Provider>
+      </div>
     </div>
   );
 }
