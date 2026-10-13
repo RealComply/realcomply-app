@@ -97,11 +97,14 @@ describe("the Supervision Guidelines box under the video", () => {
     assert.ok(!e.text.includes(ANNEXURE_DOWNLOAD_LINK));
   });
 
-  it("not adopted yet: no annexure link and no first sentence, only the Supervision Guidelines link, nothing added", () => {
+  it("not adopted yet: no annexure link and no first sentence, just \"Please read them.\" and the Supervision Guidelines link", () => {
     const e = buildAgentWelcomeEmail({ firstName: null, base: BASE, box: officeBox(false) });
     assert.ok(e.text.includes(OFFICE_SG_HEADING));
     assert.ok(!e.text.includes(OFFICE_SG_ADOPTED));
-    assert.ok(e.text.includes(`${OFFICE_SG_HEADING}\n${OFFICE_SG_READ}\n`));
+    // Adam, 14 Oct 2026: one link, and nothing to confirm until the licensee adopts.
+    assert.ok(e.text.includes(`${OFFICE_SG_HEADING}\nPlease read them.\n`));
+    assert.ok(e.html.includes(">Please read them.</p>"));
+    assert.ok(!e.text.includes(OFFICE_SG_READ) && !e.text.includes("confirm"));
     assert.ok(!e.text.includes("Read the annexure"));
     assert.ok(!e.html.includes("/dashboard/annexure"));
     assert.ok(e.text.includes(`Read your Supervision Guidelines: ${BASE}/dashboard/sg-manual`));

@@ -130,11 +130,14 @@ export const ANNEXURE_DOWNLOAD_LINE =
 // office's Supervision Guidelines and, once the licensee has adopted it, the
 // annexure, both to read in the app. Wording is the brief's, word for word.
 // Before the office has adopted the annexure the first sentence and the
-// annexure link are left out, with nothing added.
+// annexure link are left out, and the box just asks them to read the
+// Guidelines: there is only one link, and nothing to confirm until the
+// licensee adopts (Adam, 14 Oct 2026).
 export const OFFICE_SG_HEADING = "Your office's Supervision Guidelines";
 export const OFFICE_SG_ADOPTED =
   "Your licensee in charge has adopted RealComply's annexure to your agency's Supervision Guidelines.";
 export const OFFICE_SG_READ = "Please read both, then confirm in RealComply that you have.";
+export const OFFICE_SG_READ_NOT_ADOPTED = "Please read them.";
 export const OFFICE_SG_ANNEXURE_LINK = "Read the annexure";
 export const OFFICE_SG_LINK = "Read your Supervision Guidelines";
 
@@ -148,9 +151,9 @@ export type AnnexureBox =
   /** Agent invited by their office: read the annexure (once adopted) and the office's Supervision Guidelines. */
   | { kind: "office_sg"; annexureUrl: string | null; sgUrl: string };
 
-/** The office box's words: the first sentence only once the annexure is adopted. */
+/** The office box's words: the annexure and the confirm only once it is adopted. */
 export function officeSgText(adopted: boolean): string {
-  return adopted ? `${OFFICE_SG_ADOPTED} ${OFFICE_SG_READ}` : OFFICE_SG_READ;
+  return adopted ? `${OFFICE_SG_ADOPTED} ${OFFICE_SG_READ}` : OFFICE_SG_READ_NOT_ADOPTED;
 }
 
 export function annexureSentLine(licenseeName: string): string {
