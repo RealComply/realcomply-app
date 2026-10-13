@@ -8,6 +8,9 @@ import { buildSgAnnexurePdf } from "@/lib/pdf/sg-annexure";
 // The same annexure as the signing page's PDF, with the Agency, Licence number
 // and Effective date lines left blank for the licensee to fill in, and nothing
 // that names the agent or their office: the address is the same for everyone.
+//
+// Downloads straight to the agent's computer or phone rather than opening in
+// the browser (Adam, 14 Oct 2026: "can it just download it").
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +26,7 @@ export async function GET() {
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": 'inline; filename="RealComply annexure to the Supervision Guidelines.pdf"',
+      "Content-Disposition": 'attachment; filename="RealComply annexure to the Supervision Guidelines.pdf"',
       "Cache-Control": "no-store",
       "X-Robots-Tag": "noindex, nofollow",
     },
