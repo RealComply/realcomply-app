@@ -4,6 +4,7 @@ import { accessFrom, type Access } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import type { Profile } from "@/lib/types";
+import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
 
 // Fetches the logged-in user's profile (agency + role), redirecting to
 // /login if there's no session. If a session exists but the agency
@@ -107,6 +108,9 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
         // bootstrap_agency call sites (lib/actions/auth.ts, auth/callback) —
         // this is the third and last place bootstrap can run, for a
         // confirmation redirect that missed /auth/callback entirely.
+        // An agent invited by their office: the agent welcome, once (brief,
+        // 14 Oct 2026). Never throws.
+        if (meta.invite_token) await welcomeOfficeAgent(supabase);
         if (!meta.invite_token) {
           await notifyNewAgencySignup({
             agencyName: meta.agency_name ?? "My agency",

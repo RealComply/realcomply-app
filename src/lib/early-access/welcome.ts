@@ -32,7 +32,14 @@ type Client = {
   from: (table: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 
-export type WelcomeOutcome = "sent" | "switched_off" | "not_early_access" | "already_sent" | "failed";
+export type WelcomeOutcome =
+  | "sent"
+  | "switched_off"
+  | "not_early_access"
+  | "already_sent"
+  /** The agent welcome only (lib/onboarding/agent-welcome.ts): they unsubscribed from the early access list. */
+  | "unsubscribed"
+  | "failed";
 
 export async function sendEarlyAccessWelcome(
   supabase: Client,

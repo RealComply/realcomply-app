@@ -17,7 +17,7 @@ import { sendTestWelcome } from "@/lib/early-access/welcome";
 import { createClient } from "@/lib/supabase/server";
 import { annexureDate } from "@/lib/legal/sg-annexure";
 import { appBaseUrl } from "@/lib/site-url";
-import { annexureDownloadUrl } from "@/lib/sg-annexure/new-office";
+import { sendTestAgentWelcome, type TestAgentWelcomeKind } from "@/lib/onboarding/agent-welcome";
 
 // Working the early-access list: send an invitation, resend one, or decline.
 //
@@ -322,23 +322,34 @@ export async function sendTestWelcomeEmail(_prev: DecisionState, formData: FormD
     url: `${appBaseUrl()}/annexure/preview`,
   };
   // "Signed up by someone else": the box says who it went to, and the
-  // licensee's own signing email follows to the same test address. "Agent on
-  // their own plan": the download box, and nothing for a licensee
-  // (CORRECTION, Adam, 14 Oct 2026).
+  // licensee's own signing email follows to the same test address. The agent
+  // versions send the agent welcome: on their own plan with the download box,
+  // and nothing for a licensee (CORRECTION, Adam, 14 Oct 2026); invited by
+  // their office, with the office's Supervision Guidelines box, with and
+  // without the annexure adopted.
   const signer = String(formData.get("signer") ?? "");
   const someoneElse = signer === "someone_else";
-  const agentPlan = signer === "agent_plan";
   const licenseeName = office?.licensee_name?.trim() || "your licensee in charge";
 
   const firstName = (profile.full_name ?? "").trim().split(/\s+/)[0] || null;
+  const to = String(formData.get("email") ?? "");
+
+  // The agent welcome (brief, 14 Oct 2026). An agent on their own plan now
+  // gets it instead of the licensee welcome, with the same download box.
+  const agentKind: TestAgentWelcomeKind | null =
+    signer === "agent_plan"
+      ? "own_plan"
+      : signer === "agent_office_adopted"
+        ? "office_adopted"
+        : signer === "agent_office_not_adopted"
+          ? "office_not_adopted"
+          : null;
+  if (agentKind) return sendTestAgentWelcome({ to, firstName, kind: agentKind });
+
   return sendTestWelcome({
-    to: String(formData.get("email") ?? ""),
+    to,
     firstName,
-    annexure: agentPlan
-      ? { kind: "download", url: annexureDownloadUrl() }
-      : someoneElse
-        ? { kind: "sent", licenseeName }
-        : box,
+    annexure: someoneElse ? { kind: "sent", licenseeName } : box,
     licenseeRequest: someoneElse ? { licenseeName, box } : null,
   });
 }
