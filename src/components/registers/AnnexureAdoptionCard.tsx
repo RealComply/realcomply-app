@@ -30,11 +30,14 @@ export function AnnexureAdoptionCard({
               href={fileUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-rc-green-deep hover:underline"
+              className="mt-0.5 inline-flex max-w-full items-start gap-1 text-xs text-rc-green-deep hover:underline"
             >
-              <Paperclip size={11} />
-              {document.signed_file_name ?? document.file_name}
-              <span className="text-rc-faint">· signed copy</span>
+              <Paperclip size={11} className="mt-0.5 shrink-0" />
+              {/* One run of text, so a long name wraps as a line at phone width. */}
+              <span>
+                {document.signed_file_name ?? document.file_name}{" "}
+                <span className="text-rc-faint">· signed copy</span>
+              </span>
             </a>
           ) : (
             <p className="text-xs text-rc-muted">{document.file_name}</p>
