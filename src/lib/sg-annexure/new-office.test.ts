@@ -41,9 +41,11 @@ function fakeDb(tables: Record<string, Row[]>) {
         insert: (row: Row) => {
           // 0067's one 'new_office' link per office.
           if (
-            table === "sg_annexure_links" &&
-            row.purpose === "new_office" &&
-            (tables[table] ?? []).some((r) => r.agency_id === row.agency_id && r.purpose === "new_office")
+            (table === "sg_annexure_links" &&
+              row.purpose === "new_office" &&
+              (tables[table] ?? []).some((r) => r.agency_id === row.agency_id && r.purpose === "new_office")) ||
+            // 0069: one agent welcome per person.
+            (table === "agent_welcome_emails" && (tables[table] ?? []).some((r) => r.profile_id === row.profile_id))
           ) {
             insertError = { code: "23505", message: "duplicate key value violates unique constraint" };
           } else {
@@ -71,8 +73,14 @@ const ON = { EARLY_ACCESS_WELCOME_EMAIL: "on", NEXT_PUBLIC_SITE_URL: "https://ww
 const OFF = { NEXT_PUBLIC_SITE_URL: "https://www.realcomply.com.au" };
 const NOW = new Date("2026-10-14T01:00:00Z");
 
-/** An office whose founder (u1) signed up with an early access invitation. */
-function office(opts: { founderIsLicensee: boolean; earlyAccess: boolean; plan?: string; licenseeEmail?: string | null }) {
+/** An office whose founder (u1) signed up with an early access invitation, or one sent personally. */
+function office(opts: {
+  founderIsLicensee: boolean;
+  earlyAccess: boolean;
+  personalInvite?: boolean;
+  plan?: string;
+  licenseeEmail?: string | null;
+}) {
   return fakeDb({
     agencies: [
       {
@@ -99,7 +107,18 @@ function office(opts: { founderIsLicensee: boolean; earlyAccess: boolean; plan?:
     ],
     founder_invites: opts.earlyAccess
       ? [{ token: "tok1", agency_id: "ag1", accepted_at: "2026-10-14T00:00:00Z", accepted_by: "u1" }]
-      : [],
+      : opts.personalInvite
+        ? [
+            {
+              token: "tok2",
+              agency_id: "ag1",
+              accepted_at: "2026-10-14T00:00:00Z",
+              accepted_by: "u1",
+              email: "getadamc3+founder@gmail.com",
+              first_name: "sam",
+            },
+          ]
+        : [],
     early_access: opts.earlyAccess
       ? [{ id: "ea1", first_name: "sam", invited_token: "tok1", welcome_sent_at: null, unsubscribed_at: null }]
       : [],
@@ -165,7 +184,7 @@ describe("a new office's annexure request", () => {
   });
 
   describe("an agent on their own plan (CORRECTION, 14 Oct 2026: never their licensee)", () => {
-    it("early access: the welcome has the download link and one line, no signing, and nothing goes to the licensee", async () => {
+    it("early access: the agent welcome, with the download link and one line, no signing, and nothing goes to the licensee", async () => {
       // The licensee they named at sign-up is on file, and still gets nothing.
       const db = office({ founderIsLicensee: false, earlyAccess: true, plan: "agent_1" });
       const r = recorder();
@@ -174,6 +193,20 @@ describe("a new office's annexure request", () => {
       assert.equal(r.sent.length, 1, "the welcome only");
       const [welcome] = r.sent;
       assert.equal(welcome.to, "getadamc3+founder@gmail.com");
+      assert.equal(welcome.subject, "Welcome to RealComply, Sam");
+      assert.equal(welcome.bcc, "admin@realcomply.com.au");
+      assert.equal(welcome.replyTo, "admin@realcomply.com.au");
+      // The agent welcome (brief, 14 Oct 2026), INSTEAD of the licensee welcome.
+      assert.ok(welcome.text.includes("walks through RealComply from an agent's side"));
+      assert.ok(welcome.html?.includes("https://www.realcomply.com.au/email-agent-video.png"));
+      assert.ok(!welcome.text.includes("Your office is all set up"));
+      assert.ok(!welcome.html?.includes("For licensees"));
+      // Recorded once, and on the early access row for the staff page.
+      assert.deepEqual(
+        (db.tables.agent_welcome_emails ?? []).map((w) => [w.profile_id, w.kind]),
+        [["u1", "own_plan"]],
+      );
+      assert.equal(db.tables.early_access[0].welcome_sent_at, NOW.toISOString());
       assert.ok(welcome.html?.includes("Download the annexure for your licensee"));
       assert.ok(welcome.html?.includes("https://www.realcomply.com.au/annexure/download"));
       assert.ok(welcome.text.includes("Please give this to your licensee in charge. It explains how RealComply fits within your agency's supervision system."));
@@ -183,7 +216,50 @@ describe("a new office's annexure request", () => {
       assert.ok(!r.sent.some((m) => m.to === "getadamc3+licensee@gmail.com"));
     });
 
-    it("not through early access: nothing at all, to anyone", async () => {
+    it("invited personally: the same agent welcome and download, nothing to the licensee", async () => {
+      const db = office({ founderIsLicensee: false, earlyAccess: false, personalInvite: true, plan: "agent_1" });
+      const r = recorder();
+      const out = await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: ON, now: NOW });
+      assert.deepEqual(out, { welcome: "sent", annexure: "agent_plan" });
+      assert.equal(r.sent.length, 1);
+      assert.equal(r.sent[0].to, "getadamc3+founder@gmail.com");
+      assert.ok(r.sent[0].text.includes("from an agent's side"));
+      assert.ok(r.sent[0].text.includes("Download the annexure for your licensee (PDF): https://www.realcomply.com.au/annexure/download"));
+      assert.equal(links(db).length, 0);
+      assert.equal((db.tables.agent_welcome_emails ?? []).length, 1);
+    });
+
+    it("once, however many times Stripe calls", async () => {
+      const db = office({ founderIsLicensee: false, earlyAccess: false, personalInvite: true, plan: "agent_1" });
+      const r = recorder();
+      await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: ON, now: NOW });
+      const again = await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: ON, now: NOW });
+      assert.equal(again.welcome, "already_sent");
+      assert.equal(r.sent.length, 1);
+    });
+
+    it("a welcome that fails to send gives its claim back, so the next call sends it", async () => {
+      const db = office({ founderIsLicensee: false, earlyAccess: true, plan: "agent_1" });
+      const failing = recorder(false);
+      const first = await onNewOfficeTrialStarted(db, "ag1", { send: failing.send, env: ON, now: NOW });
+      assert.equal(first.welcome, "failed");
+      assert.equal((db.tables.agent_welcome_emails ?? []).length, 0);
+      assert.equal(db.tables.early_access[0].welcome_sent_at, null);
+      const r = recorder();
+      const second = await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: ON, now: NOW });
+      assert.equal(second.welcome, "sent");
+      assert.equal(r.sent.length, 1);
+    });
+
+    it("switched off with the licensee welcome: nothing", async () => {
+      const db = office({ founderIsLicensee: false, earlyAccess: true, plan: "agent_1" });
+      const r = recorder();
+      const out = await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: OFF, now: NOW });
+      assert.deepEqual(out, { welcome: "switched_off", annexure: "agent_plan" });
+      assert.equal(r.sent.length, 0);
+    });
+
+    it("signed up without an invitation: nothing at all, to anyone", async () => {
       const db = office({ founderIsLicensee: false, earlyAccess: false, plan: "agent_1" });
       const r = recorder();
       const out = await onNewOfficeTrialStarted(db, "ag1", { send: r.send, env: ON, now: NOW });

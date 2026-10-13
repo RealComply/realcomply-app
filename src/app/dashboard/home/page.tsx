@@ -22,6 +22,7 @@ import { AnnexureCard } from "@/components/home/AnnexureCard";
 import { SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { STAGE_LABELS, type Agency, type Complaint, type CpdRecord, type Gift, type Profile, type Property, type PropertyItem, type SgManualVersion, type TrainingSession } from "@/lib/types";
 import { countableCpdHours } from "@/lib/cpd-hours";
+import { isOfficeAgent, myConfirmedVersions, officeAdoption, sgReadDue } from "@/lib/sg-annexure/office-read";
 
 // Home — the single consolidated landing dashboard a licensee sees after
 // login, replacing "check five different pages" with one page of widgets
@@ -50,7 +51,19 @@ export default async function HomeDashboardPage({
   // REVERSAL (Adam, 7 Oct 2026): an agent's and an assistant's Home is their
   // own work. Everything below this line is the licensee's office view.
   if (!access.actsAsLicensee) {
-    return <AgentHome supabase={supabase} profile={profile} />;
+    // An agent in an office reads and ticks the annexure and the Supervision
+    // Guidelines once the office has adopted it (brief, 14 Oct 2026). Only on
+    // a clean read: if their confirmations can't be read, no card.
+    let sgReadShows = false;
+    if (isOfficeAgent(access)) {
+      const [adoption, confirmedVersions] = await Promise.all([
+        officeAdoption(supabase),
+        myConfirmedVersions(supabase, profile.id),
+      ]);
+      sgReadShows =
+        confirmedVersions !== null && sgReadDue({ officeAgent: true, adoption, confirmedVersions });
+    }
+    return <AgentHome supabase={supabase} profile={profile} sgReadShows={sgReadShows} />;
   }
 
   const cpdYear = currentCpdYear();

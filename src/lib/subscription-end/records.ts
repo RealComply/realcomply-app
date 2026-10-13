@@ -174,6 +174,9 @@ const TABLES: Array<{ table: string; file: string; order?: string }> = [
   // documents" with every other sign-off. The links' tokens are keys, not
   // records, and are left out like the others.
   { table: "sg_annexure_adoptions", file: "SG annexure adoptions", order: "signed_at" },
+  // Agents confirming they read the adopted annexure and the Supervision
+  // Guidelines (0069). confirmed_by gets its name column with the others.
+  { table: "sg_read_confirmations", file: "SG annexure and Supervision Guidelines read", order: "confirmed_at" },
   { table: "licence_history", file: "Licence history", order: "changed_at" },
   { table: "assistant_agents", file: "Assistants and their agents", order: "created_at" },
   { table: "pm_properties", file: "Property management - properties", order: "created_at" },

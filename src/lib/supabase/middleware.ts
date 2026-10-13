@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { HOME } from "@/lib/auth/next-page";
 
 const LEGAL_PATHS = new Set(["/terms", "/privacy", "/dpa"]);
 
@@ -84,6 +85,12 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublicPath(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    // A dashboard page goes through the sign-in and back to itself (an
+    // email's link to a page in the app, 14 Oct 2026; lib/auth/next-page.ts).
+    if (request.nextUrl.pathname.startsWith("/dashboard/") && request.nextUrl.pathname !== HOME) {
+      url.search = "";
+      url.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+    }
     return NextResponse.redirect(url);
   }
 
