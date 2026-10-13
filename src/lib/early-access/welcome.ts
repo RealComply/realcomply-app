@@ -1,5 +1,6 @@
 import { sendEmail, type SendEmailInput } from "@/lib/email/send";
 import { ADMIN_COPY_ADDRESS, SENDER_NAME, buildWelcomeEmail, type AnnexureBox } from "@/lib/email/early-access-invite";
+import { buildAnnexureRequestEmail } from "@/lib/email/sg-annexure";
 import { appBaseUrl } from "@/lib/site-url";
 import { isTestAddress, welcomeSwitchedOn } from "./rules";
 
@@ -143,6 +144,11 @@ export async function sendTestWelcome(
     firstName: string | null;
     /** The annexure box as the staff member's own office would get it, its button to the signing page's preview. */
     annexure?: AnnexureBox | null;
+    /**
+     * When the box says the annexure went to the licensee: the licensee's own
+     * signing email, sent to the same test address after the welcome.
+     */
+    licenseeRequest?: { licenseeName: string; box: Extract<AnnexureBox, { kind: "sign" }> } | null;
   },
   deps: {
     send?: (input: SendEmailInput) => Promise<boolean>;
@@ -164,5 +170,21 @@ export async function sendTestWelcome(
   });
   const sent = await send({ to, replyTo: ADMIN_COPY_ADDRESS, fromName: SENDER_NAME, subject: `[Test] ${subject}`, text, html });
   if (!sent) return { error: "The test email couldn't be sent. Try again in a minute." };
-  return { error: null, notice: `Test welcome sent to ${to}.` };
+  if (!input.licenseeRequest) return { error: null, notice: `Test welcome sent to ${to}.` };
+
+  const request = buildAnnexureRequestEmail({
+    licenseeName: input.licenseeRequest.licenseeName,
+    box: input.licenseeRequest.box,
+    base: appBaseUrl({ NEXT_PUBLIC_SITE_URL: env.NEXT_PUBLIC_SITE_URL }),
+  });
+  const requestSent = await send({
+    to,
+    replyTo: ADMIN_COPY_ADDRESS,
+    fromName: SENDER_NAME,
+    subject: `[Test] ${request.subject}`,
+    text: request.text,
+    html: request.html,
+  });
+  if (!requestSent) return { error: "The test welcome went, but the licensee's email couldn't be sent. Try again in a minute." };
+  return { error: null, notice: `Test welcome and the licensee's signing email sent to ${to}.` };
 }

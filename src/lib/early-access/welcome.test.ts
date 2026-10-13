@@ -135,4 +135,43 @@ describe("a test copy of the welcome, from the staff page", () => {
     const out = await sendTestWelcome({ to: "getadamc3+test1@gmail.com", firstName: null }, { send: recorder(false).send, env: {} });
     assert.match(out.error ?? "", /couldn't be sent/);
   });
+
+  // The annexure box (brief, 14 Oct 2026), both versions.
+  const box = {
+    kind: "sign" as const,
+    agencyName: "Comply Real Estate",
+    licenceNumber: null,
+    date: "14 October 2026",
+    url: "https://www.realcomply.com.au/annexure/preview",
+  };
+
+  it("shows the annexure box, its button to the preview that cannot sign", async () => {
+    const r = recorder();
+    await sendTestWelcome({ to: "getadamc3+test1@gmail.com", firstName: "Adam", annexure: box }, { send: r.send, env: {} });
+    assert.equal(r.sent.length, 1);
+    assert.ok(r.sent[0].html?.includes("One last step: adopt the annexure to your Supervision Guidelines"));
+    assert.ok(r.sent[0].html?.includes('href="https://www.realcomply.com.au/annexure/preview"'));
+  });
+
+  it("signed up by someone else: the welcome says who it went to, then the licensee's email follows, both marked [Test]", async () => {
+    const r = recorder();
+    const out = await sendTestWelcome(
+      {
+        to: "getadamc3+test1@gmail.com",
+        firstName: "Adam",
+        annexure: { kind: "sent", licenseeName: "Lee Licensee" },
+        licenseeRequest: { licenseeName: "Lee Licensee", box },
+      },
+      { send: r.send, env: {} },
+    );
+    assert.equal(out.error, null);
+    assert.equal(r.sent.length, 2);
+    assert.ok(r.sent[0].text.includes("We've sent the annexure to Lee Licensee to sign."));
+    assert.equal(r.sent[1].subject, "[Test] Adopt the RealComply annexure for Comply Real Estate");
+    assert.ok(r.sent[1].text.startsWith("Hi Lee,"));
+    for (const e of r.sent) {
+      assert.equal(e.to, "getadamc3+test1@gmail.com");
+      assert.equal(e.bcc, undefined);
+    }
+  });
 });

@@ -304,21 +304,32 @@ export async function sendTestWelcomeEmail(_prev: DecisionState, formData: FormD
   const supabase = await createClient();
   const { data: agency } = await supabase
     .from("agencies")
-    .select("name, corporation_licence_number")
+    .select("name, corporation_licence_number, licensee_name")
     .eq("id", profile.agency_id)
     .maybeSingle();
-  const office = agency as { name?: string | null; corporation_licence_number?: string | null } | null;
+  const office = agency as {
+    name?: string | null;
+    corporation_licence_number?: string | null;
+    licensee_name?: string | null;
+  } | null;
+
+  const box = {
+    kind: "sign" as const,
+    agencyName: office?.name?.trim() || "Your agency",
+    licenceNumber: office?.corporation_licence_number?.trim() || null,
+    date: annexureDate(),
+    url: `${appBaseUrl()}/annexure/preview`,
+  };
+  // "Signed up by someone else": the box says who it went to, and the
+  // licensee's own signing email follows to the same test address.
+  const someoneElse = formData.get("signer") === "someone_else";
+  const licenseeName = office?.licensee_name?.trim() || "your licensee in charge";
 
   const firstName = (profile.full_name ?? "").trim().split(/\s+/)[0] || null;
   return sendTestWelcome({
     to: String(formData.get("email") ?? ""),
     firstName,
-    annexure: {
-      kind: "sign",
-      agencyName: office?.name?.trim() || "Your agency",
-      licenceNumber: office?.corporation_licence_number?.trim() || null,
-      date: annexureDate(),
-      url: `${appBaseUrl()}/annexure/preview`,
-    },
+    annexure: someoneElse ? { kind: "sent", licenseeName } : box,
+    licenseeRequest: someoneElse ? { licenseeName, box } : null,
   });
 }
