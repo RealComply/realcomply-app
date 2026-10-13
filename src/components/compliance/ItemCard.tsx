@@ -86,6 +86,7 @@ import {
   type ReasoningAdoptionRecord,
 } from "@/lib/rules/esp-reasoning-adoption";
 import { Disclaimer, ReasoningAssist } from "@/components/comparables/ReasoningAssist";
+import { keepsFieldsOnRefusal, sendKeepingFields } from "@/components/compliance/send-keeping-fields";
 import { espReasoningMissing } from "@/lib/rules/esp-reasoning-gate";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
@@ -751,14 +752,11 @@ function ChecklistItem({
   // a4c is sent from onSubmit, not <form action>: React resets a form once its
   // action has run, refused or not (see useSaveThenClose), and on this card
   // that wiped the agent's reasoning, or RealComply's draft, from the box
-  // whenever the server refused the save (preview test, 13 Oct 2026). The
-  // button pressed comes with it, since it carries the status.
-  const keepOnRefusal = item.key === "a4c";
-  const submitKeepingFields = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget, (event.nativeEvent as SubmitEvent).submitter);
-    startTransition(() => formAction(formData));
-  };
+  // whenever the server refused the save, leaving the card stuck until
+  // Discard (live, 14 Oct 2026). See send-keeping-fields.ts.
+  const keepOnRefusal = keepsFieldsOnRefusal(item.key);
+  const submitKeepingFields = (event: FormEvent<HTMLFormElement>) =>
+    sendKeepingFields(event, formAction, startTransition);
 
   const data = (current?.data ?? {}) as {
     note?: string;
