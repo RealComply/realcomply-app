@@ -148,9 +148,25 @@ export function annexureSignUrl(token: string, base = appBaseUrl()): string {
   return `${base}/annexure/${token}`;
 }
 
-/** The annexure PDF an agent on their own plan gives their licensee (app/annexure/download). */
-export function annexureDownloadUrl(base = appBaseUrl()): string {
-  return `${base}/annexure/download`;
+/**
+ * The annexure PDF an agent on their own plan gives their licensee. With the
+ * office's download token (0070) the Agency line carries the office's names
+ * (app/annexure/download/[token]); without one, the blank version everyone
+ * shares (app/annexure/download).
+ */
+export function annexureDownloadUrl(base = appBaseUrl(), token: string | null = null): string {
+  return token ? `${base}/annexure/download/${encodeURIComponent(token)}` : `${base}/annexure/download`;
+}
+
+/** The office's download token, or null (before 0070 has run, or on any error). */
+async function downloadTokenFor(supabase: Client, agencyId: string): Promise<string | null> {
+  try {
+    const { data } = await supabase.from("agencies").select("annexure_download_token").eq("id", agencyId).maybeSingle();
+    const token = (data as { annexure_download_token?: string | null } | null)?.annexure_download_token;
+    return typeof token === "string" && token ? token : null;
+  } catch {
+    return null;
+  }
 }
 
 export function isAgentPlan(plan: string | null | undefined): boolean {
@@ -210,9 +226,10 @@ export async function onNewOfficeTrialStarted(
 
   const base = appBaseUrl(env);
   const date = annexureDate(now);
+  const downloadUrl = annexure === "agent_plan" ? annexureDownloadUrl(base, await downloadTokenFor(supabase, agencyId)) : null;
   const box: AnnexureBox | null =
     annexure === "agent_plan"
-      ? { kind: "download", url: annexureDownloadUrl(base) }
+      ? { kind: "download", url: downloadUrl as string }
       : plan && link
         ? plan.signerIsLicensee
           ? { kind: "sign", agencyName: plan.agencyName, licenceNumber: plan.licenceNumber, date, url: annexureSignUrl(link.token, base) }
@@ -224,7 +241,7 @@ export async function onNewOfficeTrialStarted(
   // the same download box. Never treated as the licensee.
   const welcome =
     annexure === "agent_plan"
-      ? await sendOwnPlanAgentWelcome(supabase, agencyId, { send, env, now, box: { kind: "download", url: annexureDownloadUrl(base) } })
+      ? await sendOwnPlanAgentWelcome(supabase, agencyId, { send, env, now, box: { kind: "download", url: downloadUrl as string } })
       : await sendEarlyAccessWelcome(supabase, agencyId, { send, env, annexure: box });
 
   if (plan && link && claimedNow) {

@@ -16,10 +16,12 @@
 //     card, and asked for on its own. Never guessed, and a date least of all.
 //     A new document governs: a field it does not state is not carried over
 //     from the document it replaced.
-//   * If the holder name on the document does not match the person (or the
-//     agency, for the corporation licence), NOTHING is saved and the card
-//     warns. Uploading a colleague's licence onto the wrong card is the likely
-//     mistake, and saving it would start someone else's reminder schedule.
+//   * If the holder name on a person's document does not match the person,
+//     NOTHING is saved and the card warns. Uploading a colleague's licence
+//     onto the wrong card is the likely mistake, and saving it would start
+//     someone else's reminder schedule. The corporation licence is no longer
+//     refused on its name (14 Oct 2026): see readCorporationLicence in
+//     lib/actions/licences.ts.
 //   * An expiry date already in the past is saved and shown as expired. The
 //     upload is not blocked: an expired licence on file is a fact the
 //     licensee needs to see, not something to refuse.
@@ -80,6 +82,31 @@ export type LicenceReadState = {
   missing: LicenceField[];
   /** Where each current value came from. */
   fields: Partial<Record<LicenceField, FieldSource>>;
+  /**
+   * Corporation licence only (brief, 14 Oct 2026): the holder on the licence
+   * just saved is not the office's licensed entity name (or there is none),
+   * and the card is asking "Use [holder] as your licensed entity name?". Kept
+   * here until it is answered, with what the record held before the upload so
+   * "No, wrong licence" can put it back.
+   */
+  entityCheck?: EntityCheck | null;
+};
+
+export type EntityCheck = {
+  holderName: string;
+  /** The document the question is about. */
+  path: string;
+  at: string;
+  by: string | null;
+  /** The record before this upload, restored by "No, wrong licence". */
+  before: {
+    holderName: string | null;
+    licenceNumber: string | null;
+    expiry: string | null;
+    documentPath: string | null;
+    documentFileName: string | null;
+  };
+  previousRead: Omit<LicenceReadState, "entityCheck"> | null;
 };
 
 export type LicenceValues = {
@@ -291,7 +318,8 @@ export function recordTypedChanges(
     state.lastRead && (state.lastRead.status === "name_mismatch" || state.lastRead.status === "not_a_licence")
       ? null
       : state.lastRead;
-  return { lastRead, missing, fields };
+  // A licensed entity name question still waiting for an answer stays.
+  return { lastRead, missing, fields, ...(state.entityCheck ? { entityCheck: state.entityCheck } : {}) };
 }
 
 export function emptyState(): LicenceReadState {
@@ -302,10 +330,16 @@ export function emptyState(): LicenceReadState {
 export function parseReadState(raw: unknown): LicenceReadState | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Partial<LicenceReadState>;
+  const check = r.entityCheck;
+  const entityCheck =
+    check && typeof check === "object" && typeof check.holderName === "string" && typeof check.path === "string"
+      ? check
+      : null;
   return {
     lastRead: r.lastRead ?? null,
     missing: Array.isArray(r.missing) ? r.missing : [],
     fields: r.fields && typeof r.fields === "object" ? r.fields : {},
+    ...(entityCheck ? { entityCheck } : {}),
   };
 }
 

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   companyNameMatches,
   decideLicenceRead,
+  parseReadState,
   personNameMatches,
   recordTypedChanges,
   sanitiseLicenceRead,
@@ -176,4 +177,43 @@ test("a typed correction is recorded as typed, by whom, and stops being asked fo
   assert.deepEqual(state.missing, []);
   assert.deepEqual(state.fields.expiry, { source: "typed", by: "jane", at: "2026-10-02T00:00:00.000Z" });
   assert.equal(state.fields.licenceNumber?.source, "document");
+});
+
+// ── The licensed entity name question (brief, 14 Oct 2026) ──────────────────
+
+test("a waiting licensed entity name question survives storage and typed corrections", () => {
+  const check = {
+    holderName: "Trent Lloyd Corporation Pty Ltd",
+    path: "agency/_licences/corporation/1-licence.pdf",
+    at: "2026-10-15T01:00:00Z",
+    by: "u1",
+    before: { holderName: null, licenceNumber: null, expiry: null, documentPath: null, documentFileName: null },
+    previousRead: null,
+  };
+  const stored = JSON.parse(JSON.stringify({ lastRead: null, missing: [], fields: {}, entityCheck: check }));
+  const parsed = parseReadState(stored);
+  assert.deepEqual(parsed?.entityCheck, check);
+
+  const typed = recordTypedChanges(
+    parsed,
+    "corporation",
+    { holderName: "A", licenceType: null, licenceNumber: "1", expiry: null },
+    { holderName: "A", licenceType: null, licenceNumber: "2", expiry: null },
+    "u1",
+    "2026-10-15T02:00:00Z",
+  );
+  assert.deepEqual(typed.entityCheck, check, "typing the number in doesn't lose the question");
+});
+
+test("anything else stored where the question goes is ignored", () => {
+  assert.equal(parseReadState({ entityCheck: { holderName: 3 } })?.entityCheck, undefined);
+  assert.equal(parseReadState({ entityCheck: "yes" })?.entityCheck, undefined);
+});
+
+test("a person's licence in someone else's name is still refused", () => {
+  const d = decide(
+    { documentIs: "licence", holderName: "SMITH, Jane", licenceType: "class_2", licenceNumber: "1", expiryDate: "2028-01-01" },
+    { subject: "person", names: ["Bob Jones"] },
+  );
+  assert.equal(d.kind, "name_mismatch");
 });

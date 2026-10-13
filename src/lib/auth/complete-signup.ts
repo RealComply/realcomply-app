@@ -1,6 +1,7 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
+import { saveSignupEntityName } from "@/lib/auth/signup-entity-name";
 
 // Everything that has to happen the first time somebody arrives with a
 // confirmed email: record what they accepted, and give them an agency.
@@ -32,6 +33,7 @@ type SignupMetadata = {
   licensee_email?: string | null;
   licensee_name?: string | null;
   website_url?: string | null;
+  licensed_entity_name?: string | null;
   is_licensee?: boolean;
   terms_version?: string;
   privacy_version?: string;
@@ -114,6 +116,9 @@ export async function completeSignup(supabase: SupabaseClient, user: User): Prom
 
   if (typeof meta.website_url === "string" && meta.website_url) {
     await supabase.rpc("set_agency_website", { p_url: meta.website_url });
+  }
+  if (typeof meta.licensed_entity_name === "string" && meta.licensed_entity_name) {
+    await saveSignupEntityName(supabase, meta.licensed_entity_name);
   }
 
   // Only once the agency actually exists — a failed bootstrap means there is no

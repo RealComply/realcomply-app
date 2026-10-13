@@ -245,8 +245,10 @@ export async function saveLicenseeEmail(
     previousName.toLowerCase() !== licenseeName.toLowerCase();
 
   // From here the licensee is saved, so every answer carries licenseeChanged
-  // and the page is refreshed, even if the website then fails to save.
+  // and the page is refreshed, even if the website then fails to save. The
+  // form is in Office profile (Profile settings) since 14 Oct 2026.
   revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/profile");
 
   const { error: siteError } = await supabase.rpc("set_agency_website", { p_url: website.url });
   if (siteError) {

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { LicenseeEmailForm } from "@/components/team/LicenseeEmailForm";
 import { requireLicenseePage } from "@/lib/data/current-profile";
 import { InviteAgentForm } from "@/components/team/InviteAgentForm";
 import { PendingInvitesList } from "@/components/team/PendingInvitesList";
@@ -27,19 +26,6 @@ export default async function TeamPage() {
     // Who supports whom. Read once for the whole page rather than per row.
     supabase.from("assistant_agents").select("assistant_id, agent_id"),
   ]);
-
-  // Read here rather than in the component so the form is a client component
-  // with a plain prop, not another round trip.
-  const { data: agencyRow } = await supabase
-    .from("agencies")
-    .select("licensee_email, licensee_name, website_url")
-    .eq("id", profile.agency_id)
-    .maybeSingle();
-  const agencyDetails = agencyRow as { licensee_email?: string | null; licensee_name?: string | null; website_url?: string | null } | null;
-  const licenseeEmail = agencyDetails?.licensee_email ?? null;
-  const licenseeName = agencyDetails?.licensee_name ?? null;
-
-  const websiteUrl = agencyDetails?.website_url ?? null;
 
   const staff = (staffRows ?? []) as Profile[];
   const invites = (inviteRows ?? []) as AgencyInvite[];
@@ -80,18 +66,18 @@ export default async function TeamPage() {
           </Link>
         </div>
 
-        {/* The licensee's details on access, not the raw flag (10 Oct 2026),
-            so the agent on their own plan can correct the address every
-            sign-off link goes to, as the database already allows (0058). The
-            agency logo moved to Profile settings, under the picture top
-            right (12 Oct 2026). */}
+        {/* The licensee's details (licensee in charge, their email, the agency
+            website) moved to Office profile in Profile settings, with the
+            office's names (brief, 14 Oct 2026, Part 6). A pointer stays here,
+            where people looked for them. */}
         {access.actsAsLicensee && (
-          <div className="mt-6">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">
-              Sign-off
-            </h3>
-            <LicenseeEmailForm current={licenseeEmail} currentName={licenseeName} website={websiteUrl} />
-          </div>
+          <p className="mt-6 rounded-card border border-rc-border bg-white p-4 text-sm text-rc-muted shadow-card">
+            The licensee in charge, their email and your agency website are in{" "}
+            <Link href="/dashboard/profile" className="font-semibold text-rc-green-deep hover:underline">
+              Office profile
+            </Link>
+            , with your trading name and licensed entity name.
+          </p>
         )}
 
         <div className="mt-6">

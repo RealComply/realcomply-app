@@ -51,6 +51,11 @@ describe("the audit pack's branding", () => {
     assert.ok(!text.includes("Powered by RealComply"), "moved to the band at the foot of every page");
   });
 
+  it("the cover says X trading as Y when the office has a licensed entity name (14 Oct 2026)", async () => {
+    const text = pdfText(await pack({ agencyLine: "HR Holdings Pty Ltd trading as Harbour Realty" })).replace(/\s+/g, " ");
+    assert.ok(text.includes("HR Holdings Pty Ltd trading as Harbour Realty"));
+  });
+
   it("every page carries the RealComply band and its place in the record", async () => {
     const pages = await pdfPageTexts(await pack());
     assert.ok(pages.length > 1, "the test needs more than one page");

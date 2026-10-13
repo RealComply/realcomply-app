@@ -10,6 +10,7 @@ import { priceApproval } from "@/lib/rules/price-statement";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { Property, PropertyItem } from "@/lib/types";
+import { formalAgencyName, namesAsAt, type AgencyNames, type NameChange } from "@/lib/agency-names";
 
 // The audit pack for one listing: the finalised compliance record as a PDF.
 //
@@ -46,15 +47,18 @@ export async function buildAuditPack(
   // one gets it, an individual agent who has none gets the text masthead, which
   // is the correct output for them rather than a degraded one.
   const [{ data: agencyRow }, { data: agentRow }] = await Promise.all([
-    supabase.from("agencies").select("name, logo_path").eq("id", agencyId).maybeSingle(),
+    supabase.from("agencies").select("*").eq("id", agencyId).maybeSingle(),
     p.created_by
       ? supabase.from("profiles").select("full_name, email").eq("id", p.created_by).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
 
-  const agency = agencyRow as { name?: string; logo_path?: string | null } | null;
+  const agency = agencyRow as { name?: string; logo_path?: string | null; licensed_entity_name?: string | null } | null;
   const agent = agentRow as { full_name?: string | null; email?: string } | null;
-  const agencyName = agency?.name ?? "Your agency";
+  const currentNames: AgencyNames = {
+    tradingName: agency?.name ?? "Your agency",
+    licensedEntityName: agency?.licensed_entity_name ?? null,
+  };
   const agentName = agent?.full_name ?? agent?.email ?? null;
 
   // Fetched here rather than inside the PDF builder, which has no database of
@@ -132,6 +136,16 @@ export async function buildAuditPack(
   const licenseeSignature = await signatureOf("sign_licensee");
   const isDraft = !agentSignature || !licenseeSignature;
 
+  // The office's names on the cover (brief, 14 Oct 2026): "[licensed entity
+  // name] trading as [trading name]", or the trading name alone. A finished
+  // file keeps the names it was finished under: it is rebuilt on every
+  // download, so a later change of name must not reach back into it. The
+  // history of changes (agency_name_changes, 0070) says what they were.
+  const names = isDraft
+    ? currentNames
+    : await namesWhenFinished(supabase, agencyId, currentNames, [agentSignature.signedAt, licenseeSignature.signedAt]);
+  const agencyName = names.tradingName;
+
   // Deliberately NOT the contract for sale. Adam named the DATE it was
   // received, not the document, and appending a contract would routinely add a
   // hundred pages to a record that has to stay emailable.
@@ -180,6 +194,7 @@ export async function buildAuditPack(
   const pdf = await buildComplianceRecordPdf({
     property: p,
     agencyName,
+    agencyLine: formalAgencyName(names),
     agentName,
     logo,
     items,
@@ -246,4 +261,26 @@ export function auditPackResponse(pack: { pdf: Uint8Array; filename: string }, i
       "Cache-Control": "no-store",
     },
   });
+}
+
+/**
+ * The office's names as they stood when the file was finished: the later of
+ * the two signatures. With no time on either, or no history to read, today's.
+ */
+async function namesWhenFinished(
+  supabase: SupabaseClient,
+  agencyId: string,
+  current: AgencyNames,
+  signedAt: Array<string | null>,
+): Promise<AgencyNames> {
+  const times = signedAt.filter((t): t is string => Boolean(t) && !Number.isNaN(Date.parse(t as string)));
+  if (times.length === 0) return current;
+  const finishedAt = times.reduce((a, b) => (Date.parse(a) >= Date.parse(b) ? a : b));
+  const { data, error } = await supabase
+    .from("agency_name_changes")
+    .select("name_kind, old_name, new_name, changed_at")
+    .eq("agency_id", agencyId)
+    .gt("changed_at", finishedAt);
+  if (error || !data) return current;
+  return namesAsAt(current, data as NameChange[], finishedAt);
 }

@@ -8,6 +8,8 @@ import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { currentLegalVersions } from "@/lib/legal/documents";
 import { founderInviteValid, openSignupsAllowed } from "@/lib/signups";
 import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
+import { ENTITY_NAME_MAX, tidyName } from "@/lib/agency-names";
+import { saveSignupEntityName } from "@/lib/auth/signup-entity-name";
 import { nextPage } from "@/lib/auth/next-page";
 
 // Resolves the origin the request actually came in on (e.g. the exact
@@ -78,6 +80,9 @@ export async function signup(
     return { error: website.error };
   }
   const websiteUrl = website.url;
+  // Optional (brief, 14 Oct 2026, Part 4): the company on the corporation
+  // licence, if different from the trading name. Saved once the office exists.
+  const licensedEntityName = tidyName(String(formData.get("licensedEntityName") ?? ""))?.slice(0, ENTITY_NAME_MAX) ?? null;
 
   // THE ACTUAL DOOR (Adam, 24 Aug 2026: "can we put a block on that like we had
   // before?").
@@ -170,6 +175,7 @@ export async function signup(
         licensee_name: licenseeName || null,
         is_licensee: isLicensee,
         website_url: websiteUrl || null,
+        licensed_entity_name: licensedEntityName,
         // Carried for the same reason as agency_name: with email confirmation
         // ON there is no session in this request, so the acceptance cannot be
         // written yet. It has to survive until /auth/callback runs, or the
@@ -263,6 +269,9 @@ export async function signup(
   }
   if (!inviteToken && websiteUrl) {
     await supabase.rpc("set_agency_website", { p_url: websiteUrl });
+  }
+  if (!inviteToken && licensedEntityName) {
+    await saveSignupEntityName(supabase, licensedEntityName);
   }
 
   // Only for a brand-new agency, not someone joining an existing one via

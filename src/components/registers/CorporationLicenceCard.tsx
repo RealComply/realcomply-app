@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ChangeEvent } from "react";
+import { useActionState, useEffect, useState, useTransition, type ChangeEvent } from "react";
 import { Building2, Paperclip } from "lucide-react";
 import {
+  acceptLicenceHolderAsEntityName,
   attachCorporationLicenceDocument,
   readCorporationLicenceFromDocument,
+  rejectCorporationLicenceUpload,
   removeCorporationLicenceDocument,
   updateCorporationLicence,
   type ActionState,
@@ -31,8 +33,12 @@ import type { Agency } from "@/lib/types";
 //
 // Oct 2026: the licence document can be uploaded here too (0051), and is read
 // the same way a person's is: holder, number and expiry saved straight from
-// the document, anything unclear asked for on its own, and nothing saved if
-// the holder named on it isn't this agency.
+// the document, anything unclear asked for on its own.
+//
+// 14 Oct 2026: the holder is no longer checked against the office name, and a
+// licence is never refused on its name. When the holder isn't the office's
+// licensed entity name (or there is none), the card asks whether to use it
+// (EntityNameQuestion below).
 //
 // Read-only for an agent, editable by the licensee in charge, matching how
 // the insurance policies behave. An agent still needs to see it: they are the
@@ -127,7 +133,12 @@ export function CorporationLicenceCard({
           }}
           className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3"
         >
-          <Field name="holder" label="Licence holder" defaultValue={holder ?? ""} placeholder={agency.name} />
+          <Field
+            name="holder"
+            label="Licence holder"
+            defaultValue={holder ?? ""}
+            placeholder={agency.licensed_entity_name ?? agency.name}
+          />
           <Field name="licenceNumber" label="Licence number" defaultValue={licenceNumber ?? ""} />
           <Field name="expiry" label="Expires" defaultValue={expiry ?? ""} type="date" />
           <div className="flex gap-2 sm:col-span-3">
@@ -161,6 +172,14 @@ export function CorporationLicenceCard({
         canEdit={canEdit}
         onResult={setReadResult}
       />
+      {canEdit && readState?.entityCheck && readState.entityCheck.path === documentPath && (
+        <EntityNameQuestion
+          holder={readState.entityCheck.holderName}
+          entityName={agency.licensed_entity_name ?? null}
+          tradingName={agency.name}
+          onAnswered={() => setReadResult(null)}
+        />
+      )}
       <LicenceReadNotice
         state={readState}
         target={{ kind: "corporation" }}
@@ -328,5 +347,82 @@ function Field({
         className="mt-1 w-full rounded-lg border border-rc-border px-2.5 py-1.5 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
       />
     </label>
+  );
+}
+
+/**
+ * Asked after a corporation licence is saved whose holder isn't the office's
+ * licensed entity name, or when there is none yet (brief, 14 Oct 2026). Never
+ * a refusal: the licence is already on the record. "Yes, use it" saves the
+ * holder as the licensed entity name; "No, wrong licence" takes the upload off
+ * the record and puts back what was there before.
+ */
+function EntityNameQuestion({
+  holder,
+  entityName,
+  tradingName,
+  onAnswered,
+}: {
+  holder: string;
+  entityName: string | null;
+  tradingName: string;
+  onAnswered: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function answer(run: () => Promise<ActionState>) {
+    setError(null);
+    startTransition(async () => {
+      const result = await run();
+      if (result.error) setError(result.error);
+      else onAnswered();
+    });
+  }
+
+  return (
+    <div
+      className="mt-3 space-y-2.5 rounded-xl border border-rc-amber/40 bg-rc-amber/10 p-3.5 text-sm text-rc-ink"
+      role="group"
+      aria-label="Licensed entity name"
+    >
+      <p>
+        The licence is held by <b>{holder}</b>.
+        {entityName ? (
+          <>
+            {" "}Your licensed entity name is <b>{entityName}</b>.
+          </>
+        ) : (
+          " Your licensed entity name is blank."
+        )}
+      </p>
+      <p>
+        Use <b>{holder}</b> as your licensed entity name?
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => answer(acceptLicenceHolderAsEntityName)}
+          className="rounded-full bg-rc-green-deep px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+        >
+          Yes, use it
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => answer(rejectCorporationLicenceUpload)}
+          className="rounded-full border-2 border-rc-green-deep px-4 py-1 text-xs font-semibold text-rc-green-deep transition hover:bg-rc-green-soft disabled:opacity-60"
+        >
+          No, wrong licence
+        </button>
+      </div>
+      <p className="text-xs text-rc-muted">Your trading name ({tradingName}) stays as it is.</p>
+      {error && (
+        <p className="text-xs font-medium text-rc-amber-deep" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

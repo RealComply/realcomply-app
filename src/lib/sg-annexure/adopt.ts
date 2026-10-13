@@ -5,6 +5,7 @@ import { buildAnnexureSignedEmail } from "@/lib/email/sg-annexure";
 import { buildSgAnnexurePdf, sgAnnexureFilename, type SgAnnexurePdfInput } from "@/lib/pdf/sg-annexure";
 import { annexureDate } from "@/lib/legal/sg-annexure";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { formalAgencyName } from "@/lib/agency-names";
 
 // Adopting the SG annexure from a link (brief, 14 Oct 2026; 0067).
 //
@@ -25,7 +26,10 @@ export type AnnexureLinkState = "open" | "adopted" | "used" | "expired" | "ended
 
 export type AnnexureLinkDetails = {
   agencyId: string;
+  /** The trading name. */
   agencyName: string;
+  /** The company that holds the corporation licence, if saved (0070). */
+  licensedEntityName: string | null;
   licenceNumber: string | null;
   logoPath: string | null;
   sentTo: string;
@@ -50,12 +54,14 @@ export async function linkDetails(
         sent_to: string;
         state: AnnexureLinkState;
         adopted_at: string | null;
+        licensed_entity_name?: string | null;
       }
     | undefined;
   if (error || !row) return null;
   return {
     agencyId: row.agency_id,
     agencyName: row.agency_name?.trim() || "Your agency",
+    licensedEntityName: row.licensed_entity_name?.trim() || null,
     licenceNumber: row.licence_number?.trim() || null,
     logoPath: row.logo_path,
     sentTo: row.sent_to,
@@ -104,6 +110,9 @@ type AdoptionRow = {
   sent_to: string;
   signed_at: string;
   signoff_document_id: string | null;
+  /** The names as they stood when it was signed (0070); null on older adoptions. */
+  trading_name?: string | null;
+  licensed_entity_name?: string | null;
 };
 
 /**
@@ -125,14 +134,23 @@ export async function saveSignedCopy(
 
     const { data: agencyRow } = await service
       .from("agencies")
-      .select("name, logo_path")
+      .select("*")
       .eq("id", adoption.agency_id)
       .maybeSingle();
-    const agency = (agencyRow ?? {}) as { name?: string | null; logo_path?: string | null };
-    const agencyName = agency.name?.trim() || "Your agency";
+    const agency = (agencyRow ?? {}) as {
+      name?: string | null;
+      logo_path?: string | null;
+      licensed_entity_name?: string | null;
+    };
+    // The names as signed (0070): what the licensee saw, and left in the
+    // licensed entity name box, on the signing page. The office's current
+    // names only for an adoption from before 0070.
+    const signedNames = adoption.trading_name != null;
+    const agencyName = (signedNames ? adoption.trading_name : agency.name)?.trim() || "Your agency";
+    const entityName = signedNames ? (adoption.licensed_entity_name ?? null) : (agency.licensed_entity_name ?? null);
 
     const pdf = await buildSgAnnexurePdf({
-      agencyName,
+      agencyName: formalAgencyName({ tradingName: agencyName, licensedEntityName: entityName }),
       licenceNumber: adoption.licence_number,
       effectiveDate: annexureDate(adoption.signed_at),
       logo: await logoFor(service, agency.logo_path ?? null),

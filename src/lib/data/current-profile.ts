@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import type { Profile } from "@/lib/types";
 import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
+import { saveSignupEntityName } from "@/lib/auth/signup-entity-name";
 
 // Fetches the logged-in user's profile (agency + role), redirecting to
 // /login if there's no session. If a session exists but the agency
@@ -57,6 +58,7 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     licensee_email?: string | null;
     licensee_name?: string | null;
     website_url?: string | null;
+    licensed_entity_name?: string | null;
     is_licensee?: boolean;
     /** Permission to create a NEW agency while signups are closed — 0045. */
     founder_token?: string | null;
@@ -94,6 +96,9 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     }
     if (!joinError && !meta.invite_token && typeof meta.website_url === "string" && meta.website_url) {
       await supabase.rpc("set_agency_website", { p_url: meta.website_url });
+    }
+    if (!joinError && !meta.invite_token && typeof meta.licensed_entity_name === "string" && meta.licensed_entity_name) {
+      await saveSignupEntityName(supabase, meta.licensed_entity_name);
     }
 
     if (!joinError) {

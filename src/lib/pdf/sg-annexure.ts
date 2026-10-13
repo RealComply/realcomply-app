@@ -33,6 +33,11 @@ import {
 // document being produced.
 
 export type SgAnnexurePdfInput = {
+  /**
+   * The Agency line: "[licensed entity name] trading as [trading name]", or
+   * the trading name alone (lib/agency-names.ts formalAgencyName). Empty for
+   * the blank version. Wraps onto more lines when it is long.
+   */
   agencyName: string;
   /** Null when none is on file; the box is left blank to fill in. */
   licenceNumber: string | null;

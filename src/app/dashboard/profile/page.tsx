@@ -4,8 +4,12 @@ import { requireAccess } from "@/lib/data/current-profile";
 import { pmAgencySettings } from "@/lib/data/pm";
 import { agencyLogoUrl } from "@/lib/storage/evidence";
 import { AgencyLogoForm } from "@/components/team/AgencyLogoForm";
+import { LicenseeEmailForm } from "@/components/team/LicenseeEmailForm";
+import { OfficeDetailsForm, OfficeNamesReadOnly } from "@/components/profile/OfficeDetailsForm";
 import { LogoMark } from "@/components/Logo";
 import { roleLabel } from "@/components/UserBar";
+import { describeEntityNameChange, formalAgencyName, type NameChangeVia } from "@/lib/agency-names";
+import { formatAuTimestamp } from "@/lib/format-date";
 
 // Profile settings, from the picture top right (Adam, 12 Oct 2026: "if you
 // click on the agent's icon in the top right corner, there should be an option
@@ -13,25 +17,67 @@ import { roleLabel } from "@/components/UserBar";
 //
 // Every signed-in person can open it. The logo upload is the licensee in
 // charge's, the same as set_agency_logo (0030); anyone else in an office sees
-// the logo their licensee set. The rest of the office's details are set up at
-// the start and changed where they are used, so this page links to them
-// rather than repeating them.
+// the logo their licensee set.
+//
+// OFFICE PROFILE (brief, 14 Oct 2026, Parts 1 and 6): the office's trading
+// name and licensed entity name, and the licensee in charge, their email and
+// the agency website, all editable here at any time by the licensee in charge
+// or an agent on their own plan. Sign-up, the corporation licence and the
+// annexure signing page fill the same record. The licensee's details moved
+// here from Team. The office's other details (licence, insurance, gifts, PM)
+// are changed where they are used, so this page links to them.
 
 export default async function ProfileSettingsPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
-  const [{ data: agencyRow }, pm] = await Promise.all([
-    supabase.from("agencies").select("name, logo_path").eq("id", profile.agency_id).maybeSingle(),
+  const [{ data: agencyRow }, pm, { data: changeRows }] = await Promise.all([
+    supabase
+      .from("agencies")
+      .select("name, logo_path, licensed_entity_name, licensed_entity_name_source, licensee_name, licensee_email, website_url")
+      .eq("id", profile.agency_id)
+      .maybeSingle(),
     pmAgencySettings(supabase, profile.agency_id),
+    supabase
+      .from("agency_name_changes")
+      .select("via, changed_by, changed_by_name, changed_at")
+      .eq("agency_id", profile.agency_id)
+      .eq("name_kind", "licensed_entity")
+      .order("changed_at", { ascending: false })
+      .limit(1),
   ]);
-  const agency = agencyRow as { name?: string | null; logo_path?: string | null } | null;
+  const agency = agencyRow as {
+    name?: string | null;
+    logo_path?: string | null;
+    licensed_entity_name?: string | null;
+    licensed_entity_name_source?: string | null;
+    licensee_name?: string | null;
+    licensee_email?: string | null;
+    website_url?: string | null;
+  } | null;
   const agencyName = agency?.name ?? "Your agency";
+  const entityName = agency?.licensed_entity_name ?? null;
   const logoPath = agency?.logo_path ?? null;
   const logoUrl = await agencyLogoUrl(supabase, logoPath);
 
+  // Who last changed the licensed entity name, and when (0070).
+  const last = ((changeRows ?? []) as Array<{
+    via: NameChangeVia;
+    changed_by: string | null;
+    changed_by_name: string | null;
+    changed_at: string;
+  }>)[0];
+  let lastChange: string | null = null;
+  if (last && entityName) {
+    let who = last.changed_by_name;
+    if (!who && last.changed_by) {
+      const { data: person } = await supabase.from("profiles").select("full_name").eq("id", last.changed_by).maybeSingle();
+      who = (person as { full_name?: string | null } | null)?.full_name ?? null;
+    }
+    lastChange = describeEntityNameChange(last.via, who, formatAuTimestamp(last.changed_at));
+  }
+
   const officeDetails = [
-    { label: "Licensee name and email, agency website", where: "Team", href: "/dashboard/team" },
     { label: "Corporation licence", where: "Registers", href: "/dashboard/registers?tab=licence" },
     { label: "PI, cyber and workers insurance", where: "Registers", href: "/dashboard/registers?tab=insurance" },
     { label: "Gift disclosure threshold", where: "Registers", href: "/dashboard/registers?tab=gifts" },
@@ -45,14 +91,40 @@ export default async function ProfileSettingsPage() {
       <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Profile settings</h1>
       <p className="mt-1 text-sm text-rc-muted">Your details, and how your agency appears in RealComply.</p>
 
+      <section className="mt-6">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">Office profile</h2>
+        <div className="mt-2 space-y-5">
+          {access.actsAsLicensee ? (
+            <>
+              <OfficeDetailsForm
+                tradingName={agencyName}
+                licensedEntityName={entityName}
+                fromLicence={agency?.licensed_entity_name_source === "licence"}
+                lastChange={lastChange}
+              />
+              <LicenseeEmailForm
+                current={agency?.licensee_email ?? null}
+                currentName={agency?.licensee_name ?? null}
+                website={agency?.website_url ?? null}
+              />
+            </>
+          ) : (
+            <OfficeNamesReadOnly tradingName={agencyName} licensedEntityName={entityName} />
+          )}
+        </div>
+      </section>
+
       {profile.is_licensee_in_charge ? (
-        <section className="mt-6 grid gap-5 md:grid-cols-2">
+        <section className="mt-5 grid gap-5 md:grid-cols-2">
           <AgencyLogoForm currentPath={logoPath} currentUrl={logoUrl} />
-          <WhereItShows agencyName={agencyName} logoUrl={logoUrl} />
+          <WhereItShows
+            recordName={formalAgencyName({ tradingName: agencyName, licensedEntityName: entityName })}
+            logoUrl={logoUrl}
+          />
         </section>
       ) : (
         logoUrl && (
-          <section className="mt-6 rounded-card border border-rc-border bg-white p-4 shadow-card">
+          <section className="mt-5 rounded-card border border-rc-border bg-white p-4 shadow-card">
             <p className="text-sm font-medium text-rc-ink">Agency logo</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={logoUrl} alt={`${agencyName} logo`} className="mt-3 max-h-12 max-w-[200px] object-contain" />
@@ -109,7 +181,14 @@ export default async function ProfileSettingsPage() {
 }
 
 /** The two places the logo appears, drawn small, so it can be judged before anyone else sees it. */
-function WhereItShows({ agencyName, logoUrl }: { agencyName: string; logoUrl: string | null }) {
+function WhereItShows({
+  recordName,
+  logoUrl,
+}: {
+  /** "X trading as Y" when the office has a licensed entity name (0070). */
+  recordName: string;
+  logoUrl: string | null;
+}) {
   const logo = logoUrl ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={logoUrl} alt="" className="max-h-7 max-w-[140px] object-contain" />
@@ -136,7 +215,7 @@ function WhereItShows({ agencyName, logoUrl }: { agencyName: string; logoUrl: st
       <div className="mt-2 rounded-lg border border-rc-border border-t-4 border-t-rc-green-deep bg-white p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-rc-ink">{agencyName}</p>
+            <p className="text-sm font-bold text-rc-ink">{recordName}</p>
             <p className="text-[11px] text-rc-muted">Finalised compliance record</p>
           </div>
           {logo}
