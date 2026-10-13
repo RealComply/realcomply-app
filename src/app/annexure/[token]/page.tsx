@@ -116,8 +116,8 @@ export default async function AnnexurePage({ params }: { params: Promise<{ token
         Adopt the annexure to your Supervision Guidelines
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-rc-muted">
-        It records how {details.agencyName} uses RealComply within your existing supervision system. You stay in
-        charge of your agency&rsquo;s compliance. Read it below, then sign at the bottom.
+        It records how your agency uses RealComply within your existing supervision system. You stay in charge of
+        your agency&rsquo;s compliance. Read it below, then sign at the bottom.
       </p>
 
       <div
