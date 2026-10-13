@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
+import { videosFor } from "@/lib/onboarding/videos";
 
 // Getting started: the walkthrough video and the two steps to a first file.
 //
@@ -9,18 +10,15 @@ import { requireProfile } from "@/lib/data/current-profile";
 // same day.
 //
 // Any signed-in role. The dashboard layout does the signing-in check; the
-// requireProfile here is the page's own, so it never renders for nobody.
+// requireAccess here is the page's own, so it never renders for nobody.
+//
+// Agents see the agent video, licensees see both (lib/onboarding/videos.ts).
 
 export const metadata = { title: "Getting started · RealComply" };
 
-type Video = { id: string; title: string; length: string };
-
-// The agent video joins this list once it's rebuilt (brief, 10 Oct 2026).
-// Each entry renders as its own player with its caption underneath.
-const VIDEOS: Video[] = [{ id: "xzAW28t758g", title: "RealComply for licensees", length: "3 min 40" }];
-
 export default async function GettingStartedPage() {
-  await requireProfile();
+  const { access } = await requireAccess();
+  const videos = videosFor(access);
 
   return (
     <main className="mx-auto w-full max-w-[880px] flex-1 px-4 py-10">
@@ -30,7 +28,7 @@ export default async function GettingStartedPage() {
       </p>
 
       <div className="mt-6 space-y-6">
-        {VIDEOS.map((v) => (
+        {videos.map((v) => (
           <figure key={v.id}>
             <div className="aspect-video w-full overflow-hidden rounded-[18px] border border-rc-border bg-[#0f1d19]">
               {/* youtube-nocookie: no YouTube cookies until the video is
