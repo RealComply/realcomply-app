@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
+import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
 
 // Everything that has to happen the first time somebody arrives with a
 // confirmed email: record what they accepted, and give them an agency.
@@ -68,10 +69,13 @@ export async function completeSignup(supabase: SupabaseClient, user: User): Prom
   if (existingProfile) return;
 
   if (meta.invite_token) {
-    await supabase.rpc("accept_invite", {
+    const { error: joinError } = await supabase.rpc("accept_invite", {
       p_token: meta.invite_token,
       p_full_name: meta.full_name ?? "",
     });
+    // An agent invited by their office: the agent welcome, once (brief,
+    // 14 Oct 2026). Never throws.
+    if (!joinError) await welcomeOfficeAgent(supabase);
     return;
   }
 

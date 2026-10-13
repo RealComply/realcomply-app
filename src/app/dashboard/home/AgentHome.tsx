@@ -11,6 +11,7 @@ import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
 import { GiftsWidget } from "@/components/home/GiftsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
+import { SgReadCard } from "@/components/home/SgReadCard";
 import { STAGE_LABELS, type CpdRecord, type Gift, type Profile, type Property, type TrainingSession } from "@/lib/types";
 
 // An agent's or an assistant's Home: their own work only (Adam, 7 Oct 2026).
@@ -27,9 +28,12 @@ import { STAGE_LABELS, type CpdRecord, type Gift, type Profile, type Property, t
 export async function AgentHome({
   supabase,
   profile,
+  sgReadShows = false,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   profile: Profile;
+  /** An agent in an office who has not yet confirmed reading the adopted annexure and the SG (brief, 14 Oct 2026). */
+  sgReadShows?: boolean;
 }) {
   const cpdYear = currentCpdYear();
 
@@ -89,6 +93,8 @@ export async function AgentHome({
           {profile.is_assistant ? "The work of the agents you assist" : "Your own work"} — diligence support only, the
           licensee decides.
         </p>
+
+        {sgReadShows && <SgReadCard />}
 
         {awaitingMyReview.length > 0 && (
           <section className="mt-6 rounded-card border border-rc-amber-deep/25 bg-rc-amber/10 px-4 py-3.5">

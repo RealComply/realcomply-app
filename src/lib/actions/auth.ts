@@ -7,6 +7,8 @@ import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { currentLegalVersions } from "@/lib/legal/documents";
 import { founderInviteValid, openSignupsAllowed } from "@/lib/signups";
+import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
+import { nextPage } from "@/lib/auth/next-page";
 
 // Resolves the origin the request actually came in on (e.g. the exact
 // Vercel domain the user is visiting), so the email confirmation link
@@ -37,7 +39,8 @@ export async function login(
     return { error: error.message };
   }
 
-  redirect("/dashboard/home");
+  // Back to the page they opened, if the sign-in came from one (lib/auth/next-page.ts).
+  redirect(nextPage(String(formData.get("next") ?? "")));
 }
 
 export async function signup(
@@ -241,6 +244,13 @@ export async function signup(
 
   if (joinError) {
     return { error: joinError.message };
+  }
+
+  // An agent invited by their office: the agent welcome, once, now that the
+  // invite is accepted and sign-up is finished (brief, 14 Oct 2026). Never
+  // throws; the database decides whether this person gets it.
+  if (inviteToken) {
+    await welcomeOfficeAgent(supabase);
   }
 
   // After the agency exists, never before — the RPC writes to the caller's

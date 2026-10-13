@@ -65,7 +65,17 @@ export type SendEmailInput = {
    * Files sent with the message. Added 8 Oct 2026 for the deletion
    * certificate, which goes out as a PDF.
    */
-  attachments?: Array<{ filename: string; content: Uint8Array; contentType: string }>;
+  attachments?: Array<{
+    filename: string;
+    content: Uint8Array;
+    contentType: string;
+    /**
+     * Shown inside the message where the HTML says src="cid:<this>", rather
+     * than as a file. Added 14 Oct 2026 for the staff test of the agent
+     * welcome, whose picture is not on the live site until it is merged.
+     */
+    cid?: string;
+  }>;
 };
 
 // ── SES, over SMTP ─────────────────────────────────────────────────────────
@@ -111,6 +121,7 @@ async function sendViaSes(from: string, input: SendEmailInput): Promise<void> {
             filename: a.filename,
             content: Buffer.from(a.content),
             contentType: a.contentType,
+            ...(a.cid ? { cid: a.cid } : {}),
           })),
         }
       : {}),
@@ -153,6 +164,7 @@ async function sendViaResend(from: string, input: SendEmailInput): Promise<void>
               filename: a.filename,
               content: Buffer.from(a.content).toString("base64"),
               content_type: a.contentType,
+              ...(a.cid ? { content_id: a.cid } : {}),
             })),
           }
         : {}),

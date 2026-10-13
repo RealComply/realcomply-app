@@ -126,13 +126,35 @@ export const ANNEXURE_DOWNLOAD_LINK = "Download the annexure for your licensee";
 export const ANNEXURE_DOWNLOAD_LINE =
   "Please give this to your licensee in charge. It explains how RealComply fits within your agency's supervision system.";
 
+// An agent invited by their office (agent welcome, brief 14 Oct 2026): the
+// office's Supervision Guidelines and, once the licensee has adopted it, the
+// annexure, both to read in the app. Wording is the brief's, word for word.
+// Before the office has adopted the annexure the first sentence and the
+// annexure link are left out, and the box just asks them to read the
+// Guidelines: there is only one link, and nothing to confirm until the
+// licensee adopts (Adam, 14 Oct 2026).
+export const OFFICE_SG_HEADING = "Your office's Supervision Guidelines";
+export const OFFICE_SG_ADOPTED =
+  "Your licensee in charge has adopted RealComply's annexure to your agency's Supervision Guidelines.";
+export const OFFICE_SG_READ = "Please read both, then confirm in RealComply that you have.";
+export const OFFICE_SG_READ_NOT_ADOPTED = "Please read them.";
+export const OFFICE_SG_ANNEXURE_LINK = "Read the annexure";
+export const OFFICE_SG_LINK = "Read your Supervision Guidelines";
+
 export type AnnexureBox =
   /** Office plan, the reader is the licensee in charge: the details and the button. */
   | { kind: "sign"; agencyName: string; licenceNumber: string | null; date: string; url: string }
   /** Office plan, the reader signed up but is not the licensee: the link went to the licensee. */
   | { kind: "sent"; licenseeName: string }
   /** Agent on their own plan: the PDF to give their licensee. Nothing goes to the licensee. */
-  | { kind: "download"; url: string };
+  | { kind: "download"; url: string }
+  /** Agent invited by their office: read the annexure (once adopted) and the office's Supervision Guidelines. */
+  | { kind: "office_sg"; annexureUrl: string | null; sgUrl: string };
+
+/** The office box's words: the annexure and the confirm only once it is adopted. */
+export function officeSgText(adopted: boolean): string {
+  return adopted ? `${OFFICE_SG_ADOPTED} ${OFFICE_SG_READ}` : OFFICE_SG_READ_NOT_ADOPTED;
+}
 
 export function annexureSentLine(licenseeName: string): string {
   return `We've sent the annexure to ${licenseeName.trim() || "your licensee in charge"} to sign.`;
@@ -152,6 +174,28 @@ function annexureBoxHtml(box: AnnexureBox): string {
       ANNEXURE_DOWNLOAD_LINK,
     )}</a> <span style="font-size:14px;color:${C.muted}">(PDF)</span></p>
 <p style="margin:0">${esc(ANNEXURE_DOWNLOAD_LINE)}</p>
+${bottom}`;
+  }
+  if (box.kind === "office_sg") {
+    const links: Array<[string, string]> = [
+      ...(box.annexureUrl ? ([[OFFICE_SG_ANNEXURE_LINK, box.annexureUrl]] as Array<[string, string]>) : []),
+      [OFFICE_SG_LINK, box.sgUrl],
+    ];
+    // Outlined pill buttons, one per link, wrapping onto a second line on a
+    // narrow screen. Table-wrapped: Outlook ignores padding on a bare link.
+    const buttons = links
+      .map(
+        ([label, href]) =>
+          `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;margin:0 8px 8px 0"><tr>
+<td style="background:#ffffff;border:2px solid ${C.green};border-radius:999px"><a href="${esc(href)}" style="display:inline-block;padding:9px 22px;font-family:${FONT};font-size:15px;font-weight:700;color:${C.green};text-decoration:none">${esc(
+            label,
+          )}</a></td></tr></table>`,
+      )
+      .join("");
+    return `${frame}
+<p style="margin:0 0 10px;font-weight:700;color:${C.ink}">${esc(OFFICE_SG_HEADING)}</p>
+<p style="margin:0 0 14px">${esc(officeSgText(Boolean(box.annexureUrl)))}</p>
+<div style="margin:0 0 -8px">${buttons}</div>
 ${bottom}`;
   }
   if (box.kind === "sent") {
@@ -183,6 +227,15 @@ ${bottom}`;
 
 function annexureBoxText(box: AnnexureBox): string[] {
   if (box.kind === "download") return [`${ANNEXURE_DOWNLOAD_LINK} (PDF): ${box.url}`, ANNEXURE_DOWNLOAD_LINE];
+  if (box.kind === "office_sg") {
+    return [
+      OFFICE_SG_HEADING,
+      officeSgText(Boolean(box.annexureUrl)),
+      "",
+      ...(box.annexureUrl ? [`${OFFICE_SG_ANNEXURE_LINK}: ${box.annexureUrl}`] : []),
+      `${OFFICE_SG_LINK}: ${box.sgUrl}`,
+    ];
+  }
   if (box.kind === "sent") return [ANNEXURE_BOX_HEADING, ANNEXURE_BOX_TEXT, annexureSentLine(box.licenseeName)];
   return [
     ANNEXURE_BOX_HEADING,
@@ -443,27 +496,89 @@ export function buildWelcomeEmail(input: WelcomeInput): { subject: string; text:
         length: "3 min 40",
       },
       ...(input.annexure ? [{ kind: "annexure" as const, box: input.annexure }] : []),
-      { kind: "p", text: "When you're ready, the easiest way to start is with a listing you're working on now:" },
+      ...WELCOME_TAIL,
+    ],
+    footer: WELCOME_FOOTER,
+  };
+  return { subject, text: renderText(email), html: renderHtml(email, subject) };
+}
+
+// Everything after the video box, the same in both welcomes: the first
+// listing, the community group, the help line and the sign-off.
+const WELCOME_TAIL: Block[] = [
+  { kind: "p", text: "When you're ready, the easiest way to start is with a listing you're working on now:" },
+  {
+    kind: "steps",
+    items: [
+      "Click New listing at the top of any page.",
+      "Drop in the agency agreement, contract and comparables, and RealComply will read them for you.",
+    ],
+  },
+  {
+    kind: "box",
+    heading: "Join other agents in the RealComply group",
+    text: "We've started a private Facebook group for agents and licensees who use RealComply in NSW. Ask how others handle a tricky file, share what's working, and hear about new features first. Only members can see what's posted.",
+    button: { label: "Join the group", href: COMMUNITY_GROUP_URL },
+  },
+  { kind: "p", text: "If anything's unclear or you get stuck, just reply to this email. We're always happy to help." },
+  { kind: "signoff", lines: ["Warm regards,", "The RealComply team"] },
+];
+
+const WELCOME_FOOTER = [
+  "Diligence support, not legal advice. The licensee remains responsible for decisions and sign-off.",
+  "RealComply Pty Ltd, ABN 61 700 934 792.",
+];
+
+// ── Email 2b: the agent welcome (brief, 14 Oct 2026) ─────────────────────
+//
+// For agents: early access single agents and single agents invited personally
+// (their own plan), and agents invited by their office. An agent on their own
+// plan gets this INSTEAD of the welcome above and is never treated as the
+// licensee. The same look and sending rules as the licensee welcome; only the
+// wording of the first two paragraphs and the video differ (mockup approved by
+// Adam, 14 Oct 2026). The picture links to Getting started, not YouTube.
+
+export type AgentWelcomeInput = {
+  firstName: string | null;
+  base?: string;
+  /**
+   * The box under the video: "download" for an agent on their own plan (the
+   * #42 box, unchanged), "office_sg" for an agent invited by their office.
+   */
+  box: Extract<AnnexureBox, { kind: "download" } | { kind: "office_sg" }> | null;
+};
+
+export const AGENT_VIDEO_ALT = "Still from the agent video showing the red and amber dots on Listings";
+
+export function buildAgentWelcomeEmail(input: AgentWelcomeInput): { subject: string; text: string; html: string } {
+  const base = input.base ?? emailBaseUrl();
+  const name = greetingName(input.firstName);
+  const subject = welcomeSubject(input.firstName);
+  const email: Email = {
+    base,
+    preheader: "Welcome aboard. Your account is all set up, and we're really glad to have you with us.",
+    blocks: [
+      { kind: "p", text: name ? `Hi ${name},` : "Hi there," },
       {
-        kind: "steps",
-        items: [
-          "Click New listing at the top of any page.",
-          "Drop in the agency agreement, contract and comparables, and RealComply will read them for you.",
-        ],
+        kind: "p",
+        text: "Welcome aboard. Your account is all set up, and we're really glad to have you with us. We look forward to helping you keep on top of your compliance obligations.",
       },
       {
-        kind: "box",
-        heading: "Join other agents in the RealComply group",
-        text: "We've started a private Facebook group for agents and licensees who use RealComply in NSW. Ask how others handle a tricky file, share what's working, and hear about new features first. Only members can see what's posted.",
-        button: { label: "Join the group", href: COMMUNITY_GROUP_URL },
+        kind: "p",
+        text: "To help you find your feet, we've made a short video that walks through RealComply from an agent's side, on a made-up listing. It takes less than two minutes.",
       },
-      { kind: "p", text: "If anything's unclear or you get stuck, just reply to this email. We're always happy to help." },
-      { kind: "signoff", lines: ["Warm regards,", "The RealComply team"] },
+      {
+        kind: "video",
+        href: gettingStartedUrl(base),
+        src: `${base}/email-agent-video.png`,
+        alt: AGENT_VIDEO_ALT,
+        title: "For agents",
+        length: "1 min 46",
+      },
+      ...(input.box ? [{ kind: "annexure" as const, box: input.box }] : []),
+      ...WELCOME_TAIL,
     ],
-    footer: [
-      "Diligence support, not legal advice. The licensee remains responsible for decisions and sign-off.",
-      "RealComply Pty Ltd, ABN 61 700 934 792.",
-    ],
+    footer: WELCOME_FOOTER,
   };
   return { subject, text: renderText(email), html: renderHtml(email, subject) };
 }

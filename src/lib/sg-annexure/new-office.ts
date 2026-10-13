@@ -2,6 +2,7 @@ import { sendEmail, type SendEmailInput } from "@/lib/email/send";
 import { ADMIN_COPY_ADDRESS, SENDER_NAME, type AnnexureBox } from "@/lib/email/early-access-invite";
 import { buildAnnexureRequestEmail } from "@/lib/email/sg-annexure";
 import { sendEarlyAccessWelcome, type WelcomeOutcome } from "@/lib/early-access/welcome";
+import { sendOwnPlanAgentWelcome } from "@/lib/onboarding/agent-welcome";
 import { annexureDate, SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { appBaseUrl } from "@/lib/site-url";
 
@@ -218,7 +219,13 @@ export async function onNewOfficeTrialStarted(
           : { kind: "sent", licenseeName: plan.licensee.name ?? "your licensee in charge" }
         : null;
 
-  const welcome = await sendEarlyAccessWelcome(supabase, agencyId, { send, env, annexure: box });
+  // An agent on their own plan gets the agent welcome INSTEAD of the licensee
+  // welcome (brief, 14 Oct 2026), early access or invited personally, with
+  // the same download box. Never treated as the licensee.
+  const welcome =
+    annexure === "agent_plan"
+      ? await sendOwnPlanAgentWelcome(supabase, agencyId, { send, env, now, box: { kind: "download", url: annexureDownloadUrl(base) } })
+      : await sendEarlyAccessWelcome(supabase, agencyId, { send, env, annexure: box });
 
   if (plan && link && claimedNow) {
     if (welcome === "sent" && plan.signerIsLicensee) {

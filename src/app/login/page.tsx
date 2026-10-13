@@ -24,6 +24,13 @@ function LoginMessage() {
   );
 }
 
+// The page they opened before signing in, carried through the form
+// (lib/auth/next-page.ts checks it). Its own Suspense boundary, as above.
+function NextField() {
+  const next = useSearchParams().get("next");
+  return next ? <input type="hidden" name="next" value={next} /> : null;
+}
+
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(login, initialState);
 
@@ -36,6 +43,7 @@ export default function LoginPage() {
         <form action={formAction} className="mt-8 space-y-4">
           <Suspense fallback={null}>
             <LoginMessage />
+            <NextField />
           </Suspense>
           {state.error && (
             <p className="rounded-2xl border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2 text-sm text-rc-amber-deep">

@@ -310,6 +310,14 @@ export type SgAnnexureAdoption = {
   signed_at: string;
   signoff_document_id: string | null;
 };
+/** An agent in an office confirming they read the adopted annexure and the SG (0069). */
+export type SgReadConfirmation = {
+  id: string;
+  agency_id: string;
+  confirmed_by: string | null;
+  annexure_version: string;
+  confirmed_at: string;
+};
 export type SignerScope = "all_staff" | "licensee_only";
 
 export type SignoffDocument = {

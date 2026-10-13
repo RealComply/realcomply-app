@@ -1,13 +1,15 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAccess } from "@/lib/data/current-profile";
 import { SG_ANNEXURE_VERSION, firstNameOf } from "@/lib/legal/sg-annexure";
 import { adoptionRefusal, saveSignedCopy } from "@/lib/sg-annexure/adopt";
+import { isOfficeAgent } from "@/lib/sg-annexure/office-read";
 
-// The two things a person does with the SG annexure (brief, 14 Oct 2026).
+// The things a person does with the SG annexure (briefs, 14 Oct 2026).
 
 export type AdoptState = {
   error: string | null;
@@ -64,4 +66,32 @@ export async function openAnnexureSigning(): Promise<void> {
     redirect("/dashboard/home?annexure=unavailable");
   }
   redirect(`/annexure/${token}`);
+}
+
+export type SgReadState = { error: string | null };
+
+/**
+ * An agent in an office ticks that they have read the annexure their licensee
+ * adopted and the office's Supervision Guidelines (brief, 14 Oct 2026). The
+ * database records it once for that version (0069), so a double click saves
+ * once. Nothing is locked if they never tick.
+ */
+export async function confirmSgRead(_prev: SgReadState, formData: FormData): Promise<SgReadState> {
+  const { access } = await requireAccess();
+  if (!isOfficeAgent(access)) return { error: "Only an agent in an office confirms this." };
+  if (String(formData.get("read") ?? "") !== "yes") return { error: "Tick the box first." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("confirm_sg_read");
+  if (error) {
+    console.error("confirm_sg_read failed:", error.message);
+    return {
+      error: /not adopted/i.test(error.message)
+        ? "Your office hasn't adopted the annexure yet, so there's nothing to confirm."
+        : "That didn't save. Try again in a minute.",
+    };
+  }
+  revalidatePath("/dashboard/home");
+  revalidatePath("/dashboard/document-signoffs");
+  return { error: null };
 }

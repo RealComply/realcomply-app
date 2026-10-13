@@ -4,9 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AnnexureAdoptionCard } from "@/components/registers/AnnexureAdoptionCard";
+import { SgReadConfirmationsCard } from "@/components/registers/SgReadConfirmationsCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { documentsWaitingOn, notAskedToSign } from "@/lib/signoff/awaiting";
-import type { SgAnnexureAdoption, SignoffDocument, SignoffSignature } from "@/lib/types";
+import type { SgAnnexureAdoption, SgReadConfirmation, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // Document sign-offs — the generic register for "upload a document, the
 // right people sign it in RealComply" (Adam, 9 Aug 2026). Currently feeds
@@ -18,15 +19,21 @@ export default async function DocumentSignoffsPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
-  const [{ data: docRows }, { data: sigRows }, staff, { data: adoptionRows }] = await Promise.all([
+  const [{ data: docRows }, { data: sigRows }, staff, { data: adoptionRows }, { data: readRows }] = await Promise.all([
     supabase.from("signoff_documents").select("*").order("created_at", { ascending: false }),
     supabase.from("signoff_signatures").select("*"),
     agencyPeople(supabase),
     // The SG annexure's adoptions (0067). The licensee reads them; anyone else
     // gets none, and never sees the annexure's document either.
     supabase.from("sg_annexure_adoptions").select("*"),
+    // Agents' read-and-tick of the annexure and the SG (0069): their own, or
+    // the office's for the licensee in charge.
+    supabase.from("sg_read_confirmations").select("*"),
   ]);
   const adoptions = (adoptionRows ?? []) as SgAnnexureAdoption[];
+  const readConfirmations = (readRows ?? []) as SgReadConfirmation[];
+  const nameOf = (id: string | null) =>
+    (id === profile.id ? profile.full_name : staff.find((p) => p.id === id)?.full_name)?.trim() || "A former agent";
 
   const documents = (docRows ?? []) as SignoffDocument[];
   const signatures = (sigRows ?? []) as SignoffSignature[];
@@ -98,6 +105,7 @@ export default async function DocumentSignoffsPage() {
         )}
 
         <div className="mt-8 space-y-4">
+          <SgReadConfirmationsCard confirmations={readConfirmations} nameOf={nameOf} />
           {/* An agent or assistant sees only the documents they sign (0058),
               so "nothing here yet" would wrongly say the office has none. */}
           {documents.length === 0 && !access.actsAsLicensee && (
