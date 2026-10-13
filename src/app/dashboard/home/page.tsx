@@ -18,6 +18,8 @@ import { GiftsWidget } from "@/components/home/GiftsWidget";
 import { ComplaintsWidget } from "@/components/home/ComplaintsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgManualWidget } from "@/components/home/SgManualWidget";
+import { AnnexureCard } from "@/components/home/AnnexureCard";
+import { SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { STAGE_LABELS, type Agency, type Complaint, type CpdRecord, type Gift, type Profile, type Property, type PropertyItem, type SgManualVersion, type TrainingSession } from "@/lib/types";
 import { countableCpdHours } from "@/lib/cpd-hours";
 
@@ -37,7 +39,11 @@ import { countableCpdHours } from "@/lib/cpd-hours";
 // Portfolio and Registers pages. Only the structural pattern (stat-tile row
 // + card grid of metric/breakdown widgets, colour-coded by status) is
 // borrowed, not the look.
-export default async function HomeDashboardPage() {
+export default async function HomeDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
@@ -48,6 +54,18 @@ export default async function HomeDashboardPage() {
   }
 
   const cpdYear = currentCpdYear();
+
+  // Until the annexure is adopted (brief, 14 Oct 2026), the Home of an
+  // office's licensee in charge asks for it. Shown only on a clean read that
+  // finds no adoption of this version: if the table can't be read, no card,
+  // rather than a button that leads nowhere. Never on an agent plan
+  // (CORRECTION, Adam, 14 Oct 2026, restoring the 22 Sep 2026 rule): nothing
+  // asks an agent on their own plan to get the annexure signed.
+  const [{ data: adoptionRows, error: adoptionError }, query] = await Promise.all([
+    supabase.from("sg_annexure_adoptions").select("id").eq("annexure_version", SG_ANNEXURE_VERSION),
+    searchParams,
+  ]);
+  const annexureOutstanding = access.officeLicensee && !adoptionError && (adoptionRows ?? []).length === 0;
 
   const { data: properties } = await supabase.from("properties").select("*").order("created_at", { ascending: false });
   const propertyList = (properties ?? []) as Property[];
@@ -198,6 +216,8 @@ export default async function HomeDashboardPage() {
               </p>
             </div>
           </div>
+
+          {annexureOutstanding && <AnnexureCard unavailable={query.annexure === "unavailable"} />}
 
           {/* Files an assistant has handed over and prepared for this agent.
               Top of Home, above the tiles, because it is the one thing on the

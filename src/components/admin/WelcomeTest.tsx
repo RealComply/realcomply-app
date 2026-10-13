@@ -19,7 +19,8 @@ export function WelcomeTest() {
       <p className="text-xs font-bold uppercase tracking-wide text-rc-faint">Test the welcome email</p>
       <p className="mt-1 text-xs text-rc-muted">
         The email a new office gets once their card is in, marked [Test]. It only goes to your test addresses
-        (getadamc3+…@gmail.com), and nothing is recorded.
+        (getadamc3+…@gmail.com), and nothing is recorded. The annexure button opens a preview that can&rsquo;t
+        sign.
       </p>
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
         <label className="sr-only" htmlFor="welcome-test-email">
@@ -33,6 +34,23 @@ export function WelcomeTest() {
           defaultValue="getadamc3+test1@gmail.com"
           className={input}
         />
+        {/* The versions of the annexure box (brief, 14 Oct 2026). "Someone
+            else" also sends the licensee's own signing email to the same test
+            address, so both can be seen as received. "Agent on their own
+            plan" shows the download link and sends nothing else (14 Oct). */}
+        <label className="sr-only" htmlFor="welcome-test-signer">
+          Who signed up
+        </label>
+        <select
+          id="welcome-test-signer"
+          name="signer"
+          defaultValue="licensee"
+          className="rounded-lg border border-rc-border bg-white px-3 py-2 text-sm text-rc-ink"
+        >
+          <option value="licensee">Signed up by the licensee</option>
+          <option value="someone_else">Signed up by someone else</option>
+          <option value="agent_plan">Agent on their own plan</option>
+        </select>
         <button
           type="submit"
           disabled={sending}

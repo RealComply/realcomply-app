@@ -84,15 +84,16 @@ const C = {
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-type Block =
+export type Block =
   | { kind: "p"; text: string; small?: boolean }
   | { kind: "button"; label: string; href: string }
   | { kind: "video"; href: string; src: string; alt: string; title: string; length: string }
   | { kind: "steps"; items: string[] }
   | { kind: "box"; heading: string; text: string; button: { label: string; href: string } }
+  | { kind: "annexure"; box: AnnexureBox }
   | { kind: "signoff"; lines: string[] };
 
-type Email = {
+export type Email = {
   preheader: string;
   blocks: Block[];
   /** Footer lines. A link inside one is given as [text](href). */
@@ -101,6 +102,100 @@ type Email = {
 };
 
 const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
+
+// ── The annexure box (brief, 14 Oct 2026) ────────────────────────────────
+//
+// Under the video in the welcome email, and the body of the short email that
+// asks a licensee to adopt the annexure. A green border, white inside, so it
+// reads as the one thing still to do; the community group box below it stays
+// the quieter light green. Wording is the brief's, word for word.
+
+export const ANNEXURE_BOX_HEADING = "One last step: adopt the annexure to your Supervision Guidelines";
+export const ANNEXURE_BOX_TEXT =
+  "It records how your agency uses RealComply within your existing supervision system. You stay in charge of your agency's compliance.";
+export const ANNEXURE_BOX_BUTTON = "Review and sign";
+export const ANNEXURE_BOX_SMALL = "Opens a secure page. Takes about two minutes.";
+/** Shown in the box when no licence number is on file. The signing page asks for it. */
+export const ANNEXURE_NO_LICENCE = "Add it when you sign";
+
+// An agent on their own plan (CORRECTION, Adam, 14 Oct 2026, restoring the
+// 22 Sep 2026 rule): RealComply never contacts their licensee, so the box
+// gives the agent the annexure to hand over themselves. No heading and no
+// signing: a link to the PDF and one line, word for word.
+export const ANNEXURE_DOWNLOAD_LINK = "Download the annexure for your licensee";
+export const ANNEXURE_DOWNLOAD_LINE =
+  "Please give this to your licensee in charge. It explains how RealComply fits within your agency's supervision system.";
+
+export type AnnexureBox =
+  /** Office plan, the reader is the licensee in charge: the details and the button. */
+  | { kind: "sign"; agencyName: string; licenceNumber: string | null; date: string; url: string }
+  /** Office plan, the reader signed up but is not the licensee: the link went to the licensee. */
+  | { kind: "sent"; licenseeName: string }
+  /** Agent on their own plan: the PDF to give their licensee. Nothing goes to the licensee. */
+  | { kind: "download"; url: string };
+
+export function annexureSentLine(licenseeName: string): string {
+  return `We've sent the annexure to ${licenseeName.trim() || "your licensee in charge"} to sign.`;
+}
+
+function annexureBoxHtml(box: AnnexureBox): string {
+  const frame = `<tr><td style="padding:0 28px 22px">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#ffffff;border:2px solid ${C.green};border-radius:12px">
+<tr><td style="padding:18px 20px;font-family:${FONT};font-size:16px;line-height:1.6;color:${C.body}">`;
+  const top = `${frame}
+<p style="margin:0 0 10px;font-weight:700;color:${C.ink}">${esc(ANNEXURE_BOX_HEADING)}</p>
+<p style="margin:0 0 14px">${esc(ANNEXURE_BOX_TEXT)}</p>`;
+  const bottom = `</td></tr></table></td></tr>`;
+  if (box.kind === "download") {
+    return `${frame}
+<p style="margin:0 0 8px"><a href="${esc(box.url)}" style="font-weight:700;color:${C.green};text-decoration:underline">${esc(
+      ANNEXURE_DOWNLOAD_LINK,
+    )}</a> <span style="font-size:14px;color:${C.muted}">(PDF)</span></p>
+<p style="margin:0">${esc(ANNEXURE_DOWNLOAD_LINE)}</p>
+${bottom}`;
+  }
+  if (box.kind === "sent") {
+    return `${top}
+<p style="margin:0;font-weight:700;color:${C.ink}">${esc(annexureSentLine(box.licenseeName))}</p>
+${bottom}`;
+  }
+  const rows: Array<[string, string]> = [
+    ["Agency", box.agencyName],
+    ["Licence number", box.licenceNumber?.trim() || ANNEXURE_NO_LICENCE],
+    ["Date", box.date],
+  ];
+  return `${top}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px">${rows
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:2px 14px 2px 0;font-family:${FONT};font-size:14px;color:${C.muted};white-space:nowrap;vertical-align:top">${esc(
+          label,
+        )}</td><td style="padding:2px 0;font-family:${FONT};font-size:14px;font-weight:700;color:${C.ink}">${esc(value)}</td></tr>`,
+    )
+    .join("")}</table>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="background:${C.green};border-radius:999px"><a href="${esc(box.url)}" style="display:inline-block;padding:12px 26px;font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none">${esc(
+    ANNEXURE_BOX_BUTTON,
+  )}</a></td></tr></table>
+<p style="margin:10px 0 0;font-size:13px;color:${C.muted}">${esc(ANNEXURE_BOX_SMALL)}</p>
+${bottom}`;
+}
+
+function annexureBoxText(box: AnnexureBox): string[] {
+  if (box.kind === "download") return [`${ANNEXURE_DOWNLOAD_LINK} (PDF): ${box.url}`, ANNEXURE_DOWNLOAD_LINE];
+  if (box.kind === "sent") return [ANNEXURE_BOX_HEADING, ANNEXURE_BOX_TEXT, annexureSentLine(box.licenseeName)];
+  return [
+    ANNEXURE_BOX_HEADING,
+    ANNEXURE_BOX_TEXT,
+    "",
+    `Agency: ${box.agencyName}`,
+    `Licence number: ${box.licenceNumber?.trim() || ANNEXURE_NO_LICENCE}`,
+    `Date: ${box.date}`,
+    "",
+    `${ANNEXURE_BOX_BUTTON}: ${box.url}`,
+    ANNEXURE_BOX_SMALL,
+  ];
+}
 
 function blockHtml(b: Block): string {
   switch (b.kind) {
@@ -139,6 +234,8 @@ function blockHtml(b: Block): string {
         b.button.label,
       )}</a></td></tr></table>
 </td></tr></table></td></tr>`;
+    case "annexure":
+      return annexureBoxHtml(b.box);
     case "signoff":
       return `<tr><td style="padding:0 28px 16px;font-family:${FONT};font-size:16px;line-height:1.6;color:${C.body}">${b.lines
         .map(esc)
@@ -205,6 +302,9 @@ function renderText(e: Email): string {
       case "box":
         out.push(b.heading, b.text, "", `${b.button.label}: ${b.button.href}`, "");
         break;
+      case "annexure":
+        out.push(...annexureBoxText(b.box), "");
+        break;
       case "signoff":
         out.push(...b.lines, "");
         break;
@@ -213,6 +313,11 @@ function renderText(e: Email): string {
   out.push("---");
   for (const line of e.footer) out.push(line.replace(linkPattern, (_m, text: string, href: string) => `${text} <${href}>`));
   return out.join("\n").trim();
+}
+
+/** For the other emails with this look (lib/email/sg-annexure.ts). */
+export function renderBrandedEmail(e: Email, title: string): { text: string; html: string } {
+  return { text: renderText(e), html: renderHtml(e, title) };
 }
 
 // ── Email 1: the invitation ───────────────────────────────────────────────
@@ -298,6 +403,13 @@ export function buildPersonalInvitationEmail(input: Omit<InvitationInput, "unsub
 export type WelcomeInput = {
   firstName: string | null;
   base?: string;
+  /**
+   * The annexure box under the video (brief, 14 Oct 2026). Office plans: the
+   * button for the licensee in charge, or "We've sent the annexure to ..." for
+   * anyone else. Agent plans: the PDF to give their licensee (14 Oct 2026).
+   * Left out, the email is exactly as it was before the annexure.
+   */
+  annexure?: AnnexureBox | null;
 };
 
 export function welcomeSubject(firstName: string | null): string {
@@ -330,6 +442,7 @@ export function buildWelcomeEmail(input: WelcomeInput): { subject: string; text:
         title: "For licensees",
         length: "3 min 40",
       },
+      ...(input.annexure ? [{ kind: "annexure" as const, box: input.annexure }] : []),
       { kind: "p", text: "When you're ready, the easiest way to start is with a listing you're working on now:" },
       {
         kind: "steps",

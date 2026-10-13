@@ -170,6 +170,10 @@ const TABLES: Array<{ table: string; file: string; order?: string }> = [
   // Every change to the licensee's name or email, and who made it (0066).
   { table: "licensee_contact_changes", file: "Licensee contact changes", order: "changed_at" },
   { table: "sg_manual_versions", file: "Statement of generic matters versions", order: "created_at" },
+  // Adoptions of the SG annexure (0067). The signed copies are in "Signed-off
+  // documents" with every other sign-off. The links' tokens are keys, not
+  // records, and are left out like the others.
+  { table: "sg_annexure_adoptions", file: "SG annexure adoptions", order: "signed_at" },
   { table: "licence_history", file: "Licence history", order: "changed_at" },
   { table: "assistant_agents", file: "Assistants and their agents", order: "created_at" },
   { table: "pm_properties", file: "Property management - properties", order: "created_at" },

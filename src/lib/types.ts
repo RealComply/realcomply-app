@@ -295,7 +295,21 @@ export type Breach = {
 // Document sign-offs — see supabase/migrations/0009_document_signoffs.sql
 // for the full design note. 'other' exists so a one-off document can be
 // published without inventing a new category.
-export type SignoffCategory = "sg_manual" | "trust_reconciliation" | "other";
+// 'sg_annexure' is the signed copy of the SG annexure, filed by the server when
+// the licensee adopts it (0067). Nobody signs it in the app.
+export type SignoffCategory = "sg_manual" | "trust_reconciliation" | "sg_annexure" | "other";
+
+/** One adoption of the SG annexure (0067). Read by the licensee only. */
+export type SgAnnexureAdoption = {
+  id: string;
+  agency_id: string;
+  annexure_version: string;
+  signed_name: string;
+  licence_number: string;
+  sent_to: string;
+  signed_at: string;
+  signoff_document_id: string | null;
+};
 export type SignerScope = "all_staff" | "licensee_only";
 
 export type SignoffDocument = {

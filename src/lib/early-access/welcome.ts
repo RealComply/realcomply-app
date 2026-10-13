@@ -1,5 +1,6 @@
 import { sendEmail, type SendEmailInput } from "@/lib/email/send";
-import { ADMIN_COPY_ADDRESS, SENDER_NAME, buildWelcomeEmail } from "@/lib/email/early-access-invite";
+import { ADMIN_COPY_ADDRESS, SENDER_NAME, buildWelcomeEmail, type AnnexureBox } from "@/lib/email/early-access-invite";
+import { buildAnnexureRequestEmail } from "@/lib/email/sg-annexure";
 import { appBaseUrl } from "@/lib/site-url";
 import { isTestAddress, welcomeSwitchedOn } from "./rules";
 
@@ -39,6 +40,8 @@ export async function sendEarlyAccessWelcome(
   deps: {
     send?: (input: SendEmailInput) => Promise<boolean>;
     env?: Record<string, string | undefined>;
+    /** The annexure box under the video (lib/sg-annexure/new-office.ts). */
+    annexure?: AnnexureBox | null;
   } = {},
 ): Promise<WelcomeOutcome> {
   const send = deps.send ?? sendEmail;
@@ -103,7 +106,7 @@ export async function sendEarlyAccessWelcome(
       return "failed";
     }
 
-    const { subject, text, html } = buildWelcomeEmail({ firstName: row.first_name });
+    const { subject, text, html } = buildWelcomeEmail({ firstName: row.first_name, annexure: deps.annexure ?? null });
     const sent = await send({ to, bcc: ADMIN_COPY_ADDRESS, replyTo: ADMIN_COPY_ADDRESS, fromName: SENDER_NAME, subject, text, html });
     if (!sent) {
       await undo();
@@ -131,9 +134,22 @@ export async function sendEarlyAccessWelcome(
  *     real email. A preview's own address sits behind Vercel's login, so
  *     Gmail could not load the pictures from it.
  *   - It ignores the welcome switch and writes nothing.
+ *   - The annexure box shows (brief, 14 Oct 2026) with the staff member's own
+ *     office's details. Its button opens the signing page's preview, which
+ *     cannot sign, so a test never adopts the annexure for a real office.
  */
 export async function sendTestWelcome(
-  input: { to: string; firstName: string | null },
+  input: {
+    to: string;
+    firstName: string | null;
+    /** The annexure box as the staff member's own office would get it, its button to the signing page's preview. */
+    annexure?: AnnexureBox | null;
+    /**
+     * When the box says the annexure went to the licensee: the licensee's own
+     * signing email, sent to the same test address after the welcome.
+     */
+    licenseeRequest?: { licenseeName: string; box: Extract<AnnexureBox, { kind: "sign" }> } | null;
+  },
   deps: {
     send?: (input: SendEmailInput) => Promise<boolean>;
     env?: Record<string, string | undefined>;
@@ -150,8 +166,25 @@ export async function sendTestWelcome(
   const { subject, text, html } = buildWelcomeEmail({
     firstName: input.firstName,
     base: appBaseUrl({ NEXT_PUBLIC_SITE_URL: env.NEXT_PUBLIC_SITE_URL }),
+    annexure: input.annexure ?? null,
   });
   const sent = await send({ to, replyTo: ADMIN_COPY_ADDRESS, fromName: SENDER_NAME, subject: `[Test] ${subject}`, text, html });
   if (!sent) return { error: "The test email couldn't be sent. Try again in a minute." };
-  return { error: null, notice: `Test welcome sent to ${to}.` };
+  if (!input.licenseeRequest) return { error: null, notice: `Test welcome sent to ${to}.` };
+
+  const request = buildAnnexureRequestEmail({
+    licenseeName: input.licenseeRequest.licenseeName,
+    box: input.licenseeRequest.box,
+    base: appBaseUrl({ NEXT_PUBLIC_SITE_URL: env.NEXT_PUBLIC_SITE_URL }),
+  });
+  const requestSent = await send({
+    to,
+    replyTo: ADMIN_COPY_ADDRESS,
+    fromName: SENDER_NAME,
+    subject: `[Test] ${request.subject}`,
+    text: request.text,
+    html: request.html,
+  });
+  if (!requestSent) return { error: "The test welcome went, but the licensee's email couldn't be sent. Try again in a minute." };
+  return { error: null, notice: `Test welcome and the licensee's signing email sent to ${to}.` };
 }
