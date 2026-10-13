@@ -112,9 +112,13 @@ export function editedInWording(draft: string, text: string): boolean {
   return wordingOf(draft) !== wordingOf(text);
 }
 
-/** Removes the on-screen disclaimer from text about to be saved, if it was pasted in. */
+/**
+ * Removes the on-screen disclaimer from text about to be saved, if it was
+ * pasted in. Line endings come out as \n: a browser posts a textarea's line
+ * breaks as \r\n but shows them as \n, and the two have to compare equal.
+ */
 export function withoutDisclaimer(text: string): string {
-  return text.split(DISCLAIMER).join("").replace(/\n{3,}/g, "\n\n").trim();
+  return text.replace(/\r\n?/g, "\n").split(DISCLAIMER).join("").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export type A4cSaveInput = {
@@ -148,7 +152,7 @@ export function adoptionOf(data: Record<string, unknown> | null | undefined): Re
  * ticks, so they never count.
  */
 export function tickCovers(record: ReasoningAdoptionRecord | null, boxText: string): boolean {
-  return Boolean(record?.statement) && record!.confirmedText === withoutDisclaimer(boxText);
+  return Boolean(record?.statement) && withoutDisclaimer(record!.confirmedText) === withoutDisclaimer(boxText);
 }
 
 export function a4cSave(input: A4cSaveInput): { error: string } | { data: Record<string, unknown> } {

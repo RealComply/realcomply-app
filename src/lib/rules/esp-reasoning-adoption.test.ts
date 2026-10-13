@@ -171,6 +171,18 @@ describe("later saves", () => {
     assert.deepEqual(again.reasoningAdoption, first.reasoningAdoption);
   });
 
+  it("the browser's \\r\\n line breaks don't count as a change (preview test, 13 Oct 2026)", () => {
+    // A textarea posts its line breaks as \r\n and shows them as \n.
+    const posted = DRAFT.replace(/\n/g, "\r\n");
+    const ticked = dataOf(save({ note: posted, pending: pendingDraft, ticked: true }));
+    assert.equal(ticked.note, DRAFT, "saved with \\n");
+    assert.equal(recordOf(save({ note: posted, pending: pendingDraft, ticked: true })).changed, false);
+    // The box as the page shows it, against a record saved before this fix.
+    const oldRecord = { ...(ticked.reasoningAdoption as ReasoningAdoptionRecord), confirmedText: posted };
+    assert.ok(tickCovers(oldRecord, DRAFT));
+    assert.ok(tickCovers(ticked.reasoningAdoption as ReasoningAdoptionRecord, posted));
+  });
+
   it("any change to the text needs a fresh tick", () => {
     assert.deepEqual(save({ note: EDITED, previous: first }), { error: TICK_FIRST });
   });

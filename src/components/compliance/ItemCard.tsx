@@ -748,6 +748,18 @@ function ChecklistItem({
   const status = current?.status;
   const isDone = status === "done";
 
+  // a4c is sent from onSubmit, not <form action>: React resets a form once its
+  // action has run, refused or not (see useSaveThenClose), and on this card
+  // that wiped the agent's reasoning, or RealComply's draft, from the box
+  // whenever the server refused the save (preview test, 13 Oct 2026). The
+  // button pressed comes with it, since it carries the status.
+  const keepOnRefusal = item.key === "a4c";
+  const submitKeepingFields = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget, (event.nativeEvent as SubmitEvent).submitter);
+    startTransition(() => formAction(formData));
+  };
+
   const data = (current?.data ?? {}) as {
     note?: string;
     espLow?: number;
@@ -930,7 +942,12 @@ function ChecklistItem({
           />
         </div>
       )}
-      <form action={formAction} className="space-y-3">
+      <form
+        action={keepOnRefusal ? undefined : formAction}
+        method={keepOnRefusal ? "post" : undefined}
+        onSubmit={keepOnRefusal ? submitKeepingFields : undefined}
+        className="space-y-3"
+      >
         {wrongDocument ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
