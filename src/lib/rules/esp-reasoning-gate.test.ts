@@ -98,8 +98,8 @@ describe("waitsForEspReasoning", () => {
   });
 });
 
-describe("edit first, as the server checks it", () => {
-  it("treats the server's draft saved unchanged as not edited", () => {
+describe("changed or used as written, as the server records it", () => {
+  it("treats the server's draft saved with only spacing changed as used as written", () => {
     const draft = "My estimated selling price is $1,300,000 to $1,400,000.";
     assert.equal(editedInWording(draft, `  ${draft}\n`), false);
     assert.equal(editedInWording(draft, `${draft} I also weighed the larger block.`), true);

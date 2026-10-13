@@ -1,28 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, FileText, Info, Sparkles, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, FileText, Info, Sparkles, X } from "lucide-react";
 import { reasoningNudge, type Comparable } from "@/lib/data/comparables";
 import { draftEspReasoning, type EspDraft, type EspDraftInput } from "@/lib/data/esp-draft";
 import {
-  ADOPT_LABEL,
   DISCLAIMER,
-  EDIT_FIRST,
+  OWN_OPINION,
+  adoptionSummary,
   draftOffer,
-  editedInWording,
+  tickCovers,
   type ReasoningAdoptionRecord,
 } from "@/lib/rules/esp-reasoning-adoption";
 
-// The ESP reasoning card's helper: "Draft my reasoning", and adopting text the
-// agent did not type here.
+// The ESP reasoning card's helper, directly under the box: "Draft my
+// reasoning", and the tick that makes the reasoning the agent's own.
 //
-// RealComply's draft is written into the box only when the agent asks, the
-// disclaimer sits directly above it while it is there (ItemCard renders it
-// over the box, because that is where the draft is), and it becomes their
-// reasoning only after they have changed its wording AND pressed ADOPT_LABEL.
-// Reasoning read from their own document needs the click but not the edit.
-// The server enforces both — see lib/rules/esp-reasoning-adoption.ts. What the
-// draft says, and the limits on it, are in lib/data/esp-draft.ts.
+// RealComply's draft is written into the box only when the agent asks, and
+// the disclaimer sits directly above it while it is there (ItemCard renders it
+// over the box, because that is where the draft is). Whatever is in the box,
+// drafted, read from their document or typed, the agent ticks OWN_OPINION
+// before the card can be marked done: ItemCard keeps Mark done unavailable
+// until they do, and the server refuses it too. Since 14 Oct 2026 nothing
+// forces them to edit a draft first (the reversal is recorded in
+// lib/rules/esp-reasoning-adoption.ts). What the draft says, and the limits
+// on it, are in lib/data/esp-draft.ts.
 //
 // NEVER OVER THE AGENT'S OWN TEXT. Saved reasoning: no offer. Reasoning read
 // from their document: stays in the box, the draft is a second option beside
@@ -35,6 +37,7 @@ type Chosen = EspDraft & { generatedAt: string };
 
 export function ReasoningAssist({
   noteId,
+  initialText,
   draftInput,
   comparables,
   savedReasoning,
@@ -43,9 +46,13 @@ export function ReasoningAssist({
   adoption,
   isDone,
   onDraftInBox,
+  onTickMissing,
 }: {
   noteId: string;
-  draftInput: EspDraftInput;
+  /** What the box opens with, so the first paint already knows whether a tick is needed. */
+  initialText: string;
+  /** Null when the listing's details are not to hand: no draft is offered, the tick still is. */
+  draftInput: EspDraftInput | null;
   comparables: Comparable[];
   /** What is already recorded on this item. */
   savedReasoning: string;
@@ -59,14 +66,29 @@ export function ReasoningAssist({
   isDone: boolean;
   /** Tells the card a draft is in the box, so it can put the disclaimer above it. */
   onDraftInBox: (inBox: boolean) => void;
+  /** Tells the card the tick is still needed, so it can hold Mark done and say why. */
+  onTickMissing: (missing: boolean) => void;
 }) {
-  const [boxText, setBoxText] = useState("");
+  const [boxText, setBoxText] = useState(initialText);
   const [chosen, setChosen] = useState<Chosen | null>(null);
   const [preview, setPreview] = useState<EspDraft | null>(null);
   // Set once the agent empties a box that held their document's reasoning:
   // whatever they type next is typed here, not read from the document.
   const [documentSetAside, setDocumentSetAside] = useState(false);
-  const adoptRef = useRef<HTMLInputElement>(null);
+  // Which saved tick the box was ticked against. A new record (a save) makes
+  // it stale, so the box comes back unticked for the next change, and putting
+  // a draft into the box unticks it, so a draft is never confirmed unread.
+  const [tickedAgainst, setTickedAgainst] = useState<string | null>(null);
+  const tickKey = adoption?.confirmedAt ?? "";
+  // A save that records a tick ends any draft in hand: what is in the box is
+  // now the reasoning on file, so the draft's controls go with it. (The card
+  // folds rather than unmounts, so this state would otherwise outlive it.)
+  const [recordSeen, setRecordSeen] = useState(tickKey);
+  if (recordSeen !== tickKey) {
+    setRecordSeen(tickKey);
+    setChosen(null);
+    setPreview(null);
+  }
 
   // Follow the box. Uncontrolled textarea, so listen rather than own its value.
   // Emptying it abandons a draft for good: what is typed next is the agent's.
@@ -78,15 +100,19 @@ export function ReasoningAssist({
       if (!el.value.trim()) {
         setChosen(null);
         setDocumentSetAside(true);
-        onDraftInBox(false);
       }
     };
     sync();
     el.addEventListener("input", sync);
     return () => el.removeEventListener("input", sync);
-  }, [noteId, onDraftInBox]);
+  }, [noteId]);
 
   const active = chosen && boxText.trim() ? chosen : null;
+  // The card puts the disclaimer above the box whenever a draft is in it.
+  const draftShown = Boolean(active);
+  useEffect(() => {
+    onDraftInBox(draftShown);
+  }, [draftShown, onDraftInBox]);
   const fromDocument =
     !active &&
     !isDone &&
@@ -108,10 +134,18 @@ export function ReasoningAssist({
   const nudge = active || fromDocument ? null : reasoningNudge(savedReasoning, comparables);
   // Worked out up front, so "the agency agreement is needed first" sits where
   // the button would be rather than appearing only after a click.
-  const result = offer === "none" ? null : draftEspReasoning(draftInput);
+  const result = offer === "none" || !draftInput ? null : draftEspReasoning(draftInput);
   const ready = result?.kind === "draft" ? result : null;
   const unavailable = result?.kind === "unavailable" ? result.message : null;
-  const edited = active ? editedInWording(active.text, boxText) : false;
+
+  // The tick. Not needed while the box holds exactly what the last tick
+  // covered (the server applies the same test: tickCovers).
+  const covered = !active && !fromDocument && tickCovers(adoption, boxText);
+  const ticked = tickedAgainst === tickKey;
+  const tickMissing = !covered && !ticked;
+  useEffect(() => {
+    onTickMissing(tickMissing);
+  }, [tickMissing, onTickMissing]);
 
   function writeInto(text: string) {
     const el = document.getElementById(noteId) as HTMLTextAreaElement | null;
@@ -127,26 +161,15 @@ export function ReasoningAssist({
     writeInto(d.text);
     setChosen({ ...d, generatedAt: new Date().toISOString() });
     setPreview(null);
-    onDraftInBox(true);
+    setTickedAgainst(null);
   }
 
   function leaveDraft() {
     const backToDocument = Boolean(documentReasoning.trim()) && !savedReasoning.trim();
     writeInto(backToDocument ? documentReasoning : "");
     setChosen(null);
+    setTickedAgainst(null);
     if (backToDocument) setDocumentSetAside(false);
-    onDraftInBox(false);
-  }
-
-  // Only this click confirms. The form reads the value as it submits, then it
-  // is cleared, so a later plain "Mark done" after a failed save cannot count.
-  function confirmClick() {
-    const el = adoptRef.current;
-    if (!el) return;
-    el.value = "yes";
-    setTimeout(() => {
-      el.value = "";
-    }, 0);
   }
 
   const source = active ? "realcomply_draft" : fromDocument ? "document" : "";
@@ -160,42 +183,32 @@ export function ReasoningAssist({
       <input type="hidden" name="reasoningOriginal" value={original} />
       <input type="hidden" name="reasoningDraftGeneratedAt" value={active?.generatedAt ?? ""} />
       <input type="hidden" name="reasoningDraftEvidence" value={active?.evidence ?? ""} />
-      <input ref={adoptRef} type="hidden" name="adoptDraft" value="" />
 
       {active && (
         <div className="space-y-2">
           {active.warning && <EvidenceWarning text={active.warning} />}
-          <div className="flex flex-wrap items-center gap-2">
-            <ConfirmButton disabled={!edited} onClick={confirmClick} />
-            <button
-              type="button"
-              onClick={leaveDraft}
-              className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-[11px] font-semibold text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
-            >
-              <X size={11} aria-hidden="true" />
-              {documentReasoning.trim() && !savedReasoning.trim()
-                ? "Back to the reasoning from your document"
-                : "Discard the draft"}
-            </button>
-          </div>
-          {/* Why the button is unavailable, said in words rather than left to a greyed control. */}
-          {!edited && <p className="text-[11px] font-medium text-rc-amber-deep">{EDIT_FIRST}</p>}
+          <button
+            type="button"
+            onClick={leaveDraft}
+            className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-[11px] font-semibold text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
+          >
+            <X size={11} aria-hidden="true" />
+            {documentReasoning.trim() && !savedReasoning.trim()
+              ? "Back to the reasoning from your document"
+              : "Discard the draft"}
+          </button>
         </div>
       )}
 
-      {/* The agent's own document: their words, so no edit is required, but
-          they still confirm them as their reasoning in one click. */}
+      {/* The agent's own document: their words, confirmed with the same tick. */}
       {fromDocument && (
-        <div className="space-y-2">
-          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-muted">
-            <FileText size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
-            <span>
-              The box above holds the reasoning read from your uploaded document. Check it, change it if you want,
-              and confirm it as yours.
-            </span>
-          </p>
-          <ConfirmButton disabled={false} onClick={confirmClick} />
-        </div>
+        <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-muted">
+          <FileText size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>
+            The box above holds the reasoning read from your uploaded document. Check it and change anything you
+            need to.
+          </span>
+        </p>
       )}
 
       {offer === "in_box" && ready && (
@@ -245,14 +258,6 @@ export function ReasoningAssist({
         </p>
       )}
 
-      {adoption && !active && !fromDocument && (
-        <p className="text-[11px] text-rc-muted">
-          Confirmed as {adoption.confirmedByName ? `${adoption.confirmedByName}'s` : "the agent's"} reasoning on{" "}
-          {new Date(adoption.confirmedAt).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}
-          {adoption.source === "document" ? ", from the uploaded document." : ", edited from RealComply's draft."}
-        </p>
-      )}
-
       {/* A note, never a block. */}
       {nudge && (
         <p className="flex items-start gap-1.5 rounded-lg border border-rc-amber/40 bg-rc-amber/10 px-3 py-2 text-[11px] leading-relaxed text-rc-ink">
@@ -260,7 +265,38 @@ export function ReasoningAssist({
           <span>{nudge}</span>
         </p>
       )}
+
+      {/* A confirmation from before 14 Oct 2026, made with the old button. */}
+      {adoption && !adoption.statement && !active && !fromDocument && (
+        <p className="text-[11px] text-rc-muted">{adoptionSummary(adoption)}</p>
+      )}
+
+      {covered && adoption ? (
+        <p className="text-[11px] text-rc-muted">{adoptionSummary(adoption)}</p>
+      ) : (
+        <OwnOpinionTick
+          checked={ticked}
+          onChange={(on) => setTickedAgainst(on ? tickKey : null)}
+        />
+      )}
     </div>
+  );
+}
+
+/** The one statement the agent makes about the reasoning, exactly as worded. */
+export function OwnOpinionTick({ checked, onChange }: { checked: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-rc-border bg-white px-3 py-2.5 text-xs leading-relaxed text-rc-ink">
+      <input
+        type="checkbox"
+        name="ownOpinion"
+        value="yes"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 accent-rc-green-deep"
+      />
+      <span>{OWN_OPINION}</span>
+    </label>
   );
 }
 
@@ -290,23 +326,6 @@ export function Disclaimer() {
       <Sparkles size={12} className="mt-0.5 shrink-0 text-rc-amber-deep" aria-hidden="true" />
       <span>{DISCLAIMER}</span>
     </p>
-  );
-}
-
-function ConfirmButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="submit"
-      name="status"
-      value="done"
-      disabled={disabled}
-      onClick={onClick}
-      title={disabled ? EDIT_FIRST : undefined}
-      className="inline-flex items-center gap-1.5 rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      <Check size={12} aria-hidden="true" />
-      {ADOPT_LABEL}
-    </button>
   );
 }
 

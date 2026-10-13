@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { a4cSave, EDIT_FIRST, editedInWording, pendingFromForm } from "@/lib/rules/esp-reasoning-adoption";
+import { a4cSave, pendingFromForm } from "@/lib/rules/esp-reasoning-adoption";
 import {
   ESP_REASONING_KEY,
   STAGE_GATE_MESSAGE,
@@ -125,9 +125,9 @@ export async function requireAuthContext() {
 }
 
 // The draft "Draft my reasoning" would write for this file right now, worked
-// out on the server from the same facts the card uses. The edit-first rule is
-// checked against this, not only against what the page says it offered, so a
-// request that leaves out the draft fields cannot save the draft unchanged.
+// out on the server from the same facts the card uses. A box holding it word
+// for word is recorded as RealComply's draft, not the agent's own typing,
+// even when the request leaves out the fields that say so.
 async function currentEspDraftText(
   supabase: Awaited<ReturnType<typeof createClient>>,
   propertyId: string,
@@ -514,13 +514,13 @@ export async function setItemStatus(
     }
   }
 
-  // a4c — the ESP reasoning. Text the agent did not type here (RealComply's
-  // draft, or reasoning read from their document) is not theirs until they
-  // confirm it in one click, and a draft must be edited in its wording first.
-  // Both are enforced here whatever button sent the form, so an unedited or
-  // unconfirmed draft never saves and the card stays incomplete. A confirmed
-  // one is recorded with who, when, and the original beside the final text.
-  // See lib/rules/esp-reasoning-adoption.ts.
+  // a4c — the ESP reasoning. Whatever put the words in the box (RealComply's
+  // draft, the agent's document, or their own typing), the agent ticks that
+  // it reflects their own opinion before the card can be marked done, and
+  // words they did not type here never save without the tick. Enforced here
+  // whatever button sent the form. The tick is recorded with who, when, and
+  // the original beside the final text. No forced edit since 14 Oct 2026:
+  // see lib/rules/esp-reasoning-adoption.ts.
   if (itemKey === "a4c") {
     const { data: previousRow } = await supabase
       .from("property_items")
@@ -528,25 +528,23 @@ export async function setItemStatus(
       .eq("property_id", propertyId)
       .eq("item_key", "a4c")
       .maybeSingle();
+    const previous = (previousRow as { data?: Record<string, unknown> } | null)?.data ?? null;
+    const pendingReasoning = pendingFromForm(formData);
     const saved = a4cSave({
       note,
-      pending: pendingFromForm(formData),
-      confirmed: String(formData.get("adoptDraft") ?? "") === "yes",
-      previous: ((previousRow as { data?: Record<string, unknown> } | null)?.data ?? null),
+      pending: pendingReasoning,
+      status,
+      ticked: String(formData.get("ownOpinion") ?? "") === "yes",
+      serverDraft:
+        !pendingReasoning && note
+          ? await currentEspDraftText(supabase, propertyId, Boolean(previous?.noneOnMarket))
+          : null,
+      previous,
       user: { id: user.id, name: (profile.full_name as string | null) ?? null },
       now: new Date().toISOString(),
     });
     if ("error" in saved) return { error: saved.error };
     Object.assign(data, saved.data);
-
-    // Edit first, checked against the draft the server itself would write
-    // now, so leaving the draft fields out of the request does not get an
-    // unedited draft through as the agent's own typing.
-    const savedNote = String(data.note ?? "");
-    if (savedNote.trim()) {
-      const serverDraft = await currentEspDraftText(supabase, propertyId, Boolean(data.noneOnMarket));
-      if (serverDraft && !editedInWording(serverDraft, savedNote)) return { error: EDIT_FIRST };
-    }
 
     // The completion rule (lib/rules/esp-reasoning-gate.ts). Only "done" is
     // checked; saving a draft of the reasoning, or reopening, stays possible.

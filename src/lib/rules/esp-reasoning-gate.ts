@@ -21,9 +21,12 @@ import { getItem } from "@/lib/rules/nsw-sales";
 //
 // THE RULE. Complete only when all three hold:
 //   a. Reasoning is in RealComply: real text, not empty, whitespace or a
-//      placeholder such as "N/A". Text read from a document or drafted by
-//      RealComply counts only once the agent has confirmed it, which the save
-//      itself enforces (lib/rules/esp-reasoning-adoption.ts).
+//      placeholder such as "N/A". Since 14 Oct 2026 the agent ticks that it
+//      reflects their own opinion before the card can be marked done, however
+//      the words got there (drafted by RealComply, read from their document,
+//      or typed). The save itself enforces that, not this rule, so cards
+//      marked done before then are not reopened by it
+//      (lib/rules/esp-reasoning-adoption.ts).
 //   b. On the market: at least one property is recorded on the original list
 //      (as at the agency agreement date), or the agent has ticked that nothing
 //      comparable was on the market then.
