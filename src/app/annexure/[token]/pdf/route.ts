@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { buildSgAnnexurePdf, sgAnnexureFilename } from "@/lib/pdf/sg-annexure";
 import { SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { linkDetails, logoFor } from "@/lib/sg-annexure/adopt";
+import { formalAgencyName } from "@/lib/agency-names";
 
 // "Download the full annexure (PDF)" on the signing page (brief, 14 Oct 2026):
 // the annexure with the agency's name and licence number, the adoption left
@@ -20,7 +21,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
 
   const agencyName = details?.agencyName ?? "Your agency";
   const pdf = await buildSgAnnexurePdf({
-    agencyName,
+    // "[licensed entity name] trading as [trading name]" (brief, 14 Oct 2026).
+    agencyName: formalAgencyName({ tradingName: agencyName, licensedEntityName: details?.licensedEntityName ?? null }),
     licenceNumber: details?.licenceNumber ?? null,
     effectiveDate: null,
     logo: details?.logoPath ? await logoFor(createServiceClient(), details.logoPath) : null,

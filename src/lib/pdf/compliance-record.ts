@@ -248,8 +248,15 @@ export type Attachment = {
 
 export type ComplianceRecordInput = {
   property: Property;
-  /** The agency's own name. This is their document; RealComply made it. */
+  /** The agency's own (trading) name. This is their document; RealComply made it. */
   agencyName: string;
+  /**
+   * The name at the top of the cover: "[licensed entity name] trading as
+   * [trading name]", or the trading name alone (brief, 14 Oct 2026). The
+   * trading name when not given. The title, author and file name keep the
+   * trading name.
+   */
+  agencyLine?: string;
   /**
    * The agent this listing belongs to. Shown under the office name, and it is
    * the whole masthead for an agency with no logo — the individual-agent case
@@ -364,6 +371,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   const {
     property,
     agencyName,
+    agencyLine,
     agentName,
     logo,
     items,
@@ -452,7 +460,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     nameWidth = CONTENT_W - w - 20;
   }
 
-  c.text(agencyName, { size: 17, bold: true, width: nameWidth });
+  c.text(agencyLine ?? agencyName, { size: 17, bold: true, width: nameWidth });
   if (agentName) c.text(agentName, { size: 11, color: MUTED, width: nameWidth });
   c.y = Math.min(c.y, logoBottom) - 6;
   c.text(isDraft ? "Compliance record - DRAFT" : "Finalised compliance record", {

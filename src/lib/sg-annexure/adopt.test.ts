@@ -101,6 +101,28 @@ describe("the signed copy", () => {
   });
 });
 
+describe("the signed copy's Agency line (14 Oct 2026)", () => {
+  it("prints the names as signed: X trading as Y", async () => {
+    const s = fakeService();
+    Object.assign(s.tables.sg_annexure_adoptions[0], { trading_name: "Harbour Realty", licensed_entity_name: "HR Holdings Pty Ltd" });
+    // A later change in Office profile does not reach the signed copy.
+    Object.assign(s.tables.agencies[0], { name: "Harbour Realty Group", licensed_entity_name: "Other Pty Ltd" });
+    await saveSignedCopy(s.client, "ad1", { send: async () => true });
+    const text = pdfText(s.uploads[0].bytes).replace(/\s+/g, " ");
+    assert.ok(text.includes("HR Holdings Pty Ltd trading as Harbour Realty"), text.slice(0, 400));
+    assert.ok(!text.includes("Other Pty Ltd"));
+  });
+
+  it("with no entity name, the trading name alone, as before", async () => {
+    const s = fakeService();
+    Object.assign(s.tables.sg_annexure_adoptions[0], { trading_name: "Harbour Realty", licensed_entity_name: null });
+    await saveSignedCopy(s.client, "ad1", { send: async () => true });
+    const text = pdfText(s.uploads[0].bytes).replace(/\s+/g, " ");
+    assert.ok(text.includes("Harbour Realty"));
+    assert.ok(!text.includes("trading as"));
+  });
+});
+
 describe("what the signing page says when the database refuses", () => {
   it("passes on the database's own sentences", () => {
     for (const msg of ["Type your full name.", "Type your licence number.", "This link is no longer valid.", "This annexure has already been adopted."]) {

@@ -90,6 +90,7 @@ function office(opts: {
         licensee_name: opts.founderIsLicensee ? null : "Lee Licensee",
         licensee_email: opts.founderIsLicensee ? null : opts.licenseeEmail === undefined ? "getadamc3+licensee@gmail.com" : opts.licenseeEmail,
         corporation_licence_number: null,
+        annexure_download_token: "7f9c1d2e-0000-4000-8000-000000000001",
       },
     ],
     profiles: [
@@ -224,7 +225,12 @@ describe("a new office's annexure request", () => {
       assert.equal(r.sent.length, 1);
       assert.equal(r.sent[0].to, "getadamc3+founder@gmail.com");
       assert.ok(r.sent[0].text.includes("from an agent's side"));
-      assert.ok(r.sent[0].text.includes("Download the annexure for your licensee (PDF): https://www.realcomply.com.au/annexure/download"));
+      // The office's own link, so the Agency line carries its names (0070).
+      assert.ok(
+        r.sent[0].text.includes(
+          "Download the annexure for your licensee (PDF): https://www.realcomply.com.au/annexure/download/7f9c1d2e-0000-4000-8000-000000000001",
+        ),
+      );
       assert.equal(links(db).length, 0);
       assert.equal((db.tables.agent_welcome_emails ?? []).length, 1);
     });

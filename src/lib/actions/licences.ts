@@ -11,10 +11,12 @@ import {
   recordTypedChanges,
   sanitiseLicenceRead,
   LICENCE_FIELD_LABELS,
+  type EntityCheck,
   type LicenceReadState,
   type LicenceSubject,
   type LicenceValues,
 } from "@/lib/licence-read";
+import { asksAboutEntityName } from "@/lib/agency-names";
 import { sendLicenceReminderTest } from "@/lib/email/licence-reminders";
 import type { Agency, LicenceType, Profile } from "@/lib/types";
 
@@ -410,7 +412,7 @@ async function readCorporationLicence(
 
   if (readError) {
     const state: LicenceReadState = {
-      ...(previous ?? emptyState()),
+      ...(previous ? withoutEntityCheck(previous) : emptyState()),
       lastRead: { status: "could_not_read", at, by: actor.id, fileName, nameOnDocument: null, nameChecked: false },
       missing: (["holderName", "licenceNumber", "expiry"] as const).filter((f) => !before[f]),
     };
@@ -433,11 +435,16 @@ async function readCorporationLicence(
     return { error: null, outcome: "could_not_read", message: readError };
   }
 
+  // CHANGE (Adam, 14 Oct 2026): was: corporation licence holder matched against the office name and refused on mismatch. Now: matched against the licensed entity name; a mismatch asks to update it, never refuses. Personal licences keep the strict name check.
+  //
+  // So no names go in here: the read never refuses a corporation licence on
+  // its name. The holder is compared with the licensed entity name below,
+  // after the licence is saved.
   const decision = decideLicenceRead({
     read: sanitiseLicenceRead(raw),
     subject: "corporation",
-    expectedNames: [agency.corporation_licence_holder, agency.name].filter((n): n is string => Boolean(n)),
-    previous,
+    expectedNames: [],
+    previous: previous ? withoutEntityCheck(previous) : null,
     by: actor.id,
     at,
     fileName,
@@ -471,6 +478,31 @@ async function readCorporationLicence(
     documentFileName: fileName,
   };
 
+  // The holder against the licensed entity name, loosely (case, punctuation,
+  // spacing, "Pty Ltd" or "Pty. Limited"). Blank or different: the licence is
+  // saved as read, and the card asks "Use [holder] as your licensed entity
+  // name?" until it is answered. A match asks nothing.
+  const ask = asksAboutEntityName(v.holderName, agency.licensed_entity_name);
+  const state: LicenceReadState = ask
+    ? {
+        ...decision.state,
+        entityCheck: {
+          holderName: v.holderName as string,
+          path,
+          at,
+          by: actor.id,
+          before: {
+            holderName: before.holderName,
+            licenceNumber: before.licenceNumber,
+            expiry: before.expiry,
+            documentPath: before.documentPath,
+            documentFileName: before.documentFileName,
+          },
+          previousRead: previous ? withoutEntityCheck(previous) : null,
+        },
+      }
+    : decision.state;
+
   const { error } = await supabase
     .from("agencies")
     .update({
@@ -479,7 +511,7 @@ async function readCorporationLicence(
       corporation_licence_expiry: v.expiry,
       corporation_licence_document_path: path,
       corporation_licence_document_file_name: fileName,
-      corporation_licence_read: decision.state,
+      corporation_licence_read: state,
     })
     .eq("id", agency.id);
   if (error) return { error: "Couldn't save what was read. Try again." };
@@ -490,6 +522,92 @@ async function readCorporationLicence(
 
   revalidatePath("/dashboard/registers");
   return { error: null, ...savedMessage(decision.state, decision.expired) };
+}
+
+function withoutEntityCheck(state: LicenceReadState): Omit<LicenceReadState, "entityCheck"> {
+  return { lastRead: state.lastRead, missing: state.missing, fields: state.fields };
+}
+
+/** The question waiting on this agency's corporation licence, if it is still about the document on file. */
+async function pendingEntityCheck(): Promise<
+  | { error: string }
+  | { error: null; supabase: Supabase; actor: Profile; agency: Agency; check: EntityCheck; state: LicenceReadState }
+> {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can update the corporation licence." };
+  const agency = await loadAgency(supabase, profile.agency_id);
+  if (!agency) return { error: "Couldn't find the agency." };
+  const state = parseReadState(agency.corporation_licence_read);
+  const check = state?.entityCheck ?? null;
+  if (!state || !check || check.path !== agency.corporation_licence_document_path) {
+    return { error: "There's nothing waiting for an answer. Refresh the page." };
+  }
+  return { error: null, supabase, actor: profile as Profile, agency, check, state };
+}
+
+/**
+ * "Yes, use it": the holder on the corporation licence becomes the office's
+ * licensed entity name, shown in Office profile as read from the licence.
+ */
+export async function acceptLicenceHolderAsEntityName(): Promise<ActionState> {
+  const found = await pendingEntityCheck();
+  if (found.error !== null) return { error: found.error };
+  const { supabase, agency, check, state } = found;
+
+  const { error } = await supabase.rpc("set_agency_licensed_entity_name", {
+    p_name: check.holderName,
+    p_via: "corporation_licence",
+  });
+  if (error) {
+    console.error("licensed entity name from licence failed", error.message);
+    return { error: "Couldn't save the licensed entity name. Try again." };
+  }
+  await supabase
+    .from("agencies")
+    .update({ corporation_licence_read: withoutEntityCheck(state) })
+    .eq("id", agency.id);
+
+  revalidatePath("/dashboard/registers");
+  revalidatePath("/dashboard/profile");
+  return { error: null };
+}
+
+/**
+ * "No, wrong licence": the upload is removed and nothing it said is kept. The
+ * record goes back to what it held before, and the file is deleted.
+ */
+export async function rejectCorporationLicenceUpload(): Promise<ActionState> {
+  const found = await pendingEntityCheck();
+  if (found.error !== null) return { error: found.error };
+  const { supabase, actor, agency, check } = found;
+  const was = check.before;
+  const current = corporationSnapshot(agency);
+
+  const { error } = await supabase
+    .from("agencies")
+    .update({
+      corporation_licence_holder: was.holderName,
+      corporation_licence_number: was.licenceNumber,
+      corporation_licence_expiry: was.expiry,
+      corporation_licence_document_path: was.documentPath,
+      corporation_licence_document_file_name: was.documentFileName,
+      corporation_licence_read: check.previousRead ?? emptyState(),
+    })
+    .eq("id", agency.id);
+  if (error) return { error: "Couldn't remove the upload. Try again." };
+
+  // A re-read of the document already on file has nothing new to delete.
+  const kept = check.path !== was.documentPath && !(await discardUpload(supabase, check.path));
+
+  await appendHistory(supabase, {
+    agencyId: agency.id, subject: "corporation", profileId: null, source: "document_removed",
+    before: current,
+    after: { ...current, ...was, licenceType: null },
+    by: actor.id,
+  });
+
+  revalidatePath("/dashboard/registers");
+  return { error: kept ? `The upload was removed from the record.${NOT_DELETED}` : null };
 }
 
 export async function attachCorporationLicenceDocument(path: string, fileName: string): Promise<LicenceReadResult> {

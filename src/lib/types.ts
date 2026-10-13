@@ -72,7 +72,14 @@ export type Profile = {
 
 export type Agency = {
   id: string;
+  /** The trading name: the name clients know the office by (0070). */
   name: string;
+  /** The company that holds the corporation licence (0070). */
+  licensed_entity_name?: string | null;
+  /** 'licence' when read from the corporation licence, 'typed' otherwise. */
+  licensed_entity_name_source?: "licence" | "typed" | null;
+  /** In an agent on their own plan's annexure download link (0070). */
+  annexure_download_token?: string | null;
   pi_insurer: string | null;
   pi_policy_number: string | null;
   pi_expiry: string | null;

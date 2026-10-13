@@ -8,6 +8,7 @@ import { requireAccess } from "@/lib/data/current-profile";
 import { SG_ANNEXURE_VERSION, firstNameOf } from "@/lib/legal/sg-annexure";
 import { adoptionRefusal, saveSignedCopy } from "@/lib/sg-annexure/adopt";
 import { isOfficeAgent } from "@/lib/sg-annexure/office-read";
+import { ENTITY_NAME_MAX, tidyName } from "@/lib/agency-names";
 
 // The things a person does with the SG annexure (briefs, 14 Oct 2026).
 
@@ -32,12 +33,19 @@ export async function adoptAnnexure(_prev: AdoptState, formData: FormData): Prom
   if (!licenceNumber) return { error: "Type your licence number." };
   if (formData.get("agree") !== "on") return { error: "Tick the box to adopt the annexure." };
 
+  // The licensed entity name as it stands in the box on the page (blank
+  // allowed), saved to the office if it changed (Part 5; 0070).
+  const entityOnPage = formData.get("entityOnPage") === "yes";
+  const entityName = tidyName(String(formData.get("licensedEntityName") ?? "")) ?? "";
+  if (entityName.length > ENTITY_NAME_MAX) return { error: "The licensed entity name is too long." };
+
   const supabase = await createClient();
   const { data: adoptionId, error } = await supabase.rpc("adopt_sg_annexure", {
     p_token: token,
     p_version: SG_ANNEXURE_VERSION,
     p_signed_name: signedName,
     p_licence_number: licenceNumber,
+    ...(entityOnPage ? { p_licensed_entity_name: entityName } : {}),
   });
   if (error || !adoptionId) return { error: adoptionRefusal(error) };
 

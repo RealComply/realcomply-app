@@ -11,6 +11,7 @@ import {
   type InvitePreview,
 } from "@/lib/actions/auth";
 import { Logo } from "@/components/Logo";
+import { ENTITY_NAME_LABEL, ENTITY_NAME_MAX, ENTITY_NAME_SIGNUP_HINT } from "@/lib/agency-names";
 
 const initialState: ActionState = { error: null };
 
@@ -163,6 +164,27 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
             placeholder="Cass Property"
             className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
+        </div>
+      )}
+      {/* The company on the corporation licence, when it isn't the trading
+          name (brief, 14 Oct 2026, Part 4). Optional, every sign-up path that
+          sets up an office: office plans, early access, agents on their own
+          plan. The same field as Office profile. */}
+      {!invite && (
+        <div>
+          <label htmlFor="licensedEntityName" className="block text-sm font-medium text-rc-ink">
+            {ENTITY_NAME_LABEL} <span className="font-normal text-rc-faint">(optional)</span>
+          </label>
+          <input
+            id="licensedEntityName"
+            name="licensedEntityName"
+            type="text"
+            maxLength={ENTITY_NAME_MAX}
+            autoComplete="organization"
+            placeholder="Example Holdings Pty Ltd"
+            className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+          />
+          <p className="mt-1 text-xs text-rc-faint">{ENTITY_NAME_SIGNUP_HINT}</p>
         </div>
       )}
       {/* WHO THE LICENSEE IN CHARGE IS, asked outright.

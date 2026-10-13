@@ -30,6 +30,7 @@ export const dynamic = "force-dynamic";
 const PREVIEW: AnnexureLinkDetails = {
   agencyId: "",
   agencyName: "Your agency",
+  licensedEntityName: null,
   licenceNumber: null,
   logoPath: null,
   sentTo: "",
@@ -140,6 +141,7 @@ export default async function AnnexurePage({ params }: { params: Promise<{ token
         <AdoptAnnexureForm
           token={token}
           agencyName={details.agencyName}
+          licensedEntityName={details.licensedEntityName}
           licenceNumber={details.licenceNumber}
           date={annexureDate()}
           preview={preview}
