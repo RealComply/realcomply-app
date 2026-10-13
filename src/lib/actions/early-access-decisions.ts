@@ -14,6 +14,9 @@ import {
 } from "@/lib/email/early-access-invite";
 import { maySendTo, sameInstant } from "@/lib/early-access/rules";
 import { sendTestWelcome } from "@/lib/early-access/welcome";
+import { createClient } from "@/lib/supabase/server";
+import { annexureDate } from "@/lib/legal/sg-annexure";
+import { appBaseUrl } from "@/lib/site-url";
 
 // Working the early-access list: send an invitation, resend one, or decline.
 //
@@ -287,12 +290,35 @@ export async function declineEarlyAccess(_prev: DecisionState, formData: FormDat
 /**
  * A test copy of the welcome email, to one of Adam's test addresses, from the
  * staff page. The rules are in sendTestWelcome (lib/early-access/welcome.ts).
- * Reads and writes nothing in the database, so no service key.
+ * Writes nothing in the database, so no service key.
+ *
+ * The annexure box (brief, 14 Oct 2026) shows the staff member's own office,
+ * read with their own access, and its button opens the signing page's
+ * preview, which cannot sign. The button goes to this deployment, so on a
+ * pull request's preview it opens that preview's signing page.
  */
 export async function sendTestWelcomeEmail(_prev: DecisionState, formData: FormData): Promise<DecisionState> {
   const profile = await requireProfile();
   if (profile.is_platform_admin !== true) return { error: notStaff };
 
+  const supabase = await createClient();
+  const { data: agency } = await supabase
+    .from("agencies")
+    .select("name, corporation_licence_number")
+    .eq("id", profile.agency_id)
+    .maybeSingle();
+  const office = agency as { name?: string | null; corporation_licence_number?: string | null } | null;
+
   const firstName = (profile.full_name ?? "").trim().split(/\s+/)[0] || null;
-  return sendTestWelcome({ to: String(formData.get("email") ?? ""), firstName });
+  return sendTestWelcome({
+    to: String(formData.get("email") ?? ""),
+    firstName,
+    annexure: {
+      kind: "sign",
+      agencyName: office?.name?.trim() || "Your agency",
+      licenceNumber: office?.corporation_licence_number?.trim() || null,
+      date: annexureDate(),
+      url: `${appBaseUrl()}/annexure/preview`,
+    },
+  });
 }

@@ -11,7 +11,7 @@ import { sendTrialEndingEmail } from "@/lib/email/trial-ending";
 import { handleTrialWillEnd, willCancelAtTrialEnd } from "@/lib/billing/trial-reminder";
 import type { Plan } from "@/lib/billing/entitlement";
 import { sendEndedEmail } from "@/lib/subscription-end/emails";
-import { sendEarlyAccessWelcome } from "@/lib/early-access/welcome";
+import { onNewOfficeTrialStarted } from "@/lib/sg-annexure/new-office";
 
 // Stripe's side of the conversation.
 //
@@ -302,13 +302,15 @@ async function applySubscription(
   }
 
   // The card is in and the trial has started: the moment someone from the
-  // early access list gets their welcome (Adam, 11 Oct 2026), and only from
-  // checkout, so a later renewal never sends one. Once only, switched off
-  // unless EARLY_ACCESS_WELCOME_EMAIL=on, and never throws. See
-  // lib/early-access/welcome.ts.
+  // early access list gets their welcome (Adam, 11 Oct 2026), and every new
+  // office's licensee is asked to adopt the SG annexure (Adam, 14 Oct 2026).
+  // Only from checkout, so a later renewal never sends either. Each goes once;
+  // the welcome stays switched off unless EARLY_ACCESS_WELCOME_EMAIL=on; never
+  // throws. See lib/sg-annexure/new-office.ts.
   if (opts.fromCheckout && (update.status === "trialing" || update.status === "active")) {
-    const outcome = await sendEarlyAccessWelcome(supabase, agencyId);
-    if (outcome !== "not_early_access") console.info("early access welcome:", outcome, agencyId);
+    const outcome = await onNewOfficeTrialStarted(supabase, agencyId);
+    if (outcome.welcome !== "not_early_access") console.info("early access welcome:", outcome.welcome, agencyId);
+    console.info("annexure request:", outcome.annexure, agencyId);
   }
 
   // The subscription has ended. The database has just set ended_at (0054),

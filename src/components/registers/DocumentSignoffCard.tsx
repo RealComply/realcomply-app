@@ -7,6 +7,7 @@ import type { Profile, SignoffDocument, SignoffSignature } from "@/lib/types";
 const CATEGORY_LABEL: Record<string, string> = {
   sg_manual: "SG Manual",
   trust_reconciliation: "Trust reconciliation",
+  sg_annexure: "SG annexure",
   other: "Document",
 };
 

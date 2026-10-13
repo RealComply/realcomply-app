@@ -26,6 +26,11 @@ export function isPublicPath(pathname: string): boolean {
     // through the two SECURITY DEFINER functions in
     // 0014_licensee_signoff_links.sql.
     pathname.startsWith("/signoff/") ||
+    // /annexure/<token> is public for the same reason (brief, 14 Oct 2026):
+    // the licensee in charge adopts the SG annexure from an email, often
+    // without a RealComply login. The token is the credential; the page reads
+    // and writes only through 0067's functions.
+    pathname.startsWith("/annexure/") ||
     // The legal documents are public for the same kind of reason: a privacy
     // policy only account holders can read is not published, and the Stripe
     // customer portal and Meta's app review both link to them signed out.

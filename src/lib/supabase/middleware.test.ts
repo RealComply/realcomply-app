@@ -47,6 +47,9 @@ const SIGNED_OUT_OK = [
   "/dpa",
   "/signoff/x",
   "/signoff/x/file",
+  // Adopting the SG annexure from an email (0067), and its PDF.
+  "/annexure/x",
+  "/annexure/x/pdf",
   "/unsubscribe",
   "/api/cron/backup-storage",
   "/api/cron/licence-reminders",

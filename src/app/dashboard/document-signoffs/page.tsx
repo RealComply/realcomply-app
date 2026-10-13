@@ -3,9 +3,10 @@ import { agencyPeople } from "@/lib/data/people";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
+import { AnnexureAdoptionCard } from "@/components/registers/AnnexureAdoptionCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { documentsWaitingOn, notAskedToSign } from "@/lib/signoff/awaiting";
-import type { SignoffDocument, SignoffSignature } from "@/lib/types";
+import type { SgAnnexureAdoption, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // Document sign-offs — the generic register for "upload a document, the
 // right people sign it in RealComply" (Adam, 9 Aug 2026). Currently feeds
@@ -17,11 +18,15 @@ export default async function DocumentSignoffsPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
-  const [{ data: docRows }, { data: sigRows }, staff] = await Promise.all([
+  const [{ data: docRows }, { data: sigRows }, staff, { data: adoptionRows }] = await Promise.all([
     supabase.from("signoff_documents").select("*").order("created_at", { ascending: false }),
     supabase.from("signoff_signatures").select("*"),
     agencyPeople(supabase),
+    // The SG annexure's adoptions (0067). The licensee reads them; anyone else
+    // gets none, and never sees the annexure's document either.
+    supabase.from("sg_annexure_adoptions").select("*"),
   ]);
+  const adoptions = (adoptionRows ?? []) as SgAnnexureAdoption[];
 
   const documents = (docRows ?? []) as SignoffDocument[];
   const signatures = (sigRows ?? []) as SignoffSignature[];
@@ -107,7 +112,15 @@ export default async function DocumentSignoffsPage() {
               will show up here for sign-off.
             </p>
           )}
-          {documents.map((doc, i) => (
+          {documents.map((doc, i) =>
+            doc.category === "sg_annexure" ? (
+              <AnnexureAdoptionCard
+                key={doc.id}
+                document={doc}
+                adoption={adoptions.find((a) => a.signoff_document_id === doc.id) ?? null}
+                fileUrl={signedUrls[i]?.data?.signedUrl ?? null}
+              />
+            ) : (
             <DocumentSignoffCard
               key={doc.id}
               document={doc}
@@ -118,7 +131,8 @@ export default async function DocumentSignoffsPage() {
               fileUrl={signedUrls[i]?.data?.signedUrl ?? null}
               notAsked={doc.id === currentSg?.id ? notAskedOnCurrentSg : []}
             />
-          ))}
+            ),
+          )}
         </div>
       </main>
     </>
