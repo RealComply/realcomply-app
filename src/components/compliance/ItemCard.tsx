@@ -79,8 +79,14 @@ import { MarketListingsPanel } from "@/components/comparables/MarketListingsPane
 import type { MarketListing } from "@/lib/data/market-listings";
 import { fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
 import type { EspDraftInput } from "@/lib/data/esp-draft";
-import type { NoneOnMarketRecord, ReasoningAdoptionRecord } from "@/lib/rules/esp-reasoning-adoption";
+import {
+  TICK_NEEDED,
+  tickCovers,
+  type NoneOnMarketRecord,
+  type ReasoningAdoptionRecord,
+} from "@/lib/rules/esp-reasoning-adoption";
 import { Disclaimer, ReasoningAssist } from "@/components/comparables/ReasoningAssist";
+import { keepsFieldsOnRefusal, sendKeepingFields } from "@/components/compliance/send-keeping-fields";
 import { espReasoningMissing } from "@/lib/rules/esp-reasoning-gate";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
@@ -743,6 +749,15 @@ function ChecklistItem({
   const status = current?.status;
   const isDone = status === "done";
 
+  // a4c is sent from onSubmit, not <form action>: React resets a form once its
+  // action has run, refused or not (see useSaveThenClose), and on this card
+  // that wiped the agent's reasoning, or RealComply's draft, from the box
+  // whenever the server refused the save, leaving the card stuck until
+  // Discard (live, 14 Oct 2026). See send-keeping-fields.ts.
+  const keepOnRefusal = keepsFieldsOnRefusal(item.key);
+  const submitKeepingFields = (event: FormEvent<HTMLFormElement>) =>
+    sendKeepingFields(event, formAction, startTransition);
+
   const data = (current?.data ?? {}) as {
     note?: string;
     espLow?: number;
@@ -753,7 +768,7 @@ function ChecklistItem({
     loggedElsewhereWhere?: string | null;
     /** a4c: the agent confirmed nothing comparable was on the market at the agreement date. */
     noneOnMarket?: NoneOnMarketRecord | null;
-    /** a4c: how reasoning the agent did not type here was confirmed as theirs. */
+    /** a4c: the agent's tick that the reasoning is their own opinion, and where its words came from. */
     reasoningAdoption?: ReasoningAdoptionRecord;
     preCommencement?: boolean;
     preCommencementAgreementDate?: string;
@@ -814,6 +829,14 @@ function ChecklistItem({
 
   // RealComply's draft is in the box: the disclaimer goes directly above it.
   const [draftInBox, setDraftInBox] = useState(false);
+
+  // a4c: the agent has not yet ticked that the reasoning in the box is their
+  // own opinion, so Mark done waits for it. ReasoningAssist keeps this up to
+  // date as the box changes; it starts from what the box opens with.
+  const espBoxStart = String(data.note ?? draft?.note ?? "");
+  const [tickMissing, setTickMissing] = useState(
+    () => item.key === "a4c" && !tickCovers(data.reasoningAdoption ?? null, espBoxStart),
+  );
 
   const draftInput: EspDraftInput | null =
     item.key === "a4c" && subject
@@ -917,7 +940,12 @@ function ChecklistItem({
           />
         </div>
       )}
-      <form action={formAction} className="space-y-3">
+      <form
+        action={keepOnRefusal ? undefined : formAction}
+        method={keepOnRefusal ? "post" : undefined}
+        onSubmit={keepOnRefusal ? submitKeepingFields : undefined}
+        className="space-y-3"
+      >
         {wrongDocument ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
@@ -1359,9 +1387,10 @@ function ChecklistItem({
               {/* a4c only. The buttons that rewrite the box, sitting directly
                   under it, plus the nudge. See ReasoningAssist for the line it
                   must not cross. */}
-              {item.key === "a4c" && draftInput && (
+              {item.key === "a4c" && (
                 <ReasoningAssist
                   noteId={`note-${item.key}`}
+                  initialText={espBoxStart}
                   draftInput={draftInput}
                   comparables={comparables}
                   savedReasoning={String(data.note ?? "")}
@@ -1370,6 +1399,7 @@ function ChecklistItem({
                   adoption={data.reasoningAdoption ?? null}
                   isDone={isDone}
                   onDraftInBox={setDraftInBox}
+                  onTickMissing={setTickMissing}
                 />
               )}
               {/* a4c only. Every prompt on this card in one closed drawer —
@@ -1419,11 +1449,13 @@ function ChecklistItem({
             findings, and re-submitting is how those get edited. Disabling it
             would make a finished item uneditable. "Reopen" is hidden on an
             item that is already open, where it did nothing. */}
-        {espMissing.length > 0 && (
+        {(espMissing.length > 0 || (item.key === "a4c" && tickMissing)) && (
           <ul className="mb-2 space-y-0.5 text-xs text-rc-amber-deep">
             {espMissing.map((m) => (
               <li key={m}>{m}</li>
             ))}
+            {/* Why Mark done is unavailable, in words rather than a greyed button. */}
+            {item.key === "a4c" && tickMissing && <li>{TICK_NEEDED}</li>}
           </ul>
         )}
         <div className="flex gap-2">
@@ -1431,7 +1463,9 @@ function ChecklistItem({
             type="submit"
             name="status"
             value="done"
-            disabled={pending}
+            // a4c: not until the agent has ticked that the reasoning is their
+            // own opinion. The server refuses it too.
+            disabled={pending || (item.key === "a4c" && tickMissing)}
             className={
               isDone
                 ? "rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted opacity-70 transition hover:border-rc-ink/20 hover:opacity-100 disabled:opacity-40"

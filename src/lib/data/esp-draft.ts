@@ -31,11 +31,11 @@ import { daysOnMarket, longDate, type MarketListing } from "./market-listings";
 //       relied on.
 //
 // The draft is never the agent's reasoning until they make it so. It is shown
-// under an on-screen disclaimer (never part of this text), the agent must
-// change its wording before they can confirm it — spacing, punctuation and
-// capitals alone do not count — and then confirm it in one click. Both are
-// enforced on the server, and the card cannot complete before that. See
-// lib/rules/esp-reasoning-adoption.ts.
+// under an on-screen disclaimer (never part of this text), and the agent ticks
+// that the reasoning reflects their own opinion before the card can be marked
+// done, enforced on the server. Since 14 Oct 2026 they are not forced to edit
+// it first; the record says whether they changed it or used it as written.
+// See lib/rules/esp-reasoning-adoption.ts.
 
 export type EvidenceVerdict = "supports" | "mostly_above" | "mostly_below" | "too_few";
 

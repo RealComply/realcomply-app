@@ -72,12 +72,14 @@ describe("the disclaimer", () => {
 
   it("is absent from the saved text and from the audit pack", async () => {
     const d = draftsOfEveryKind()[0];
-    // The agent edits (and, say, pastes the disclaimer in by mistake), then confirms.
+    // The agent edits (and, say, pastes the disclaimer in by mistake), then ticks.
     const typed = `${DISCLAIMER}\n${d.text} Pennantville presentation tipped it to the upper half.`;
     const saved = a4cSave({
       note: typed,
       pending: { source: "realcomply_draft", text: d.text, generatedAt: "2026-10-02T00:00:00Z", evidence: d.evidence },
-      confirmed: true,
+      status: "done",
+      ticked: true,
+      serverDraft: null,
       previous: null,
       user: { id: "u1", name: "Sam Agent" },
       now: "2026-10-02T00:00:00Z",
