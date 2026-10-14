@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { countableCpdHours, cpdYearStanding } from "@/lib/cpd-hours";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
-
-const req = cpdRequirementFor("class_2", "residential_sales");
+// A stated target, as a reminder would be given one. The app itself states
+// none since 14 Oct 2026 (CPD is a tick for the year).
+const req = { coreHours: 7, units: null };
 const cert = (hours: number | null, provider: string | null = "REINSW", completed_date: string | null = "2026-09-10") => ({
   hours,
   provider,

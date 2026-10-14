@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
-import type { CpdPracticeCategory, LicenceType, TrainingPlan, TrainingPlanItem } from "@/lib/types";
+import type { LicenceType, TrainingPlan, TrainingPlanItem } from "@/lib/types";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -60,6 +59,10 @@ async function withdrawAcceptance(supabase: SupabaseClient, plan: TrainingPlan):
  * carries the reason. That is deliberate: a plan that says "requirement not
  * published" is honest, and a plan that says "7" when nobody published 7 is
  * the defect this whole exercise exists to remove.
+ *
+ * Since 14 Oct 2026 there is no requirement to snapshot: RealComply no longer
+ * states CPD hours (Adam: tick whether it's done, the certificate optional).
+ * Plans made before keep what they were signed with.
  */
 export async function createTrainingPlan(profileId: string, _prev: ActionState, _formData: FormData): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
@@ -70,17 +73,14 @@ export async function createTrainingPlan(profileId: string, _prev: ActionState, 
 
   const { data: subjectRow } = await supabase
     .from("profiles")
-    .select("licence_type, cpd_practice_category, agency_id")
+    .select("agency_id")
     .eq("id", profileId)
     .maybeSingle();
 
-  const subject = subjectRow as
-    | { licence_type: LicenceType | null; cpd_practice_category: CpdPracticeCategory | null; agency_id: string }
-    | null;
+  const subject = subjectRow as { agency_id: string } | null;
   if (!subject) return { error: "Couldn't find that team member." };
 
   const year = currentCpdYear();
-  const requirement = cpdRequirementFor(subject.licence_type, subject.cpd_practice_category);
 
   const { error } = await supabase.from("training_plans").insert({
     agency_id: subject.agency_id,
@@ -88,9 +88,11 @@ export async function createTrainingPlan(profileId: string, _prev: ActionState, 
     cpd_year_start: year.start,
     valid_from: year.start,
     valid_to: year.end,
-    required_hours: requirement.coreHours,
-    required_units: requirement.units,
-    requirement_note: requirement.unpublished.length > 0 ? requirement.unpublished.join(" ") : null,
+    // No hours or units (Adam, 14 Oct 2026): CPD is a tick for the year with
+    // the certificate optional. The columns stay for plans made before.
+    required_hours: null,
+    required_units: null,
+    requirement_note: null,
     created_by: profile.id,
   });
 

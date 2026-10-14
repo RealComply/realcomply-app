@@ -28,6 +28,10 @@ export function currentCpdYear(reference: Date = new Date()): { start: string; e
 // a checked-on date because Fair Trading republishes it annually on an
 // unversioned page with no legislative amendment to notice.
 //
+// (14 Oct 2026: the hours are gone from nsw-cpd.ts too. Adam: CPD is a tick
+// for the year, with the certificate optional; a person ticks every type of
+// licence they hold.)
+//
 // This file keeps only the CPD-year arithmetic, which genuinely is a date
 // helper and genuinely doesn't change.
 

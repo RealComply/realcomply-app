@@ -13,11 +13,11 @@ import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
-import { CPD_PRACTICE_CATEGORY_LABELS, cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { LICENCE_CATEGORY_LABELS, cleanLicenceCategories } from "@/lib/rules/nsw-cpd";
+import { LicenceTypes } from "@/components/registers/LicenceTypes";
 import { ReminderLine, type ReminderInfo } from "@/components/registers/ReminderLine";
 import { LicenceReadNotice } from "@/components/registers/LicenceReadNotice";
 import { parseReadState } from "@/lib/licence-read";
-import { countableCpdHours } from "@/lib/cpd-hours";
 import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { useOnSaved } from "@/lib/use-on-saved";
 import { useViewerAccess } from "@/components/ViewerAccess";
@@ -38,6 +38,7 @@ export function StaffRegisterCard({
   cpdRecords,
   viewerProfile,
   cpdYearLabel,
+  cpdDone = false,
   reminderInfo = { next: null, last: null },
   nameOf = {},
   former = false,
@@ -46,6 +47,8 @@ export function StaffRegisterCard({
   cpdRecords: CpdRecord[];
   viewerProfile: Profile;
   cpdYearLabel: string;
+  /** Ticked as done for the CPD year (cpd_year_signoffs). */
+  cpdDone?: boolean;
   reminderInfo?: ReminderInfo;
   /** Profile id to display name, for "typed by" lines. */
   nameOf?: Record<string, string>;
@@ -57,17 +60,7 @@ export function StaffRegisterCard({
   // profile ("profiles: licensee can update agency members", 0058).
   const canEdit = !former && (viewerProfile.id === profile.id || viewerProfile.is_licensee_in_charge);
   const { actsAsLicensee } = useViewerAccess();
-  const isAssistant = profile.licence_type === "certificate_of_registration";
-  // Was a flat 7 hours for anyone holding a licence. Fair Trading sets hours
-  // per CATEGORY of practice (7 residential sales / commercial / business
-  // broking / stock & station, 6 strata, 4 on-site short-term RPM, and
-  // residential property management not published for 2026–27), and Class 1
-  // holders owe an accredited forum on top. A target of null means we can't
-  // state a requirement — see rules/nsw-cpd.ts.
-  const requirement = cpdRequirementFor(profile.licence_type, profile.cpd_practice_category);
-  const target = requirement.units ?? requirement.coreHours;
-  // Approved-provider CPD only. See lib/cpd-hours.ts.
-  const totalHours = countableCpdHours(cpdRecords);
+  const categories = cleanLicenceCategories(profile.licence_categories);
   const status = expiryStatus(profile.licence_expiry);
 
   const licenceAction = updateLicence.bind(null, profile.id);
@@ -115,6 +108,12 @@ export function StaffRegisterCard({
               ) : (
                 "No licence or certificate details on file yet."
               )}
+              {/* Every type of licence held (14 Oct 2026). */}
+              {categories.length > 0 && (
+                <span className="mt-0.5 block text-xs text-rc-muted">
+                  {categories.map((c) => LICENCE_CATEGORY_LABELS[c]).join(" · ")}
+                </span>
+              )}
             </div>
             {canEdit && (
               <button
@@ -129,16 +128,6 @@ export function StaffRegisterCard({
         ) : (
           <form action={licenceFormAction} className="space-y-2">
             <div className="flex flex-wrap gap-2">
-              <select
-                name="licenceType"
-                defaultValue={profile.licence_type ?? ""}
-                className="rounded-md border border-rc-border px-2 py-1 text-sm"
-              >
-                <option value="">Licence or certificate…</option>
-                <option value="class_1">Class 1 licence</option>
-                <option value="class_2">Class 2 licence</option>
-                <option value="certificate_of_registration">Certificate of registration</option>
-              </select>
               <input
                 type="text"
                 name="licenceNumber"
@@ -153,30 +142,10 @@ export function StaffRegisterCard({
                 className="rounded-md border border-rc-border px-2 py-1 text-sm"
               />
             </div>
-            {/* Category of practice lives here and nowhere else (Adam, 18 Aug
-                2026). Fair Trading sets CPD hours per category, so it has to
-                be asked once — but it belongs beside someone's licence
-                details, which change about as often, rather than being asked
-                again on every CPD entry or training plan. Not shown for a
-                certificate of registration: assistant agents are measured in
-                units, and the category doesn't apply. */}
-            {profile.licence_type !== "certificate_of_registration" && (
-              <label className="block">
-                <span className="block text-xs text-rc-muted">Category of practice (sets the CPD hours)</span>
-                <select
-                  name="cpdPracticeCategory"
-                  defaultValue={profile.cpd_practice_category ?? ""}
-                  className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
-                >
-                  <option value="">Not set</option>
-                  {Object.entries(CPD_PRACTICE_CATEGORY_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            {/* The class and every type of licence held, ticked (Adam, 14 Oct
+                2026). Replaces the single category of practice, which lived
+                here and nowhere else (Adam, 18 Aug 2026). */}
+            <LicenceTypes profile={profile} />
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -228,18 +197,17 @@ export function StaffRegisterCard({
           delivered the training, and the provider is what decides whether an
           entry counts at all. */}
       <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-neutral-50 px-3 py-2">
+        {/* The year's tick, as the CPD page shows it (Adam, 14 Oct 2026: tick
+            whether it's done; the certificate is optional). No hours. */}
         <p className="text-xs text-rc-muted">
-          {target === null ? (
+          CPD {cpdYearLabel}:{" "}
+          <span className={cpdDone ? "text-rc-green-deep" : "text-rc-amber-deep"}>
+            {cpdDone ? "done" : "not confirmed yet"}
+          </span>
+          {cpdRecords.length > 0 && (
             <>
-              CPD {cpdYearLabel}: {totalHours} {isAssistant ? (totalHours === 1 ? "unit" : "units") : totalHours === 1 ? "hr" : "hrs"} logged,{" "}
-              <span className="text-rc-amber-deep">requirement not established</span>
-            </>
-          ) : (
-            <>
-              CPD {cpdYearLabel}:{" "}
-              <span className={totalHours >= target ? "text-rc-green-deep" : "text-rc-amber-deep"}>
-                {totalHours}/{target} {isAssistant ? "units" : "hrs"}
-              </span>
+              {" "}
+              · {cpdRecords.length} {cpdRecords.length === 1 ? "certificate" : "certificates"}
             </>
           )}
         </p>

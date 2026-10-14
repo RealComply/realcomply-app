@@ -3,8 +3,6 @@
 import { StaffRegisterCard } from "@/components/registers/StaffRegisterCard";
 import { CorporationLicenceCard } from "@/components/registers/CorporationLicenceCard";
 import { expiryStatus } from "@/lib/expiry-status";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
-import { countableCpdHours } from "@/lib/cpd-hours";
 import { REMINDER_SCHEDULE_WORDS } from "@/lib/licence-reminders";
 import { TestReminderControl } from "@/components/registers/TestReminderControl";
 import { useViewerAccess } from "@/components/ViewerAccess";
@@ -23,6 +21,7 @@ export function LicencePanel({
   staff,
   formerStaff = [],
   cpdByProfile,
+  cpdDoneIds = [],
   viewerProfile,
   cpdYearLabel,
   agency,
@@ -34,6 +33,8 @@ export function LicencePanel({
   /** People who have left (archived), shown read-only below the rest, the licensee's view only. */
   formerStaff?: Profile[];
   cpdByProfile: Record<string, CpdRecord[]>;
+  /** Everyone ticked as done for the CPD year (cpd_year_signoffs). */
+  cpdDoneIds?: string[];
   viewerProfile: Profile;
   cpdYearLabel: string;
   agency: Agency | null;
@@ -53,17 +54,10 @@ export function LicencePanel({
   const current = statuses.filter((s) => s === "ok" || s === "soon").length;
   const expiringSoon = statuses.filter((s) => s === "urgent").length;
   const expired = statuses.filter((s) => s === "expired").length;
-  // Only counts people whose requirement we can actually state. Someone with
-  // no category of practice recorded, or in a category Fair Trading hasn't
-  // published for this year, isn't "outstanding" — we simply don't know, and
-  // the card itself says so rather than this tile guessing.
-  const cpdOutstanding = staff.filter((s) => {
-    const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
-    const target = requirement.units ?? requirement.coreHours;
-    if (target === null) return false;
-    const total = countableCpdHours(cpdByProfile[s.id] ?? []);
-    return total < target;
-  }).length;
+  // Not yet ticked as done for the year, as the CPD page counts it (Adam,
+  // 14 Oct 2026: CPD is a tick for the year, with the certificate optional).
+  // It used to count people short of an hours figure.
+  const cpdOutstanding = staff.filter((s) => !cpdDoneIds.includes(s.id)).length;
 
   return (
     <div>
@@ -112,6 +106,7 @@ export function LicencePanel({
             cpdRecords={cpdByProfile[s.id] ?? []}
             viewerProfile={viewerProfile}
             cpdYearLabel={cpdYearLabel}
+            cpdDone={cpdDoneIds.includes(s.id)}
             reminderInfo={reminderInfoByProfile[s.id] ?? { next: null, last: null }}
             nameOf={nameOf}
           />
@@ -135,6 +130,7 @@ export function LicencePanel({
                 cpdRecords={cpdByProfile[s.id] ?? []}
                 viewerProfile={viewerProfile}
                 cpdYearLabel={cpdYearLabel}
+                cpdDone={cpdDoneIds.includes(s.id)}
                 reminderInfo={reminderInfoByProfile[s.id] ?? { next: null, last: null }}
                 nameOf={nameOf}
                 former
