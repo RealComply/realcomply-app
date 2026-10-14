@@ -49,7 +49,10 @@ export default async function CpdPage() {
   // see their assistant or agent's name but not their certificates or tick, so
   // a card for that person read "Not yet" whatever they had done (preview
   // check, 9 Oct 2026). They get their own card only; the licensee everyone's.
-  const staff = ((staffRows ?? []) as Profile[]).filter((s) => access.actsAsLicensee || s.id === profile.id);
+  const everyone = (staffRows ?? []) as Profile[];
+  const staff = everyone.filter((s) => access.actsAsLicensee || s.id === profile.id);
+  // Who confirmed a certificate in another name (15 Oct 2026) may be anyone in the office.
+  const nameOf = Object.fromEntries(everyone.map((s) => [s.id, s.full_name ?? s.email]));
   const records = (cpdRows ?? []) as CpdRecord[];
   const signoffs = (signoffRows ?? []) as CpdYearSignoff[];
 
@@ -108,6 +111,7 @@ export default async function CpdPage() {
               signoff={signoffByProfile.get(s.id) ?? null}
               cpdYearStart={year.start}
               cpdYearLabel={year.label}
+              nameOf={nameOf}
             />
           ))
         )}

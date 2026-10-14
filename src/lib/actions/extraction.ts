@@ -688,6 +688,12 @@ const CPD_CERTIFICATE_TOOL: Anthropic.Tool = {
           "True only if the document explicitly records a satisfactory or competent assessment result. Omit " +
           "entirely if assessment is not mentioned — never assume false.",
       },
+      participantName: {
+        type: "string",
+        description:
+          "The name of the person the record or statement was issued to, exactly as printed. Only if stated. " +
+          "Never the trainer's or the provider's name.",
+      },
       looksLikeCpdCertificate: {
         type: "boolean",
         description:
@@ -708,6 +714,8 @@ export type CpdCertificateFields = {
   deliveryMode?: string;
   assessmentPassed?: boolean;
   looksLikeCpdCertificate?: boolean;
+  /** Who it was issued to, as printed (15 Oct 2026: checked against the person). */
+  participantName?: string;
 };
 
 /** Reads an uploaded CPD certificate. Never writes — the agent confirms. */

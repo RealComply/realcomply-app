@@ -6,6 +6,9 @@ import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
 import { attendanceChanges } from "@/lib/attendance-changes";
 import { cpdFolder, isInFolder, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { firstName, possessive, sameName } from "@/lib/licence-name";
+import { pendingReadProblem, signPendingRead, verifyPendingRead } from "@/lib/pending-read";
+import { formatAuDate } from "@/lib/format-date";
 import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -133,11 +136,47 @@ export async function addCpdRecord(profileId: string, _prev: ActionState, formDa
  * the file with the filename as its title. An unreadable certificate is still
  * evidence; refusing to record it would lose the document to save face.
  */
+/**
+ * The name question for a CPD certificate (Adam, 15 Oct 2026), the same as
+ * for a licence: "The name on this certificate is [name]. Is this
+ * [person]'s certificate?" with what was read, not saved yet.
+ */
+export type CpdNameQuestion = {
+  token: string;
+  nameOnDocument: string;
+  personName: string;
+  firstName: string;
+  /** "Contracts · Made-up Training · 2 hours · Completed 10 September 2026" */
+  summary: string;
+};
+
+/** The row a certificate makes, as read. Held with the name question until it is answered. */
+type CpdRowRead = {
+  activity_name: string;
+  category: "assistant_unit" | "general";
+  hours: number | null;
+  completed_date: string | null;
+  provider: string | null;
+  notes: string | null;
+};
+
+function cpdSummary(row: CpdRowRead): string {
+  const unit = row.category === "assistant_unit";
+  return [
+    row.activity_name,
+    row.provider,
+    row.hours !== null ? `${row.hours} ${unit ? (row.hours === 1 ? "unit" : "units") : row.hours === 1 ? "hour" : "hours"}` : null,
+    row.completed_date ? `Completed ${formatAuDate(row.completed_date)}` : "Date not read",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export async function addCpdFromCertificate(
   profileId: string,
   path: string,
   fileName: string,
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; question?: CpdNameQuestion }> {
   const { supabase, profile } = await requireAuthContext();
 
   if (profile.id !== profileId && !profile.is_licensee_in_charge) {
@@ -165,17 +204,52 @@ export async function addCpdFromCertificate(
   // just that field. An empty field counts as nothing toward the year.
   const completedDate = validIsoDate(f.completedDate);
 
+  const row: CpdRowRead = {
+    activity_name: f.activityName?.trim() || fileName.replace(/\.[^.]+$/, ""),
+    category: isUnit ? "assistant_unit" : "general",
+    hours: hours ?? null,
+    completed_date: completedDate,
+    provider: f.provider?.trim() || null,
+    notes: f.deliveryMode ? `Delivery: ${f.deliveryMode}` : null,
+  };
+
+  // The name on the certificate, against the person (Adam, 15 Oct 2026). Any
+  // difference asks before anything is saved, the same as a licence.
+  const nameOnDocument = typeof f.participantName === "string" ? f.participantName.replace(/\s+/g, " ").trim() : "";
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (nameOnDocument && secret) {
+    const { data: subjectRow } = await supabase.from("profiles").select("full_name, email").eq("id", profileId).maybeSingle();
+    const subject = subjectRow as { full_name: string | null; email: string } | null;
+    const personName = subject?.full_name ?? subject?.email ?? "";
+    if (subject && subject.full_name && !sameName(nameOnDocument, subject.full_name)) {
+      const token = signPendingRead<CpdRowRead>(
+        {
+          v: 1,
+          kind: "cpd",
+          profileId,
+          askedBy: profile.id,
+          path,
+          fileName,
+          fresh: true,
+          nameOnDocument,
+          read: row,
+          issuedAt: Date.now(),
+        },
+        secret,
+      );
+      return {
+        error: null,
+        question: { token, nameOnDocument, personName, firstName: firstName(personName), summary: cpdSummary(row) },
+      };
+    }
+  }
+
   const { error } = await supabase.from("cpd_records").insert({
     agency_id: profile.agency_id,
     profile_id: profileId,
-    activity_name: f.activityName?.trim() || fileName.replace(/\.[^.]+$/, ""),
-    category: isUnit ? "assistant_unit" : "general",
-    hours,
-    completed_date: completedDate,
-    provider: f.provider?.trim() || null,
+    ...row,
     evidence_path: path,
     evidence_file_name: fileName,
-    notes: f.deliveryMode ? `Delivery: ${f.deliveryMode}` : null,
     created_by: profile.id,
   });
 
@@ -183,6 +257,65 @@ export async function addCpdFromCertificate(
 
   revalidatePath("/dashboard/cpd");
   return { error: null };
+}
+
+/** The name answer goes with the certificate it was about (0074). */
+const NO_NAME_ANSWER = { name_on_certificate: null, name_confirmed_by: null, name_confirmed_at: null };
+
+/** The held certificate read, checked the same way as a licence's (lib/pending-read.ts). */
+async function heldCpdRead(token: string) {
+  const { supabase, profile } = await requireAuthContext();
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!secret) return { problem: pendingReadProblem("invalid", "certificate") } as const;
+  const v = verifyPendingRead<CpdRowRead>(token, secret, { kind: "cpd", answeredBy: profile.id, now: Date.now() });
+  if (!v.ok) return { problem: pendingReadProblem(v.reason, "certificate") } as const;
+  const p = v.pending;
+  if (p.profileId !== profile.id && !profile.is_licensee_in_charge) {
+    return { problem: "Only the licensee in charge can add CPD for someone else." } as const;
+  }
+  if (!isInFolder(p.path, cpdFolder(profile.agency_id, p.profileId))) {
+    return { problem: pendingReadProblem("invalid", "certificate") } as const;
+  }
+  return { supabase, profile, pending: p } as const;
+}
+
+/** "Yes, it's Jo's": saves the certificate as read, with the name on it and who confirmed it. */
+export async function confirmCpdCertificateName(token: string): Promise<{ error: string | null }> {
+  const held = await heldCpdRead(token);
+  if ("problem" in held) return { error: held.problem ?? "Couldn't save that." };
+  const { supabase, profile, pending } = held;
+  const { error } = await supabase.from("cpd_records").insert({
+    agency_id: profile.agency_id,
+    profile_id: pending.profileId,
+    ...pending.read,
+    evidence_path: pending.path,
+    evidence_file_name: pending.fileName,
+    created_by: profile.id,
+    name_on_certificate: pending.nameOnDocument,
+    name_confirmed_by: profile.id,
+    name_confirmed_at: new Date().toISOString(),
+  });
+  if (error) return { error: "Couldn't save that certificate. Try again." };
+  revalidatePath("/dashboard/cpd");
+  return { error: null };
+}
+
+/** "No, wrong person": removes the file and saves nothing. */
+export async function rejectCpdCertificateName(token: string): Promise<{ error: string | null; message?: string }> {
+  const held = await heldCpdRead(token);
+  if ("problem" in held) return { error: held.problem ?? "Couldn't do that." };
+  const { supabase, pending } = held;
+  const { data: removed, error } = await supabase.storage.from(EVIDENCE_BUCKET).remove([pending.path]);
+  const gone = !error && (removed?.length ?? 0) > 0;
+  const { data: subjectRow } = await supabase.from("profiles").select("full_name, email").eq("id", pending.profileId).maybeSingle();
+  const subject = subjectRow as { full_name: string | null; email: string } | null;
+  const whose = subject ? possessive(firstName(subject.full_name ?? subject.email)) : "their";
+  return {
+    error: null,
+    message: `The file was removed and nothing was saved. Upload ${whose} own certificate.${
+      gone ? "" : " RealComply couldn't delete the copy just now, so it is still stored, though not on this record."
+    }`,
+  };
 }
 
 /** Corrects anything the reading got wrong. The document stays attached. */
@@ -285,9 +418,10 @@ export async function finalizeCpdEvidence(recordId: string, path: string, fileNa
     return { error: "Couldn't save the certificate — try again." };
   }
 
+  // A different file: the name answered for the old one no longer applies (0074).
   const { error } = await supabase
     .from("cpd_records")
-    .update({ evidence_path: path, evidence_file_name: fileName })
+    .update({ evidence_path: path, evidence_file_name: fileName, ...NO_NAME_ANSWER })
     .eq("id", recordId);
 
   if (error) return { error: "Couldn't save the certificate — try again." };
@@ -303,7 +437,10 @@ export async function removeCpdEvidence(recordId: string): Promise<void> {
   if (!ownerId) return;
   if (ownerId !== profile.id && !profile.is_licensee_in_charge) return;
 
-  await supabase.from("cpd_records").update({ evidence_path: null, evidence_file_name: null }).eq("id", recordId);
+  await supabase
+    .from("cpd_records")
+    .update({ evidence_path: null, evidence_file_name: null, ...NO_NAME_ANSWER })
+    .eq("id", recordId);
   revalidatePath("/dashboard/cpd");
 }
 
