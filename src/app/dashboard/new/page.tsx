@@ -1,4 +1,6 @@
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
+import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
+import { ListingLockCard } from "@/components/annexure/ListingLockCard";
 import { createClient } from "@/lib/supabase/server";
 import { NewPropertyForm } from "@/components/property/NewPropertyForm";
 import type { Profile } from "@/lib/types";
@@ -14,7 +16,29 @@ export const maxDuration = 300;
 // setup documents straight to Storage (see NewPropertyForm.tsx) without an
 // extra client-side round trip before the form is usable.
 export default async function NewPropertyPage() {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
+
+  // The annexure lock (job 7 brief, Parts 4 and 5; 0071): "New listing" at
+  // the top of every page comes here, so the reason shows here too, in place
+  // of the form. createProperty and the database refuse it regardless.
+  const gate = await listingGate(await createClient());
+  if (gate) {
+    const supabase = await createClient();
+    const licenseeName = await licenseeNameFor(supabase, profile.agency_id, { agentPlan: access.isAgentPlan });
+    return (
+      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-10">
+        <h1 className="text-2xl font-bold tracking-tight text-rc-ink">New listing</h1>
+        <div className="mt-6">
+          <ListingLockCard
+            gate={gate}
+            actsAsLicensee={access.actsAsLicensee}
+            licenseeName={licenseeName}
+            agencyId={profile.agency_id}
+          />
+        </div>
+      </main>
+    );
+  }
 
   // An assistant sets a file up ON BEHALF OF an agent, so they have to say
   // which one. Without this the listing would be created against the

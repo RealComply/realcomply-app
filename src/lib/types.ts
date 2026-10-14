@@ -80,6 +80,8 @@ export type Agency = {
   licensed_entity_name_source?: "licence" | "typed" | null;
   /** In an agent on their own plan's annexure download link (0070). */
   annexure_download_token?: string | null;
+  /** Agent acknowledgement and the annexure lock (0071). Off for offices made before it. */
+  annexure_gate?: boolean;
   pi_insurer: string | null;
   pi_policy_number: string | null;
   pi_expiry: string | null;
@@ -304,7 +306,15 @@ export type Breach = {
 // published without inventing a new category.
 // 'sg_annexure' is the signed copy of the SG annexure, filed by the server when
 // the licensee adopts it (0067). Nobody signs it in the app.
-export type SignoffCategory = "sg_manual" | "trust_reconciliation" | "sg_annexure" | "other";
+export type SignoffCategory =
+  | "sg_manual"
+  | "trust_reconciliation"
+  | "sg_annexure"
+  // An agent's own plan (0071): their "Before you start" acknowledgement, and the
+  // annexure their licensee in charge signed, as uploaded.
+  | "agent_acknowledgement"
+  | "sg_annexure_licensee_signed"
+  | "other";
 
 /** One adoption of the SG annexure (0067). Read by the licensee only. */
 export type SgAnnexureAdoption = {
@@ -325,6 +335,23 @@ export type SgReadConfirmation = {
   annexure_version: string;
   confirmed_at: string;
 };
+/** What an agent on their own plan confirmed on "Before you start" (0071). */
+export type AgentAcknowledgement = {
+  id: string;
+  agency_id: string;
+  profile_id: string | null;
+  agent_licence_number: string;
+  agency_name: string;
+  licensee_name: string;
+  licensee_licence_number: string;
+  wording_version: string;
+  /** The five boxes, in order, as shown. */
+  wording: string[];
+  typed_name: string;
+  confirmed_at: string;
+  signoff_document_id: string | null;
+};
+
 export type SignerScope = "all_staff" | "licensee_only";
 
 export type SignoffDocument = {

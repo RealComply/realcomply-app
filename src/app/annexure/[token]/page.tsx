@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { Logo } from "@/components/Logo";
 import { AnnexureText } from "@/components/annexure/AnnexureText";
@@ -55,7 +56,25 @@ function Message({ title, children }: { title: string; children: React.ReactNode
       <Logo size={20} />
       <h1 className="mt-8 text-2xl font-extrabold tracking-tight text-rc-ink">{title}</h1>
       <div className="mt-3 text-sm leading-relaxed text-rc-muted">{children}</div>
+      <div className="mt-6">
+        <BackToApp />
+      </div>
     </main>
+  );
+}
+
+// A way back into RealComply from every state of the page (Adam, 14 Oct
+// 2026: after signing "there was no way to get out of the page back into
+// RealComply"). Home when signed in; the sign-in page, then Home, when the
+// page was opened from the email.
+function BackToApp() {
+  return (
+    <Link
+      href="/dashboard/home"
+      className="shrink-0 text-sm font-semibold text-rc-green-deep transition hover:underline"
+    >
+      Back to RealComply
+    </Link>
   );
 }
 
@@ -100,12 +119,15 @@ export default async function AnnexurePage({ params }: { params: Promise<{ token
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-5 sm:py-14">
-      {logo ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={logo} alt={`${details.agencyName} logo`} className="max-h-12 max-w-[200px] object-contain" />
-      ) : (
-        <Logo size={20} />
-      )}
+      <div className="flex items-start justify-between gap-4">
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt={`${details.agencyName} logo`} className="max-h-12 max-w-[200px] object-contain" />
+        ) : (
+          <Logo size={20} />
+        )}
+        <BackToApp />
+      </div>
 
       {preview && (
         <p className="mt-6 rounded-lg border border-rc-amber/30 bg-rc-amber/10 px-3.5 py-2.5 text-sm text-rc-amber-deep">
