@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ClipboardCheck, KeyRound, LogOut, Settings } from "lucide-react";
+import { ChevronDown, CreditCard, KeyRound, LogOut, Settings } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
 
 // Who you are, and the way out.
@@ -91,13 +91,17 @@ export function UserMenu({
             <Settings size={15} aria-hidden="true" /> Profile settings
           </Link>
 
+          {/* Account, for everyone (brief, 14 Oct 2026). What it shows depends
+              on who pays; see app/dashboard/account/page.tsx. "Your CPD
+              record" came out of this menu the same day: CPD has its own
+              place in the sidebar. */}
           <Link
-            href="/dashboard/cpd"
+            href="/dashboard/account"
             role="menuitem"
             onClick={() => setOpen(false)}
             className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-rc-muted transition hover:bg-rc-bg-alt hover:text-rc-ink"
           >
-            <ClipboardCheck size={15} aria-hidden="true" /> Your CPD record
+            <CreditCard size={15} aria-hidden="true" /> Account
           </Link>
 
           <Link

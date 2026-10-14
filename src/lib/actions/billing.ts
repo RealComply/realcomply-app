@@ -7,6 +7,7 @@ import { PLANS, TRIAL_DAYS, type Plan } from "@/lib/billing/entitlement";
 import { isAccountHolder } from "@/lib/subscription-end/access";
 import { priceIdFor, stripeRequest, type Interval } from "@/lib/billing/stripe";
 import { checkStoredCustomer } from "@/lib/billing/customer";
+import { mayManageBilling, portalFlowFrom, portalReturnPath, portalSessionParams } from "@/lib/billing/account";
 
 // Starting and managing a subscription.
 //
@@ -204,28 +205,40 @@ export async function startCheckout(
  *
  * Everything in here would otherwise be a screen to build and maintain, and
  * each of those screens would be a place to get someone's money wrong.
+ *
+ * From the Billing page it opens the whole portal and comes back to Billing.
+ * From the Account page (brief, 14 Oct 2026) it can open straight onto the
+ * card ("Update card") or the cancel screen ("Cancel subscription"), and comes
+ * back to Account. Cancelling there is Stripe's own cancel, which the webhook
+ * turns into the subscription-end process as before; nothing here cancels.
  */
-// Both parameters are unused and both must exist: this is driven by
+// The first parameter is unused and must exist: this is driven by
 // useActionState, which always calls its action with (previousState, payload).
-// The portal takes no input — everything it needs is on the agency row.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function openBillingPortal(_prev: BillingActionState, _formData: FormData): Promise<BillingActionState> {
+// The form carries only which screen to open and where to come back to;
+// everything else is on the agency row.
+export async function openBillingPortal(_prev: BillingActionState, formData: FormData): Promise<BillingActionState> {
   const { supabase, profile, access } = await requireAuthContext();
 
-  // Same rule as the Billing page (10 Oct 2026). Licensee only left the agent
-  // on their own plan, and an office founder who is not the licensee, with a
-  // subscription they had started and no way to cancel it or change the card.
-  if (!access.actsAsLicensee && !(await isAccountHolder(supabase))) {
+  // Same rule as the Billing and Account pages (10 Oct 2026; one source since
+  // 14 Oct, lib/billing/account.ts). Licensee only left the agent on their own
+  // plan, and an office founder who is not the licensee, with a subscription
+  // they had started and no way to cancel it or change the card. An agent in
+  // an office is refused here however the form reaches it.
+  if (!(await mayManageBilling(supabase, access))) {
     return { error: "Only the licensee in charge or the account holder can manage billing." };
   }
 
+  const flow = portalFlowFrom(formData.get("flow"));
+  const returnUrl = `${siteUrl()}${portalReturnPath(formData.get("from"))}`;
+
   const { data: agencyRow } = await supabase
     .from("agencies")
-    .select("stripe_customer_id")
+    .select("stripe_customer_id, stripe_subscription_id")
     .eq("id", profile.agency_id)
     .maybeSingle();
 
-  const customerId = (agencyRow as { stripe_customer_id?: string | null } | null)?.stripe_customer_id;
+  const agency = agencyRow as { stripe_customer_id?: string | null; stripe_subscription_id?: string | null } | null;
+  const customerId = agency?.stripe_customer_id;
   if (!customerId) {
     return { error: "There's no subscription on this account yet." };
   }
@@ -247,10 +260,27 @@ export async function openBillingPortal(_prev: BillingActionState, _formData: Fo
       return { error: "Couldn't open the billing page. We've logged it. Email admin@realcomply.com.au." };
     }
 
-    const session = await stripeRequest<{ url?: string | null }>("POST", "/billing_portal/sessions", {
-      customer: customerId,
-      return_url: `${siteUrl()}/dashboard/billing`,
+    const params = portalSessionParams({
+      customerId,
+      returnUrl,
+      flow,
+      subscriptionId: agency?.stripe_subscription_id ?? null,
     });
+    let session: { url?: string | null };
+    try {
+      session = await stripeRequest<{ url?: string | null }>("POST", "/billing_portal/sessions", params);
+    } catch (e) {
+      // Opening straight onto the card or cancel screen is refused when
+      // Stripe's portal settings don't offer it, or the subscription has
+      // already been booked to end. The whole page still has both.
+      if (flow === "home") throw e;
+      console.error("openBillingPortal: straight-to screen refused, opening the whole page:", e instanceof Error ? e.message : e);
+      session = await stripeRequest<{ url?: string | null }>(
+        "POST",
+        "/billing_portal/sessions",
+        portalSessionParams({ customerId, returnUrl, flow: "home", subscriptionId: null }),
+      );
+    }
     if (!session.url) {
       return { error: "Stripe didn't return a billing page. Try again in a moment." };
     }

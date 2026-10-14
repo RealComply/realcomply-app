@@ -8,7 +8,7 @@ import { MasterSwitch } from "@/components/billing/MasterSwitch";
 import { formatAuDate } from "@/lib/format-date";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { ManageBillingButton } from "@/components/billing/ManageBillingButton";
-import { isAccountHolder } from "@/lib/subscription-end/access";
+import { mayManageBilling as mayManage } from "@/lib/billing/account";
 
 // Billing.
 //
@@ -32,8 +32,8 @@ export default async function BillingPage({
 
   const entitlement = await entitlementFor(supabase, profile.agency_id);
   // The licensee in charge or the account holder sets up billing (9 Oct 2026).
-  const mayManageBilling =
-    access.actsAsLicensee || (await isAccountHolder(supabase));
+  // The same rule as the Account page and Stripe's billing page (14 Oct 2026).
+  const mayManageBilling = await mayManage(supabase, access);
   // Billing follows who pays, not the role (Adam, 8 Oct 2026). An agent
   // invited into an office does not get it, and a typed address refuses.
   if (!mayManageBilling) notFound();
