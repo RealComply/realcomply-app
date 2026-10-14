@@ -2,10 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireLicenseePage } from "@/lib/data/current-profile";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { LICENCE_CATEGORY_LABELS, cleanLicenceCategories } from "@/lib/rules/nsw-cpd";
 import { BREACH_CATEGORY_LABELS } from "@/lib/types";
 import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
-import { countableCpdHours } from "@/lib/cpd-hours";
 import { formatAuDateTimeShort } from "@/lib/format-date";
 import { PrintButton } from "./PrintButton";
 
@@ -33,7 +32,15 @@ export default async function RegistersExportPage() {
   // section is left out, the same as the Complaints tab: printing "No
   // complaints logged." stated something about a register this account
   // doesn't keep (check of 10 Oct 2026).
-  const [{ data: staffRows }, { data: agencyRow }, { data: cpdRows }, { data: giftRows }, { data: complaintRows }, { data: breachRows }] =
+  const [
+    { data: staffRows },
+    { data: agencyRow },
+    { data: cpdRows },
+    { data: giftRows },
+    { data: complaintRows },
+    { data: breachRows },
+    { data: cpdSignoffRows },
+  ] =
     await Promise.all([
       supabase.from("profiles").select("*").order("full_name", { ascending: true }),
       supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
@@ -43,7 +50,10 @@ export default async function RegistersExportPage() {
         ? supabase.from("complaints").select("*").order("received_date", { ascending: false })
         : Promise.resolve({ data: [] as Complaint[] }),
       supabase.from("breaches").select("*").order("identified_date", { ascending: false }),
+      // The year's CPD tick (14 Oct 2026: that tick is the CPD).
+      supabase.from("cpd_year_signoffs").select("profile_id").eq("cpd_year_start", cpdYear.start),
     ]);
+  const cpdDone = new Set(((cpdSignoffRows ?? []) as Array<{ profile_id: string }>).map((r) => r.profile_id));
 
   const staff = (staffRows ?? []) as Profile[];
   const agency = agencyRow as Agency | null;
@@ -62,9 +72,8 @@ export default async function RegistersExportPage() {
   const currentStaff = staff.filter((s) => !s.archived_at);
   const formerStaff = staff.filter((s) => s.archived_at);
   const licenceRow = (s: Profile) => {
-    const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
-    const target = requirement.units ?? requirement.coreHours;
-    const total = countableCpdHours(cpdByProfile[s.id] ?? []);
+    const categories = cleanLicenceCategories(s.licence_categories).map((c) => LICENCE_CATEGORY_LABELS[c]);
+    const certificates = (cpdByProfile[s.id] ?? []).length;
     return (
       <li key={s.id} className="text-sm">
         <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>{" "}
@@ -72,10 +81,9 @@ export default async function RegistersExportPage() {
           — {s.licence_type ? LICENCE_TYPE_LABELS[s.licence_type] : "no licence on file"}
           {s.licence_number ? ` · ${s.licence_number}` : ""}
           {s.licence_expiry ? ` · expires ${s.licence_expiry}` : ""} ·{" "}
-          {target === null
-            ? `CPD ${total} logged — requirement not established`
-            : `CPD ${total}/${target}${requirement.units !== null ? "u" : "h"}`}
-          {requirement.forumRequired ? " · Class 1 forum also required" : ""}
+          {categories.length > 0 ? `${categories.join(", ")} · ` : ""}
+          CPD {cpdDone.has(s.id) ? "done" : "not confirmed"}
+          {certificates > 0 ? ` (${certificates} ${certificates === 1 ? "certificate" : "certificates"})` : ""}
         </span>
       </li>
     );

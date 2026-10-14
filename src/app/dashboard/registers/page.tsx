@@ -62,6 +62,7 @@ export default async function RegistersPage({
     { data: breachRows },
     { data: reminderRows },
     people,
+    { data: cpdSignoffRows },
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
@@ -76,6 +77,8 @@ export default async function RegistersPage({
     supabase.from("licence_reminders").select("*").order("sent_at", { ascending: false }),
     // Names only, for showing who an entry is about (lib/data/people.ts).
     agencyPeople(supabase),
+    // Who has ticked the year's CPD as done (14 Oct 2026: that tick is the CPD).
+    supabase.from("cpd_year_signoffs").select("profile_id").eq("cpd_year_start", cpdYear.start),
   ]);
 
   // An agent logs a gift or breach against themselves, so their pickers show
@@ -224,6 +227,7 @@ export default async function RegistersPage({
                   staff={staff}
                   formerStaff={formerStaff}
                   cpdByProfile={cpdByProfile}
+                  cpdDoneIds={((cpdSignoffRows ?? []) as Array<{ profile_id: string }>).map((r) => r.profile_id)}
                   viewerProfile={profile}
                   cpdYearLabel={cpdYear.label}
                   agency={agency}

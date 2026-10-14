@@ -7,7 +7,6 @@ import { TrainingTabs } from "@/components/training/TrainingTabs";
 import { TrainingPlanCard } from "@/components/training/TrainingPlanCard";
 import { WhyDisclosure } from "@/components/WhyDisclosure";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import type {
   CpdRecord,
   Profile,
@@ -129,7 +128,6 @@ export default async function TrainingPage({
                 plan={plan}
                 items={plan ? (itemsByPlan.get(plan.id) ?? []) : []}
                 cpdRecords={cpdByProfile.get(s.id) ?? []}
-                requirement={cpdRequirementFor(s.licence_type, s.cpd_practice_category)}
                 cpdYearLabel={year.label}
               />
             );

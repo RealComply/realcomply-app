@@ -12,20 +12,6 @@ import type { BillingStatus, Plan } from "@/lib/billing/entitlement";
 // — the certificate an assistant agent holds instead (PSA Act licensing).
 export type LicenceType = "class_1" | "class_2" | "certificate_of_registration";
 
-// The category of practice a person's CPD hours are measured against. Fair
-// Trading publishes hours per category, not per licence class — which is why
-// the class alone was never enough to state a requirement. Lives here rather
-// than in rules/nsw-cpd.ts because Profile references it and nsw-cpd.ts
-// already imports LicenceType from this file.
-export type CpdPracticeCategory =
-  | "residential_sales"
-  | "commercial"
-  | "business_broking"
-  | "stock_and_station"
-  | "strata"
-  | "onsite_short_term_rpm"
-  | "residential_property_management";
-
 export type Profile = {
   id: string;
   agency_id: string;
@@ -55,11 +41,14 @@ export type Profile = {
   /** What the last read of the licence document found and where each value
    *  came from (0051). Parse with parseReadState in lib/licence-read.ts. */
   licence_read?: unknown;
-  // The category of practice CPD hours are measured against. Fair Trading
-  // sets hours per category, not per licence class — see rules/nsw-cpd.ts.
-  // Null means not recorded, and the app must say it can't state a
-  // requirement rather than fall back to a number.
-  cpd_practice_category: CpdPracticeCategory | null;
+  /** The single category of 0020, superseded by licence_categories (0073). Kept as it was; never read. */
+  cpd_practice_category?: string | null;
+  /**
+   * Every type of licence or certificate the person holds, ticked on their
+   * licence card (0073), as rules/nsw-cpd.ts names them. Optional only until
+   * 0073 has run.
+   */
+  licence_categories?: string[];
   /** Set when the licensee removes someone who has left the office (0035).
    *  Archived, never deleted: their signatures, CPD records and the listings
    *  they ran are the compliance history, and the person leaving does not

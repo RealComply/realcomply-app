@@ -14,15 +14,10 @@ import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildCpdDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { formatAuDate } from "@/lib/format-date";
+import { licenceSummary } from "@/lib/rules/nsw-cpd";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
 
 const initial: ActionState = { error: null };
-
-const LICENCE_LABELS: Record<string, string> = {
-  class_1: "Class 1 licence",
-  class_2: "Class 2 licence",
-  certificate_of_registration: "Certificate of registration",
-};
 
 // One person's CPD for the year: their certificates, and a tick.
 //
@@ -32,6 +27,12 @@ const LICENCE_LABELS: Record<string, string> = {
 // information we need will be on the certificate. Less friction, less manual
 // data entry." That is the product's own evidence model, and this screen had
 // drifted from it.
+//
+// 14 Oct 2026, Adam: "they simply tick whether or not they have completed
+// what's relevant and then have the option of uploading their CPD certificate
+// from whichever trainer they used. That's it. Keep it simple." So the card
+// names every type of licence they hold (ticked on their licence card), and
+// the year's tick covers all of them. No hours, no topics.
 export function CpdPersonCard({
   subject,
   viewerProfile,
@@ -114,9 +115,8 @@ export function CpdPersonCard({
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-xs text-rc-muted">
-            {subject.licence_type ? LICENCE_LABELS[subject.licence_type] : "No licence on file"}
-          </p>
+          {/* Their class and every type of licence they hold (14 Oct 2026). */}
+          <p className="mt-0.5 text-xs text-rc-muted">{licenceSummary(subject)}</p>
         </div>
         <span
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
@@ -150,7 +150,8 @@ export function CpdPersonCard({
             {uploading ? "Reading certificate…" : "+ Attach certificate"}
           </span>
           <span className="mt-1 block text-[11px] text-rc-faint">
-            PDF or photo — drag it here or click. RealComply reads the provider, topic, hours and date off it.
+            Optional. PDF or photo from whichever trainer you used: drag it here or click. RealComply reads the
+            provider, topic, hours and date off it.
           </span>
           <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
         </label>
@@ -186,7 +187,7 @@ export function CpdPersonCard({
             {signoff
               ? `Ticked ${signoff.confirmed_at.slice(0, 10)}`
               : canEdit
-                ? "Tick once everything's done for the year"
+                ? "Tick once the year's CPD is done for every licence you hold"
                 : "Not yet confirmed"}
           </p>
         </div>

@@ -7,7 +7,6 @@ import { AgentHome } from "./AgentHome";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
 import { WeeklyReviewWidget } from "@/components/home/WeeklyReviewWidget";
@@ -22,8 +21,7 @@ import { AnnexureCard } from "@/components/home/AnnexureCard";
 import { AgentAnnexureCard } from "@/components/home/AgentAnnexureCard";
 import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
 import { SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
-import { STAGE_LABELS, type Agency, type Complaint, type CpdRecord, type Gift, type Profile, type Property, type PropertyItem, type SgManualVersion, type TrainingSession } from "@/lib/types";
-import { countableCpdHours } from "@/lib/cpd-hours";
+import { STAGE_LABELS, type Agency, type Complaint, type Gift, type Profile, type Property, type PropertyItem, type SgManualVersion, type TrainingSession } from "@/lib/types";
 import { isOfficeAgent, myConfirmedVersions, officeAdoption, sgReadDue } from "@/lib/sg-annexure/office-read";
 
 // Home — the single consolidated landing dashboard a licensee sees after
@@ -117,10 +115,10 @@ export default async function HomeDashboardPage({
     { data: agencyRow },
     { data: giftRows },
     { data: complaintRows },
-    { data: cpdRows },
     { data: sessionRows },
     { data: sgVersionRows },
     { data: pendingInviteRows },
+    { data: cpdSignoffRows },
   ] = await Promise.all([
     propertyIds.length > 0
       ? supabase.from("property_items").select("*").in("property_id", propertyIds)
@@ -129,10 +127,11 @@ export default async function HomeDashboardPage({
     supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
     supabase.from("gifts").select("*"),
     supabase.from("complaints").select("*"),
-    supabase.from("cpd_records").select("*").gte("completed_date", cpdYear.start).lte("completed_date", cpdYear.end),
     supabase.from("training_sessions").select("*").order("session_date", { ascending: false }),
     supabase.from("sg_manual_versions").select("*").order("created_at", { ascending: false }).limit(1),
     supabase.from("agency_invites").select("id").eq("status", "pending"),
+    // Who has ticked the year's CPD as done (14 Oct 2026: that tick is the CPD).
+    supabase.from("cpd_year_signoffs").select("profile_id").eq("cpd_year_start", cpdYear.start),
   ]);
 
   const staff = (staffRows ?? []) as Profile[];
@@ -149,7 +148,6 @@ export default async function HomeDashboardPage({
   const pendingInviteCount = (pendingInviteRows ?? []).length;
   const gifts = (giftRows ?? []) as Gift[];
   const complaints = (complaintRows ?? []) as Complaint[];
-  const cpdRecords = (cpdRows ?? []) as CpdRecord[];
   const sessions = (sessionRows ?? []) as TrainingSession[];
   const currentSgVersion = ((sgVersionRows ?? []) as SgManualVersion[])[0] ?? null;
 
@@ -190,21 +188,11 @@ export default async function HomeDashboardPage({
   const licenceCurrent = licenceStatuses.filter((s) => s === "ok" || s === "soon").length;
   const licenceExpiringSoon = licenceStatuses.filter((s) => s === "urgent").length;
   const licenceExpired = licenceStatuses.filter((s) => s === "expired").length;
-  const cpdByProfile = new Map<string, CpdRecord[]>();
-  for (const row of cpdRecords) {
-    if (!cpdByProfile.has(row.profile_id)) cpdByProfile.set(row.profile_id, []);
-    cpdByProfile.get(row.profile_id)!.push(row);
-  }
-  // Only counts people whose requirement can actually be stated — Fair
-  // Trading sets CPD hours per category of practice, and hasn't published a
-  // figure for every category this year. See rules/nsw-cpd.ts.
-  const cpdOutstanding = activeStaff.filter((s) => {
-    const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
-    const target = requirement.units ?? requirement.coreHours;
-    if (target === null) return false;
-    const total = countableCpdHours(cpdByProfile.get(s.id) ?? []);
-    return total < target;
-  }).length;
+  // Not yet ticked as done for the year, as the CPD page counts it (Adam,
+  // 14 Oct 2026: CPD is a tick for the year, with the certificate optional).
+  // It used to count people short of an hours figure.
+  const cpdDone = new Set(((cpdSignoffRows ?? []) as Array<{ profile_id: string }>).map((r) => r.profile_id));
+  const cpdOutstanding = activeStaff.filter((s) => !cpdDone.has(s.id)).length;
 
   // ── PI insurance ─────────────────────────────────────────────────────────
   const piStatus = agency ? expiryStatus(agency.pi_expiry) : "none";

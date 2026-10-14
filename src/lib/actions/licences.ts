@@ -17,6 +17,7 @@ import {
   type LicenceValues,
 } from "@/lib/licence-read";
 import { asksAboutEntityName } from "@/lib/agency-names";
+import { cleanLicenceCategories } from "@/lib/rules/nsw-cpd";
 import { sendLicenceReminderTest } from "@/lib/email/licence-reminders";
 import type { Agency, LicenceType, Profile } from "@/lib/types";
 
@@ -255,8 +256,6 @@ async function readPersonLicence(
       licence_document_path: path,
       licence_document_file_name: fileName,
       licence_read: decision.state,
-      // An assistant agent has no category of practice (see updateLicence).
-      ...(v.licenceType === "certificate_of_registration" ? { cpd_practice_category: null } : {}),
     })
     .eq("id", subject.id);
   if (error) return { error: "Couldn't save what was read. Try again." };
@@ -323,12 +322,12 @@ export async function updateLicence(profileId: string, _prev: ActionState, formD
   const licenceNumber = str(formData, "licenceNumber");
   const licenceExpiry = str(formData, "licenceExpiry");
 
-  // Category of practice is set here and only here (Adam, 18 Aug 2026). It
-  // decides the CPD hours, changes about as often as a licence does, and was
-  // previously being asked on the CPD screen and the training plan as well.
-  // An assistant agent has no category: their requirement is units.
-  const cpdPracticeCategory =
-    licenceType === "certificate_of_registration" ? null : str(formData, "cpdPracticeCategory");
+  // Every type of licence held, ticked (Adam, 14 Oct 2026), set here and only
+  // here, beside the licence (as the single category of practice was, 18 Aug
+  // 2026). Sent only by the full edit form.
+  const types = formData.get("licenceCategoriesShown") === "1"
+    ? { licence_categories: cleanLicenceCategories(formData.getAll("licenceCategories")) }
+    : {};
 
   const before = personSnapshot(subject);
   const after: Snapshot = { ...before, licenceType, licenceNumber, expiry: licenceExpiry };
@@ -342,7 +341,7 @@ export async function updateLicence(profileId: string, _prev: ActionState, formD
       licence_type: licenceType,
       licence_number: licenceNumber,
       licence_expiry: licenceExpiry,
-      cpd_practice_category: cpdPracticeCategory,
+      ...types,
       licence_read: state,
     })
     .eq("id", profileId);
@@ -739,7 +738,6 @@ export async function fillLicenceGaps(target: GapTarget, _prev: ActionState, for
         licence_number: after.licenceNumber,
         licence_expiry: after.expiry,
         licence_read: state,
-        ...(after.licenceType === "certificate_of_registration" ? { cpd_practice_category: null } : {}),
       })
       .eq("id", subject.id);
     if (error) return { error: "Couldn't save that. Try again." };
