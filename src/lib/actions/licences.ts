@@ -641,6 +641,10 @@ async function readCorporationLicence(
 
   // CHANGE (Adam, 14 Oct 2026): was: corporation licence holder matched against the office name and refused on mismatch. Now: matched against the licensed entity name; a mismatch asks to update it, never refuses. Personal licences keep the strict name check.
   //
+  // (15 Oct 2026: a person's licence no longer refuses on the name either; it
+  // asks "Is this [person]'s licence?" See readPersonLicence. This check is
+  // unchanged.)
+  //
   // So no names go in here: the read never refuses a corporation licence on
   // its name. The holder is compared with the licensed entity name below,
   // after the licence is saved.
