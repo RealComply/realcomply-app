@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ClipboardCheck, KeyRound, LogOut, Settings } from "lucide-react";
+import { ChevronDown, KeyRound, LogOut, Settings } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
 
 // Who you are, and the way out.
@@ -91,15 +91,8 @@ export function UserMenu({
             <Settings size={15} aria-hidden="true" /> Profile settings
           </Link>
 
-          <Link
-            href="/dashboard/cpd"
-            role="menuitem"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-rc-muted transition hover:bg-rc-bg-alt hover:text-rc-ink"
-          >
-            <ClipboardCheck size={15} aria-hidden="true" /> Your CPD record
-          </Link>
-
+          {/* "Your CPD record" came out of this menu (Adam, 14 Oct 2026). CPD
+              stays where it is in the sidebar. */}
           <Link
             href="/dashboard/password"
             role="menuitem"
