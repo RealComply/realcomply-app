@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { CpdPersonCard } from "@/components/training/CpdPersonCard";
 import { currentCpdYear } from "@/lib/cpd-year";
+import { agencyPeople } from "@/lib/data/people";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
 
 // CPD — a certificate and a tick.
@@ -33,7 +34,7 @@ export default async function CpdPage() {
   const supabase = await createClient();
   const year = currentCpdYear();
 
-  const [{ data: staffRows }, { data: cpdRows }, { data: signoffRows }] = await Promise.all([
+  const [{ data: staffRows }, { data: cpdRows }, { data: signoffRows }, people] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase
       .from("cpd_records")
@@ -43,16 +44,21 @@ export default async function CpdPage() {
       .or(`completed_date.is.null,and(completed_date.gte.${year.start},completed_date.lte.${year.end})`)
       .order("completed_date", { ascending: false, nullsFirst: true }),
     supabase.from("cpd_year_signoffs").select("*").eq("cpd_year_start", year.start),
+    // Names only, for "Confirmed as Jo Bennett by [name]" (lib/data/people.ts).
+    agencyPeople(supabase),
   ]);
 
   // CPD is each person's own (0058: own or licensee). An agent or assistant can
   // see their assistant or agent's name but not their certificates or tick, so
   // a card for that person read "Not yet" whatever they had done (preview
   // check, 9 Oct 2026). They get their own card only; the licensee everyone's.
-  const everyone = (staffRows ?? []) as Profile[];
-  const staff = everyone.filter((s) => access.actsAsLicensee || s.id === profile.id);
-  // Who confirmed a certificate in another name (15 Oct 2026) may be anyone in the office.
-  const nameOf = Object.fromEntries(everyone.map((s) => [s.id, s.full_name ?? s.email]));
+  const staff = ((staffRows ?? []) as Profile[]).filter((s) => access.actsAsLicensee || s.id === profile.id);
+  // Who confirmed a certificate in another name (15 Oct 2026) may be anyone in
+  // the office, and an agent can't read the licensee's profile (0058), only
+  // their name. The preview check showed "by a team member" to Jo otherwise.
+  const nameOf: Record<string, string> = {};
+  for (const p of people) if (p.full_name) nameOf[p.id] = p.full_name;
+  for (const s of staff) nameOf[s.id] ??= s.full_name ?? s.email;
   const records = (cpdRows ?? []) as CpdRecord[];
   const signoffs = (signoffRows ?? []) as CpdYearSignoff[];
 
