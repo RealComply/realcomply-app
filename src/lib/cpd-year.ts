@@ -23,6 +23,11 @@ export function currentCpdYear(reference: Date = new Date()): { start: string; e
 // holders additionally owe an accredited Fair Trading forum per category, on
 // top of the core hours.
 //
+// (14 Oct 2026: two of those are out of date, and kept above as the history.
+// Residential property management is now published, and a Class 1 holder
+// owes ONE forum a year, even with more than one licence; the "per category"
+// above is reversed. Both are recorded in rules/nsw-cpd.ts.)
+//
 // The requirement now lives in src/lib/rules/nsw-cpd.ts, where it belongs —
 // it is jurisdiction-specific rules content, not a date helper, and it needs
 // a checked-on date because Fair Trading republishes it annually on an

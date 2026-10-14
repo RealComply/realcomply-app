@@ -1,18 +1,4 @@
-// NSW continuing professional development requirements — the rules layer.
-//
-// WHY THIS FILE EXISTS AT ALL (and why it isn't three constants)
-// -------------------------------------------------------------
-// Until 18 Aug 2026 the app applied a flat 7 hours to every Class 1 and
-// Class 2 holder (see the old CPD_HOURS_REQUIRED_AGENT in lib/cpd-year.ts).
-// That is wrong, and it was wrong on screen: every staff card showed a
-// progress bar reading "x/7 hrs" for people whose actual requirement is 4, 6
-// or 7 depending on what they practise, and for Class 1 holders whose
-// requirement is their category's hours PLUS an accredited forum on top.
-//
-// Verified 18 Aug 2026 against NSW Fair Trading's published CPD requirements
-// for the 2026–27 CPD year. Full research note, with sources and the list of
-// things Fair Trading has NOT published, is in the project doc
-// RealComply-NSW-CPD-requirements-2026-27.md.
+// NSW continuing professional development requirements: the rules layer.
 //
 // THE THING THAT MAKES THIS DIFFERENT FROM EVERY OTHER RULE WE HOLD
 // -----------------------------------------------------------------
@@ -24,169 +10,268 @@
 //
 // So the ruleset is an ADMINISTRATIVE INSTRUMENT republished annually on an
 // unversioned web page. It changes without any legislative amendment, without
-// a commencement date, and without anything we could subscribe to. It already
-// changed materially this year: commercial, business broking and stock &
-// station went 5 → 7 hours, strata went from 4 hours + a TAFE module to 6,
-// AML/CTF entered the compulsory syllabus alongside Tranche 2, and
-// residential tenancy reforms dropped out.
+// a commencement date, and without anything we could subscribe to. Two
+// consequences, both load-bearing:
+//   1. Each year's rules are held here as their own dated, versioned ruleset:
+//      the CPD year, the source page, the date it was checked and the date it
+//      must be re-checked by. Screens never hold a number or a topic; they ask
+//      this file for the year they are showing.
+//   2. A year we hold no ruleset for returns null, and the product says so.
+//      It never carries last year's figures forward.
 //
-// Two consequences, both load-bearing:
-//   1. Everything here carries a checked-on date and a review-by date, and
-//      the UI shows them. A number with no date is a liability.
-//   2. Where Fair Trading has not published a figure, this file returns null
-//      and the product says "Fair Trading hasn't published this yet." It must
-//      never infer one. Training providers are currently restating last
-//      year's figures — one tells Class 1 and 2 holders they can do 10 hours
-//      online, which directly contradicts the delivery rule below.
+// HISTORY
+// -------
+// 18 Aug 2026: the flat 7 hours for every licence holder was replaced by hours
+// per category of practice, with one category per person (0020).
+// 14 Oct 2026 (Adam's brief; mockup approved): a person ticks every category
+// and area they work in (0073), and each category brings its own minimum
+// hours and compulsory topics. Trent Lloyd holds residential sales, business
+// broking and stock and station; with one category his CPD showed a third of
+// what he has to do. Residential property management is now published.
+//
+// REVERSAL, 14 Oct 2026. The 18 Aug note said a Class 1 holder owes "an
+// accredited Fair Trading forum for each category they hold". Fair Trading's
+// page, checked 14 Oct 2026, says a Class 1 holder attends ONE accredited
+// forum a year (at least 5 hours), even with more than one licence. The
+// ruleset below says one; nothing in the app counts forums per category.
 
-import type { CpdPracticeCategory, LicenceType } from "@/lib/types";
+import type { LicenceType } from "@/lib/types";
 
-export type { CpdPracticeCategory };
+/** Every category of practice and real estate area a person can tick (profiles.cpd_categories, 0073). */
+export type PracticeCategory =
+  | "residential_sales"
+  | "residential_property_management"
+  | "buyers_agent"
+  | "commercial"
+  | "business_broking"
+  | "onsite_short_term_rpm"
+  | "strata"
+  | "stock_and_station";
 
-/** When this ruleset was last checked against Fair Trading, and by when it must be re-checked. */
-export const CPD_RULESET = {
-  cpdYear: "2026–27",
-  checkedOn: "2026-08-18",
-  // Fair Trading republishes ahead of the 1 July year start. Checking in May
-  // gives time to update before anyone's plan is built on last year's numbers.
-  reviewBy: "2027-05-01",
-  source: "NSW Fair Trading — Continuing professional development requirements",
-  sourceUrl:
-    "https://www.nsw.gov.au/housing-and-construction/property-professionals/working-as-an-agent/continuing-professional-development",
-} as const;
-
-export const CPD_PRACTICE_CATEGORY_LABELS: Record<CpdPracticeCategory, string> = {
-  residential_sales: "Residential sales / buyer's agent",
+export const CPD_CATEGORY_LABELS: Record<PracticeCategory, string> = {
+  residential_sales: "Residential sales",
+  residential_property_management: "Residential property management",
+  buyers_agent: "Buyers agent",
   commercial: "Commercial",
   business_broking: "Business broking",
-  stock_and_station: "Stock & station",
+  onsite_short_term_rpm: "Onsite (short-term) residential property management",
   strata: "Strata management",
-  onsite_short_term_rpm: "On-site short-term residential property management",
-  residential_property_management: "Residential property management",
+  stock_and_station: "Stock and station",
 };
 
-/**
- * Core hours per category for the 2026–27 year, or null where Fair Trading
- * has not published a figure.
- *
- * residential_property_management is null on purpose: Fair Trading's page
- * says the requirement is "currently being finalised". Showing a guess there
- * would be worse than showing nothing, because a property manager would
- * complete it and believe they were done.
- */
-const CORE_HOURS: Record<CpdPracticeCategory, number | null> = {
-  residential_sales: 7,
-  commercial: 7,
-  business_broking: 7,
-  stock_and_station: 7,
-  strata: 6,
-  onsite_short_term_rpm: 4,
-  residential_property_management: null,
+/** Grouped the way Fair Trading groups them, in this order everywhere. */
+export const CPD_CATEGORY_GROUPS: ReadonlyArray<{ title: string; categories: readonly PracticeCategory[] }> = [
+  {
+    title: "Real estate",
+    categories: [
+      "residential_sales",
+      "residential_property_management",
+      "buyers_agent",
+      "commercial",
+      "business_broking",
+      "onsite_short_term_rpm",
+    ],
+  },
+  { title: "Other categories", categories: ["strata", "stock_and_station"] },
+];
+
+export const CPD_CATEGORIES: readonly PracticeCategory[] = CPD_CATEGORY_GROUPS.flatMap((g) => g.categories);
+
+export function isCpdCategory(v: unknown): v is PracticeCategory {
+  return typeof v === "string" && (CPD_CATEGORIES as readonly string[]).includes(v);
+}
+
+/** A person's ticks, cleaned: known categories only, once each, in the standard order. */
+export function cleanCpdCategories(values: unknown): PracticeCategory[] {
+  const given = Array.isArray(values) ? values : [];
+  return CPD_CATEGORIES.filter((c) => given.includes(c));
+}
+
+export const LICENCE_LABELS: Record<LicenceType, string> = {
+  class_1: "Class 1 licence",
+  class_2: "Class 2 licence",
+  certificate_of_registration: "Certificate of registration (assistant agent)",
 };
 
-/** Units of competency required of an assistant agent each CPD year. */
-export const ASSISTANT_UNITS_REQUIRED = 3;
-
-export type CpdRequirement = {
-  /** Hours required, or null when the requirement is units or is unpublished. */
-  coreHours: number | null;
-  /** Units required instead of hours (certificate of registration holders). */
-  units: number | null;
-  /** Class 1 only — an accredited Fair Trading forum for each category held. */
-  forumRequired: boolean;
-  /**
-   * Hours the forum carries. Null as at the checked-on date: Fair Trading
-   * says only that "further detail regarding these accredited events will be
-   * provided shortly." Providers quote 5 hours; that is the 2025–26 figure
-   * and is not published for this year, so it is not used here.
-   */
-  forumHours: number | null;
-  /** Plain-English notes about anything Fair Trading has not published. */
-  unpublished: string[];
+/** The short form, for a card's subtitle: "Class 1 · Residential sales". */
+export const LICENCE_SHORT_LABELS: Record<LicenceType, string> = {
+  class_1: "Class 1",
+  class_2: "Class 2",
+  certificate_of_registration: "Assistant agent",
 };
 
-export function cpdRequirementFor(
-  licenceType: LicenceType | null,
-  category: CpdPracticeCategory | null,
-): CpdRequirement {
-  if (licenceType === "certificate_of_registration") {
-    return {
-      coreHours: null,
-      units: ASSISTANT_UNITS_REQUIRED,
-      forumRequired: false,
-      forumHours: null,
-      unpublished: [],
-    };
-  }
+/** A compulsory topic, once, with every category it is compulsory for. */
+export type CpdTopic = {
+  /** Stored on cpd_records.topics (0073). Stable within the year's ruleset. */
+  key: string;
+  title: string;
+  categories: readonly PracticeCategory[];
+  /** Anything Fair Trading says about the topic itself, e.g. a minimum time. */
+  note?: string;
+};
 
-  // No licence type or no category recorded — we genuinely cannot say, and
-  // saying "7" would be the same mistake this file exists to correct.
-  if (!licenceType || !category) {
-    return {
-      coreHours: null,
-      units: null,
-      forumRequired: licenceType === "class_1",
-      forumHours: null,
-      unpublished: [
-        !licenceType
-          ? "No licence class recorded, so the CPD requirement can't be worked out."
-          : "No category of practice recorded, so the CPD requirement can't be worked out. Fair Trading sets hours per category, not per licence class.",
-      ],
-    };
-  }
+export type CpdExtraKey = "accredited_forum" | "austrac_guide";
 
-  const coreHours = CORE_HOURS[category];
-  const unpublished: string[] = [];
+export type CpdRuleset = {
+  /** "2026-27", the CPD year these rules are for. */
+  cpdYear: string;
+  /** Bumped whenever the rules here change within a year. */
+  version: string;
+  /** 1 July that starts the year, and 30 June that ends it. */
+  yearStart: string;
+  yearEnd: string;
+  checkedOn: string;
+  /** Fair Trading republishes ahead of 1 July; checking in May leaves time to update. */
+  reviewBy: string;
+  source: string;
+  sourceUrl: string;
+  /** Minimum hours per category. */
+  hours: Record<PracticeCategory, number>;
+  /** Each distinct compulsory topic once, in Fair Trading's order. */
+  topics: readonly CpdTopic[];
+  class1: {
+    forum: { key: "accredited_forum"; title: string; minHours: number; note: string };
+    austrac: { key: "austrac_guide"; title: string; note: string; categories: readonly PracticeCategory[] };
+  };
+  assistant: {
+    units: number;
+    /** Units owed by someone whose certificate started in the part-year window. */
+    partYearUnits: number;
+    /** Started on or after this date (and before exemptFrom): partYearUnits. "3 to 9 months before 30 June". */
+    partYearFrom: string;
+    note: string;
+  };
+  /** A licence or certificate that started on or after this date is exempt for the year. */
+  exemptFrom: string;
+  /** Years to keep the evidence. */
+  retentionYears: { licence: number; certificate: number };
+};
 
-  if (coreHours === null) {
-    unpublished.push(
-      `Fair Trading hasn't published the ${CPD_PRACTICE_CATEGORY_LABELS[category].toLowerCase()} hours for ${CPD_RULESET.cpdYear} yet — its page says the requirement is being finalised.`,
-    );
-  }
+// ── 2026-27 ─────────────────────────────────────────────────────────────
+//
+// NSW Fair Trading, "Continuing Professional Development (CPD) requirements
+// for property professionals", checked 14 Oct 2026. Hours and compulsory
+// topics per category exactly as published, with each topic listed once and
+// the categories it is compulsory for. A topic shared by two categories only
+// needs doing once if the course covers each category's learning outcomes,
+// which is the provider's to say: the card says so, and the person (or their
+// licensee) can untick a category a course didn't cover.
+const RS: PracticeCategory = "residential_sales";
+const RPM: PracticeCategory = "residential_property_management";
+const BA: PracticeCategory = "buyers_agent";
+const COM: PracticeCategory = "commercial";
+const BB: PracticeCategory = "business_broking";
+const OS: PracticeCategory = "onsite_short_term_rpm";
+const ST: PracticeCategory = "strata";
+const SS: PracticeCategory = "stock_and_station";
 
-  const forumRequired = licenceType === "class_1";
-  if (forumRequired) {
-    unpublished.push(
-      "Class 1 holders must also attend a Fair Trading accredited forum for each category they hold, on top of the core hours. Fair Trading hasn't published how many hours the forum carries for this year.",
-    );
-  }
+export const CPD_RULESET_2026_27: CpdRuleset = {
+  cpdYear: "2026-27",
+  version: "2026-27.2",
+  yearStart: "2026-07-01",
+  yearEnd: "2027-06-30",
+  checkedOn: "2026-10-14",
+  reviewBy: "2027-05-01",
+  source: "NSW Fair Trading, Continuing Professional Development (CPD) requirements for property professionals",
+  sourceUrl:
+    "https://www.nsw.gov.au/housing-and-construction/property-professionals/working-as-an-agent/continuing-professional-development",
+  hours: {
+    residential_sales: 7,
+    residential_property_management: 7,
+    buyers_agent: 7,
+    commercial: 7,
+    business_broking: 7,
+    onsite_short_term_rpm: 4,
+    strata: 6,
+    stock_and_station: 7,
+  },
+  topics: [
+    // Residential sales
+    { key: "auction_laws", title: "Auction laws and practice", categories: [RS, BA, SS] },
+    { key: "contracts", title: "Contracts", categories: [RS, BA, SS] },
+    { key: "rules_of_conduct", title: "Rules of Conduct refresher", categories: [RS, COM] },
+    { key: "supervision_aml", title: "Supervision Guidelines and AML CTF in agency practice", categories: [RS, BA, COM, BB, SS] },
+    // Residential property management (published; replaces "not published yet")
+    { key: "repairs_habitability", title: "Repairs, maintenance and habitability", categories: [RPM] },
+    { key: "tenancy_reforms", title: "Residential tenancy, revisit reforms plus common mistakes", categories: [RPM] },
+    { key: "domestic_family_violence", title: "Domestic and Family Violence", categories: [RPM], note: "At least 4 hours." },
+    // Buyers agents
+    { key: "buyers_marketing_scope", title: "Marketing services, scope of practice and licensing obligations", categories: [BA] },
+    // Commercial
+    { key: "fire_safety", title: "Fire safety regulations", categories: [COM] },
+    { key: "commercial_gst", title: "GST in commercial property transactions", categories: [COM] },
+    // Business broking
+    { key: "relationships_negotiation", title: "Establishing and managing relationships and negotiation skills", categories: [BB] },
+    { key: "business_broker_ethics", title: "Ethical practice for business brokers", categories: [BB] },
+    // Onsite (short-term) residential property management
+    { key: "conflict_complaints", title: "Conflict resolution and complaint management", categories: [OS] },
+    { key: "managing_relationships", title: "Establishing and managing relationships", categories: [OS] },
+    // Strata (and onsite)
+    { key: "strata_regulatory_change", title: "Regulatory change in strata", categories: [OS, ST] },
+    { key: "strata_repairs", title: "Repairs and maintenance", categories: [ST] },
+    { key: "strata_roles_risk", title: "Roles, authority and risk", categories: [ST] },
+    // Stock and station
+    { key: "safety_risk", title: "Safety risk management", categories: [SS] },
+  ],
+  class1: {
+    forum: {
+      key: "accredited_forum",
+      title: "Fair Trading accredited forum (at least 5 hours)",
+      minHours: 5,
+      // REVERSAL of the 18 Aug 2026 note ("one per category"). See the top of this file.
+      note: "One forum a year, even with more than one licence.",
+    },
+    austrac: {
+      key: "austrac_guide",
+      title: "AUSTRAC: Smart real estate agent's guide to AML/CTF",
+      note: "Separate from the forum. Keep the completion certificate.",
+      categories: [RS, BA, COM, BB, SS],
+    },
+  },
+  assistant: {
+    units: 3,
+    partYearUnits: 1,
+    // 9 months before 30 June 2027. Started from here to 31 March 2027: 1 unit.
+    partYearFrom: "2026-09-30",
+    note: "Units from the Certificate IV in Real Estate Practice. Extra units carry over to next year.",
+  },
+  // Not if the licence or certificate recommenced after a suspension with a
+  // CPD condition: the card says so, since RealComply doesn't hold suspensions.
+  exemptFrom: "2027-04-01",
+  retentionYears: { licence: 3, certificate: 4 },
+};
 
-  return { coreHours, units: null, forumRequired, forumHours: null, unpublished };
+const RULESETS: readonly CpdRuleset[] = [CPD_RULESET_2026_27];
+
+/** The rules for the CPD year starting on yearStart (YYYY-07-01), or null if RealComply doesn't hold them. */
+export function cpdRulesetFor(yearStart: string): CpdRuleset | null {
+  return RULESETS.find((r) => r.yearStart === yearStart) ?? null;
+}
+
+/** Topic keys a certificate can carry for the year: the compulsory topics, the forum and the AUSTRAC guide. */
+export function cpdTopicKeys(ruleset: CpdRuleset): string[] {
+  return [...ruleset.topics.map((t) => t.key), ruleset.class1.forum.key, ruleset.class1.austrac.key];
+}
+
+/** The title a topic key stands for in the year's ruleset. */
+export function cpdTopicTitle(ruleset: CpdRuleset, key: string): string | null {
+  if (key === ruleset.class1.forum.key) return ruleset.class1.forum.title;
+  if (key === ruleset.class1.austrac.key) return ruleset.class1.austrac.title;
+  return ruleset.topics.find((t) => t.key === key)?.title ?? null;
 }
 
 /**
- * How CPD may be delivered. Face-to-face is NOT mandatory — a live
+ * How CPD may be delivered. Face-to-face is NOT mandatory: a live
  * interactive webinar with assessment qualifies. Self-paced eLearning does
  * not satisfy the compulsory topics.
- *
- * Stated here because getting it wrong costs an agent real money: booking
- * self-paced online modules that don't count, then discovering it in June.
  */
 export const CPD_DELIVERY_NOTE =
   "Compulsory topics must be delivered face-to-face or by live interactive webinar with assessment. Self-paced online modules don't satisfy them.";
 
 /**
- * All published hours for 2026–27 are compulsory topics — Fair Trading has
- * not published an elective component this year. Worth stating, because the
- * REINSW training plan template has a Compulsory/Elective column and an agent
- * filling it in will ask.
- */
-/**
- * What actually earns CPD. The single most misunderstood rule in this area,
- * and the one the app got wrong until 18 Aug 2026 — it used to credit any
- * training session an agent ticked as CPD-eligible.
- *
- * The test is the PROVIDER and the CONTENT, not the venue. Both directions of
- * that matter: an approved provider delivering an approved topic at your own
- * office DOES count, and your own internal session does NOT, wherever it is
- * held.
+ * What actually earns CPD. The test is the PROVIDER and the CONTENT, not the
+ * venue: an approved provider delivering an approved topic at your own office
+ * DOES count, and your own internal session does NOT, wherever it is held.
  */
 export const CPD_PROVIDER_NOTE =
-  "Only Fair Trading approved providers can deliver CPD. Your own internal training doesn't count — but an approved provider delivering at your office does, so the venue isn't the test.";
-
-export const CPD_ELECTIVE_NOTE =
-  "Fair Trading hasn't published an elective component for 2026–27 — the published hours are all compulsory topics.";
-
-/** Evidence retention, which differs by credential and catches people out. */
-export const CPD_RECORD_RETENTION_NOTE =
-  "Keep CPD evidence for 3 years (Class 1 and Class 2). Certificate of registration holders keep each statement of attainment for 4 years.";
+  "Only Fair Trading approved providers can deliver CPD. Your own internal training doesn't count, but an approved provider delivering at your office does, so the venue isn't the test.";

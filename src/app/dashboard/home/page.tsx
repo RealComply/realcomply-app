@@ -7,7 +7,7 @@ import { AgentHome } from "./AgentHome";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { cpdStandingFor } from "@/lib/cpd-plan";
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
 import { WeeklyReviewWidget } from "@/components/home/WeeklyReviewWidget";
@@ -21,7 +21,6 @@ import { SgManualWidget } from "@/components/home/SgManualWidget";
 import { AnnexureCard } from "@/components/home/AnnexureCard";
 import { SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { STAGE_LABELS, type Agency, type Complaint, type CpdRecord, type Gift, type Profile, type Property, type PropertyItem, type SgManualVersion, type TrainingSession } from "@/lib/types";
-import { countableCpdHours } from "@/lib/cpd-hours";
 import { isOfficeAgent, myConfirmedVersions, officeAdoption, sgReadDue } from "@/lib/sg-annexure/office-read";
 
 // Home — the single consolidated landing dashboard a licensee sees after
@@ -176,16 +175,12 @@ export default async function HomeDashboardPage({
     if (!cpdByProfile.has(row.profile_id)) cpdByProfile.set(row.profile_id, []);
     cpdByProfile.get(row.profile_id)!.push(row);
   }
-  // Only counts people whose requirement can actually be stated — Fair
-  // Trading sets CPD hours per category of practice, and hasn't published a
-  // figure for every category this year. See rules/nsw-cpd.ts.
-  const cpdOutstanding = activeStaff.filter((s) => {
-    const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
-    const target = requirement.units ?? requirement.coreHours;
-    if (target === null) return false;
-    const total = countableCpdHours(cpdByProfile.get(s.id) ?? []);
-    return total < target;
-  }).length;
+  // Only counts people whose CPD can actually be stated (categories ticked,
+  // not exempt) and isn't done: every topic for every category they work in,
+  // or their units. See lib/cpd-plan.ts.
+  const cpdOutstanding = activeStaff.filter(
+    (s) => cpdStandingFor(s, cpdByProfile.get(s.id) ?? [], cpdYear.start, cpdYear.label).outstanding,
+  ).length;
 
   // ── PI insurance ─────────────────────────────────────────────────────────
   const piStatus = agency ? expiryStatus(agency.pi_expiry) : "none";

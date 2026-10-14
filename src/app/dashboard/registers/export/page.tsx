@@ -2,10 +2,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireLicenseePage } from "@/lib/data/current-profile";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { cpdStandingFor } from "@/lib/cpd-plan";
+import { CPD_CATEGORY_LABELS, cleanCpdCategories } from "@/lib/rules/nsw-cpd";
 import { BREACH_CATEGORY_LABELS } from "@/lib/types";
 import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
-import { countableCpdHours } from "@/lib/cpd-hours";
 import { formatAuDateTimeShort } from "@/lib/format-date";
 import { PrintButton } from "./PrintButton";
 
@@ -62,9 +62,8 @@ export default async function RegistersExportPage() {
   const currentStaff = staff.filter((s) => !s.archived_at);
   const formerStaff = staff.filter((s) => s.archived_at);
   const licenceRow = (s: Profile) => {
-    const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
-    const target = requirement.units ?? requirement.coreHours;
-    const total = countableCpdHours(cpdByProfile[s.id] ?? []);
+    const cpd = cpdStandingFor(s, cpdByProfile[s.id] ?? [], cpdYear.start, cpdYear.label);
+    const categories = cleanCpdCategories(s.cpd_categories).map((c) => CPD_CATEGORY_LABELS[c]);
     return (
       <li key={s.id} className="text-sm">
         <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>{" "}
@@ -72,10 +71,8 @@ export default async function RegistersExportPage() {
           — {s.licence_type ? LICENCE_TYPE_LABELS[s.licence_type] : "no licence on file"}
           {s.licence_number ? ` · ${s.licence_number}` : ""}
           {s.licence_expiry ? ` · expires ${s.licence_expiry}` : ""} ·{" "}
-          {target === null
-            ? `CPD ${total} logged — requirement not established`
-            : `CPD ${total}/${target}${requirement.units !== null ? "u" : "h"}`}
-          {requirement.forumRequired ? " · Class 1 forum also required" : ""}
+          {categories.length > 0 ? `${categories.join(", ")} · ` : ""}
+          CPD {cpd.summary}
         </span>
       </li>
     );

@@ -1,9 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { countableCpdHours, cpdYearStanding } from "@/lib/cpd-hours";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
+import { cpdPlanFor, cpdRequirementWords } from "@/lib/cpd-plan";
+import { CPD_RULESET_2026_27 } from "@/lib/rules/nsw-cpd";
 
-const req = cpdRequirementFor("class_2", "residential_sales");
+const words = cpdRequirementWords(
+  cpdPlanFor({ licence_type: "class_2", cpd_categories: ["residential_sales"] }, CPD_RULESET_2026_27),
+);
+const req = { coreHours: words.hours, units: words.units };
 const cert = (hours: number | null, provider: string | null = "REINSW", completed_date: string | null = "2026-09-10") => ({
   hours,
   provider,

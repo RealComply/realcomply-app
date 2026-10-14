@@ -5,8 +5,7 @@ import { navCountsFor } from "@/lib/data/nav-counts";
 import { agencyPeople } from "@/lib/data/people";
 import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
-import { countableCpdHours } from "@/lib/cpd-hours";
+import { cpdStandingFor } from "@/lib/cpd-plan";
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
 import { GiftsWidget } from "@/components/home/GiftsWidget";
@@ -75,9 +74,9 @@ export async function AgentHome({
   const awaitingMyReview = properties.filter((p) => p.review_requested_at && p.created_by === profile.id);
 
   const licence = expiryStatus(profile.licence_expiry);
-  const requirement = cpdRequirementFor(profile.licence_type, profile.cpd_practice_category);
-  const cpdTarget = requirement.units ?? requirement.coreHours;
-  const cpdDone = countableCpdHours((cpdRows ?? []) as CpdRecord[]);
+  // Topics done of topics owed, across every category ticked (14 Oct 2026),
+  // or units for an assistant agent. Never a combined hours total.
+  const cpd = cpdStandingFor(profile, (cpdRows ?? []) as CpdRecord[], cpdYear.start, cpdYear.label);
 
   const sessions = (sessionRows ?? []) as TrainingSession[];
   const today = new Date();
@@ -156,9 +155,9 @@ export async function AgentHome({
             href="/dashboard/registers?tab=licence"
           />
           <StatTile
-            n={cpdTarget === null ? `${cpdDone}` : `${cpdDone} / ${cpdTarget}`}
+            n={cpd.progress ? `${cpd.progress.done} / ${cpd.progress.total}` : cpd.plan.kind === "exempt" ? "Exempt" : "—"}
             l="My CPD"
-            tone={cpdTarget !== null && cpdDone < cpdTarget ? "warn" : "ok"}
+            tone={cpd.outstanding ? "warn" : cpd.progress || cpd.plan.kind === "exempt" ? "ok" : "neutral"}
             icon={ClipboardCheck}
             href="/dashboard/cpd"
           />

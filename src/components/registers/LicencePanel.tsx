@@ -3,8 +3,8 @@
 import { StaffRegisterCard } from "@/components/registers/StaffRegisterCard";
 import { CorporationLicenceCard } from "@/components/registers/CorporationLicenceCard";
 import { expiryStatus } from "@/lib/expiry-status";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
-import { countableCpdHours } from "@/lib/cpd-hours";
+import { cpdStandingFor } from "@/lib/cpd-plan";
+import { currentCpdYear } from "@/lib/cpd-year";
 import { REMINDER_SCHEDULE_WORDS } from "@/lib/licence-reminders";
 import { TestReminderControl } from "@/components/registers/TestReminderControl";
 import { useViewerAccess } from "@/components/ViewerAccess";
@@ -53,17 +53,13 @@ export function LicencePanel({
   const current = statuses.filter((s) => s === "ok" || s === "soon").length;
   const expiringSoon = statuses.filter((s) => s === "urgent").length;
   const expired = statuses.filter((s) => s === "expired").length;
-  // Only counts people whose requirement we can actually state. Someone with
-  // no category of practice recorded, or in a category Fair Trading hasn't
-  // published for this year, isn't "outstanding" — we simply don't know, and
-  // the card itself says so rather than this tile guessing.
-  const cpdOutstanding = staff.filter((s) => {
-    const requirement = cpdRequirementFor(s.licence_type, s.cpd_practice_category);
-    const target = requirement.units ?? requirement.coreHours;
-    if (target === null) return false;
-    const total = countableCpdHours(cpdByProfile[s.id] ?? []);
-    return total < target;
-  }).length;
+  // Only counts people whose CPD we can actually state. Someone with no
+  // category of practice ticked isn't "outstanding": we simply don't know,
+  // and the card itself says so rather than this tile guessing.
+  const year = currentCpdYear();
+  const cpdOutstanding = staff.filter(
+    (s) => cpdStandingFor(s, cpdByProfile[s.id] ?? [], year.start, year.label).outstanding,
+  ).length;
 
   return (
     <div>

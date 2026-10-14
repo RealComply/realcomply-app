@@ -11,7 +11,9 @@
 // place that sum now happens.
 
 import type { CpdRecord } from "@/lib/types";
-import type { CpdRequirement } from "@/lib/rules/nsw-cpd";
+
+/** What a reminder can state as the year's target: units, or one category's hours. Null where it can't. */
+export type CpdTarget = { coreHours: number | null; units: number | null };
 
 type Countable = Pick<CpdRecord, "hours" | "provider" | "completed_date"> & {
   source_session_id?: string | null;
@@ -54,7 +56,7 @@ export type CpdYearStanding = {
   complete: boolean;
   /** Approved-provider hours (or units) recorded for the year. */
   counted: number;
-  /** The requirement, or null where it cannot be stated (rules/nsw-cpd.ts). */
+  /** The requirement, or null where it cannot be stated (cpd-plan.ts). */
   target: number | null;
   /** Plain words for a reminder, or null when nothing is outstanding. */
   outstanding: string | null;
@@ -68,7 +70,8 @@ export function cpdYearStanding(input: {
   confirmedYears: string[];
   /** 1 July that starts the year being asked about, YYYY-07-01. */
   yearStart: string;
-  requirement: CpdRequirement;
+  /** cpdRequirementWords (cpd-plan.ts): units, or hours only when one category is ticked. */
+  requirement: CpdTarget;
 }): CpdYearStanding {
   const counted = countableCpdHours(input.records);
   const units = input.requirement.units !== null;

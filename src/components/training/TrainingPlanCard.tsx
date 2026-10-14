@@ -14,9 +14,8 @@ import {
   signTrainingPlan,
   type ActionState,
 } from "@/lib/actions/training-plans";
-import type { CpdRequirement } from "@/lib/rules/nsw-cpd";
 import type { CpdRecord, Profile, TrainingPlan, TrainingPlanItem } from "@/lib/types";
-import { countableCpdHours } from "@/lib/cpd-hours";
+import { cpdStandingFor } from "@/lib/cpd-plan";
 
 const initial: ActionState = { error: null };
 
@@ -33,7 +32,7 @@ export function TrainingPlanCard({
   plan,
   items,
   cpdRecords,
-  requirement,
+  cpdYearStart,
   cpdYearLabel,
 }: {
   subject: Profile;
@@ -41,7 +40,7 @@ export function TrainingPlanCard({
   plan: TrainingPlan | null;
   items: TrainingPlanItem[];
   cpdRecords: CpdRecord[];
-  requirement: CpdRequirement;
+  cpdYearStart: string;
   cpdYearLabel: string;
 }) {
   const isSelf = viewerProfile.id === subject.id;
@@ -57,9 +56,10 @@ export function TrainingPlanCard({
   // What has actually landed in the CPD register this year, which is the
   // number that matters at the end of it — the plan says what should happen,
   // this says what did.
-  const isAssistant = subject.licence_type === "certificate_of_registration";
-  const logged = countableCpdHours(cpdRecords);
-  const target = requirement.units ?? requirement.coreHours;
+  // Across every category they work in (14 Oct 2026): topics done of topics
+  // owed, or units. Each category's minimum hours, never a combined total.
+  const cpd = cpdStandingFor(subject, cpdRecords, cpdYearStart, cpdYearLabel);
+  const { plan: cpdPlan } = cpd;
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
@@ -74,27 +74,29 @@ export function TrainingPlanCard({
             )}
           </div>
           <p className="mt-0.5 text-xs text-rc-muted">
-            {target === null ? (
-              <>Requirement not established for {cpdYearLabel}</>
-            ) : (
-              <>
-                {logged}/{target} {isAssistant ? (target === 1 ? "unit" : "units") : target === 1 ? "hr" : "hrs"} logged this year
-              </>
-            )}
+            {cpd.progress
+              ? `${cpd.summary} this year`
+              : cpdPlan.kind === "exempt"
+                ? `No CPD for ${cpdYearLabel}`
+                : `Requirement not established for ${cpdYearLabel}`}
           </p>
         </div>
         <StatusPill plan={plan} />
       </div>
 
       {/* The requirement, and honestly where it isn't known. */}
-      {requirement.unpublished.length > 0 && (
+      {cpdPlan.kind === "hours" && (
+        <p className="mt-2 text-[11px] text-rc-muted">
+          Minimum hours: {cpdPlan.minimums.map((m) => `${m.label} ${m.hours}`).join(" · ")}
+          {cpdPlan.extras.length > 0 && <> · plus {cpdPlan.extras.length === 2 ? "the forum and AUSTRAC" : "the forum"}</>}
+        </p>
+      )}
+      {(cpdPlan.kind === "unknown" || cpdPlan.kind === "no_ruleset" || cpdPlan.kind === "exempt") && (
         <div className="mt-3 rounded-md border border-rc-amber/40 bg-rc-amber/10 px-3 py-2 text-[11px] leading-relaxed text-rc-amber-deep">
-          {requirement.unpublished.map((u, i) => (
-            <p key={i} className={i > 0 ? "mt-1" : undefined}>
-              <CircleAlert size={11} className="mr-1 inline align-[-1px]" />
-              {u}
-            </p>
-          ))}
+          <p>
+            <CircleAlert size={11} className="mr-1 inline align-[-1px]" />
+            {cpdPlan.message}
+          </p>
         </div>
       )}
 
@@ -102,13 +104,13 @@ export function TrainingPlanCard({
           only there (Adam, 18 Aug 2026). Asking again here — and on the CPD
           screen, as it also did — was three places collecting one fact that
           changes about as often as someone's licence does. */}
-      {requirement.unpublished.some((u) => u.includes("category")) && (
+      {cpdPlan.kind === "unknown" && cpdPlan.reason === "no_category" && (
         <p className="mt-2 text-[11px] text-rc-amber-deep">
-          Set their category of practice in the{" "}
-          <Link href="/dashboard/registers" className="underline">
+          Tick their categories of practice in the{" "}
+          <Link href="/dashboard/registers?tab=licence" className="underline">
             licence register
           </Link>{" "}
-          to work out the CPD hours.
+          to work out the CPD.
         </p>
       )}
 

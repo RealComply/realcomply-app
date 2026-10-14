@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { cpdRequirementFor } from "@/lib/rules/nsw-cpd";
-import type { CpdPracticeCategory, LicenceType, TrainingPlan, TrainingPlanItem } from "@/lib/types";
+import { cpdPlanFor, cpdRequirementWords } from "@/lib/cpd-plan";
+import { cpdRulesetFor } from "@/lib/rules/nsw-cpd";
+import type { LicenceType, TrainingPlan, TrainingPlanItem } from "@/lib/types";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -70,17 +71,25 @@ export async function createTrainingPlan(profileId: string, _prev: ActionState, 
 
   const { data: subjectRow } = await supabase
     .from("profiles")
-    .select("licence_type, cpd_practice_category, agency_id")
+    .select("*")
     .eq("id", profileId)
     .maybeSingle();
 
   const subject = subjectRow as
-    | { licence_type: LicenceType | null; cpd_practice_category: CpdPracticeCategory | null; agency_id: string }
+    | {
+        licence_type: LicenceType | null;
+        cpd_categories?: string[];
+        cpd_livestock_only?: boolean;
+        licence_started_on?: string | null;
+        agency_id: string;
+      }
     | null;
   if (!subject) return { error: "Couldn't find that team member." };
 
   const year = currentCpdYear();
-  const requirement = cpdRequirementFor(subject.licence_type, subject.cpd_practice_category);
+  // Each category's minimum, never a combined total (14 Oct 2026): hours only
+  // when one category is ticked, and the rest in words. See lib/cpd-plan.ts.
+  const requirement = cpdRequirementWords(cpdPlanFor(subject, cpdRulesetFor(year.start), year.label));
 
   const { error } = await supabase.from("training_plans").insert({
     agency_id: subject.agency_id,
@@ -88,9 +97,9 @@ export async function createTrainingPlan(profileId: string, _prev: ActionState, 
     cpd_year_start: year.start,
     valid_from: year.start,
     valid_to: year.end,
-    required_hours: requirement.coreHours,
+    required_hours: requirement.hours,
     required_units: requirement.units,
-    requirement_note: requirement.unpublished.length > 0 ? requirement.unpublished.join(" ") : null,
+    requirement_note: requirement.note,
     created_by: profile.id,
   });
 

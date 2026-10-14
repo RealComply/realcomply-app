@@ -6,6 +6,8 @@ import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
 import { attendanceChanges } from "@/lib/attendance-changes";
 import { cpdFolder, isInFolder, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { cleanTopicKeys, notCoveredFor, rulesetForCertificate, topicsFromTitle, withCategoryCovered } from "@/lib/cpd-plan";
+import { isCpdCategory } from "@/lib/rules/nsw-cpd";
 import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -164,11 +166,20 @@ export async function addCpdFromCertificate(
   // now stay empty (0051 made the columns nullable) and the CPD card asks for
   // just that field. An empty field counts as nothing toward the year.
   const completedDate = validIsoDate(f.completedDate);
+  const activityName = f.activityName?.trim() || fileName.replace(/\.[^.]+$/, "");
+
+  // The compulsory topics it covers (brief of 14 Oct 2026), checked against
+  // the rules for its CPD year: as read, or else from its title. Null when
+  // RealComply holds no rules for that year, so it is read again once it does.
+  const ruleset = rulesetForCertificate(completedDate);
+  const read = ruleset ? cleanTopicKeys(f.topics, ruleset) : [];
+  const topics = ruleset ? (read.length > 0 ? read : topicsFromTitle(activityName, ruleset)) : null;
 
   const { error } = await supabase.from("cpd_records").insert({
     agency_id: profile.agency_id,
     profile_id: profileId,
-    activity_name: f.activityName?.trim() || fileName.replace(/\.[^.]+$/, ""),
+    activity_name: activityName,
+    topics,
     category: isUnit ? "assistant_unit" : "general",
     hours,
     completed_date: completedDate,
@@ -189,8 +200,13 @@ export async function addCpdFromCertificate(
 export async function updateCpdRecord(recordId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
 
-  const { data: row } = await supabase.from("cpd_records").select("profile_id").eq("id", recordId).maybeSingle();
-  const ownerId = (row as { profile_id: string } | null)?.profile_id;
+  const { data: row } = await supabase
+    .from("cpd_records")
+    .select("profile_id, completed_date, topics_not_covered")
+    .eq("id", recordId)
+    .maybeSingle();
+  const found = row as { profile_id: string; completed_date: string | null; topics_not_covered?: string[] | null } | null;
+  const ownerId = found?.profile_id;
   if (!ownerId) return { error: "Couldn't find that entry." };
   if (ownerId !== profile.id && !profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can change someone else's CPD." };
@@ -204,19 +220,96 @@ export async function updateCpdRecord(recordId: string, _prev: ActionState, form
   const hours = hoursRaw ? Number(hoursRaw) : null;
   if (hours !== null && (!Number.isFinite(hours) || hours < 0)) return { error: "Hours must be a number." };
 
+  const completedDate = str(formData, "completedDate") ?? undefined;
+
+  // The topics it covers, when the full edit form sent its ticks (the
+  // smaller "what's missing" form doesn't). Fixes a reading that missed one.
+  let topicChange: Record<string, unknown> = {};
+  if (formData.get("topicsShown") === "1") {
+    const ruleset = rulesetForCertificate(completedDate ?? found.completed_date);
+    if (ruleset) {
+      const topics = cleanTopicKeys(formData.getAll("topics"), ruleset);
+      topicChange = {
+        topics,
+        topics_not_covered: notCoveredFor(found.topics_not_covered ?? [], topics),
+        topics_changed_by: profile.id,
+        topics_changed_at: new Date().toISOString(),
+      };
+    }
+  }
+
   const { error } = await supabase
     .from("cpd_records")
     .update({
       activity_name: activityName,
       provider: str(formData, "provider"),
       hours,
-      completed_date: str(formData, "completedDate") ?? undefined,
+      completed_date: completedDate,
+      ...topicChange,
     })
     .eq("id", recordId);
 
   if (error) return { error: "Couldn't save — try again." };
   revalidatePath("/dashboard/cpd");
   return ok;
+}
+
+/**
+ * Ticks or unticks one category of one compulsory topic on the certificates
+ * that cover it (brief of 14 Oct 2026): a course on a shared topic counts for
+ * every category it covers, unless it didn't cover one category's learning
+ * outcomes. The person, or their licensee, decides; who and when is kept.
+ */
+export async function setCpdTopicCovered(
+  recordIds: string[],
+  topicKey: string,
+  category: string,
+  covered: boolean,
+): Promise<{ error: string | null }> {
+  const { supabase, profile } = await requireAuthContext();
+  if (!isCpdCategory(category) || !/^[a-z0-9_]{1,60}$/.test(topicKey)) return { error: "Couldn't change that." };
+  const ids = [...new Set(recordIds)].slice(0, 40);
+  if (ids.length === 0) return { error: "Couldn't change that." };
+
+  const { data: rows } = await supabase
+    .from("cpd_records")
+    .select("id, profile_id, completed_date, topics, topics_not_covered, activity_name")
+    .in("id", ids);
+  const found = (rows ?? []) as Array<{
+    id: string;
+    profile_id: string;
+    completed_date: string | null;
+    topics: string[] | null;
+    topics_not_covered: string[] | null;
+    activity_name: string;
+  }>;
+  if (found.length !== ids.length) return { error: "Couldn't find that certificate." };
+  if (found.some((r) => r.profile_id !== profile.id) && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can change someone else's CPD." };
+  }
+
+  const now = new Date().toISOString();
+  for (const r of found) {
+    const ruleset = rulesetForCertificate(r.completed_date);
+    if (!ruleset) return { error: "Couldn't change that." };
+    // Stored from here on, so an untick sticks even for an older certificate
+    // whose topics were only read from its title.
+    const topics = Array.isArray(r.topics) ? r.topics : topicsFromTitle(r.activity_name, ruleset);
+    if (!topics.includes(topicKey)) return { error: "That certificate doesn't cover this topic." };
+    const { error } = await supabase
+      .from("cpd_records")
+      .update({
+        topics,
+        topics_not_covered: withCategoryCovered(r.topics_not_covered ?? [], topicKey, category, covered),
+        topics_changed_by: profile.id,
+        topics_changed_at: now,
+      })
+      .eq("id", r.id);
+    if (error) return { error: "Couldn't save that. Try again." };
+  }
+
+  revalidatePath("/dashboard/cpd");
+  return { error: null };
 }
 
 /**
