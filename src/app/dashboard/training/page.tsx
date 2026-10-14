@@ -128,7 +128,6 @@ export default async function TrainingPage({
                 plan={plan}
                 items={plan ? (itemsByPlan.get(plan.id) ?? []) : []}
                 cpdRecords={cpdByProfile.get(s.id) ?? []}
-                cpdYearStart={year.start}
                 cpdYearLabel={year.label}
               />
             );

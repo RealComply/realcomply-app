@@ -5,13 +5,12 @@ import { navCountsFor } from "@/lib/data/nav-counts";
 import { agencyPeople } from "@/lib/data/people";
 import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { cpdStandingFor } from "@/lib/cpd-plan";
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
 import { GiftsWidget } from "@/components/home/GiftsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgReadCard } from "@/components/home/SgReadCard";
-import { STAGE_LABELS, type CpdRecord, type Gift, type Profile, type Property, type TrainingSession } from "@/lib/types";
+import { STAGE_LABELS, type Gift, type Profile, type Property, type TrainingSession } from "@/lib/types";
 
 // An agent's or an assistant's Home: their own work only (Adam, 7 Oct 2026).
 // "Each individual agent kind of has their own dashboard." Needs your
@@ -39,17 +38,17 @@ export async function AgentHome({
   // Every query here goes through the signed-in person's own rules (0058):
   // their listings (or their agents', for an assistant), their CPD, the
   // sessions they attended and the gifts they logged.
-  const [counts, people, { data: propertyRows }, { data: cpdRows }, { data: sessionRows }, { data: giftRows }] =
+  const [counts, people, { data: propertyRows }, { data: cpdSignoffRows }, { data: sessionRows }, { data: giftRows }] =
     await Promise.all([
       navCountsFor(supabase, profile),
       agencyPeople(supabase),
       supabase.from("properties").select("*").order("created_at", { ascending: false }),
+      // Their tick for the year (14 Oct 2026: that tick is the CPD).
       supabase
-        .from("cpd_records")
-        .select("*")
+        .from("cpd_year_signoffs")
+        .select("id")
         .eq("profile_id", profile.id)
-        .gte("completed_date", cpdYear.start)
-        .lte("completed_date", cpdYear.end),
+        .eq("cpd_year_start", cpdYear.start),
       supabase.from("training_sessions").select("*").order("session_date", { ascending: false }),
       supabase.from("gifts").select("*"),
     ]);
@@ -74,9 +73,7 @@ export async function AgentHome({
   const awaitingMyReview = properties.filter((p) => p.review_requested_at && p.created_by === profile.id);
 
   const licence = expiryStatus(profile.licence_expiry);
-  // Topics done of topics owed, across every category ticked (14 Oct 2026),
-  // or units for an assistant agent. Never a combined hours total.
-  const cpd = cpdStandingFor(profile, (cpdRows ?? []) as CpdRecord[], cpdYear.start, cpdYear.label);
+  const cpdDone = (cpdSignoffRows ?? []).length > 0;
 
   const sessions = (sessionRows ?? []) as TrainingSession[];
   const today = new Date();
@@ -155,9 +152,9 @@ export async function AgentHome({
             href="/dashboard/registers?tab=licence"
           />
           <StatTile
-            n={cpd.progress ? `${cpd.progress.done} / ${cpd.progress.total}` : cpd.plan.kind === "exempt" ? "Exempt" : "—"}
+            n={cpdDone ? "Done" : "Not yet"}
             l="My CPD"
-            tone={cpd.outstanding ? "warn" : cpd.progress || cpd.plan.kind === "exempt" ? "ok" : "neutral"}
+            tone={cpdDone ? "ok" : "warn"}
             icon={ClipboardCheck}
             href="/dashboard/cpd"
           />

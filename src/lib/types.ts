@@ -12,11 +12,6 @@ import type { BillingStatus, Plan } from "@/lib/billing/entitlement";
 // — the certificate an assistant agent holds instead (PSA Act licensing).
 export type LicenceType = "class_1" | "class_2" | "certificate_of_registration";
 
-// The single category of practice of 0020, superseded by
-// profiles.cpd_categories (0073): Fair Trading sets CPD per category, and a
-// person can work in several. The column is kept as it was; nothing reads it.
-export type CpdPracticeCategory = string;
-
 export type Profile = {
   id: string;
   agency_id: string;
@@ -46,19 +41,14 @@ export type Profile = {
   /** What the last read of the licence document found and where each value
    *  came from (0051). Parse with parseReadState in lib/licence-read.ts. */
   licence_read?: unknown;
-  /** Superseded by cpd_categories (0073); kept as it was, never read. */
-  cpd_practice_category?: CpdPracticeCategory | null;
+  /** The single category of 0020, superseded by licence_categories (0073). Kept as it was; never read. */
+  cpd_practice_category?: string | null;
   /**
-   * Every category of practice and real estate area the person works in
-   * (0073), as rules/nsw-cpd.ts names them. Sets their CPD for the year. Empty
-   * means not recorded, and the app says it can't state a requirement rather
-   * than assume one. Optional only until 0073 has run.
+   * Every type of licence or certificate the person holds, ticked on their
+   * licence card (0073), as rules/nsw-cpd.ts names them. Optional only until
+   * 0073 has run.
    */
-  cpd_categories?: string[];
-  /** An assistant agent in stock and station who only sells livestock: no CPD (0073). */
-  cpd_livestock_only?: boolean;
-  /** When the licence or certificate started, for the part-year rules (0073). */
-  licence_started_on?: string | null;
+  licence_categories?: string[];
   /** Set when the licensee removes someone who has left the office (0035).
    *  Archived, never deleted: their signatures, CPD records and the listings
    *  they ran are the compliance history, and the person leaving does not
@@ -436,15 +426,6 @@ export type CpdRecord = {
   source_session_id: string | null;
   created_by: string | null;
   created_at: string;
-  /**
-   * The compulsory topics it covers, as topic keys from the rules for its CPD
-   * year (0073). Null: not read for topics, so the title is read instead.
-   */
-  topics?: string[] | null;
-  /** "topic:category" pairs unticked because the course didn't cover that category (0073). */
-  topics_not_covered?: string[];
-  topics_changed_by?: string | null;
-  topics_changed_at?: string | null;
 };
 
 // Per person, per CPD year: the confirmation the year is done. The

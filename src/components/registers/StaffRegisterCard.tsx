@@ -13,10 +13,8 @@ import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
-import { cpdStandingFor } from "@/lib/cpd-plan";
-import { currentCpdYear } from "@/lib/cpd-year";
-import { CategoryOfPractice } from "@/components/registers/CategoryOfPractice";
-import { CPD_CATEGORY_LABELS, cleanCpdCategories } from "@/lib/rules/nsw-cpd";
+import { LICENCE_CATEGORY_LABELS, cleanLicenceCategories } from "@/lib/rules/nsw-cpd";
+import { LicenceTypes } from "@/components/registers/LicenceTypes";
 import { ReminderLine, type ReminderInfo } from "@/components/registers/ReminderLine";
 import { LicenceReadNotice } from "@/components/registers/LicenceReadNotice";
 import { parseReadState } from "@/lib/licence-read";
@@ -40,6 +38,7 @@ export function StaffRegisterCard({
   cpdRecords,
   viewerProfile,
   cpdYearLabel,
+  cpdDone = false,
   reminderInfo = { next: null, last: null },
   nameOf = {},
   former = false,
@@ -48,6 +47,8 @@ export function StaffRegisterCard({
   cpdRecords: CpdRecord[];
   viewerProfile: Profile;
   cpdYearLabel: string;
+  /** Ticked as done for the CPD year (cpd_year_signoffs). */
+  cpdDone?: boolean;
   reminderInfo?: ReminderInfo;
   /** Profile id to display name, for "typed by" lines. */
   nameOf?: Record<string, string>;
@@ -59,11 +60,7 @@ export function StaffRegisterCard({
   // profile ("profiles: licensee can update agency members", 0058).
   const canEdit = !former && (viewerProfile.id === profile.id || viewerProfile.is_licensee_in_charge);
   const { actsAsLicensee } = useViewerAccess();
-  // Where their CPD stands across every category they work in (14 Oct
-  // 2026): topics done of topics owed, or units. See lib/cpd-plan.ts.
-  const year = currentCpdYear();
-  const cpd = cpdStandingFor(profile, cpdRecords, year.start, cpdYearLabel);
-  const categories = cleanCpdCategories(profile.cpd_categories);
+  const categories = cleanLicenceCategories(profile.licence_categories);
   const status = expiryStatus(profile.licence_expiry);
 
   const licenceAction = updateLicence.bind(null, profile.id);
@@ -111,17 +108,12 @@ export function StaffRegisterCard({
               ) : (
                 "No licence or certificate details on file yet."
               )}
-              {/* What sets their CPD (14 Oct 2026). */}
-              <span className="mt-0.5 block text-xs text-rc-muted">
-                {categories.length > 0
-                  ? categories.map((c) => CPD_CATEGORY_LABELS[c]).join(" · ")
-                  : profile.licence_type && profile.licence_type !== "certificate_of_registration"
-                    ? "No category of practice ticked yet. Edit to tick them."
-                    : null}
-                {profile.cpd_livestock_only && profile.licence_type === "certificate_of_registration"
-                  ? `${categories.length > 0 ? " · " : ""}Livestock sales only`
-                  : null}
-              </span>
+              {/* Every type of licence held (14 Oct 2026). */}
+              {categories.length > 0 && (
+                <span className="mt-0.5 block text-xs text-rc-muted">
+                  {categories.map((c) => LICENCE_CATEGORY_LABELS[c]).join(" · ")}
+                </span>
+              )}
             </div>
             {canEdit && (
               <button
@@ -150,10 +142,10 @@ export function StaffRegisterCard({
                 className="rounded-md border border-rc-border px-2 py-1 text-sm"
               />
             </div>
-            {/* Category of practice lives here and nowhere else (Adam, 18 Aug
-                2026), beside the licence it changes with. Tick all that apply
-                since 14 Oct 2026: the licence class is the first group of it. */}
-            <CategoryOfPractice profile={profile} />
+            {/* The class and every type of licence held, ticked (Adam, 14 Oct
+                2026). Replaces the single category of practice, which lived
+                here and nowhere else (Adam, 18 Aug 2026). */}
+            <LicenceTypes profile={profile} />
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -205,15 +197,19 @@ export function StaffRegisterCard({
           delivered the training, and the provider is what decides whether an
           entry counts at all. */}
       <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-neutral-50 px-3 py-2">
+        {/* The year's tick, as the CPD page shows it (Adam, 14 Oct 2026: tick
+            whether it's done; the certificate is optional). No hours. */}
         <p className="text-xs text-rc-muted">
           CPD {cpdYearLabel}:{" "}
-          <span
-            className={
-              cpd.outstanding ? "text-rc-amber-deep" : cpd.progress || cpd.plan.kind === "exempt" ? "text-rc-green-deep" : "text-rc-amber-deep"
-            }
-          >
-            {cpd.summary}
+          <span className={cpdDone ? "text-rc-green-deep" : "text-rc-amber-deep"}>
+            {cpdDone ? "done" : "not confirmed yet"}
           </span>
+          {cpdRecords.length > 0 && (
+            <>
+              {" "}
+              · {cpdRecords.length} {cpdRecords.length === 1 ? "certificate" : "certificates"}
+            </>
+          )}
         </p>
         {!former && (
           <Link href="/dashboard/cpd" className="shrink-0 text-xs font-medium text-rc-green-deep hover:underline">

@@ -10,7 +10,6 @@ import {
   parseReadState,
   recordTypedChanges,
   sanitiseLicenceRead,
-  validIsoDate,
   LICENCE_FIELD_LABELS,
   type EntityCheck,
   type LicenceReadState,
@@ -18,8 +17,7 @@ import {
   type LicenceValues,
 } from "@/lib/licence-read";
 import { asksAboutEntityName } from "@/lib/agency-names";
-import { categoriesFromLicenceRead } from "@/lib/cpd-plan";
-import { cleanCpdCategories } from "@/lib/rules/nsw-cpd";
+import { cleanLicenceCategories } from "@/lib/rules/nsw-cpd";
 import { sendLicenceReminderTest } from "@/lib/email/licence-reminders";
 import type { Agency, LicenceType, Profile } from "@/lib/types";
 
@@ -211,8 +209,6 @@ async function readPersonLicence(
     today: now,
   });
 
-  const prefill = categoriesFromLicenceRead(raw);
-
   if (decision.kind !== "save") {
     // The wrong person's licence, or not a licence at all. Nothing is saved.
     // A file just uploaded goes straight back out of Storage: it is somebody
@@ -260,11 +256,6 @@ async function readPersonLicence(
       licence_document_path: path,
       licence_document_file_name: fileName,
       licence_read: decision.state,
-      // Categories printed on the licence tick the CPD categories they stand
-      // for, the first time only: never over someone's own ticks.
-      ...(prefill.length > 0 && Array.isArray(subject.cpd_categories) && subject.cpd_categories.length === 0
-        ? { cpd_categories: prefill }
-        : {}),
     })
     .eq("id", subject.id);
   if (error) return { error: "Couldn't save what was read. Try again." };
@@ -331,17 +322,11 @@ export async function updateLicence(profileId: string, _prev: ActionState, formD
   const licenceNumber = str(formData, "licenceNumber");
   const licenceExpiry = str(formData, "licenceExpiry");
 
-  // Category of practice is set here and only here (Adam, 18 Aug 2026). It
-  // decides the CPD, and changes about as often as a licence does. Tick all
-  // that apply (brief of 14 Oct 2026): a person can work in several, and each
-  // brings its own hours and topics. Sent only by the full edit form.
-  const cpd = formData.get("cpdShown") === "1"
-    ? {
-        cpd_categories: cleanCpdCategories(formData.getAll("cpdCategories")),
-        // Only an assistant agent can be livestock only.
-        cpd_livestock_only: licenceType === "certificate_of_registration" && formData.get("cpdLivestockOnly") === "on",
-        licence_started_on: validIsoDate(str(formData, "licenceStartedOn")),
-      }
+  // Every type of licence held, ticked (Adam, 14 Oct 2026), set here and only
+  // here, beside the licence (as the single category of practice was, 18 Aug
+  // 2026). Sent only by the full edit form.
+  const types = formData.get("licenceCategoriesShown") === "1"
+    ? { licence_categories: cleanLicenceCategories(formData.getAll("licenceCategories")) }
     : {};
 
   const before = personSnapshot(subject);
@@ -356,7 +341,7 @@ export async function updateLicence(profileId: string, _prev: ActionState, formD
       licence_type: licenceType,
       licence_number: licenceNumber,
       licence_expiry: licenceExpiry,
-      ...cpd,
+      ...types,
       licence_read: state,
     })
     .eq("id", profileId);

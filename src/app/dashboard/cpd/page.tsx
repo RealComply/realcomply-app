@@ -23,12 +23,11 @@ import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
 // assessment result — so asking for those was asking someone to transcribe a
 // document into a form beside the document.
 //
-// THE TRADE, MADE KNOWINGLY (18 Aug): without the category of practice there
-// was no required-hours figure, so this screen could not warn someone they
-// were short in June. Since 14 Oct 2026 each card works out the year from the
-// categories ticked in the licence register (lib/cpd-plan.ts): minimum hours
-// per category, the compulsory topics, and how many are done. The year's tick
-// is still the licensee's confirmation; the count beside it is not a verdict.
+// THE TRADE, MADE KNOWINGLY: without the category of practice there is no
+// required-hours figure, so this screen cannot warn someone they are short in
+// June. It records what was done and who confirmed it. That is the same
+// posture the rest of the product takes — surface and record; the licensee
+// decides.
 export default async function CpdPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
@@ -73,7 +72,7 @@ export default async function CpdPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-rc-ink">CPD</h1>
           <p className="mt-1 text-sm text-rc-muted">
-            {year.label}: 1 July to 30 June. Upload each certificate; RealComply reads the rest.
+            {year.label} — 1 July to 30 June. Upload each certificate; RealComply reads the rest.
           </p>
         </div>
         <Link
@@ -114,9 +113,8 @@ export default async function CpdPage() {
         )}
       </div>
 
-      {/* How long to keep them is on each card now (3 years, 4 for an
-          assistant agent), beside the certificates it is about. */}
       <p className="mt-8 text-[11px] leading-relaxed text-rc-faint">
+        Keep certificates 3 years — 4 for a certificate of registration holder&rsquo;s statement of attainment.
         RealComply provides diligence support; the licensee decides.
       </p>
     </main>

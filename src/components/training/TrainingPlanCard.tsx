@@ -1,9 +1,8 @@
 "use client";
 
 import { useViewerAccess } from "@/components/ViewerAccess";
-import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { CheckCircle2, CircleAlert, Trash2 } from "lucide-react";
+import { CheckCircle2, Trash2 } from "lucide-react";
 import {
   addTrainingPlanItem,
   completeTrainingPlanItem,
@@ -15,7 +14,6 @@ import {
   type ActionState,
 } from "@/lib/actions/training-plans";
 import type { CpdRecord, Profile, TrainingPlan, TrainingPlanItem } from "@/lib/types";
-import { cpdStandingFor } from "@/lib/cpd-plan";
 
 const initial: ActionState = { error: null };
 
@@ -32,7 +30,6 @@ export function TrainingPlanCard({
   plan,
   items,
   cpdRecords,
-  cpdYearStart,
   cpdYearLabel,
 }: {
   subject: Profile;
@@ -40,7 +37,6 @@ export function TrainingPlanCard({
   plan: TrainingPlan | null;
   items: TrainingPlanItem[];
   cpdRecords: CpdRecord[];
-  cpdYearStart: string;
   cpdYearLabel: string;
 }) {
   const isSelf = viewerProfile.id === subject.id;
@@ -56,10 +52,9 @@ export function TrainingPlanCard({
   // What has actually landed in the CPD register this year, which is the
   // number that matters at the end of it — the plan says what should happen,
   // this says what did.
-  // Across every category they work in (14 Oct 2026): topics done of topics
-  // owed, or units. Each category's minimum hours, never a combined total.
-  const cpd = cpdStandingFor(subject, cpdRecords, cpdYearStart, cpdYearLabel);
-  const { plan: cpdPlan } = cpd;
+  // No hours (Adam, 14 Oct 2026): CPD is a tick for the year with the
+  // certificate optional, so this counts the certificates on file.
+  const certificates = cpdRecords.length;
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
@@ -74,45 +69,11 @@ export function TrainingPlanCard({
             )}
           </div>
           <p className="mt-0.5 text-xs text-rc-muted">
-            {cpd.progress
-              ? `${cpd.summary} this year`
-              : cpdPlan.kind === "exempt"
-                ? `No CPD for ${cpdYearLabel}`
-                : `Requirement not established for ${cpdYearLabel}`}
+            {certificates} CPD {certificates === 1 ? "certificate" : "certificates"} on file for {cpdYearLabel}
           </p>
         </div>
         <StatusPill plan={plan} />
       </div>
-
-      {/* The requirement, and honestly where it isn't known. */}
-      {cpdPlan.kind === "hours" && (
-        <p className="mt-2 text-[11px] text-rc-muted">
-          Minimum hours: {cpdPlan.minimums.map((m) => `${m.label} ${m.hours}`).join(" · ")}
-          {cpdPlan.extras.length > 0 && <> · plus {cpdPlan.extras.length === 2 ? "the forum and AUSTRAC" : "the forum"}</>}
-        </p>
-      )}
-      {(cpdPlan.kind === "unknown" || cpdPlan.kind === "no_ruleset" || cpdPlan.kind === "exempt") && (
-        <div className="mt-3 rounded-md border border-rc-amber/40 bg-rc-amber/10 px-3 py-2 text-[11px] leading-relaxed text-rc-amber-deep">
-          <p>
-            <CircleAlert size={11} className="mr-1 inline align-[-1px]" />
-            {cpdPlan.message}
-          </p>
-        </div>
-      )}
-
-      {/* Category of practice is asked once, in the licence register, and
-          only there (Adam, 18 Aug 2026). Asking again here — and on the CPD
-          screen, as it also did — was three places collecting one fact that
-          changes about as often as someone's licence does. */}
-      {cpdPlan.kind === "unknown" && cpdPlan.reason === "no_category" && (
-        <p className="mt-2 text-[11px] text-rc-amber-deep">
-          Tick their categories of practice in the{" "}
-          <Link href="/dashboard/registers?tab=licence" className="underline">
-            licence register
-          </Link>{" "}
-          to work out the CPD.
-        </p>
-      )}
 
       {!plan ? (
         <form action={createAction} className="mt-3">

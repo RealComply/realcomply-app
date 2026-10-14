@@ -12,7 +12,11 @@
 
 import type { CpdRecord } from "@/lib/types";
 
-/** What a reminder can state as the year's target: units, or one category's hours. Null where it can't. */
+/**
+ * A target for a reminder: hours or units, or null where none is stated.
+ * Since 14 Oct 2026 the app states none (Adam: CPD is a tick for the year),
+ * so this is only what a future reminder would be given.
+ */
 export type CpdTarget = { coreHours: number | null; units: number | null };
 
 type Countable = Pick<CpdRecord, "hours" | "provider" | "completed_date"> & {
@@ -56,7 +60,7 @@ export type CpdYearStanding = {
   complete: boolean;
   /** Approved-provider hours (or units) recorded for the year. */
   counted: number;
-  /** The requirement, or null where it cannot be stated (cpd-plan.ts). */
+  /** The requirement, or null where none is stated. */
   target: number | null;
   /** Plain words for a reminder, or null when nothing is outstanding. */
   outstanding: string | null;
@@ -70,7 +74,6 @@ export function cpdYearStanding(input: {
   confirmedYears: string[];
   /** 1 July that starts the year being asked about, YYYY-07-01. */
   yearStart: string;
-  /** cpdRequirementWords (cpd-plan.ts): units, or hours only when one category is ticked. */
   requirement: CpdTarget;
 }): CpdYearStanding {
   const counted = countableCpdHours(input.records);

@@ -6,8 +6,6 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { readableBytes } from "@/lib/documents/readable-bytes";
 import { getItem } from "@/lib/rules/nsw-sales";
-import { cpdRulesetFor, type CpdRuleset } from "@/lib/rules/nsw-cpd";
-import { currentCpdYear } from "@/lib/cpd-year";
 import {
   PRESCRIBED_DOC_KEYS,
   prescribedDocumentsFor,
@@ -642,92 +640,64 @@ const REPORT_EXTRACTION_TOOL: Anthropic.Tool = {
 // manual data entry"). Same diligence-support framing as every other
 // extraction: this returns what it found, the agent confirms it, and nothing
 // is written to the database by the model.
-//
-// Topics (brief of 14 Oct 2026): the certificate also says which of the
-// year's compulsory topics it covers, so the CPD card can tick them off for
-// every category they count for. The choices come from the year's ruleset
-// (rules/nsw-cpd.ts), never from here.
-function cpdCertificateTool(ruleset: CpdRuleset | null): Anthropic.Tool {
-  const topicChoices = ruleset
-    ? [
-        ...ruleset.topics.map((t) => ({ key: t.key, title: t.title })),
-        { key: ruleset.class1.forum.key, title: "A NSW Fair Trading accredited forum" },
-        { key: ruleset.class1.austrac.key, title: "AUSTRAC's Smart real estate agent's guide to AML/CTF" },
-      ]
-    : [];
-  return {
-    name: "record_cpd_certificate",
-    description:
-      "Record the details stated on a CPD record of completion or statement of attainment. Omit any field the " +
-      "document does not explicitly state — never guess a provider, a date or an hours figure.",
-    input_schema: {
-      type: "object",
-      properties: {
-        provider: {
-          type: "string",
-          description:
-            "The organisation that delivered the training and issued this record — e.g. REINSW, or the RTO named " +
-            "on a statement of attainment. Only if stated.",
-        },
-        activityName: {
-          type: "string",
-          description:
-            "The title of the topic, course or unit of competency completed, as printed. For a unit of " +
-            "competency include its code if shown (e.g. 'CPPREP4001 Prepare for professional practice').",
-        },
-        hours: {
-          type: "number",
-          description:
-            "Duration in hours, only if the document states it numerically. Do not convert a session time range " +
-            "into hours yourself, and do not state hours for a unit of competency that is measured in units.",
-        },
-        units: {
-          type: "number",
-          description:
-            "Number of units of competency this document evidences — normally 1 for a statement of attainment " +
-            "covering a single unit. Only set this for units of competency, never alongside hours.",
-        },
-        completedDate: {
-          type: "string",
-          description: "The date the activity was completed or the assessment passed, if stated. Format YYYY-MM-DD.",
-        },
-        deliveryMode: {
-          type: "string",
-          description:
-            "How it was delivered, if stated — e.g. 'face-to-face', 'live webinar', 'online'. Copy what the " +
-            "document says rather than categorising it.",
-        },
-        assessmentPassed: {
-          type: "boolean",
-          description:
-            "True only if the document explicitly records a satisfactory or competent assessment result. Omit " +
-            "entirely if assessment is not mentioned — never assume false.",
-        },
-        looksLikeCpdCertificate: {
-          type: "boolean",
-          description:
-            "False if this document does not appear to be a CPD record of completion or statement of attainment " +
-            "at all. Set this rather than inventing fields for an unrelated document.",
-        },
-        ...(topicChoices.length > 0
-          ? {
-              topics: {
-                type: "array",
-                items: { type: "string", enum: topicChoices.map((c) => c.key) },
-                description:
-                  "Every NSW compulsory CPD topic the document says was covered, chosen from this list by its key. " +
-                  "Only a topic the document names (its title, or a heading or learning outcome that plainly is that " +
-                  "topic). A course covering several topics lists each one. Leave out anything not named. Topics: " +
-                  topicChoices.map((c) => `${c.key} = "${c.title}"`).join("; ") +
-                  ".",
-              },
-            }
-          : {}),
+const CPD_CERTIFICATE_TOOL: Anthropic.Tool = {
+  name: "record_cpd_certificate",
+  description:
+    "Record the details stated on a CPD record of completion or statement of attainment. Omit any field the " +
+    "document does not explicitly state — never guess a provider, a date or an hours figure.",
+  input_schema: {
+    type: "object",
+    properties: {
+      provider: {
+        type: "string",
+        description:
+          "The organisation that delivered the training and issued this record — e.g. REINSW, or the RTO named " +
+          "on a statement of attainment. Only if stated.",
       },
-      required: [],
+      activityName: {
+        type: "string",
+        description:
+          "The title of the topic, course or unit of competency completed, as printed. For a unit of " +
+          "competency include its code if shown (e.g. 'CPPREP4001 Prepare for professional practice').",
+      },
+      hours: {
+        type: "number",
+        description:
+          "Duration in hours, only if the document states it numerically. Do not convert a session time range " +
+          "into hours yourself, and do not state hours for a unit of competency that is measured in units.",
+      },
+      units: {
+        type: "number",
+        description:
+          "Number of units of competency this document evidences — normally 1 for a statement of attainment " +
+          "covering a single unit. Only set this for units of competency, never alongside hours.",
+      },
+      completedDate: {
+        type: "string",
+        description: "The date the activity was completed or the assessment passed, if stated. Format YYYY-MM-DD.",
+      },
+      deliveryMode: {
+        type: "string",
+        description:
+          "How it was delivered, if stated — e.g. 'face-to-face', 'live webinar', 'online'. Copy what the " +
+          "document says rather than categorising it.",
+      },
+      assessmentPassed: {
+        type: "boolean",
+        description:
+          "True only if the document explicitly records a satisfactory or competent assessment result. Omit " +
+          "entirely if assessment is not mentioned — never assume false.",
+      },
+      looksLikeCpdCertificate: {
+        type: "boolean",
+        description:
+          "False if this document does not appear to be a CPD record of completion or statement of attainment " +
+          "at all. Set this rather than inventing fields for an unrelated document.",
+      },
     },
-  };
-}
+    required: [],
+  },
+};
 
 export type CpdCertificateFields = {
   provider?: string;
@@ -738,8 +708,6 @@ export type CpdCertificateFields = {
   deliveryMode?: string;
   assessmentPassed?: boolean;
   looksLikeCpdCertificate?: boolean;
-  /** Topic keys from the year's ruleset (rules/nsw-cpd.ts). Checked against it before saving. */
-  topics?: string[];
 };
 
 /** Reads an uploaded CPD certificate. Never writes — the agent confirms. */
@@ -796,7 +764,7 @@ export async function extractCpdCertificate(
           ],
         },
       ],
-      tools: [cpdCertificateTool(cpdRulesetFor(currentCpdYear().start))],
+      tools: [CPD_CERTIFICATE_TOOL],
       tool_choice: { type: "tool", name: "record_cpd_certificate" },
     });
 
@@ -862,18 +830,6 @@ const LICENCE_TOOL: Anthropic.Tool = {
         description:
           "The expiry date printed on the document, as YYYY-MM-DD. Only a date labelled as the expiry (or 'valid " +
           "until'). Never an issue date, and never an issue date plus a term.",
-      },
-      categories: {
-        type: "array",
-        items: {
-          type: "string",
-          enum: ["real_estate", "stock_and_station", "strata_management", "business_agent", "onsite_residential_property_manager"],
-        },
-        description:
-          "Only for an individual's licence or certificate: every category printed on it. 'real_estate' for real " +
-          "estate agent, 'stock_and_station' for stock and station agent, 'strata_management' for strata managing " +
-          "agent, 'business_agent' for business agent, 'onsite_residential_property_manager' for on-site " +
-          "residential property manager. Omit if no category is printed.",
       },
       unreadableFields: {
         type: "array",
