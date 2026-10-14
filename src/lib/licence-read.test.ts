@@ -6,6 +6,7 @@ import {
   parseReadState,
   recordTypedChanges,
   sanitiseLicenceRead,
+  withoutNameConfirmation,
 } from "@/lib/licence-read";
 
 // What gets saved when a licence is read off an uploaded document.
@@ -268,4 +269,27 @@ test("not a licence is still refused, confirmed or not", () => {
     nameConfirmedAs: "Jo Bennett",
   });
   assert.equal(d.kind, "not_a_licence");
+});
+
+test("the name confirmation goes when its document leaves the record; the rest of the read stays", () => {
+  const yes = decideLicenceRead({
+    read: sanitiseLicenceRead({ documentIs: "licence", holderName: "Joanne Mary Bennett", licenceType: "class_2", licenceNumber: "20123456", expiryDate: "2028-06-30" }),
+    subject: "person",
+    expectedNames: ["Jo Bennett"],
+    previous: null,
+    by: "lic",
+    at: AT,
+    fileName: "jo.pdf",
+    today: TODAY,
+    nameConfirmedAs: "Jo Bennett",
+  });
+  assert.equal(yes.kind, "save");
+  if (yes.kind !== "save") return;
+  const after = withoutNameConfirmation(yes.state);
+  assert.equal(after?.lastRead?.nameConfirmed, null);
+  assert.equal(after?.lastRead?.nameOnDocument, "Joanne Mary Bennett");
+  assert.deepEqual(after?.fields, yes.state.fields);
+  assert.equal(withoutNameConfirmation(null), null);
+  const plain = { lastRead: null, missing: [], fields: {} };
+  assert.equal(withoutNameConfirmation(plain), plain);
 });

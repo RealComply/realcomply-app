@@ -11,6 +11,7 @@ import {
   decideLicenceRead,
   emptyState,
   parseReadState,
+  withoutNameConfirmation,
   recordTypedChanges,
   sanitiseLicenceRead,
   LICENCE_FIELD_LABELS,
@@ -454,11 +455,16 @@ export async function rejectLicenceName(token: string): Promise<LicenceReadResul
   }
 
   // "Read from document" on a file already on the record: it comes off the
-  // record, and out of Storage, since it is someone else's licence.
+  // record, and out of Storage, since it is someone else's licence. Any
+  // earlier "Yes" about it goes with it.
   const before = personSnapshot(subject);
   const { error } = await supabase
     .from("profiles")
-    .update({ licence_document_path: null, licence_document_file_name: null })
+    .update({
+      licence_document_path: null,
+      licence_document_file_name: null,
+      licence_read: withoutNameConfirmation(parseReadState(subject.licence_read)),
+    })
     .eq("id", subject.id);
   if (error) return { error: "Couldn't remove the file. Try again." };
   await appendHistory(supabase, {
@@ -576,9 +582,14 @@ export async function removeLicenceDocument(profileId: string): Promise<void> {
   if (!subject?.licence_document_path) return;
   const before = personSnapshot(subject);
 
+  // The name confirmation was about this file, so it goes with it.
   await supabase
     .from("profiles")
-    .update({ licence_document_path: null, licence_document_file_name: null })
+    .update({
+      licence_document_path: null,
+      licence_document_file_name: null,
+      licence_read: withoutNameConfirmation(parseReadState(subject.licence_read)),
+    })
     .eq("id", profileId);
 
   await appendHistory(supabase, {

@@ -339,6 +339,17 @@ export function emptyState(): LicenceReadState {
   return { lastRead: null, missing: [], fields: {} };
 }
 
+/**
+ * The read with its name confirmation taken off, for when the document it was
+ * about leaves the record ("No, wrong person" on Read from document, or
+ * Remove). "Confirmed as Jo Bennett" was about that file; the history keeps
+ * who said so and when (preview check, 15 Oct 2026).
+ */
+export function withoutNameConfirmation(state: LicenceReadState | null): LicenceReadState | null {
+  if (!state?.lastRead?.nameConfirmed) return state;
+  return { ...state, lastRead: { ...state.lastRead, nameConfirmed: null } };
+}
+
 /** Reads a stored jsonb value defensively; anything unexpected is no state. */
 export function parseReadState(raw: unknown): LicenceReadState | null {
   if (!raw || typeof raw !== "object") return null;
