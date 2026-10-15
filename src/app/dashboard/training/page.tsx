@@ -7,6 +7,7 @@ import { TrainingTabs } from "@/components/training/TrainingTabs";
 import { TrainingPlanCard } from "@/components/training/TrainingPlanCard";
 import { WhyDisclosure } from "@/components/WhyDisclosure";
 import { currentCpdYear } from "@/lib/cpd-year";
+import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type {
   CpdRecord,
   Profile,
@@ -87,6 +88,27 @@ export default async function TrainingPage({
     cpdByProfile.get(row.profile_id)!.push(row);
   }
 
+  // A plan item linked to a CPD record shows that record's certificate; the
+  // certificate lives there only (Adam, 15 Oct 2026). Most linked records are
+  // this year's, loaded above; any other (dated outside the year after an
+  // edit) is fetched by id.
+  const recordsById: Record<string, CpdRecord> = Object.fromEntries(cpd.map((r) => [r.id, r]));
+  const missingIds = [...new Set(items.map((i) => i.cpd_record_id).filter((id): id is string => Boolean(id) && !recordsById[id as string]))];
+  if (missingIds.length > 0) {
+    const { data: more } = await supabase.from("cpd_records").select("*").in("id", missingIds);
+    for (const r of (more ?? []) as CpdRecord[]) recordsById[r.id] = r;
+  }
+  // Links to each certificate and plan document, made here so the cards get
+  // finished links (an hour, like the CPD card's).
+  const filePaths = [
+    ...items.map((i) => (i.cpd_record_id ? recordsById[i.cpd_record_id]?.evidence_path : i.evidence_path)),
+  ].filter((p): p is string => Boolean(p));
+  const urlByPath: Record<string, string> = {};
+  if (filePaths.length > 0) {
+    const { data: signed } = await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrls([...new Set(filePaths)], 3600);
+    for (const f of signed ?? []) if (f.path && f.signedUrl) urlByPath[f.path] = f.signedUrl;
+  }
+
   // Plans and the per-agent record are each person's own (0058: own or
   // licensee). An agent or assistant can see their assistant or agent's name,
   // but not that person's plan or attendance, so a card for them would always
@@ -129,6 +151,8 @@ export default async function TrainingPage({
                 items={plan ? (itemsByPlan.get(plan.id) ?? []) : []}
                 cpdRecords={cpdByProfile.get(s.id) ?? []}
                 cpdYearLabel={year.label}
+                recordsById={recordsById}
+                urlByPath={urlByPath}
               />
             );
           })

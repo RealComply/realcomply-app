@@ -19,6 +19,9 @@ export type PendingRead<T> = {
   kind: "licence" | "cpd";
   /** The person whose card it is. */
   profileId: string;
+  /** A certificate for a CPD row that already exists (a session's or a plan's),
+   *  rather than a new row. Absent for a new one. */
+  recordId?: string;
   /** Who was asked: only they can answer. */
   askedBy: string;
   /** The file in Storage the read came from. */

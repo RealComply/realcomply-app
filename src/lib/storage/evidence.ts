@@ -143,6 +143,19 @@ export function buildCpdDocPath(agencyId: string, profileId: string, fileName: s
   return `${agencyId}/_cpd/${profileId}/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// A document for training plan item that has no CPD record: office training
+// that doesn't count for CPD (15 Oct 2026). In the person's own folder, in a
+// folder of its own, so it can't be mistaken for a CPD certificate (those
+// live on the CPD record only) or removed as an unsaved one (0075 looks only
+// at files directly in the person's folder).
+export function planItemFolder(agencyId: string, profileId: string): string {
+  return `${agencyId}/_cpd/${profileId}/training-plan/`;
+}
+
+export function buildPlanItemDocPath(agencyId: string, profileId: string, fileName: string): string {
+  return `${planItemFolder(agencyId, profileId)}${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 // The agency's own logo, drawn on the finalised compliance record. Same bucket
 // and same RLS as everything else here — only the first path segment is
 // checked — with its own second segment so it cannot collide with evidence.
