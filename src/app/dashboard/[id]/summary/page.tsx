@@ -6,7 +6,8 @@ import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
-import { formatAuDate, formatAuDateTimeShort } from "@/lib/format-date";
+import { formatAuDate, formatAuDateTimeShort, formatAuTimestamp } from "@/lib/format-date";
+import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { signatureOnCard } from "@/lib/rules/listing-signature";
@@ -120,10 +121,16 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                     <li key={item.key} className="text-sm">
                       <span className="font-medium text-rc-ink">{item.label}</span>{" "}
                       <span className={current?.status === "flagged" ? "font-medium text-rc-amber-deep" : "text-rc-muted"}>
-                        — {current?.status ?? "open"}
+                        — {item.kind === "document" && current?.status !== "done" ? "optional" : (current?.status ?? "open")}
                         {current?.event_date ? ` · ${formatAuDate(current.event_date)}` : ""}
                       </span>
                       {item.legalBasis && <span className="ml-1 text-xs text-rc-faint">({item.legalBasis})</span>}
+                      {/* The Power of Attorney answer, tick and upload, with who and when (15 Oct 2026). */}
+                      {questionAndDocumentRecordLines(item, current, (iso) => formatAuTimestamp(iso)).map((line) => (
+                        <p key={line} className="mt-0.5 text-xs text-rc-muted">
+                          {line}
+                        </p>
+                      ))}
                       {item.key === "b4" && approval && (
                         <p className="mt-0.5 text-xs text-rc-muted">
                           {approval.text && (
