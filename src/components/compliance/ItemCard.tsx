@@ -4,6 +4,7 @@ import {
   startTransition,
   useActionState,
   useEffect,
+  useOptimistic,
   useRef,
   useState,
   useTransition,
@@ -2574,10 +2575,22 @@ function QuestionItem({ item, propertyId, current }: { item: ComplianceItem; pro
   const q = readQuestion(current?.data);
   const [pending, startSaving] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // The answer and the tick show the moment they are clicked, not a second
+  // later when the save comes back (preview check, 15 Oct 2026: the tick box
+  // did not tick on click). They settle on what was saved once it is.
+  const [shown, showNow] = useOptimistic(
+    { answer: q.answer, ticked: q.ticked === true },
+    (prev, next: { answer?: Answer; ticked?: boolean }) => ({
+      answer: next.answer ?? prev.answer,
+      // Moving away from Yes clears the tick, as the save does.
+      ticked: next.answer === "no" ? false : (next.ticked ?? prev.ticked),
+    }),
+  );
 
-  function save(run: () => Promise<ActionState>) {
+  function save(next: { answer?: Answer; ticked?: boolean }, run: () => Promise<ActionState>) {
     setError(null);
     startSaving(async () => {
+      showNow(next);
       const result = await run();
       if (result.error) setError(result.error);
     });
@@ -2594,7 +2607,7 @@ function QuestionItem({ item, propertyId, current }: { item: ComplianceItem; pro
       <div className="space-y-2.5">
         <div role="radiogroup" aria-label={item.label} className="flex gap-2">
           {answers.map((a) => {
-            const chosen = q.answer === a.value;
+            const chosen = shown.answer === a.value;
             return (
               <button
                 key={a.value}
@@ -2603,7 +2616,7 @@ function QuestionItem({ item, propertyId, current }: { item: ComplianceItem; pro
                 aria-checked={chosen}
                 disabled={pending}
                 onClick={() => {
-                  if (!chosen) save(() => answerQuestion(propertyId, item.key, a.value));
+                  if (!chosen) save({ answer: a.value }, () => answerQuestion(propertyId, item.key, a.value));
                 }}
                 className={
                   chosen
@@ -2617,17 +2630,17 @@ function QuestionItem({ item, propertyId, current }: { item: ComplianceItem; pro
           })}
         </div>
 
-        {q.answer === "no" && <p className="text-xs text-rc-muted">{spec.noLine}</p>}
+        {shown.answer === "no" && <p className="text-xs text-rc-muted">{spec.noLine}</p>}
 
-        {q.answer === "yes" && spec.yesTick && (
+        {shown.answer === "yes" && spec.yesTick && (
           <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
             <input
               type="checkbox"
-              checked={q.ticked === true}
+              checked={shown.ticked}
               disabled={pending}
               onChange={(e) => {
                 const ticked = e.target.checked;
-                save(() => setQuestionTick(propertyId, item.key, ticked));
+                save({ ticked }, () => setQuestionTick(propertyId, item.key, ticked));
               }}
               className="mt-0.5 h-4 w-4 shrink-0 accent-rc-green-deep"
             />
@@ -2637,7 +2650,7 @@ function QuestionItem({ item, propertyId, current }: { item: ComplianceItem; pro
             </span>
           </label>
         )}
-        {q.answer === "yes" && spec.yesLine && <p className="text-xs text-rc-muted">{spec.yesLine}</p>}
+        {shown.answer === "yes" && spec.yesLine && <p className="text-xs text-rc-muted">{spec.yesLine}</p>}
 
         {/* Who and when, as kept for the compliance file. */}
         {q.answer && (
