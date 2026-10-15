@@ -16,6 +16,14 @@ import { redirect } from "next/navigation";
 import { accessFrom } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
+import {
+  applyAnswer,
+  applyTick,
+  questionComplete,
+  readQuestion,
+  withQuestion,
+  type Answer,
+} from "@/lib/rules/question-card";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { agencyPeople } from "@/lib/data/people";
 import { priceStatementByEmail } from "@/lib/rules/price-statement";
@@ -2033,6 +2041,94 @@ export async function clearAgentReview(propertyId: string): Promise<void> {
   revalidatePath("/dashboard/home");
 }
 
+// ── Yes / No question cards (Power of Attorney, 15 Oct 2026) ────────────────
+//
+// The answer, the tick Yes brings, who and when, and a history, all on the
+// card's data (lib/rules/question-card.ts). The card is done once it is
+// answered No, or answered Yes and ticked; the stage waits on that like any
+// required card. What the card asks is in the rules file.
+
+async function questionCard(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+  itemKey: string,
+) {
+  const rule = getItem(itemKey);
+  if (!rule || rule.kind !== "question" || !rule.question) return null;
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", itemKey)
+    .maybeSingle();
+  return { rule, spec: rule.question, row: (row as PropertyItem | null) ?? null };
+}
+
+async function saveQuestion(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  params: {
+    agencyId: string;
+    propertyId: string;
+    itemKey: string;
+    userId: string;
+    row: PropertyItem;
+    done: boolean;
+    q: ReturnType<typeof readQuestion>;
+  },
+): Promise<ActionState> {
+  const { error } = await upsertItem(supabase, {
+    agencyId: params.agencyId,
+    propertyId: params.propertyId,
+    itemKey: params.itemKey,
+    status: params.done ? "done" : "open",
+    data: withQuestion(params.row.data, params.q),
+    completedBy: params.done ? params.userId : null,
+  });
+  if (error) return { error: "Couldn't save that. Try again." };
+  revalidatePath(`/dashboard/${params.propertyId}`);
+  return ok;
+}
+
+/** Yes or No. Moving away from Yes clears the tick; the history keeps it. */
+export async function answerQuestion(propertyId: string, itemKey: string, answer: Answer): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+  if (answer !== "yes" && answer !== "no") return { error: "Choose Yes or No." };
+  const card = await questionCard(supabase, propertyId, itemKey);
+  // Only a listing that has the card (a new one, given it when created) can
+  // answer it: see "Power of Attorney" in lib/rules/nsw-sales.ts.
+  if (!card?.row) return { error: "This listing doesn't have that question." };
+  const actor = { id: user.id, name: profile.full_name ?? profile.email };
+  const q = applyAnswer(readQuestion(card.row.data), answer, actor, new Date().toISOString());
+  return saveQuestion(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey,
+    userId: user.id,
+    row: card.row,
+    done: questionComplete(card.spec, q),
+    q,
+  });
+}
+
+/** The tick Yes brings ("Power of Attorney provided"). */
+export async function setQuestionTick(propertyId: string, itemKey: string, ticked: boolean): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+  const card = await questionCard(supabase, propertyId, itemKey);
+  if (!card?.row || !card.spec.yesTick) return { error: "This listing doesn't have that question." };
+  const actor = { id: user.id, name: profile.full_name ?? profile.email };
+  const q = applyTick(readQuestion(card.row.data), ticked === true, actor, new Date().toISOString());
+  if (!q) return { error: "Answer Yes first." };
+  return saveQuestion(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey,
+    userId: user.id,
+    row: card.row,
+    done: questionComplete(card.spec, q),
+    q,
+  });
+}
+
 // sign_agent / sign_licensee — typed-name attestation, immutable once set.
 export async function signItem(
   propertyId: string,
@@ -2174,7 +2270,7 @@ export async function uploadEvidence(
   _prevState: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, user, profile } = await requireAuthContext();
 
   // A licensee-only card (b4) takes a file from the licensee only (12 Oct
   // 2026). The card has shown everyone else the file as a link and nothing
@@ -2251,6 +2347,34 @@ export async function uploadEvidence(
     return { error };
   }
 
+  // A "document" card (the Power of Attorney copy, 15 Oct 2026) has nothing
+  // to tick: a copy on it is the whole card, so it shows as done, with who
+  // uploaded it and when for the compliance file. Written directly rather
+  // than through upsertItem: it is optional and gates nothing, so the ESP
+  // reasoning gate on completing later cards does not apply to it.
+  if (getItem(itemKey)?.kind === "document") {
+    const { data: row } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+    await supabase
+      .from("property_items")
+      .update({
+        status: "done",
+        completed_by: user.id,
+        data: {
+          ...((row as { data?: Record<string, unknown> | null } | null)?.data ?? {}),
+          uploadedBy: user.id,
+          uploadedByName: profile.full_name ?? profile.email,
+          uploadedAt: new Date().toISOString(),
+        },
+      })
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey);
+  }
+
   // Read the document straight away rather than waiting for someone to press
   // "Extract from uploaded documents" at the top of the page (Adam, 14 Aug
   // 2026). He attached a comparable-sales report and reasonably expected the
@@ -2316,9 +2440,23 @@ export async function removeEvidence(propertyId: string, itemKey: string): Promi
     evidenceFileName?: string;
   };
 
+  // A document card with its copy removed has nothing on it again (15 Oct
+  // 2026): back to open, and who uploaded it goes with the file.
+  const isDocumentCard = getItem(itemKey)?.kind === "document";
+  if (isDocumentCard) {
+    delete restData.uploadedBy;
+    delete restData.uploadedByName;
+    delete restData.uploadedAt;
+  }
+
   await supabase
     .from("property_items")
-    .update({ evidence_path: null, data: restData, agency_id: profile.agency_id })
+    .update({
+      evidence_path: null,
+      data: restData,
+      agency_id: profile.agency_id,
+      ...(isDocumentCard ? { status: "open" as const, completed_by: null } : {}),
+    })
     .eq("property_id", propertyId)
     .eq("item_key", itemKey);
 

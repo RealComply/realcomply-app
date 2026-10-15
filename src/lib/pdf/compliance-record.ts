@@ -7,6 +7,11 @@ import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } fr
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import type { PriceApproval } from "@/lib/rules/price-statement";
 import { formatAuDate } from "@/lib/format-date";
+import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
+
+/** The answer, tick or upload under a question or document card, with who and when (Sydney). */
+const questionAndDocumentLines = (item: ComplianceItem, current: PropertyItem | undefined): string[] =>
+  questionAndDocumentRecordLines(item, current, (iso) => `${formatSignedAt(iso)} (Sydney time)`);
 
 // The finalised compliance record, as an actual PDF file.
 //
@@ -547,11 +552,19 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
           : ` · ${formatAuDate(current.event_date)}`
         : "";
       c.text(item.label, { size: 9.5, bold: true, indent: 4 });
-      c.text(`${status}${dated}`, {
+      // An optional upload card with nothing on it is optional, not "open"
+      // (the Power of Attorney copy, 15 Oct 2026).
+      const shownStatus = item.kind === "document" && status !== "done" ? "optional" : status;
+      c.text(`${shownStatus}${dated}`, {
         size: 9,
         color: status === "flagged" ? AMBER : MUTED,
         indent: 12,
       });
+      // The Power of Attorney question: the answer and the tick, each with
+      // who and when; and its document card: the upload, who and when.
+      for (const line of questionAndDocumentLines(item, current)) {
+        c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+      }
       if (item.key === "b4" && status === "done" && priceApproval) {
         // Two lines rather than one joined with a dot: the PDF's standard
         // fonts drop the dot, and the reader needs the words and the who on
