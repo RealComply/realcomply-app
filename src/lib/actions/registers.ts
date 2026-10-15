@@ -10,7 +10,7 @@ import { firstName, possessive, sameName } from "@/lib/licence-name";
 import { pendingReadProblem, signPendingRead, verifyPendingRead } from "@/lib/pending-read";
 import { formatAuDate } from "@/lib/format-date";
 import { fillFromCertificate } from "@/lib/cpd-one-place";
-import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType } from "@/lib/types";
+import type { BreachCategory, BreachSeverity, GiftDirection } from "@/lib/types";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -24,46 +24,8 @@ function str(formData: FormData, key: string): string | null {
 // Licence and certificate records (people's and the corporation licence) live
 // in actions/licences.ts, alongside the document read and their history.
 
-// ── Insurance register (agency-level policies — PI insurance is a condition
-// of every licence in the agency under s22 PSA Act; cyber and iCare workers
-// insurance aren't PSA Act requirements but sit alongside it as the same
-// kind of agency-level "policy on file, tracked to expiry" record, so they
-// share one action and one card component rather than three near-identical
-// copies. All three are the licensee's to maintain, not any one agent's.) ──
-const POLICY_COLUMNS: Record<InsurancePolicyType, { insurer: string; policyNumber: string; expiry: string }> = {
-  pi: { insurer: "pi_insurer", policyNumber: "pi_policy_number", expiry: "pi_expiry" },
-  cyber: { insurer: "cyber_insurer", policyNumber: "cyber_policy_number", expiry: "cyber_expiry" },
-  icare: { insurer: "icare_insurer", policyNumber: "icare_policy_number", expiry: "icare_expiry" },
-};
-
-export async function updateInsurancePolicy(
-  policyType: InsurancePolicyType,
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const { supabase, profile, access } = await requireAuthContext();
-
-  // access, not the raw flag: the agent on their own plan is the licensee
-  // for their account, and 0058 lets them write the agency row (10 Oct 2026).
-  if (!access.actsAsLicensee) {
-    return { error: "Only the licensee in charge can update the agency's insurance details." };
-  }
-
-  const columns = POLICY_COLUMNS[policyType];
-  const insurer = str(formData, "insurer");
-  const policyNumber = str(formData, "policyNumber");
-  const expiry = str(formData, "expiry");
-
-  const { error } = await supabase
-    .from("agencies")
-    .update({ [columns.insurer]: insurer, [columns.policyNumber]: policyNumber, [columns.expiry]: expiry })
-    .eq("id", profile.agency_id);
-
-  if (error) return { error: "Couldn't save insurance details — try again." };
-
-  revalidatePath("/dashboard/registers");
-  return ok;
-}
+// The Insurance register's policies (details, certificates and their
+// history) live in actions/insurance.ts (0076).
 
 // ── CPD records — manual entry (an external course, a Fair Trading forum,
 // AUSTRAC AML training) alongside whatever recordAttendance auto-logs from
