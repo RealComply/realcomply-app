@@ -458,6 +458,11 @@ export type CpdRecord = {
   source_session_id: string | null;
   created_by: string | null;
   created_at: string;
+  // The name printed on the certificate, kept only when it wasn't the
+  // person's name and someone answered "Yes, it's theirs" (0074, 15 Oct 2026).
+  name_on_certificate?: string | null;
+  name_confirmed_by?: string | null;
+  name_confirmed_at?: string | null;
 };
 
 // Per person, per CPD year: the confirmation the year is done. The

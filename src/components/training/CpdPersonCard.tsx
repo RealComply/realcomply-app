@@ -5,15 +5,19 @@ import { useActionState, useEffect, useState, type ChangeEvent } from "react";
 import { Check, Paperclip, Trash2 } from "lucide-react";
 import {
   addCpdFromCertificate,
+  confirmCpdCertificateName,
   deleteCpdRecord,
+  rejectCpdCertificateName,
   setCpdYearComplete,
   updateCpdRecord,
   type ActionState,
+  type CpdNameQuestion,
 } from "@/lib/actions/registers";
+import { NameQuestionBox } from "@/components/NameQuestionBox";
 import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildCpdDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { licenceSummary } from "@/lib/rules/nsw-cpd";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
 
@@ -33,6 +37,10 @@ const initial: ActionState = { error: null };
 // from whichever trainer they used. That's it. Keep it simple." So the card
 // names every type of licence they hold (ticked on their licence card), and
 // the year's tick covers all of them. No hours, no topics.
+//
+// 15 Oct 2026, Adam: a certificate in another name asks before it is saved,
+// the same as a licence: "Is this [person]'s certificate?" Yes saves it with
+// the name on it and who confirmed it; No removes the file.
 export function CpdPersonCard({
   subject,
   viewerProfile,
@@ -40,6 +48,7 @@ export function CpdPersonCard({
   signoff,
   cpdYearStart,
   cpdYearLabel,
+  nameOf,
 }: {
   subject: Profile;
   viewerProfile: Profile;
@@ -47,6 +56,8 @@ export function CpdPersonCard({
   signoff: CpdYearSignoff | null;
   cpdYearStart: string;
   cpdYearLabel: string;
+  /** Everyone in the office by id, for "Confirmed as Jo Bennett by [name]". */
+  nameOf: Record<string, string>;
 }) {
   // Someone who has left keeps their card as history, read only: nothing
   // to attach or tick for a person no longer in the office (browser
@@ -59,9 +70,13 @@ export function CpdPersonCard({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ticking, setTicking] = useState(false);
+  // A certificate in another name, read and waiting on Yes or No. Nothing is
+  // saved until it is answered.
+  const [question, setQuestion] = useState<CpdNameQuestion | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // One path for a picked file and a dropped one — see useFileDrop.
-  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: uploading });
+  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: uploading || Boolean(question) });
 
   function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -71,6 +86,7 @@ export function CpdPersonCard({
 
   async function upload(file: File) {
     setError(null);
+    setNotice(null);
     setUploading(true);
     // Always cleared, and a thrown save says so (check, 10 Oct 2026): it left
     // the card on "Reading certificate…" with the drop zone off until a reload.
@@ -82,13 +98,29 @@ export function CpdPersonCard({
         setError(uploadError);
         return;
       }
-      const { error: saveError } = await addCpdFromCertificate(subject.id, path, stored.name);
+      const { error: saveError, question: asked } = await addCpdFromCertificate(subject.id, path, stored.name);
       if (saveError) setError(saveError);
+      if (asked) setQuestion(asked);
     } catch {
       setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");
     } finally {
       setUploading(false);
     }
+  }
+
+  async function answerName(yes: boolean): Promise<string | null> {
+    if (!question) return null;
+    if (yes) {
+      const { error: e } = await confirmCpdCertificateName(question.token);
+      if (e) return e;
+      setQuestion(null);
+      return null;
+    }
+    const result = await rejectCpdCertificateName(question.token);
+    if (result.error) return result.error;
+    setQuestion(null);
+    setNotice(result.message ?? null);
+    return null;
   }
 
   async function toggleDone() {
@@ -128,8 +160,21 @@ export function CpdPersonCard({
       </div>
 
       {records.map((r) => (
-        <CertificateRow key={r.id} record={r} canEdit={canEdit} />
+        <CertificateRow
+          key={r.id}
+          record={r}
+          canEdit={canEdit}
+          personName={subject.full_name ?? subject.email}
+          nameOf={nameOf}
+        />
       ))}
+
+      {question && (
+        <div className="mt-3">
+          <NameQuestionBox word="certificate" question={question} onAnswer={answerName} />
+        </div>
+      )}
+      {notice && <p className="mt-2 text-xs text-rc-muted">{notice}</p>}
 
       {/* Drag as well as click (Adam, 9 Sep 2026). The dashed border already
           said "drop a file here" and nothing listened; a drop navigated the
@@ -137,7 +182,7 @@ export function CpdPersonCard({
           control already uploads the moment a file is picked — the two-step
           attach used elsewhere would be a different behaviour on the same
           card. */}
-      {canEdit && (
+      {canEdit && !question && (
         <label
           {...drop.dragProps}
           className={`mt-3 block cursor-pointer rounded-xl border border-dashed px-4 py-4 text-center transition ${
@@ -198,7 +243,17 @@ export function CpdPersonCard({
   );
 }
 
-function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boolean }) {
+function CertificateRow({
+  record,
+  canEdit,
+  personName,
+  nameOf,
+}: {
+  record: CpdRecord;
+  canEdit: boolean;
+  personName: string;
+  nameOf: Record<string, string>;
+}) {
   const { actsAsLicensee } = useViewerAccess();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -312,6 +367,15 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
           {record.completed_date ? <>completed {formatAuDate(record.completed_date)}</> : "completion date not read"}
           {record.notes && <> · {record.notes.replace(/^Delivery: /, "")}</>}
         </p>
+        {/* The name on the certificate, when it wasn't the person's name and
+            someone confirmed it is theirs (15 Oct 2026). */}
+        {record.name_on_certificate && record.name_confirmed_at && (
+          <p className="mt-0.5 text-[11px] text-rc-muted">
+            Name on certificate: {record.name_on_certificate}. Confirmed as {personName} by{" "}
+            {(record.name_confirmed_by && nameOf[record.name_confirmed_by]) || "a team member"} on{" "}
+            {formatAuTimestamp(record.name_confirmed_at)}.
+          </p>
+        )}
         {/* Ask for exactly what the certificate didn't say, and nothing else.
             Until it has its hours, date and approved provider, the entry is
             shown but adds nothing to the year (lib/cpd-hours.ts). */}

@@ -16,16 +16,19 @@
 //     card, and asked for on its own. Never guessed, and a date least of all.
 //     A new document governs: a field it does not state is not carried over
 //     from the document it replaced.
-//   * If the holder name on a person's document does not match the person,
-//     NOTHING is saved and the card warns. Uploading a colleague's licence
-//     onto the wrong card is the likely mistake, and saving it would start
-//     someone else's reminder schedule. The corporation licence is no longer
-//     refused on its name (14 Oct 2026): see readCorporationLicence in
-//     lib/actions/licences.ts.
+//   * If the holder name on a person's document is not their name in
+//     RealComply, the card asks whether it is their licence (15 Oct 2026,
+//     lib/licence-name.ts). Nothing is saved until someone answers: "Yes"
+//     saves the read and records the name on the licence and who confirmed
+//     it; "No" removes the file. Uploading a colleague's licence onto the
+//     wrong card is still the mistake this guards against. The corporation
+//     licence is not checked on its name here (14 Oct 2026): see
+//     readCorporationLicence in lib/actions/licences.ts.
 //   * An expiry date already in the past is saved and shown as expired. The
 //     upload is not blocked: an expired licence on file is a fact the
 //     licensee needs to see, not something to refuse.
 
+import { sameName } from "@/lib/licence-name";
 import type { LicenceType } from "@/lib/types";
 
 export type LicenceField = "holderName" | "licenceType" | "licenceNumber" | "expiry";
@@ -77,6 +80,12 @@ export type LicenceReadState = {
     nameOnDocument: string | null;
     /** False when there was nothing to compare the name against. */
     nameChecked: boolean;
+    /**
+     * The name on the document wasn't the person's name in RealComply, and
+     * someone confirmed it was their licence anyway (15 Oct 2026): as whom,
+     * by whom and when.
+     */
+    nameConfirmed?: { as: string; by: string | null; at: string } | null;
   } | null;
   /** Fields the last read could not fill and nobody has typed in since. */
   missing: LicenceField[];
@@ -170,11 +179,11 @@ export function sanitiseLicenceRead(raw: unknown): LicenceDocumentRead {
 
 // ── Names ───────────────────────────────────────────────────────────────────
 //
-// Order-insensitive and forgiving of the ways a licence prints a name
-// ("SMITH, Jane Maree" for "Jane Smith"), but not of a different person.
-// A person matches when their first and last names both appear on the
-// document. A company matches when the words left after dropping "Pty Ltd"
-// and the like are all there, either way round.
+// A person's name: see sameName in lib/licence-name.ts (15 Oct 2026). Any
+// difference beyond case, punctuation and spacing asks rather than matches.
+//
+// A company matches when the words left after dropping "Pty Ltd" and the like
+// are all there, either way round.
 
 const COMPANY_NOISE = new Set(["pty", "ltd", "limited", "proprietary", "the", "and", "co", "inc", "atf", "trust", "trustee", "for"]);
 
@@ -187,14 +196,6 @@ function words(name: string): string[] {
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter(Boolean);
-}
-
-export function personNameMatches(onDocument: string, person: string): boolean {
-  const doc = new Set(words(onDocument));
-  const mine = words(person);
-  if (mine.length === 0) return false;
-  if (mine.length === 1) return doc.has(mine[0]);
-  return doc.has(mine[0]) && doc.has(mine[mine.length - 1]);
 }
 
 export function companyNameMatches(onDocument: string, company: string): boolean {
@@ -233,6 +234,12 @@ export function decideLicenceRead(input: {
   at: string;
   fileName: string | null;
   today: Date;
+  /**
+   * The person's name, when someone has answered "Yes, it's theirs" to the
+   * name question (15 Oct 2026). The read is then saved whatever the name on
+   * the document, and the state records who confirmed it and when.
+   */
+  nameConfirmedAs?: string | null;
 }): ReadDecision {
   const { read, subject, by, at, fileName } = input;
   const previous = input.previous ?? emptyState();
@@ -250,6 +257,7 @@ export function decideLicenceRead(input: {
     // in the uploader's browser still says whose it was.
     nameOnDocument: status === "read" ? nameOnDocument : null,
     nameChecked,
+    ...(status === "read" && input.nameConfirmedAs ? { nameConfirmed: { as: input.nameConfirmedAs, by, at } } : {}),
   });
 
   // A tax invoice or a CPD certificate in the licence slot. Nothing it says
@@ -258,9 +266,14 @@ export function decideLicenceRead(input: {
     return { kind: "not_a_licence", state: { ...previous, lastRead: lastRead("not_a_licence", false) } };
   }
 
-  const matches = subject === "person" ? personNameMatches : companyNameMatches;
+  // REVERSAL (Adam, 15 Oct 2026): was (2 Oct licence-read brief, rule 4, kept strict in #45): a holder name mismatch on a personal licence saves nothing. Now: show what was read and ask the user to confirm it's this person's licence; Yes saves, No removes the file.
+  //
+  // So for a person, "name_mismatch" now means "ask", and the server action
+  // holds the read with the question (lib/licence-name.ts) instead of
+  // refusing. Once answered "Yes", nameConfirmedAs lets it through.
+  const matches = subject === "person" ? sameName : companyNameMatches;
   const nameChecked = Boolean(nameOnDocument) && expected.length > 0;
-  if (nameChecked && !expected.some((n) => matches(nameOnDocument as string, n))) {
+  if (nameChecked && !input.nameConfirmedAs && !expected.some((n) => matches(nameOnDocument as string, n))) {
     return {
       kind: "name_mismatch",
       nameOnDocument: nameOnDocument as string,
@@ -324,6 +337,17 @@ export function recordTypedChanges(
 
 export function emptyState(): LicenceReadState {
   return { lastRead: null, missing: [], fields: {} };
+}
+
+/**
+ * The read with its name confirmation taken off, for when the document it was
+ * about leaves the record ("No, wrong person" on Read from document, or
+ * Remove). "Confirmed as Jo Bennett" was about that file; the history keeps
+ * who said so and when (preview check, 15 Oct 2026).
+ */
+export function withoutNameConfirmation(state: LicenceReadState | null): LicenceReadState | null {
+  if (!state?.lastRead?.nameConfirmed) return state;
+  return { ...state, lastRead: { ...state.lastRead, nameConfirmed: null } };
 }
 
 /** Reads a stored jsonb value defensively; anything unexpected is no state. */
