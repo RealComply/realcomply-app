@@ -135,6 +135,18 @@ export function buildCorporationLicenceDocPath(agencyId: string, fileName: strin
   return `${agencyId}/_licences/_corporation/${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// An Insurance register policy's certificate of currency or schedule (0076),
+// one folder per policy. The database refuses a policy pointing anywhere
+// else. Earlier certificates stay here after a renewal; insurance_history
+// says which was which.
+export function insuranceFolder(agencyId: string, policy: "pi" | "cyber" | "icare"): string {
+  return `${agencyId}/_insurance/${policy}/`;
+}
+
+export function buildInsuranceDocPath(agencyId: string, policy: "pi" | "cyber" | "icare", fileName: string): string {
+  return `${insuranceFolder(agencyId, policy)}${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 // The provider's record of completion for one CPD activity. Kept per person
 // rather than per agency folder, because retention is the individual's
 // obligation (3 years; 4 for an assistant agent's statement of attainment)

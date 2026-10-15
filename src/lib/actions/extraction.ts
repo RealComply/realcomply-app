@@ -908,6 +908,135 @@ export async function extractLicenceDocument(
   }
 }
 
+// ── Insurance certificates of currency and policy schedules ────────────────
+//
+// Trent (Lloyd Property, 15 Oct 2026): attach the certificate to the
+// Insurance register, so it can be shown when Fair Trading visits. Same
+// shape as the licence read above: documentIs decided FIRST, so an invoice
+// says so instead of yielding a plausible-looking policy, and the cover is
+// read so a workers compensation certificate can't land on professional
+// indemnity. The model writes nothing; lib/insurance-read.ts validates what
+// comes back and decides what is saved.
+const INSURANCE_TOOL: Anthropic.Tool = {
+  name: "record_insurance_certificate",
+  description:
+    "Record the details printed on an insurance certificate of currency or policy schedule. Omit any field " +
+    "you cannot read with confidence and list it in unreadableFields instead. Never guess, and never work a " +
+    "date out from another date.",
+  input_schema: {
+    type: "object",
+    properties: {
+      documentIs: {
+        type: "string",
+        enum: ["certificate_of_currency", "policy_schedule", "other"],
+        description:
+          "ALWAYS set this first, from what the document actually is, not from the filename. " +
+          "'certificate_of_currency': a certificate confirming a policy is in force. 'policy_schedule': the " +
+          "schedule of a policy, listing the insured, insurer, cover and period. 'other': anything else (an " +
+          "invoice or renewal notice on its own, a quote, a licence, a blank page).",
+      },
+      covers: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: ["professional_indemnity", "cyber", "workers_compensation", "public_liability", "other"],
+        },
+        description:
+          "Every kind of cover the document says the policy provides. 'workers_compensation' includes icare " +
+          "workers insurance. Leave empty if the document doesn't say.",
+      },
+      insurer: {
+        type: "string",
+        description: "The insurer (the company providing the cover, not the broker or the insured), as printed.",
+      },
+      policyNumber: {
+        type: "string",
+        description: "The policy number exactly as printed, with no spaces added or removed.",
+      },
+      expiryDate: {
+        type: "string",
+        description:
+          "The date the cover ends, as YYYY-MM-DD: the end of the period of insurance, or a date labelled " +
+          "expiry or 'to'. Australian documents write dates day first (30/06/2027 is 30 June 2027). Never a " +
+          "start date or an issue date, and never a start date plus a term.",
+      },
+      unreadableFields: {
+        type: "array",
+        items: { type: "string", enum: ["insurer", "policyNumber", "expiryDate"] },
+        description:
+          "Every field that appears on the document but cannot be read with confidence: blurred, cut off, " +
+          "covered by glare, or ambiguous.",
+      },
+    },
+    required: ["documentIs"],
+  },
+};
+
+/**
+ * Reads an uploaded insurance certificate. Never writes; returns the raw tool
+ * input for lib/insurance-read.ts to validate. An error means nothing was
+ * read at all.
+ */
+export async function extractInsuranceCertificate(
+  path: string,
+  fileName: string,
+): Promise<{ error: string | null; raw?: unknown }> {
+  const { supabase } = await requireAuthContext();
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { error: "Reading documents isn't set up yet, so the details need typing in for now." };
+  }
+
+  const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
+  if (error || !blob) return { error: "Couldn't open the uploaded file to read it." };
+
+  const { base64, contentType } = await readableBytes(blob, fileName);
+  const documentBlock = buildDocumentBlock(contentType, base64, fileName);
+  if (!documentBlock) {
+    return { error: `That file type can't be read (${contentType}). Upload a PDF or a photo instead.` };
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 1024,
+      system:
+        "You are reading a document uploaded to the insurance register of a NSW real estate agency (RealComply). " +
+        "Record only what the document explicitly and literally states. A photo may be skewed, partly covered or " +
+        "blurred: if any character of a number or date is uncertain, leave that field out and list it in " +
+        "unreadableFields. A wrong expiry date is worse than none, because the register shows the policy as " +
+        "current from it. You must call record_insurance_certificate exactly once; leaving fields out is a " +
+        "normal, successful outcome.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            documentBlock,
+            {
+              type: "text",
+              text:
+                `This was uploaded as "${fileName}". FIRST set documentIs from what the document actually is. ` +
+                "THEN record the cover, the insurer, the policy number and the expiry date as printed.",
+            },
+          ],
+        },
+      ],
+      tools: [INSURANCE_TOOL],
+      tool_choice: { type: "tool", name: "record_insurance_certificate" },
+    });
+
+    const toolUse = response.content.find(
+      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+    );
+    return { error: null, raw: toolUse?.input ?? {} };
+  } catch (e) {
+    console.error("extractInsuranceCertificate failed", { fileName, error: e });
+    return { error: "Couldn't read the certificate just now, so the details need typing in." };
+  }
+}
+
 // ── The revised-ESP notice ─────────────────────────────────────────────────
 //
 // Adam, 22 Aug 2026: "in the campaign stage, [the last question] should ask if
