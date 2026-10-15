@@ -166,7 +166,13 @@ export default async function PropertyPage({
     stage: s,
     label: STAGE_LABELS[s],
     reachable: s <= maxViewable,
-    ...stageProgress(itemsForStage(s, p, allItems, ruleCtx).map((i) => allItems[i.key]?.status)),
+    // An optional upload card (the Power of Attorney copy, 15 Oct 2026)
+    // counts once something is on it, never against the stage while empty.
+    ...stageProgress(
+      itemsForStage(s, p, allItems, ruleCtx)
+        .filter((i) => i.kind !== "document" || allItems[i.key]?.status === "done")
+        .map((i) => allItems[i.key]?.status),
+    ),
   }));
   const isCurrentStage = viewedStage === currentStage;
   const countdown = auctionCountdown(p.auction_date);

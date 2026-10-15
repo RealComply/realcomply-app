@@ -4,6 +4,7 @@ import {
   startTransition,
   useActionState,
   useEffect,
+  useOptimistic,
   useRef,
   useState,
   useTransition,
@@ -65,7 +66,10 @@ import {
   removeEvidence,
   type ActionState,
   setOffersLoggedElsewhere,
+  answerQuestion,
+  setQuestionTick,
 } from "@/lib/actions/compliance";
+import { readQuestion, type Answer, type UploadRecord } from "@/lib/rules/question-card";
 import {
   extractReportDetails,
   rereadAttachedDocument,
@@ -96,8 +100,11 @@ const initialState: ActionState = { error: null };
 function StatusPill({
   status,
   awaitingReview = false,
+  optional = false,
 }: {
   status?: PropertyItem["status"];
+  /** An optional card with nothing on it yet reads "Optional", not "Open" (15 Oct 2026). */
+  optional?: boolean;
   /**
    * Open, but with something in the box already waiting to be looked at.
    *
@@ -110,6 +117,13 @@ function StatusPill({
   awaitingReview?: boolean;
 }) {
   if (!status || status === "open") {
+    if (optional) {
+      return (
+        <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-semibold text-rc-muted">
+          Optional
+        </span>
+      );
+    }
     if (awaitingReview) {
       return (
         <span className="shrink-0 rounded-full bg-rc-amber/15 px-2.5 py-0.5 text-xs font-semibold text-rc-amber-deep">
@@ -157,12 +171,15 @@ function ItemShell({
   awaitingReview = false,
   foldable = true,
   evidenceReadOnly = false,
+  optional = false,
   children,
 }: {
   item: ComplianceItem;
   status?: PropertyItem["status"];
   propertyId: string;
   current?: PropertyItem;
+  /** Passed through to the pill — see StatusPill. */
+  optional?: boolean;
   /** Passed through to the pill — see StatusPill. */
   awaitingReview?: boolean;
   /** The attached file as a link only, with nothing to attach, replace or
@@ -314,7 +331,7 @@ function ItemShell({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <StatusPill status={status} awaitingReview={awaitingReview} />
+          <StatusPill status={status} awaitingReview={awaitingReview} optional={optional} />
           {canFold && (
             <button
               type="button"
@@ -2547,6 +2564,134 @@ function ManualEspEntry({ propertyId, reason }: { propertyId: string; reason: st
   );
 }
 
+/**
+ * A Yes / No question, and the one tick Yes can bring (the Power of Attorney
+ * card, Adam, 15 Oct 2026; mockup approved the same day). What it asks is in
+ * the rules file (item.question); keeping the answer, the tick, who and when
+ * is lib/rules/question-card.ts. Done once answered No, or Yes and ticked.
+ */
+function QuestionItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+  const spec = item.question;
+  const q = readQuestion(current?.data);
+  const [pending, startSaving] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  // The answer and the tick show the moment they are clicked, not a second
+  // later when the save comes back (preview check, 15 Oct 2026: the tick box
+  // did not tick on click). They settle on what was saved once it is.
+  const [shown, showNow] = useOptimistic(
+    { answer: q.answer, ticked: q.ticked === true },
+    (prev, next: { answer?: Answer; ticked?: boolean }) => ({
+      answer: next.answer ?? prev.answer,
+      // Moving away from Yes clears the tick, as the save does.
+      ticked: next.answer === "no" ? false : (next.ticked ?? prev.ticked),
+    }),
+  );
+
+  function save(next: { answer?: Answer; ticked?: boolean }, run: () => Promise<ActionState>) {
+    setError(null);
+    startSaving(async () => {
+      showNow(next);
+      const result = await run();
+      if (result.error) setError(result.error);
+    });
+  }
+
+  if (!spec) return null;
+  const answers: Array<{ value: Answer; label: string }> = [
+    { value: "yes", label: "Yes" },
+    { value: "no", label: "No" },
+  ];
+
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+      <div className="space-y-2.5">
+        <div role="radiogroup" aria-label={item.label} className="flex gap-2">
+          {answers.map((a) => {
+            const chosen = shown.answer === a.value;
+            return (
+              <button
+                key={a.value}
+                type="button"
+                role="radio"
+                aria-checked={chosen}
+                disabled={pending}
+                onClick={() => {
+                  if (!chosen) save({ answer: a.value }, () => answerQuestion(propertyId, item.key, a.value));
+                }}
+                className={
+                  chosen
+                    ? "min-w-[64px] rounded-md border border-rc-green-deep bg-rc-green-deep px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-70"
+                    : "min-w-[64px] rounded-md border border-rc-border bg-white px-4 py-1.5 text-sm font-semibold text-rc-ink transition hover:bg-rc-bg-alt disabled:opacity-60"
+                }
+              >
+                {a.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {shown.answer === "no" && <p className="text-xs text-rc-muted">{spec.noLine}</p>}
+
+        {shown.answer === "yes" && spec.yesTick && (
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={shown.ticked}
+              disabled={pending}
+              onChange={(e) => {
+                const ticked = e.target.checked;
+                save({ ticked }, () => setQuestionTick(propertyId, item.key, ticked));
+              }}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-rc-green-deep"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-rc-ink">{spec.yesTick.label}</span>
+              <span className="block text-xs text-rc-muted">{spec.yesTick.line}</span>
+            </span>
+          </label>
+        )}
+        {shown.answer === "yes" && spec.yesLine && <p className="text-xs text-rc-muted">{spec.yesLine}</p>}
+
+        {/* Who and when, as kept for the compliance file. */}
+        {q.answer && (
+          <p className="text-[11px] text-rc-faint">
+            Answered {q.answer === "yes" ? "Yes" : "No"} by {q.answeredByName ?? "a team member"}
+            {q.answeredAt ? ` on ${formatAuTimestamp(q.answeredAt)}` : ""}.
+            {q.answer === "yes" && q.ticked && (
+              <>
+                {" "}
+                Ticked by {q.tickedByName ?? "a team member"}
+                {q.tickedAt ? ` on ${formatAuTimestamp(q.tickedAt)}` : ""}.
+              </>
+            )}
+          </p>
+        )}
+        {error && <p className="text-xs text-rc-amber-deep">{error}</p>}
+      </div>
+    </ItemShell>
+  );
+}
+
+/**
+ * An optional upload on its own (the Power of Attorney copy, 15 Oct 2026):
+ * "Optional" until a copy is on it, then done. The upload control is the
+ * shell's usual one, marked optional; the stage never waits on this card.
+ */
+function DocumentItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+  const upload = (current?.data ?? {}) as UploadRecord;
+  return (
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} optional>
+      {current?.evidence_path && upload.uploadedAt ? (
+        <p className="text-[11px] text-rc-faint">
+          Uploaded by {upload.uploadedByName ?? "a team member"} on {formatAuTimestamp(upload.uploadedAt)}.
+        </p>
+      ) : (
+        <p className="text-xs text-rc-muted">Optional. The stage doesn&rsquo;t wait on it.</p>
+      )}
+    </ItemShell>
+  );
+}
+
 function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const yesAction = markEspRevised.bind(null, propertyId);
   const noAction = markNoPriceRevision.bind(null, propertyId);
@@ -3889,6 +4034,10 @@ function ItemCardBody({
           reserve={(allItems["x4"]?.data as { reserve?: number } | undefined)?.reserve}
         />
       );
+    case "question":
+      return <QuestionItem item={item} propertyId={propertyId} current={current} />;
+    case "document":
+      return <DocumentItem item={item} propertyId={propertyId} current={current} />;
     case "guide":
       return (
         <GuideItem

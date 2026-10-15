@@ -69,6 +69,8 @@ export type Manifest = {
 
 const FOLDERS: Record<string, string> = {
   _licences: "Licences",
+  // Each policy's certificates of currency, the earlier ones included (0076).
+  _insurance: "Insurance certificates",
   _cpd: "CPD",
   _brand: "Agency logo",
   "_sg-manual": "Statement of generic matters",
@@ -179,6 +181,8 @@ const TABLES: Array<{ table: string; file: string; order?: string }> = [
   // Guidelines (0069). confirmed_by gets its name column with the others.
   { table: "sg_read_confirmations", file: "SG annexure and Supervision Guidelines read", order: "confirmed_at" },
   { table: "licence_history", file: "Licence history", order: "changed_at" },
+  // Every change to an insurance policy, last year's certificate included (0076).
+  { table: "insurance_history", file: "Insurance history", order: "changed_at" },
   { table: "assistant_agents", file: "Assistants and their agents", order: "created_at" },
   { table: "pm_properties", file: "Property management - properties", order: "created_at" },
   { table: "pm_tenancies", file: "Property management - tenancies", order: "created_at" },

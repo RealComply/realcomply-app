@@ -11,9 +11,12 @@ import { BreachesPanel } from "@/components/registers/BreachesPanel";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { expiryStatus } from "@/lib/expiry-status";
 import { nextReminderDate } from "@/lib/licence-reminders";
+import { describeHistory, type HistoryEntry } from "@/lib/insurance-read";
+import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
+import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { ReminderInfo } from "@/components/registers/ReminderLine";
 import type {
-  Agency, Breach, Complaint, CpdRecord, Gift, LicenceReminder, Profile, Property,
+  Agency, Breach, Complaint, CpdRecord, Gift, InsuranceHistoryRow, InsurancePolicyType, LicenceReminder, Profile, Property,
 } from "@/lib/types";
 
 const TAB_KEYS = new Set(["licence", "insurance", "gifts", "complaints", "breaches"]);
@@ -165,6 +168,38 @@ export default async function RegistersPage({
     count: breaches.filter((b) => b.status !== "closed" || (b.notifiable && !b.notified_date)).length,
     tone: (breachesUnnotified > 0 ? "red" : "amber") as "amber" | "red",
   };
+  // The Insurance register's history and certificate links (0076), for the
+  // licensee only, who alone sees the register. Worked out here rather than
+  // in the cards: "expired" and "expires" depend on today's date, and a
+  // finished string can't disagree between server and browser.
+  const historyByPolicy: Record<InsurancePolicyType, HistoryEntry[]> = { pi: [], cyber: [], icare: [] };
+  const urlByPath: Record<string, string> = {};
+  if (licenseeView && agency) {
+    const { data: historyRows, error: historyError } = await supabase
+      .from("insurance_history")
+      .select("*")
+      .eq("agency_id", agency.id)
+      .order("changed_at", { ascending: false })
+      .limit(200);
+    // Before 0076 has run there is no table: the cards show no history.
+    if (historyError) console.error("insurance_history not read:", historyError.message);
+    const rows = (historyRows ?? []) as InsuranceHistoryRow[];
+    const today = new Date();
+    for (const policy of ["pi", "cyber", "icare"] as const) {
+      historyByPolicy[policy] = describeHistory(
+        rows.filter((r) => r.policy_type === policy), nameOf, formatAuDate, formatAuTimestamp, today,
+      );
+    }
+    const paths = [
+      agency.pi_document_path, agency.cyber_document_path, agency.icare_document_path,
+      ...Object.values(historyByPolicy).flat().map((e) => e.earlierCertificate?.path),
+    ].filter((p): p is string => Boolean(p));
+    if (paths.length > 0) {
+      const { data: signed } = await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrls([...new Set(paths)], 3600);
+      for (const s of signed ?? []) if (s.path && s.signedUrl) urlByPath[s.path] = s.signedUrl;
+    }
+  }
+
   const insuranceStatuses = agency
     ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry].map((d) => expiryStatus(d))
     : [];
@@ -236,7 +271,11 @@ export default async function RegistersPage({
                   nameOf={nameOf}
                 />
               }
-              insurance={licenseeView ? <InsurancePanel agency={agency} /> : null}
+              insurance={
+                licenseeView ? (
+                  <InsurancePanel agency={agency} historyByPolicy={historyByPolicy} urlByPath={urlByPath} nameOf={nameOf} />
+                ) : null
+              }
               gifts={
                 <GiftsPanel
                   gifts={gifts}
