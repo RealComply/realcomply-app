@@ -119,7 +119,13 @@ export function InsuranceCard({
 
   const busyText = busy === "uploading" ? "Uploading…" : busy === "reading" ? "Reading the certificate…" : null;
   const refused = result?.outcome === "not_a_certificate" || result?.outcome === "wrong_cover";
-  const savedNote = result && (result.outcome === "saved" || result.outcome === "saved_with_gaps") ? result.message : null;
+  // "Please add it below" only while something is still to add: once the gap
+  // is filled the message would point at a form that has gone (preview check,
+  // 16 Oct 2026).
+  const savedNote =
+    result && (result.outcome === "saved" || (result.outcome === "saved_with_gaps" && missing.length > 0))
+      ? result.message
+      : null;
 
   return (
     <section aria-labelledby={headingId} className="rounded-card border border-rc-border bg-white p-4 shadow-card">
