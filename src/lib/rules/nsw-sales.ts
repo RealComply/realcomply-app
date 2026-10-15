@@ -18,6 +18,7 @@
 // RealComply-listing-lifecycle-stage-map.md (both in the project docs).
 
 import type { AuctionOutcomeData, Property, PropertyItem, PropertyStage } from "@/lib/types";
+import { readQuestion, type QuestionSpec } from "@/lib/rules/question-card";
 
 // ── Auction visibility ──────────────────────────────────────────────────────
 // Every x-series item is conditional on the listing being an auction. The trap
@@ -55,7 +56,9 @@ export type ItemKind =
   | "send" // hand-off to the licensee
   | "auctioneer" // who is calling the auction — name, licence no., business address
   | "reserve" // the reserve, the time it was given, and the written evidence
-  | "auction"; // the outcome at the fall of the hammer
+  | "auction" // the outcome at the fall of the hammer
+  | "question" // a Yes / No question; Yes can bring one tick with it (lib/rules/question-card.ts)
+  | "document"; // an optional upload on its own, with nothing to tick
 
 // Facts a rule may need that are not on the property row and not in its items.
 //
@@ -202,6 +205,12 @@ export type ComplianceItem = {
    * showIf, for the files that must keep showing it: see retiredCardShows.
    */
   retiredAt?: string;
+  /**
+   * For a "question" card: what No says, and the tick Yes brings with it. The
+   * engine (lib/rules/question-card.ts) keeps the answer, the tick, who and
+   * when, and a history.
+   */
+  question?: QuestionSpec;
 };
 
 // ── Retired cards ───────────────────────────────────────────────────────────
@@ -240,6 +249,22 @@ export function retiredCardShows(key: string, retiredAt: string, allItems: Recor
 // and 5 for all agents on the Did you know page (lib/rules/nsw-did-you-know.ts).
 // From midnight at the start of 16 Oct 2026, Sydney time.
 export const C2_C3_RETIRED_AT = "2026-10-15T13:00:00.000Z";
+
+
+// ── Power of Attorney (Adam, 15 Oct 2026) ───────────────────────────────────
+// NEW LISTINGS ONLY. A listing created after this shipped is given an
+// unanswered "poa" card when it is created (createProperty,
+// lib/actions/properties.ts: POA_SEEDED_AT_CREATION). The question shows
+// only where that card exists, so a listing already open never gains a new
+// required card and no stage reopens under anyone.
+export const POA_KEY = "poa";
+export const POA_DOCUMENT_KEY = "poa_doc";
+export const SEEDED_AT_CREATION = [POA_KEY] as const;
+
+/** The answer on this listing's Power of Attorney question, if any. */
+export function poaAnswer(allItems: Record<string, PropertyItem>): "yes" | "no" | null {
+  return readQuestion(allItems[POA_KEY]?.data).answer ?? null;
+}
 
 // The shape extraction leaves on an item, for the hideEvidenceWhen predicates
 // below. Kept narrow on purpose: a rule should be able to ask "did the
@@ -345,6 +370,37 @@ const items: ComplianceItem[] = [
     // Adam, 20 Aug 2026: "if the AI can detect any ID documents, then it
     // rejects them." The warning above was only ever words.
     rejectIdDocuments: true,
+  },
+  {
+    // Straight after Vendor identity verified (Adam, 15 Oct 2026; mockup
+    // approved the same day). Someone selling for the owner under a Power of
+    // Attorney needs it seen before the agent acts on their instructions.
+    //
+    // No: nothing more. Yes: one tick, which the stage waits on. A copy can
+    // be uploaded at Pre-market (poa_doc), never required. Changing Yes to No
+    // clears the tick; the card's history keeps it.
+    key: POA_KEY,
+    stage: 0,
+    kind: "question",
+    label: "Is the property being sold under a Power of Attorney?",
+    description:
+      "Answer Yes if someone is selling for the owner under a Power of Attorney, then confirm you've seen it and it covers selling this property.",
+    // Sch 1 cl 8: act only with the client's written authority. Sch 5 cl 4: agency agreement warrants the client's authority to enter it. No NSW provision specifically requires sighting a Power of Attorney; these are the closest. Master, 15 Oct 2026.
+    legalBasis: "Reg Sch 1 cl 8, Sch 5 cl 4",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+    hideNote: true,
+    hideEvidence: true,
+    question: {
+      noLine: "Nothing more needed.",
+      yesTick: {
+        label: "Power of Attorney provided",
+        line: "I've seen the Power of Attorney and it covers selling this property.",
+      },
+      yesLine: "You can upload a copy at Pre-market.",
+    },
+    // New listings only: see "Power of Attorney" above.
+    showIf: (_p, allItems) => allItems[POA_KEY] != null,
   },
   {
     key: "a2",
@@ -551,6 +607,24 @@ const items: ComplianceItem[] = [
   },
 
   // ── Stage 1 — Pre-market ──────────────────────────────────────────────
+  {
+    // The copy of the Power of Attorney, only on a listing answered Yes
+    // (Adam, 15 Oct 2026). Optional: the stage never waits on it. It stays
+    // on the file if the answer later changes, so an uploaded copy is never
+    // stranded out of sight.
+    key: POA_DOCUMENT_KEY,
+    stage: 1,
+    kind: "document",
+    label: "Power of Attorney document",
+    description: "A copy of the Power of Attorney, if you have one. Optional: the stage doesn't wait on it.",
+    // Sch 1 cl 8: act only with the client's written authority. Sch 5 cl 4: agency agreement warrants the client's authority to enter it. No NSW provision specifically requires sighting a Power of Attorney; these are the closest. Master, 15 Oct 2026.
+    legalBasis: "Reg Sch 1 cl 8, Sch 5 cl 4",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    hideNote: true,
+    evidenceLabel: "Power of Attorney",
+    showIf: (_p, allItems) => poaAnswer(allItems) === "yes" || Boolean(allItems[POA_DOCUMENT_KEY]?.evidence_path),
+  },
   {
     // ⚠️ THIS ITEM WAS DESIGNED, THEN DROPPED BY ADAM, THEN ASKED FOR AGAIN.
     //

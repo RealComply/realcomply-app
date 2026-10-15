@@ -2,18 +2,27 @@
 
 import { useActionState, useState } from "react";
 import { AlertTriangle, FileCheck2 } from "lucide-react";
-import { fillLicenceGaps, type ActionState, type GapTarget, type LicenceReadResult } from "@/lib/actions/licences";
+import {
+  confirmLicenceName,
+  fillLicenceGaps,
+  rejectLicenceName,
+  type ActionState,
+  type GapTarget,
+  type LicenceReadResult,
+} from "@/lib/actions/licences";
+import { NameQuestionBox } from "@/components/NameQuestionBox";
 import { formatAuTimestamp } from "@/lib/format-date";
 import { LICENCE_FIELD_LABELS, type LicenceField, type LicenceReadState } from "@/lib/licence-read";
 
 // What the register says about a licence record that was read off a document.
 //
 // Four jobs, in order of how much they matter:
-//   1. A warning when an upload is refused: someone else's licence, or not a
-//      licence at all. Nothing was saved, and the card says so plainly. Shown
-//      once, in the browser that uploaded it, and gone on reload: the refusal
-//      is no longer stored, so the other person's name never reaches this
-//      person's record (10 Oct 2026).
+//   1. When the name on a person's licence isn't their name in RealComply,
+//      the question: "Is this [person]'s licence?" with what was read, not
+//      saved yet (15 Oct 2026). Yes saves it; No removes the file. And a
+//      warning when an upload is refused because it isn't a licence at all.
+//      Both shown once, in the browser that uploaded it: nothing is stored
+//      until the question is answered (10 Oct 2026).
 //   2. The fields that could not be read, each asked for on its own.
 //   3. Where each value came from: read from which document, or typed by whom,
 //      and when. "Change" is the existing Edit control on the card.
@@ -43,10 +52,15 @@ export function LicenceReadNotice({
 }) {
   const [reading, setReading] = useState(false);
   const [readResult, setReadResult] = useState<LicenceReadResult | null>(null);
-  const shown = readResult ?? lastResult;
+  const latest = readResult ?? lastResult;
+  // The answer to a name question replaces the question, until the next
+  // upload or read brings something new.
+  const [answered, setAnswered] = useState<{ to: LicenceReadResult; result: LicenceReadResult } | null>(null);
+  const shown = answered && answered.to === latest ? answered.result : latest;
 
   const lastRead = state?.lastRead ?? null;
   const refused = shown?.outcome === "name_mismatch" || shown?.outcome === "not_a_licence";
+  const question = shown?.outcome === "confirm_name" ? shown.question ?? null : null;
 
   const documentFields = state
     ? (Object.entries(state.fields) as [LicenceField, { source: string; by: string | null; at: string }][])
@@ -74,10 +88,39 @@ export function LicenceReadNotice({
         </p>
       )}
 
+      {question && latest && (
+        <NameQuestionBox
+          word="licence"
+          question={question}
+          onAnswer={async (yes) => {
+            const result = yes ? await confirmLicenceName(question.token) : await rejectLicenceName(question.token);
+            if (result.error) return result.error;
+            setAnswered({ to: latest, result });
+            return null;
+          }}
+        />
+      )}
+
       {shown?.message && !refused && (
-        <p className={shown.outcome === "saved" ? "text-rc-green-deep" : "text-rc-amber-deep"}>{shown.message}</p>
+        <p
+          className={
+            shown.outcome === "saved" ? "text-rc-green-deep" : shown.outcome === "removed" ? "text-rc-muted" : "text-rc-amber-deep"
+          }
+        >
+          {shown.message}
+        </p>
       )}
       {shown?.error && <p className="text-rc-amber-deep">{shown.error}</p>}
+
+      {/* The name on the licence, when it isn't the person's name here and
+          someone confirmed it is theirs (15 Oct 2026). */}
+      {lastRead?.status === "read" && lastRead.nameConfirmed && lastRead.nameOnDocument && (
+        <p className="text-rc-muted">
+          Name on licence: {lastRead.nameOnDocument}. Confirmed as {lastRead.nameConfirmed.as} by{" "}
+          {(lastRead.nameConfirmed.by && nameOf[lastRead.nameConfirmed.by]) || "a team member"} on{" "}
+          {formatAuTimestamp(lastRead.nameConfirmed.at)}.
+        </p>
+      )}
 
       {lastRead?.status === "could_not_read" && (
         <p className="text-rc-amber-deep">

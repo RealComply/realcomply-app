@@ -90,6 +90,13 @@ plus the corporation licence the company holds in its own right), insurance
 breaches and corrective actions, training and CPD, and document sign-offs such
 as the Supervision Guidelines manual.
 
+On the Insurance register, each policy takes its certificate of currency or
+policy schedule, as a PDF or a phone photo. RealComply reads the insurer,
+policy number and expiry off it, and asks for anything it can't read. View
+certificate opens it in one click, for when Fair Trading asks. To renew,
+upload next year's certificate: the expiry moves on, and the previous
+certificate stays in the card's History.
+
 ## Emails
 
 A digest goes out Monday morning showing what needs attention across the

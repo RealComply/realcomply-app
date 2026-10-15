@@ -89,6 +89,17 @@ export type Agency = {
   icare_insurer: string | null;
   icare_policy_number: string | null;
   icare_expiry: string | null;
+  /** Each policy's certificate of currency or schedule on file, and what
+   *  reading it found (0076; see lib/insurance-read.ts). */
+  pi_document_path?: string | null;
+  pi_document_file_name?: string | null;
+  pi_read?: unknown;
+  cyber_document_path?: string | null;
+  cyber_document_file_name?: string | null;
+  cyber_read?: unknown;
+  icare_document_path?: string | null;
+  icare_document_file_name?: string | null;
+  icare_read?: unknown;
   gift_threshold: number;
   complaint_resolution_target_days: number;
   // The agency's position on AUSTRAC pre-commencement customers — see
@@ -123,6 +134,27 @@ export type Agency = {
 // register — same insurer/policy-number/expiry shape, different legal
 // grounding and column prefix on the `agencies` row.
 export type InsurancePolicyType = "pi" | "cyber" | "icare";
+
+/** A policy as one history row holds it, before or after a change (0076). */
+export type InsuranceSnapshot = {
+  insurer: string | null;
+  policyNumber: string | null;
+  expiry: string | null;
+  documentPath: string | null;
+  documentFileName: string | null;
+};
+
+/** One change to a policy, written by the database (insurance_history, 0076). */
+export type InsuranceHistoryRow = {
+  id: string;
+  agency_id: string;
+  policy_type: InsurancePolicyType;
+  source: "document_read" | "typed" | "document_removed";
+  before: Partial<InsuranceSnapshot>;
+  after: Partial<InsuranceSnapshot>;
+  changed_by: string | null;
+  changed_at: string;
+};
 
 export type GiftDirection = "received" | "given";
 export type GiftStatus = "recorded" | "flagged" | "reviewed";
@@ -426,6 +458,11 @@ export type CpdRecord = {
   source_session_id: string | null;
   created_by: string | null;
   created_at: string;
+  // The name printed on the certificate, kept only when it wasn't the
+  // person's name and someone answered "Yes, it's theirs" (0074, 15 Oct 2026).
+  name_on_certificate?: string | null;
+  name_confirmed_by?: string | null;
+  name_confirmed_at?: string | null;
 };
 
 // Per person, per CPD year: the confirmation the year is done. The
