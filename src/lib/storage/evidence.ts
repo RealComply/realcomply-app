@@ -147,6 +147,16 @@ export function buildInsuranceDocPath(agencyId: string, policy: "pi" | "cyber" |
   return `${insuranceFolder(agencyId, policy)}${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// Other insurance an office adds (0078): one folder per added policy, by its
+// id. The database refuses a certificate anywhere else.
+export function otherInsuranceFolder(agencyId: string, policyId: string): string {
+  return `${agencyId}/_insurance/other/${policyId}/`;
+}
+
+export function buildOtherInsuranceDocPath(agencyId: string, policyId: string, fileName: string): string {
+  return `${otherInsuranceFolder(agencyId, policyId)}${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 // The provider's record of completion for one CPD activity. Kept per person
 // rather than per agency folder, because retention is the individual's
 // obligation (3 years; 4 for an assistant agent's statement of attainment)

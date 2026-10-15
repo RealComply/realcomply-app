@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  addedMessage,
   couldNotReadState,
   decideInsuranceRead,
   describeHistory,
@@ -11,6 +12,8 @@ import {
   removedCertificateState,
   sanitiseInsuranceRead,
   savedMessage,
+  isOtherInsuranceKind,
+  otherInsuranceTitle,
   wrongCoverMessage,
   type InsuranceDocumentRead,
 } from "./insurance-read";
@@ -250,5 +253,91 @@ describe("the history", () => {
       wrongCoverMessage("icare", "cyber", true),
     ].join(" ");
     assert.ok(!all.includes("—"));
+  });
+});
+
+// Other insurance an office adds under the three (0078; mockup approved by
+// Adam, 16 Oct 2026). Read by the same rules.
+describe("other insurance", () => {
+  const pl: InsuranceDocumentRead = {
+    documentIs: "certificate_of_currency",
+    covers: ["public_liability"],
+    insurer: "Made-up Liability Insurance Ltd",
+    policyNumber: "PL-55120",
+    expiry: "2026-11-01",
+  };
+  const decideOther = (read: InsuranceDocumentRead, policy: "public_liability" | "office_contents" | "motor_vehicle" | "other") =>
+    decideInsuranceRead({ read, policy, by: jo, at: AT, fileName: "pl-coc.pdf", today: TODAY });
+
+  it("reads a public liability certificate onto a public liability policy", () => {
+    const d = decideOther(pl, "public_liability");
+    assert.equal(d.kind, "save");
+    if (d.kind !== "save") return;
+    assert.deepEqual(d.values, { insurer: "Made-up Liability Insurance Ltd", policyNumber: "PL-55120", expiry: "2026-11-01" });
+    assert.equal(d.state.changeSource, "document_read");
+  });
+
+  it("refuses a certificate for a different cover, and says which", () => {
+    const d = decideOther({ ...pl, covers: ["motor_vehicle"] }, "public_liability");
+    assert.deepEqual(d, { kind: "wrong_cover", coverOnDocument: "motor vehicle" });
+    assert.equal(
+      wrongCoverMessage("public_liability", "motor vehicle", false),
+      "This looks like motor vehicle cover, not public liability. Nothing was saved, and the file was removed.",
+    );
+  });
+
+  it("takes a business package that includes the cover", () => {
+    assert.equal(decideOther({ ...pl, covers: ["public_liability", "office_contents"] }, "office_contents").kind, "save");
+  });
+
+  it("a policy the office named has no cover to check against", () => {
+    assert.equal(decideOther({ ...pl, covers: ["professional_indemnity"] }, "other").kind, "save");
+  });
+
+  it("still refuses something that isn't a certificate, named or not", () => {
+    assert.equal(decideOther({ ...pl, documentIs: "other" }, "other").kind, "not_a_certificate");
+  });
+
+  it("the three fixed policies are unchanged: motor vehicle cover is not PI", () => {
+    assert.equal(decide({ ...clear, covers: ["motor_vehicle"] }).kind, "wrong_cover");
+  });
+
+  it("knows its kinds and titles", () => {
+    assert.ok(isOtherInsuranceKind("motor_vehicle"));
+    assert.ok(!isOtherInsuranceKind("pi"));
+    assert.ok(!isOtherInsuranceKind("toString"));
+    assert.equal(otherInsuranceTitle("office_contents", null), "Office contents and business");
+    assert.equal(otherInsuranceTitle("other", "  Management liability "), "Management liability");
+  });
+
+  it("says what was added, and where the gaps are asked for", () => {
+    const d = decideOther({ ...pl, expiry: null }, "public_liability");
+    if (d.kind !== "save") throw new Error("expected save");
+    assert.equal(
+      addedMessage({ title: "Public liability", state: d.state, expired: false }),
+      "Public liability added. Read from the certificate and saved what was clear. Couldn't read the expiry date: please add it on its card.",
+    );
+    const full = decideOther(pl, "public_liability");
+    if (full.kind !== "save") throw new Error("expected save");
+    assert.equal(
+      addedMessage({ title: "Public liability", state: full.state, expired: true }),
+      "Public liability added. Read from the certificate and saved. The expiry date on it has already passed.",
+    );
+    assert.equal(
+      addedMessage({ title: "Motor vehicle", state: couldNotReadState(jo, AT, "x.pdf"), expired: false }),
+      "Motor vehicle added. The certificate couldn't be read, so the details need typing in on its card.",
+    );
+  });
+
+  it("taking a policy off the register is in its history", () => {
+    const [entry] = describeHistory(
+      [{
+        id: "9", agency_id: "ag", policy_type: "other", policy_id: "p1", source: "policy_removed",
+        before: { insurer: "X" }, after: { insurer: "X" }, changed_by: jo, changed_at: "2026-10-16T01:00:00.000Z",
+      }],
+      names, formatAuDate, formatAuTimestamp, TODAY,
+    );
+    assert.equal(entry.text, "Taken off the register by Jo Licensee (made up) on 16 October 2026.");
+    assert.equal(entry.earlierCertificate, null);
   });
 });

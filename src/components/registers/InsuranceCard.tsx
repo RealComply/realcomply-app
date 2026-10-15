@@ -4,24 +4,53 @@ import { useActionState, useState, useTransition, type ChangeEvent } from "react
 import { AlertTriangle, Paperclip } from "lucide-react";
 import {
   attachInsuranceCertificate,
+  attachOtherInsuranceCertificate,
   removeInsuranceCertificate,
+  removeOtherInsurance,
   saveInsuranceDetails,
+  saveOtherInsuranceDetails,
   type ActionState,
   type InsuranceUploadResult,
 } from "@/lib/actions/insurance";
 import { expiryStatus, EXPIRY_STATUS_STYLES, EXPIRY_STATUS_LABELS } from "@/lib/expiry-status";
 import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
-import { INSURANCE_FIELD_LABELS, joinAnd, parseInsuranceRead, provenanceLine, type HistoryEntry, type InsuranceField } from "@/lib/insurance-read";
+import {
+  INSURANCE_FIELD_LABELS,
+  OTHER_INSURANCE_NAME_MAX,
+  joinAnd,
+  parseInsuranceRead,
+  provenanceLine,
+  type HistoryEntry,
+  type InsuranceField,
+} from "@/lib/insurance-read";
 import { useViewerAccess } from "@/components/ViewerAccess";
 import { useOnSaved } from "@/lib/use-on-saved";
 import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
-import { buildInsuranceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
-import type { InsurancePolicyType } from "@/lib/types";
+import { buildInsuranceDocPath, buildOtherInsuranceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
+import type { InsurancePolicyType, OtherInsuranceKind } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
 
-const ACCEPT = "application/pdf,image/jpeg,image/png,image/heic,image/heif,.heic,.heif";
+export const ACCEPT = "application/pdf,image/jpeg,image/png,image/heic,image/heif,.heic,.heif";
+
+/**
+ * Which policy a card is: one of the three on the office row, or one the
+ * office added under them (0078). Everything else about the card is the same.
+ */
+export type InsuranceTarget =
+  | { kind: "agency"; policy: InsurancePolicyType }
+  | { kind: "other"; policyId: string; policyKind: OtherInsuranceKind; name: string | null };
+
+function targetKey(target: InsuranceTarget): string {
+  return target.kind === "agency" ? target.policy : target.policyId;
+}
+
+function saveActionFor(target: InsuranceTarget) {
+  return target.kind === "agency"
+    ? saveInsuranceDetails.bind(null, target.policy)
+    : saveOtherInsuranceDetails.bind(null, target.policyId);
+}
 
 // One card per agency-level policy: PI, cyber, iCare workers (Adam, 13 Aug
 // 2026). Since 15 Oct 2026 (0076; Trent's ask, mockup approved by Adam) each
@@ -30,11 +59,16 @@ const ACCEPT = "application/pdf,image/jpeg,image/png,image/heic,image/heif,.heic
 // Trading asks. A renewal moves the expiry on and keeps the previous
 // certificate in the history below the card.
 //
+// Since 16 Oct 2026 (0078; mockup approved by Adam) the same card shows each
+// policy an office adds under "Other insurance". There, Remove takes the
+// policy off the register, after asking; for the three it takes the
+// certificate off.
+//
 // The licensee's to maintain, which includes the agent on their own plan
 // (lib/access.ts). The register itself is shown to no one else.
 export function InsuranceCard({
   agencyId,
-  policyType,
+  target,
   title,
   note,
   insurer,
@@ -48,9 +82,9 @@ export function InsuranceCard({
   nameOf,
 }: {
   agencyId: string;
-  policyType: InsurancePolicyType;
+  target: InsuranceTarget;
   title: string;
-  note: string;
+  note?: string;
   insurer: string | null;
   policyNumber: string | null;
   expiry: string | null;
@@ -63,7 +97,7 @@ export function InsuranceCard({
 }) {
   const { actsAsLicensee: canEdit } = useViewerAccess();
   const [editing, setEditing] = useState(false);
-  const [state, formAction, pending] = useActionState(saveInsuranceDetails.bind(null, policyType), initialState);
+  const [state, formAction, pending] = useActionState(saveActionFor(target), initialState);
   useOnSaved(pending, state.error, () => setEditing(false));
 
   const [busy, setBusy] = useState<false | "uploading" | "reading">(false);
@@ -71,6 +105,7 @@ export function InsuranceCard({
   const [result, setResult] = useState<InsuranceUploadResult | null>(null);
   const [removing, startRemoving] = useTransition();
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   const status = expiryStatus(expiry);
   const readState = parseInsuranceRead(read);
@@ -78,7 +113,9 @@ export function InsuranceCard({
   const hasDetails = Boolean(insurer || policyNumber || expiry);
   const missing = documentPath ? (readState?.missing ?? []) : [];
   const provenance = provenanceLine(readState, documentFileName, nameOf, formatAuTimestamp);
-  const headingId = `insurance-${policyType}`;
+  const key = targetKey(target);
+  const headingId = `insurance-${key}`;
+  const named = target.kind === "other" && target.policyKind === "other";
 
   const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: Boolean(busy) || !canEdit });
 
@@ -94,7 +131,10 @@ export function InsuranceCard({
     setRemoveError(null);
     setBusy("uploading");
     const supabase = createBrowserClient();
-    const path = buildInsuranceDocPath(agencyId, policyType, file.name);
+    const path =
+      target.kind === "agency"
+        ? buildInsuranceDocPath(agencyId, target.policy, file.name)
+        : buildOtherInsuranceDocPath(agencyId, target.policyId, file.name);
     const { error, file: stored } = await uploadEvidenceObject(supabase, { path, file });
     if (error) {
       setUploadError(error);
@@ -102,17 +142,28 @@ export function InsuranceCard({
       return;
     }
     setBusy("reading");
-    const outcome = await attachInsuranceCertificate(policyType, path, stored.name);
+    const outcome =
+      target.kind === "agency"
+        ? await attachInsuranceCertificate(target.policy, path, stored.name)
+        : await attachOtherInsuranceCertificate(target.policyId, path, stored.name);
     setBusy(false);
     if (outcome.error) setUploadError(outcome.error);
     else setResult(outcome);
   }
 
+  // An added policy asks first: Remove takes the whole policy off the
+  // register. For the three it takes the certificate off, as before.
   function remove() {
     setResult(null);
     setRemoveError(null);
+    if (target.kind === "other" && !confirmingRemove) {
+      setConfirmingRemove(true);
+      return;
+    }
+    setConfirmingRemove(false);
     startRemoving(async () => {
-      const r = await removeInsuranceCertificate(policyType);
+      const r =
+        target.kind === "agency" ? await removeInsuranceCertificate(target.policy) : await removeOtherInsurance(target.policyId);
       if (r.error) setRemoveError(r.error);
     });
   }
@@ -134,7 +185,7 @@ export function InsuranceCard({
           <h3 id={headingId} className="text-sm font-semibold text-rc-ink">
             {title}
           </h3>
-          <p className="mt-1 text-xs text-rc-muted">{note}</p>
+          {note && <p className="mt-1 text-xs text-rc-muted">{note}</p>}
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${EXPIRY_STATUS_STYLES[status]}`}>
           {EXPIRY_STATUS_LABELS[status]}
@@ -173,9 +224,23 @@ export function InsuranceCard({
         ) : (
           <form action={formAction} className="space-y-2">
             <div className="flex flex-wrap gap-2">
-              <DetailInput field="insurer" defaultValue={insurer} policyType={policyType} />
-              <DetailInput field="policyNumber" defaultValue={policyNumber} policyType={policyType} />
-              <DetailInput field="expiry" defaultValue={expiry} policyType={policyType} />
+              {named && target.kind === "other" && (
+                <label className="flex flex-col gap-0.5 text-xs text-rc-muted">
+                  Name
+                  <input
+                    id={`${key}-name`}
+                    type="text"
+                    name="name"
+                    required
+                    maxLength={OTHER_INSURANCE_NAME_MAX}
+                    defaultValue={target.name ?? ""}
+                    className="w-44 rounded-md border border-rc-border bg-white px-2 py-1 text-sm text-rc-ink"
+                  />
+                </label>
+              )}
+              <DetailInput field="insurer" defaultValue={insurer} idPrefix={key} />
+              <DetailInput field="policyNumber" defaultValue={policyNumber} idPrefix={key} />
+              <DetailInput field="expiry" defaultValue={expiry} idPrefix={key} />
             </div>
             <div className="flex gap-2">
               <button
@@ -254,7 +319,7 @@ export function InsuranceCard({
                 Edit
               </button>
             )}
-            {canEdit && (
+            {canEdit && !confirmingRemove && (
               <button
                 type="button"
                 onClick={remove}
@@ -284,10 +349,51 @@ export function InsuranceCard({
         </label>
       ) : null}
 
+      {/* An added policy without a certificate (only ever by hand in the
+          database) can still be taken off the register. */}
+      {canEdit && target.kind === "other" && !documentPath && !confirmingRemove && (
+        <button
+          type="button"
+          onClick={remove}
+          disabled={removing || Boolean(busy)}
+          className="mt-2 py-2 text-xs text-rc-faint transition hover:text-rc-amber-deep disabled:opacity-60 sm:py-0.5"
+        >
+          {removing ? "Removing…" : "Remove"}
+        </button>
+      )}
+
+      {confirmingRemove && (
+        <div
+          role="alertdialog"
+          aria-labelledby={`${headingId}-remove`}
+          className="mt-3 rounded-xl border border-rc-border bg-neutral-50 px-3 py-2.5 text-sm"
+        >
+          <p id={`${headingId}-remove`} className="text-rc-ink">
+            Take {title} off the register? Its certificates and history stay in the office&apos;s records.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={remove}
+              className="rounded-full bg-rc-amber-deep px-4 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
+            >
+              Remove
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingRemove(false)}
+              className="rounded-full border border-rc-border px-4 py-1.5 text-xs font-medium text-rc-muted hover:bg-neutral-100"
+            >
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* What the read couldn't give, asked for on its own. */}
       {canEdit && missing.length > 0 && !editing && (
         <GapForm
-          policyType={policyType}
+          target={target}
           missing={missing}
           couldNotRead={readState?.lastRead?.status === "could_not_read"}
         />
@@ -323,18 +429,18 @@ export function InsuranceCard({
 function DetailInput({
   field,
   defaultValue,
-  policyType,
+  idPrefix,
 }: {
   field: InsuranceField;
   defaultValue: string | null;
-  policyType: InsurancePolicyType;
+  idPrefix: string;
 }) {
   const label = field === "insurer" ? "Insurer" : field === "policyNumber" ? "Policy number" : "Expiry";
   return (
     <label className="flex flex-col gap-0.5 text-xs text-rc-muted">
       {label}
       <input
-        id={`${policyType}-${field}`}
+        id={`${idPrefix}-${field}`}
         type={field === "expiry" ? "date" : "text"}
         name={field}
         defaultValue={defaultValue ?? ""}
@@ -349,15 +455,15 @@ function DetailInput({
  * answering one can never blank another.
  */
 function GapForm({
-  policyType,
+  target,
   missing,
   couldNotRead,
 }: {
-  policyType: InsurancePolicyType;
+  target: InsuranceTarget;
   missing: InsuranceField[];
   couldNotRead: boolean;
 }) {
-  const [state, formAction, pending] = useActionState(saveInsuranceDetails.bind(null, policyType), initialState);
+  const [state, formAction, pending] = useActionState(saveActionFor(target), initialState);
   const labels = missing.map((f) => INSURANCE_FIELD_LABELS[f]);
   const lead = couldNotRead
     ? "The certificate couldn't be read, so the details need adding by hand. It stays attached."
@@ -370,7 +476,7 @@ function GapForm({
       <span className="text-rc-amber-deep">{lead}</span>
       <div className="flex flex-wrap items-end gap-2">
         {missing.map((f) => (
-          <DetailInput key={f} field={f} defaultValue={null} policyType={policyType} />
+          <DetailInput key={f} field={f} defaultValue={null} idPrefix={targetKey(target)} />
         ))}
         <button
           type="submit"

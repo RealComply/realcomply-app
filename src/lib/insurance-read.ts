@@ -24,8 +24,13 @@
 // the database writes the policy as it was to insurance_history on every
 // change (0076). The app's part is saying how the change happened, in
 // changeSource, on the same write.
+//
+// Since 16 Oct 2026 (0078; mockup approved by Adam) an office can add other
+// insurance under the three: public liability, office contents and business,
+// motor vehicle, or one it names. Read by the same rules. A named one has no
+// cover to check the certificate against.
 
-import type { InsuranceHistoryRow, InsurancePolicyType, InsuranceSnapshot } from "@/lib/types";
+import type { InsuranceHistoryRow, InsurancePolicyType, InsuranceSnapshot, OtherInsuranceKind } from "@/lib/types";
 
 export type InsuranceField = "insurer" | "policyNumber" | "expiry";
 
@@ -46,6 +51,38 @@ export const POLICIES: Record<InsurancePolicyType, { title: string; cover: Cover
   icare: { title: "iCare workers insurance", cover: "workers_compensation", coverWords: "workers compensation" },
 };
 
+/**
+ * The kinds of other insurance an office can add (0078), in the order the
+ * picker lists them. "other" is named by the office and has no cover to check.
+ */
+export const OTHER_INSURANCE: Record<OtherInsuranceKind, { label: string; cover: CoverKind | null; coverWords: string }> = {
+  public_liability: { label: "Public liability", cover: "public_liability", coverWords: "public liability" },
+  office_contents: { label: "Office contents and business", cover: "office_contents", coverWords: "office contents and business" },
+  motor_vehicle: { label: "Motor vehicle", cover: "motor_vehicle", coverWords: "motor vehicle" },
+  other: { label: "Other", cover: null, coverWords: "other" },
+};
+
+export const OTHER_INSURANCE_KINDS = Object.keys(OTHER_INSURANCE) as OtherInsuranceKind[];
+
+export const OTHER_INSURANCE_NAME_MAX = 80;
+
+export function isOtherInsuranceKind(value: unknown): value is OtherInsuranceKind {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(OTHER_INSURANCE, value);
+}
+
+/** A card's title: the type, or for "Other" the office's own name for it. */
+export function otherInsuranceTitle(kind: OtherInsuranceKind, name: string | null): string {
+  if (kind === "other") return name?.trim() || "Other insurance";
+  return OTHER_INSURANCE[kind].label;
+}
+
+/** One of the three fixed policies, or an added policy by its kind. */
+export type AnyPolicy = InsurancePolicyType | OtherInsuranceKind;
+
+function coverFor(policy: AnyPolicy): { cover: CoverKind | null; coverWords: string } {
+  return policy === "pi" || policy === "cyber" || policy === "icare" ? POLICIES[policy] : OTHER_INSURANCE[policy];
+}
+
 export type DocumentKind = "certificate_of_currency" | "policy_schedule" | "other";
 
 export type CoverKind =
@@ -53,6 +90,8 @@ export type CoverKind =
   | "cyber"
   | "workers_compensation"
   | "public_liability"
+  | "office_contents"
+  | "motor_vehicle"
   | "other";
 
 const COVER_WORDS: Record<CoverKind, string> = {
@@ -60,6 +99,8 @@ const COVER_WORDS: Record<CoverKind, string> = {
   cyber: "cyber",
   workers_compensation: "workers compensation",
   public_liability: "public liability",
+  office_contents: "office contents and business",
+  motor_vehicle: "motor vehicle",
   other: "other",
 };
 
@@ -147,7 +188,7 @@ export type InsuranceReadDecision =
 
 export function decideInsuranceRead(input: {
   read: InsuranceDocumentRead;
-  policy: InsurancePolicyType;
+  policy: AnyPolicy;
   by: string | null;
   at: string;
   fileName: string | null;
@@ -160,10 +201,11 @@ export function decideInsuranceRead(input: {
   if (read.documentIs === "other") return { kind: "not_a_certificate" };
 
   // A certificate that names its cover, none of it this policy's. A package
-  // policy that lists this cover among others is fine.
-  const wanted = POLICIES[policy].cover;
+  // policy that lists this cover among others is fine. A policy the office
+  // named itself has nothing to check against.
+  const wanted = coverFor(policy).cover;
   const named: CoverKind[] = read.covers.filter((c) => c !== "other");
-  if (named.length > 0 && !named.includes(wanted)) {
+  if (wanted && named.length > 0 && !named.includes(wanted)) {
     return { kind: "wrong_cover", coverOnDocument: COVER_WORDS[named[0]] };
   }
 
@@ -301,8 +343,34 @@ export function notACertificateMessage(kept: boolean): string {
   return `This doesn't look like a certificate of currency or a policy schedule. ${refusedEnding(kept)}`;
 }
 
-export function wrongCoverMessage(policy: InsurancePolicyType, coverOnDocument: string, kept: boolean): string {
-  return `This looks like ${coverOnDocument} cover, not ${POLICIES[policy].coverWords}. ${refusedEnding(kept)}`;
+export function wrongCoverMessage(policy: AnyPolicy, coverOnDocument: string, kept: boolean): string {
+  return `This looks like ${coverOnDocument} cover, not ${coverFor(policy).coverWords}. ${refusedEnding(kept)}`;
+}
+
+/**
+ * Said once an added policy is saved. Anything the read couldn't give is
+ * asked for on the policy's own card, so this says where, not "below".
+ */
+export function addedMessage(input: {
+  title: string;
+  state: InsuranceReadState;
+  expired: boolean;
+}): string {
+  const { title, state, expired } = input;
+  const parts: string[] = [];
+  if (state.lastRead?.status === "could_not_read") {
+    parts.push(`${title} added. The certificate couldn't be read, so the details need typing in on its card.`);
+  } else if (state.missing.length === 0) {
+    parts.push(`${title} added. Read from the certificate and saved.`);
+  } else {
+    const gaps = state.missing.map((f) => INSURANCE_FIELD_LABELS[f]);
+    parts.push(
+      `${title} added. Read from the certificate and saved what was clear. Couldn't read the ${joinAnd(gaps)}: ` +
+        `please add ${gaps.length === 1 ? "it" : "them"} on its card.`,
+    );
+  }
+  if (expired) parts.push("The expiry date on it has already passed.");
+  return parts.join(" ");
 }
 
 /**
@@ -387,7 +455,9 @@ export function describeHistory(
       const replaced = Boolean(before.documentPath) && before.documentPath !== after.documentPath;
 
       let text: string;
-      if (row.source === "document_removed") {
+      if (row.source === "policy_removed") {
+        text = `Taken off the register${byOn}.`;
+      } else if (row.source === "document_removed") {
         text = `Certificate taken off${byOn}.`;
       } else if (row.source === "document_read" && replaced) {
         const moved =

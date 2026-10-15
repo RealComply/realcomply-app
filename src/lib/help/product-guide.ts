@@ -86,7 +86,7 @@ page.
 
 Separate from listings, the agency keeps registers: licences (each person's,
 plus the corporation licence the company holds in its own right), insurance
-(professional indemnity, cyber, iCare), gifts and benefits, complaints,
+(professional indemnity, cyber, iCare, and any other policy the office adds), gifts and benefits, complaints,
 breaches and corrective actions, training and CPD, and document sign-offs such
 as the Supervision Guidelines manual.
 
@@ -95,7 +95,12 @@ policy schedule, as a PDF or a phone photo. RealComply reads the insurer,
 policy number and expiry off it, and asks for anything it can't read. View
 certificate opens it in one click, for when Fair Trading asks. To renew,
 upload next year's certificate: the expiry moves on, and the previous
-certificate stays in the card's History.
+certificate stays in the card's History. Other insurance the office holds
+(public liability, office contents and business, a motor vehicle, or one you
+name) goes in with "+ Add other insurance" under the three, and works the
+same way. Add as many as you hold, two vehicles say. Only professional
+indemnity is required by law (s22); the others are there because the office
+chooses to track them.
 
 ## Emails
 

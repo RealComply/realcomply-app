@@ -135,6 +135,28 @@ export type Agency = {
 // grounding and column prefix on the `agencies` row.
 export type InsurancePolicyType = "pi" | "cyber" | "icare";
 
+// Other insurance an office adds under the three (0078, 16 Oct 2026).
+export type OtherInsuranceKind = "public_liability" | "office_contents" | "motor_vehicle" | "other";
+
+/** One added policy (insurance_policies, 0078). Never deleted: removed_at takes it off the register. */
+export type InsurancePolicy = {
+  id: string;
+  agency_id: string;
+  kind: OtherInsuranceKind;
+  /** The office's own name for it; always set for "other". */
+  name: string | null;
+  insurer: string | null;
+  policy_number: string | null;
+  expiry: string | null;
+  document_path: string | null;
+  document_file_name: string | null;
+  read: unknown;
+  created_by: string | null;
+  created_at: string;
+  removed_at: string | null;
+  removed_by: string | null;
+};
+
 /** A policy as one history row holds it, before or after a change (0076). */
 export type InsuranceSnapshot = {
   insurer: string | null;
@@ -148,8 +170,10 @@ export type InsuranceSnapshot = {
 export type InsuranceHistoryRow = {
   id: string;
   agency_id: string;
-  policy_type: InsurancePolicyType;
-  source: "document_read" | "typed" | "document_removed";
+  /** "other" for an added policy (0078), with its id in policy_id. */
+  policy_type: InsurancePolicyType | "other";
+  policy_id?: string | null;
+  source: "document_read" | "typed" | "document_removed" | "policy_removed";
   before: Partial<InsuranceSnapshot>;
   after: Partial<InsuranceSnapshot>;
   changed_by: string | null;
