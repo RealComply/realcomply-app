@@ -328,8 +328,7 @@ const items: ComplianceItem[] = [
   {
     // Straight after Vendor identity verified (Adam, 15 Oct 2026; mockup
     // approved the same day). Someone selling for the owner under a Power of
-    // Attorney needs it seen before the agent acts on their instructions. No
-    // law reference on the card for now: Master adds one once confirmed.
+    // Attorney needs it seen before the agent acts on their instructions.
     //
     // No: nothing more. Yes: one tick, which the stage waits on. A copy can
     // be uploaded at Pre-market (poa_doc), never required. Changing Yes to No
@@ -340,6 +339,8 @@ const items: ComplianceItem[] = [
     label: "Is the property being sold under a Power of Attorney?",
     description:
       "Answer Yes if someone is selling for the owner under a Power of Attorney, then confirm you've seen it and it covers selling this property.",
+    // Sch 1 cl 8: act only with the client's written authority. Sch 5 cl 4: agency agreement warrants the client's authority to enter it. No NSW provision specifically requires sighting a Power of Attorney; these are the closest. Master, 15 Oct 2026.
+    legalBasis: "Reg Sch 1 cl 8, Sch 5 cl 4",
     requiresDate: false,
     requiredForStageCompletion: true,
     hideNote: true,
@@ -570,6 +571,8 @@ const items: ComplianceItem[] = [
     kind: "document",
     label: "Power of Attorney document",
     description: "A copy of the Power of Attorney, if you have one. Optional: the stage doesn't wait on it.",
+    // Sch 1 cl 8: act only with the client's written authority. Sch 5 cl 4: agency agreement warrants the client's authority to enter it. No NSW provision specifically requires sighting a Power of Attorney; these are the closest. Master, 15 Oct 2026.
+    legalBasis: "Reg Sch 1 cl 8, Sch 5 cl 4",
     requiresDate: false,
     requiredForStageCompletion: false,
     hideNote: true,

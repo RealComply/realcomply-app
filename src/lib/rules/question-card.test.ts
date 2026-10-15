@@ -11,6 +11,7 @@ import {
   withQuestion,
 } from "./question-card";
 import { POA_DOCUMENT_KEY, POA_KEY, SEEDED_AT_CREATION, getItem, itemsForStage, poaAnswer } from "./nsw-sales";
+import { scheduleOne } from "@/lib/legal/sg-annexure";
 import type { Property, PropertyItem } from "@/lib/types";
 
 // The Power of Attorney question (Adam, 15 Oct 2026).
@@ -128,7 +129,7 @@ describe("Power of Attorney on a listing", () => {
     const k = keys(0, { [POA_KEY]: row(POA_KEY) });
     assert.equal(k[k.indexOf("a1") + 1], POA_KEY);
     assert.equal(getItem(POA_KEY)!.requiredForStageCompletion, true);
-    assert.equal(getItem(POA_KEY)!.legalBasis, undefined, "no law reference for now");
+    assert.equal(getItem(POA_KEY)!.legalBasis, "Reg Sch 1 cl 8, Sch 5 cl 4");
   });
 
   it("No: no Pre-market card", () => {
@@ -144,7 +145,7 @@ describe("Power of Attorney on a listing", () => {
     const card = getItem(POA_DOCUMENT_KEY)!;
     assert.equal(card.requiredForStageCompletion, false);
     assert.equal(card.kind, "document");
-    assert.equal(card.legalBasis, undefined);
+    assert.equal(card.legalBasis, "Reg Sch 1 cl 8, Sch 5 cl 4");
   });
 
   it("an uploaded copy stays on show if the answer later changes to No", () => {
@@ -153,6 +154,13 @@ describe("Power of Attorney on a listing", () => {
       [POA_DOCUMENT_KEY]: row(POA_DOCUMENT_KEY, {}, { evidence_path: "a/p/poa.pdf" }),
     };
     assert.ok(keys(1, items).includes(POA_DOCUMENT_KEY));
+  });
+
+  it("the annexure's Schedule 1 gives both cards their provision, neither blank", () => {
+    const rows = scheduleOne().flatMap((g) => g.rows);
+    for (const label of ["Is the property being sold under a Power of Attorney?", "Power of Attorney document"]) {
+      assert.equal(rows.find((r) => r.record === label)?.provision, "Reg Sch 1 cl 8, Sch 5 cl 4", label);
+    }
   });
 
   it("the finalised file prints the question and the upload", () => {
