@@ -1,6 +1,8 @@
 import { requireAccess } from "@/lib/data/current-profile";
 import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
 import { ListingLockCard } from "@/components/annexure/ListingLockCard";
+import { licenseeChangeStatus } from "@/lib/data/licensee-change";
+import { NewLicenseeListingLock } from "@/components/annexure/NewLicenseeListingLock";
 import { createClient } from "@/lib/supabase/server";
 import { NewPropertyForm } from "@/components/property/NewPropertyForm";
 import type { Profile } from "@/lib/types";
@@ -35,6 +37,21 @@ export default async function NewPropertyPage() {
             licenseeName={licenseeName}
             agencyId={profile.agency_id}
           />
+        </div>
+      </main>
+    );
+  }
+
+  // After a change of licensee in charge, until the new one adopts the
+  // annexure (0080). Same place, same reason for showing it here; asked only
+  // when the lock above is off, so the page never shows two.
+  const change = await licenseeChangeStatus(await createClient());
+  if (change?.annexurePending) {
+    return (
+      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-10">
+        <h1 className="text-2xl font-bold tracking-tight text-rc-ink">New listing</h1>
+        <div className="mt-6">
+          <NewLicenseeListingLock isLicensee={access.officeLicensee} licenseeName={change.licenseeName} />
         </div>
       </main>
     );

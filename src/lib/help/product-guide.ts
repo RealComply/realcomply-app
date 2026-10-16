@@ -113,6 +113,21 @@ Two flags, and one person can hold both: agent, and licensee in charge. Some
 things are licensee-only — the final sign-off, agency insurance and licence
 details, inviting staff, deleting a property. An agent can see them but not
 change them.
+
+## Changing the licensee in charge (office plans)
+
+Office profile has a "Licensee in charge" card: who it is, their licence, since
+when, and when Fair Trading was told, with a history of every change. Only the
+current licensee in charge can use "Change licensee in charge". They choose a
+team member with a class 1 licence on file, the date the change took effect and
+the date Fair Trading was told (it can be left blank). The new licensee takes
+over sign-offs, Billing, the annexure, the licensee-only registers and Home
+cards; the previous one stays on the team as an agent. Team no longer offers
+"Licensee in charge" as a role or an invite. If the Fair Trading date is blank,
+the new licensee gets a Home card until they record it, due 5 business days
+after the change (s31(3)). The new licensee must read and adopt the annexure
+before the office adds new listings; existing listings carry on. The history
+can't be deleted or edited. An agent on their own plan doesn't have this.
 `.trim();
 
 /**

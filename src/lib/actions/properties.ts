@@ -3,6 +3,8 @@
 import { listingGate } from "@/lib/data/listing-gate";
 import { lockedCreateMessage } from "@/lib/agent-acknowledgement";
 import { redirect } from "next/navigation";
+import { licenseeChangeStatus } from "@/lib/data/licensee-change";
+import { LOCKED_LISTING_MESSAGE } from "@/lib/licensee-history";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuthContext } from "@/lib/actions/compliance";
@@ -176,6 +178,14 @@ export async function createProperty(
   const gate = await listingGate(supabase);
   if (gate) {
     return { error: lockedCreateMessage(gate) };
+  }
+
+  // After a change of licensee in charge, until the new one adopts the
+  // annexure (0080). Same again: the database refuses it on its own too
+  // (properties_new_licensee_annexure).
+  const change = await licenseeChangeStatus(supabase);
+  if (change?.annexurePending) {
+    return { error: LOCKED_LISTING_MESSAGE };
   }
 
   // Whose file is this?

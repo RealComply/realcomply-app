@@ -19,6 +19,13 @@
 // The clause is quoted rather than paraphrased on purpose: the authority is the
 // point, and a paraphrase of a statutory duty is our words standing in for the
 // legislation's.
+//
+// REVERSAL (Adam, 16 Oct 2026). Was (23 Aug 2026): RealComply does not track
+// whether Fair Trading was told. Now a change made with "Change licensee in
+// charge" on Office profile is kept in the licensee in charge history, with
+// the date Fair Trading was told, and the new licensee is reminded on Home
+// until it is recorded (0080). This notice still shows when only the typed
+// name is changed here, and points to the change.
 
 export function LicenseeChangeNotice({ onClose }: { onClose: () => void }) {
   return (
@@ -58,7 +65,12 @@ export function LicenseeChangeNotice({ onClose }: { onClose: () => void }) {
           of.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-rc-muted">
-          RealComply doesn&rsquo;t lodge this for you or track its progress.
+          RealComply doesn&rsquo;t lodge this for you.
+        </p>
+        <p className="mt-3 text-sm leading-relaxed text-rc-muted">
+          If someone on your team is taking over, use{" "}
+          <strong className="text-rc-ink">Change licensee in charge</strong> on this page as well. It hands them
+          sign-offs, billing and the annexure, keeps the history, and reminds them to tell Fair Trading.
         </p>
 
         <div className="mt-5 flex justify-end">

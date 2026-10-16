@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, Pencil, UserRoundX, Undo2 } from "lucide-react";
 import { updateStaffName, setStaffRole, archiveStaff, restoreStaff } from "@/lib/actions/team";
 import type { ActionState } from "@/lib/actions/auth";
@@ -185,9 +186,22 @@ export function StaffRow({
                 >
                   <option value="agent">Agent</option>
                   <option value="assistant">Assistant</option>
-                  <option value="licensee">Licensee in charge</option>
+                  {/* Only to keep what they are. Making someone licensee in
+                      charge is "Change licensee in charge" on Office profile
+                      (Adam, 16 Oct 2026; 0080), which records it and moves
+                      sign-offs, billing and the annexure with it. */}
+                  {person.isLicensee && <option value="licensee">Licensee in charge</option>}
                 </select>
               </label>
+              {!person.isLicensee && (
+                <p className="text-[11px] leading-relaxed text-rc-muted">
+                  To make someone licensee in charge, use Change licensee in charge on{" "}
+                  <Link href="/dashboard/profile" className="font-medium text-rc-green-deep underline">
+                    Office profile
+                  </Link>
+                  .
+                </p>
+              )}
 
               {/* Shown whatever the current role is, because the licensee is
                   choosing what the person is about to become, not describing

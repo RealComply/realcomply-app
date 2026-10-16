@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
 import { ListingLockCard } from "@/components/annexure/ListingLockCard";
+import { licenseeChangeStatus } from "@/lib/data/licensee-change";
+import { NewLicenseeListingLock } from "@/components/annexure/NewLicenseeListingLock";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { STAGE_LABELS, type Property } from "@/lib/types";
 
@@ -11,13 +13,18 @@ export default async function DashboardPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
-  // The annexure lock (job 7 brief, Parts 4 and 5; 0071): while it is on,
-  // "Add listing" gives way to why, and the way to clear it. Existing
-  // listings below open and save as normal.
+  // Two locks can hold back a new listing, and the page shows one of them:
+  // the annexure lock (job 7 brief, Parts 4 and 5; 0071) while it is on, else
+  // the one after a change of licensee in charge until the new one adopts the
+  // annexure (0080). "Add listing" gives way to why; existing listings below
+  // open and save as normal.
   const gate = await listingGate(supabase);
   const lockLicensee = gate
     ? await licenseeNameFor(supabase, profile.agency_id, { agentPlan: access.isAgentPlan })
     : null;
+  const change = gate ? null : await licenseeChangeStatus(supabase);
+  const newLicenseeLock = change?.annexurePending === true;
+  const locked = Boolean(gate) || newLicenseeLock;
 
   const { data: properties } = await supabase
     .from("properties")
@@ -49,7 +56,7 @@ export default async function DashboardPage() {
                 : `${list.length} listing${list.length === 1 ? "" : "s"} — open one to work through its checklist.`}
             </p>
           </div>
-          {!gate && (
+          {!locked && (
             <Link
               href="/dashboard/new"
               className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-semibold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
@@ -69,9 +76,14 @@ export default async function DashboardPage() {
             />
           </div>
         )}
+        {newLicenseeLock && (
+          <div className="mt-6">
+            <NewLicenseeListingLock isLicensee={access.officeLicensee} licenseeName={change?.licenseeName ?? null} />
+          </div>
+        )}
 
         {list.length === 0 ? (
-          gate ? null : (
+          locked ? null : (
             <div className="mt-10 rounded-card border border-dashed border-rc-border bg-white px-6 py-16 text-center">
               <p className="text-rc-muted">No listings yet. Add your first one to start its compliance checklist.</p>
               <Link
