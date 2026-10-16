@@ -10,6 +10,7 @@ import {
   type SendState,
 } from "@/lib/actions/early-access-decisions";
 import { earlyAccessStatus, type EarlyAccessStatus } from "@/lib/early-access/rules";
+import { looksAustralianPhone } from "@/lib/early-access/phone";
 
 // The early access list, on the staff page. Rebuilt 10 Oct 2026 to the early
 // access invites brief and its approved mockup.
@@ -29,6 +30,8 @@ export type EarlyAccessRow = {
   email: string;
   firstName: string | null;
   agencyName: string | null;
+  /** The optional mobile from the form (16 Oct 2026), as typed. */
+  phone: string | null;
   /** "4 Oct 2026", already in Sydney time. */
   registered: string;
   invitedAt: string | null;
@@ -229,7 +232,19 @@ function Row({
         {row.firstName || "(no name)"}
         <small className="block text-[13px] text-rc-muted">{row.agencyName || "No agency given"}</small>
       </td>
-      <td className="px-5 py-3.5 text-rc-ink">{row.email}</td>
+      <td className="px-5 py-3.5 text-rc-ink">
+        {row.email}
+        {/* The optional mobile (16 Oct 2026), tappable on a phone. Kept as typed;
+            one that doesn't read as Australian is shown, with a hint to check it. */}
+        {row.phone && (
+          <small className="block text-[13px] text-rc-muted">
+            <a href={`tel:${row.phone.replace(/[^\d+]/g, "")}`} className="text-rc-green-deep hover:underline">
+              {row.phone}
+            </a>
+            {!looksAustralianPhone(row.phone) && <span> (check the number)</span>}
+          </small>
+        )}
+      </td>
       <td className="whitespace-nowrap px-5 py-3.5 tabular-nums text-rc-ink">{row.registered}</td>
       <td className="px-5 py-3.5">
         <StatusPill row={row} />

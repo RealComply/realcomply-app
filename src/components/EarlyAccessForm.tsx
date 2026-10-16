@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
 import { joinEarlyAccess, type EarlyAccessState } from "@/lib/actions/early-access";
+import { looksAustralianPhone } from "@/lib/early-access/phone";
 
 // The ask on the landing page. Email plus office name.
 //
@@ -18,6 +19,12 @@ import { joinEarlyAccess, type EarlyAccessState } from "@/lib/actions/early-acce
 // office name is a business detail a real estate professional gives without
 // hesitation; a personal name reads as a form. This is the higher-value half
 // of the pair anyway: it tells him the agency, the area and the likely size.
+//
+// Mobile added 16 Oct 2026 (Adam, with ads running): OPTIONAL, "for a quick
+// call to get you set up". It comes after the email, paired with the button
+// the way the email used to be, so the button is still the last thing. Phone
+// keyboard on a phone. The check is light and only ever a hint: a number that
+// doesn't read as Australian is still accepted, and an empty box is fine.
 
 const initial: EarlyAccessState = { ok: false, error: null };
 
@@ -30,6 +37,12 @@ declare global {
 
 export function EarlyAccessForm({ source, tone = "light" }: { source?: string; tone?: "light" | "dark" }) {
   const [state, formAction, pending] = useActionState(joinEarlyAccess, initial);
+  const [phoneHint, setPhoneHint] = useState(false);
+  // The landing page shows this form twice (top and bottom), so the new
+  // field's ids are unique per form: its visible label then always focuses
+  // its own box.
+  const mobileId = `early-access-mobile-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const mobileHintId = `${mobileId}-hint`;
 
   // Report the conversion once it has actually succeeded, not on click. Meta
   // optimises campaigns against this event, so firing it on submit would train
@@ -109,17 +122,40 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
         />
       </div>
 
+      <label htmlFor="early-access-email" className="sr-only">
+        Email address
+      </label>
+      <input
+        id="early-access-email"
+        name="email"
+        type="email"
+        required
+        autoComplete="email"
+        placeholder="you@youragency.com.au"
+        className={`w-full min-w-0 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${field}`}
+      />
+
+      <label
+        htmlFor={mobileId}
+        className={`mb-1.5 mt-3 block px-1 text-left text-sm font-medium ${dark ? "text-white/80" : "text-rc-muted"}`}
+      >
+        Mobile (optional): for a quick call to get you set up
+      </label>
       <div className="flex flex-col gap-2.5 sm:flex-row">
-        <label htmlFor="early-access-email" className="sr-only">
-          Email address
-        </label>
         <input
-          id="early-access-email"
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          placeholder="you@youragency.com.au"
+          id={mobileId}
+          name="mobile"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          maxLength={30}
+          placeholder="04xx xxx xxx"
+          aria-describedby={phoneHint ? mobileHintId : undefined}
+          onBlur={(e) => {
+            const v = e.currentTarget.value.trim();
+            setPhoneHint(v !== "" && !looksAustralianPhone(v));
+          }}
+          onChange={() => phoneHint && setPhoneHint(false)}
           className={`min-w-0 flex-1 rounded-full border px-5 py-3.5 text-base outline-none transition focus:ring-2 ${field}`}
         />
         <button
@@ -131,6 +167,12 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
           {pending ? "Adding you…" : "Get early access"}
         </button>
       </div>
+
+      {phoneHint && (
+        <p id={mobileHintId} className={`mt-2 px-1 text-left text-sm ${dark ? "text-white/70" : "text-rc-muted"}`}>
+          That doesn&rsquo;t look like an Australian number. Check it, or leave it blank.
+        </p>
+      )}
 
       {state.error && (
         <p role="alert" className={`mt-2.5 text-sm font-medium ${dark ? "text-rc-amber" : "text-rc-red"}`}>

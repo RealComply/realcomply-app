@@ -133,7 +133,7 @@ export default async function AdminPage() {
       supabase
         .from("early_access")
         .select(
-          "id, email, first_name, agency_name, created_at, invited_at, invited_token, declined_at, declined_note, unsubscribed_at, welcome_sent_at",
+          "id, email, first_name, agency_name, phone, created_at, invited_at, invited_token, declined_at, declined_note, unsubscribed_at, welcome_sent_at",
         )
         .order("created_at", { ascending: false }),
     ]);
@@ -249,6 +249,7 @@ export default async function AdminPage() {
         email: String(row.email),
         firstName: row.first_name ?? null,
         agencyName: row.agency_name ?? null,
+        phone: row.phone ?? null,
         registered: sydneyShort(String(row.created_at), true),
         invitedAt: row.invited_at ?? null,
         invitedLabel: row.invited_at ? sydneyShort(row.invited_at, false) : null,
