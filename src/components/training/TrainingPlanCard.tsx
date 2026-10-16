@@ -1,18 +1,25 @@
 "use client";
 
 import { useViewerAccess } from "@/components/ViewerAccess";
-import { useActionState, useEffect, useRef, useState } from "react";
-import { CheckCircle2, Trash2 } from "lucide-react";
+import { useActionState, useEffect, useRef, useState, useTransition, type ChangeEvent } from "react";
+import Link from "next/link";
+import { CheckCircle2, Paperclip, Trash2 } from "lucide-react";
 import {
   addTrainingPlanItem,
+  attachPlanItemDocument,
   completeTrainingPlanItem,
   createTrainingPlan,
   deleteTrainingPlanItem,
+  removePlanItemDocument,
   reopenTrainingPlan,
   saveTrainingPlanConsultation,
   signTrainingPlan,
   type ActionState,
 } from "@/lib/actions/training-plans";
+import { planItemDocument } from "@/lib/cpd-one-place";
+import { useFileDrop } from "@/lib/use-file-drop";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { buildPlanItemDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import type { CpdRecord, Profile, TrainingPlan, TrainingPlanItem } from "@/lib/types";
 
 const initial: ActionState = { error: null };
@@ -31,6 +38,8 @@ export function TrainingPlanCard({
   items,
   cpdRecords,
   cpdYearLabel,
+  recordsById = {},
+  urlByPath = {},
 }: {
   subject: Profile;
   viewerProfile: Profile;
@@ -38,6 +47,10 @@ export function TrainingPlanCard({
   items: TrainingPlanItem[];
   cpdRecords: CpdRecord[];
   cpdYearLabel: string;
+  /** The CPD records plan items are linked to, for their certificates (15 Oct 2026). */
+  recordsById?: Record<string, CpdRecord>;
+  /** Links to certificates and plan documents, made on the server. */
+  urlByPath?: Record<string, string>;
 }) {
   const isSelf = viewerProfile.id === subject.id;
   const isLicensee = Boolean(viewerProfile.is_licensee_in_charge);
@@ -127,7 +140,15 @@ export function TrainingPlanCard({
                 ) : (
                   <ul className="mt-2 space-y-2">
                     {items.map((item) => (
-                      <PlanItemRow key={item.id} item={item} canEdit={canEdit} locked={approved} />
+                      <PlanItemRow
+                        key={item.id}
+                        item={item}
+                        canEdit={canEdit}
+                        locked={approved}
+                        profileId={subject.id}
+                        recordsById={recordsById}
+                        urlByPath={urlByPath}
+                      />
                     ))}
                   </ul>
                 )}
@@ -233,7 +254,21 @@ function Consultation({ plan, canEdit }: { plan: TrainingPlan; canEdit: boolean 
   );
 }
 
-function PlanItemRow({ item, canEdit, locked }: { item: TrainingPlanItem; canEdit: boolean; locked: boolean }) {
+function PlanItemRow({
+  item,
+  canEdit,
+  locked,
+  profileId,
+  recordsById,
+  urlByPath,
+}: {
+  item: TrainingPlanItem;
+  canEdit: boolean;
+  locked: boolean;
+  profileId: string;
+  recordsById: Record<string, CpdRecord>;
+  urlByPath: Record<string, string>;
+}) {
   // Removing a plan item is a delete, which is the licensee's only (Adam, 9 Oct 2026).
   const { actsAsLicensee } = useViewerAccess();
   const [state, action, pending] = useActionState(completeTrainingPlanItem.bind(null, item.id), initial);
@@ -296,12 +331,155 @@ function PlanItemRow({ item, canEdit, locked }: { item: TrainingPlanItem; canEdi
             Save
           </button>
           <span className="text-[11px] text-rc-faint">
-            {item.counts_toward_cpd ? "Also logs it to the CPD register." : "Office training — won't add CPD hours."}
+            {item.counts_toward_cpd
+              ? "Also logs it to the CPD register, where its certificate goes."
+              : "Office training. It won't add CPD hours."}
           </span>
         </form>
       )}
       {state.error && <p className="mt-1 text-xs text-rc-amber-deep">{state.error}</p>}
+      <ItemDocument item={item} done={done} canEdit={canEdit} profileId={profileId} recordsById={recordsById} urlByPath={urlByPath} />
     </li>
+  );
+}
+
+/**
+ * The item's document (Adam, 15 Oct 2026: CPD certificates live in one place
+ * only, the CPD record). Linked to a CPD record: that record's certificate,
+ * or where to add it, and never a second upload here. No CPD record (office
+ * training that doesn't count for CPD): the item takes its own document once
+ * it's done.
+ */
+function ItemDocument({
+  item,
+  done,
+  canEdit,
+  profileId,
+  recordsById,
+  urlByPath,
+}: {
+  item: TrainingPlanItem;
+  done: boolean;
+  canEdit: boolean;
+  profileId: string;
+  recordsById: Record<string, CpdRecord>;
+  urlByPath: Record<string, string>;
+}) {
+  const doc = planItemDocument(item, recordsById);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [removing, startRemoving] = useTransition();
+  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: busy || !canEdit });
+
+  function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void upload(file);
+  }
+
+  async function upload(file: File) {
+    setError(null);
+    setBusy(true);
+    try {
+      const supabase = createBrowserClient();
+      const path = buildPlanItemDocPath(item.agency_id, profileId, file.name);
+      const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
+      if (uploadError) {
+        setError(uploadError);
+        return;
+      }
+      const result = await attachPlanItemDocument(item.id, path, stored.name);
+      if (result.error) setError(result.error);
+    } catch {
+      setError("Couldn't save that document. Reload the page to see whether it was added, then try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const fileLink = (path: string, fileName: string | null) => {
+    const url = urlByPath[path];
+    const label = fileName ?? "document";
+    return url ? (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-rc-green-deep hover:underline">
+        <Paperclip size={11} aria-hidden="true" /> {label}
+      </a>
+    ) : (
+      <span className="inline-flex items-center gap-1 text-rc-muted">
+        <Paperclip size={11} aria-hidden="true" /> {label}
+      </span>
+    );
+  };
+
+  if (doc.kind === "cpd_record") {
+    return (
+      <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-rc-muted">
+        {doc.path ? (
+          <>
+            <span>CPD certificate:</span>
+            {fileLink(doc.path, doc.fileName)}
+            <span className="text-rc-faint">(on the CPD record)</span>
+          </>
+        ) : (
+          <span>
+            Logged to CPD. Its certificate goes on the{" "}
+            <Link href="/dashboard/cpd" className="font-medium text-rc-green-deep hover:underline">
+              CPD record
+            </Link>
+            .
+          </span>
+        )}
+      </p>
+    );
+  }
+
+  if (!done) return null;
+
+  return (
+    <div className="mt-1.5 text-[11px]">
+      {doc.path ? (
+        <p className="flex flex-wrap items-center gap-x-2 text-rc-muted">
+          <span>Document:</span>
+          {fileLink(doc.path, doc.fileName)}
+          {canEdit && (
+            <button
+              type="button"
+              disabled={removing}
+              onClick={() =>
+                startRemoving(async () => {
+                  const r = await removePlanItemDocument(item.id);
+                  if (r.error) setError(r.error);
+                })
+              }
+              className="text-rc-faint transition hover:text-rc-amber-deep disabled:opacity-60"
+            >
+              {removing ? "Removing…" : "Remove"}
+            </button>
+          )}
+        </p>
+      ) : canEdit ? (
+        <label
+          {...drop.dragProps}
+          className={`inline-flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 font-semibold transition ${
+            drop.isOver
+              ? "bg-rc-green-soft text-rc-green-deep outline-dashed outline-1 outline-rc-green-deep"
+              : "text-rc-green-deep hover:underline"
+          } ${busy ? "opacity-60" : ""}`}
+          title="Drag a file here, or click. Optional."
+        >
+          <Paperclip size={11} aria-hidden="true" />
+          {busy ? "Uploading…" : "+ Attach a record of this training (optional)"}
+          <input type="file" onChange={handleFile} disabled={busy} className="hidden" />
+        </label>
+      ) : (
+        <span className="text-rc-faint">No document attached.</span>
+      )}
+      {(error ?? drop.dropError) && (
+        <p role="alert" className="mt-0.5 font-medium text-rc-amber-deep">
+          {error ?? drop.dropError}
+        </p>
+      )}
+    </div>
   );
 }
 

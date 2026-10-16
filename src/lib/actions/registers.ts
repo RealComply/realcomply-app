@@ -9,6 +9,7 @@ import { cpdFolder, isInFolder, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { firstName, possessive, sameName } from "@/lib/licence-name";
 import { pendingReadProblem, signPendingRead, verifyPendingRead } from "@/lib/pending-read";
 import { formatAuDate } from "@/lib/format-date";
+import { fillFromCertificate } from "@/lib/cpd-one-place";
 import type { BreachCategory, BreachSeverity, GiftDirection } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -134,6 +135,131 @@ function cpdSummary(row: CpdRowRead): string {
     .join(" · ");
 }
 
+/** Reads a CPD certificate into the row it makes. Never guesses (0051). */
+async function readCpdCertificate(path: string, fileName: string): Promise<{ row: CpdRowRead; nameOnDocument: string }> {
+  const { extractCpdCertificate } = await import("@/lib/actions/extraction");
+  const { fields } = await extractCpdCertificate(path, fileName);
+  const f = fields ?? {};
+
+  // Units and hours are stored in the same column (the convention set in
+  // 0004_registers.sql), with the category telling them apart.
+  const isUnit = typeof f.units === "number" && f.units > 0;
+  const hours = isUnit ? f.units : typeof f.hours === "number" && f.hours > 0 ? f.hours : null;
+
+  // Never guess (Oct 2026). A certificate that doesn't state its hours used to
+  // be saved as 0 hours, and one with no readable date was dated today. Both
+  // now stay empty (0051 made the columns nullable) and the CPD card asks for
+  // just that field. An empty field counts as nothing toward the year.
+  const completedDate = validIsoDate(f.completedDate);
+
+  return {
+    row: {
+      activity_name: f.activityName?.trim() || fileName.replace(/\.[^.]+$/, ""),
+      category: isUnit ? "assistant_unit" : "general",
+      hours: hours ?? null,
+      completed_date: completedDate,
+      provider: f.provider?.trim() || null,
+      notes: f.deliveryMode ? `Delivery: ${f.deliveryMode}` : null,
+    },
+    nameOnDocument: typeof f.participantName === "string" ? f.participantName.replace(/\s+/g, " ").trim() : "",
+  };
+}
+
+type Supabase = Awaited<ReturnType<typeof requireAuthContext>>["supabase"];
+
+/**
+ * The name question, when the name on the certificate isn't the person's.
+ * The read is held, signed, until it is answered; nothing is saved before.
+ */
+async function nameQuestionFor(
+  supabase: Supabase,
+  p: { profileId: string; askedBy: string; path: string; fileName: string; nameOnDocument: string; row: CpdRowRead; recordId?: string },
+): Promise<CpdNameQuestion | null> {
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!p.nameOnDocument || !secret) return null;
+  const { data: subjectRow } = await supabase.from("profiles").select("full_name, email").eq("id", p.profileId).maybeSingle();
+  const subject = subjectRow as { full_name: string | null; email: string } | null;
+  const personName = subject?.full_name ?? subject?.email ?? "";
+  if (!subject || !subject.full_name || sameName(p.nameOnDocument, subject.full_name)) return null;
+  const token = signPendingRead<CpdRowRead>(
+    {
+      v: 1,
+      kind: "cpd",
+      profileId: p.profileId,
+      ...(p.recordId ? { recordId: p.recordId } : {}),
+      askedBy: p.askedBy,
+      path: p.path,
+      fileName: p.fileName,
+      fresh: true,
+      nameOnDocument: p.nameOnDocument,
+      read: p.row,
+      issuedAt: Date.now(),
+    },
+    secret,
+  );
+  return { token, nameOnDocument: p.nameOnDocument, personName, firstName: firstName(personName), summary: cpdSummary(p.row) };
+}
+
+/** A CPD row that may take a certificate: the person's own or, for the licensee, anyone's; none on it yet. */
+async function rowForCertificate(supabase: Supabase, actor: { id: string; is_licensee_in_charge: boolean | null }, recordId: string) {
+  const { data } = await supabase
+    .from("cpd_records")
+    .select("id, profile_id, agency_id, evidence_path, hours, completed_date, provider")
+    .eq("id", recordId)
+    .maybeSingle();
+  const row = data as {
+    id: string; profile_id: string; agency_id: string; evidence_path: string | null;
+    hours: number | null; completed_date: string | null; provider: string | null;
+  } | null;
+  if (!row) return { problem: "Couldn't find that CPD record." } as const;
+  if (row.profile_id !== actor.id && !actor.is_licensee_in_charge) {
+    return { problem: "Only the licensee in charge can attach a certificate for someone else." } as const;
+  }
+  if (row.evidence_path) return { problem: "This CPD record already has its certificate." } as const;
+  return { row } as const;
+}
+
+/**
+ * A certificate for a CPD row that already exists: one from a training
+ * session, or from a training plan (Adam, 15 Oct 2026: CPD certificates live
+ * in one place only, the CPD record). It goes on that row, not a new one. It
+ * is read the same way, the name on it is checked the same way, and it fills
+ * only what the row is missing: what the session or the plan recorded stays.
+ */
+export async function attachCpdCertificate(
+  recordId: string,
+  path: string,
+  fileName: string,
+): Promise<{ error: string | null; question?: CpdNameQuestion }> {
+  const { supabase, profile } = await requireAuthContext();
+  const found = await rowForCertificate(supabase, profile, recordId);
+  if ("problem" in found) return { error: found.problem ?? "Couldn't attach that certificate." };
+  const { row } = found;
+  // Only a file in that person's CPD folder (see addCpdFromCertificate).
+  if (!isInFolder(path, cpdFolder(row.agency_id, row.profile_id))) {
+    return { error: "Couldn't save that certificate — try again." };
+  }
+
+  const { row: read, nameOnDocument } = await readCpdCertificate(path, fileName);
+  const question = await nameQuestionFor(supabase, {
+    profileId: row.profile_id, askedBy: profile.id, path, fileName, nameOnDocument, row: read, recordId,
+  });
+  if (question) return { error: null, question };
+
+  const { data: saved, error } = await supabase
+    .from("cpd_records")
+    .update({ evidence_path: path, evidence_file_name: fileName, ...fillFromCertificate(row, read) })
+    .eq("id", recordId)
+    .is("evidence_path", null)
+    .select("id");
+  if (error) return { error: "Couldn't save that certificate — try again." };
+  if ((saved ?? []).length === 0) return { error: "This CPD record already has its certificate." };
+
+  revalidatePath("/dashboard/cpd");
+  revalidatePath("/dashboard/training");
+  return { error: null };
+}
+
 export async function addCpdFromCertificate(
   profileId: string,
   path: string,
@@ -151,60 +277,14 @@ export async function addCpdFromCertificate(
     return { error: "Couldn't save that certificate — try again." };
   }
 
-  const { extractCpdCertificate } = await import("@/lib/actions/extraction");
-  const { fields } = await extractCpdCertificate(path, fileName);
-  const f = fields ?? {};
-
-  // Units and hours are stored in the same column (the convention set in
-  // 0004_registers.sql), with the category telling them apart.
-  const isUnit = typeof f.units === "number" && f.units > 0;
-  const hours = isUnit ? f.units : typeof f.hours === "number" && f.hours > 0 ? f.hours : null;
-
-  // Never guess (Oct 2026). A certificate that doesn't state its hours used to
-  // be saved as 0 hours, and one with no readable date was dated today. Both
-  // now stay empty (0051 made the columns nullable) and the CPD card asks for
-  // just that field. An empty field counts as nothing toward the year.
-  const completedDate = validIsoDate(f.completedDate);
-
-  const row: CpdRowRead = {
-    activity_name: f.activityName?.trim() || fileName.replace(/\.[^.]+$/, ""),
-    category: isUnit ? "assistant_unit" : "general",
-    hours: hours ?? null,
-    completed_date: completedDate,
-    provider: f.provider?.trim() || null,
-    notes: f.deliveryMode ? `Delivery: ${f.deliveryMode}` : null,
-  };
+  const { row, nameOnDocument } = await readCpdCertificate(path, fileName);
 
   // The name on the certificate, against the person (Adam, 15 Oct 2026). Any
   // difference asks before anything is saved, the same as a licence.
-  const nameOnDocument = typeof f.participantName === "string" ? f.participantName.replace(/\s+/g, " ").trim() : "";
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (nameOnDocument && secret) {
-    const { data: subjectRow } = await supabase.from("profiles").select("full_name, email").eq("id", profileId).maybeSingle();
-    const subject = subjectRow as { full_name: string | null; email: string } | null;
-    const personName = subject?.full_name ?? subject?.email ?? "";
-    if (subject && subject.full_name && !sameName(nameOnDocument, subject.full_name)) {
-      const token = signPendingRead<CpdRowRead>(
-        {
-          v: 1,
-          kind: "cpd",
-          profileId,
-          askedBy: profile.id,
-          path,
-          fileName,
-          fresh: true,
-          nameOnDocument,
-          read: row,
-          issuedAt: Date.now(),
-        },
-        secret,
-      );
-      return {
-        error: null,
-        question: { token, nameOnDocument, personName, firstName: firstName(personName), summary: cpdSummary(row) },
-      };
-    }
-  }
+  const question = await nameQuestionFor(supabase, {
+    profileId, askedBy: profile.id, path, fileName, nameOnDocument, row,
+  });
+  if (question) return { error: null, question };
 
   const { error } = await supabase.from("cpd_records").insert({
     agency_id: profile.agency_id,
@@ -246,6 +326,30 @@ export async function confirmCpdCertificateName(token: string): Promise<{ error:
   const held = await heldCpdRead(token);
   if ("problem" in held) return { error: held.problem ?? "Couldn't save that." };
   const { supabase, profile, pending } = held;
+  if (pending.recordId) {
+    // A certificate for a row that already exists (a session's or a plan's).
+    const found = await rowForCertificate(supabase, profile, pending.recordId);
+    if ("problem" in found) return { error: found.problem ?? "Couldn't save that certificate." };
+    if (found.row.profile_id !== pending.profileId) return { error: pendingReadProblem("invalid", "certificate") };
+    const { data: saved, error } = await supabase
+      .from("cpd_records")
+      .update({
+        evidence_path: pending.path,
+        evidence_file_name: pending.fileName,
+        ...fillFromCertificate(found.row, pending.read),
+        name_on_certificate: pending.nameOnDocument,
+        name_confirmed_by: profile.id,
+        name_confirmed_at: new Date().toISOString(),
+      })
+      .eq("id", pending.recordId)
+      .is("evidence_path", null)
+      .select("id");
+    if (error) return { error: "Couldn't save that certificate. Try again." };
+    if ((saved ?? []).length === 0) return { error: "This CPD record already has its certificate." };
+    revalidatePath("/dashboard/cpd");
+    revalidatePath("/dashboard/training");
+    return { error: null };
+  }
   const { error } = await supabase.from("cpd_records").insert({
     agency_id: profile.agency_id,
     profile_id: pending.profileId,
