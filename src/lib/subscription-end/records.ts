@@ -183,6 +183,8 @@ const TABLES: Array<{ table: string; file: string; order?: string }> = [
   { table: "licence_history", file: "Licence history", order: "changed_at" },
   // Every change to an insurance policy, last year's certificate included (0076).
   { table: "insurance_history", file: "Insurance history", order: "changed_at" },
+  // Other insurance the office added, removed ones included (0078).
+  { table: "insurance_policies", file: "Other insurance policies", order: "created_at" },
   { table: "assistant_agents", file: "Assistants and their agents", order: "created_at" },
   { table: "pm_properties", file: "Property management - properties", order: "created_at" },
   { table: "pm_tenancies", file: "Property management - tenancies", order: "created_at" },
@@ -195,7 +197,7 @@ const PERSON_COLUMNS = new Set([
   "created_by", "completed_by", "profile_id", "agent_id", "uploaded_by", "signer_id", "confirmed_by",
   "moved_by", "from_agent", "to_agent", "changed_by", "manager_id", "recorded_by", "response_given_by",
   "assistant_id", "review_requested_by", "attributes_confirmed_by", "invited_by", "archived_by",
-  "voided_by", "deleted_by",
+  "voided_by", "deleted_by", "removed_by",
 ]);
 
 async function registersAsCsv(service: SupabaseClient, agencyId: string): Promise<Manifest["csv"]> {

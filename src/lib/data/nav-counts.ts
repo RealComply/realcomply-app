@@ -125,11 +125,15 @@ export type NavCounts = {
  *
  * People who have left (archived) never count: their licence is no longer
  * the agency's to watch, and the reminder job skips them too.
+ *
+ * Other insurance the office added (0078) counts for the licensee like the
+ * three policies: it is on the same register, with the same status pill.
  */
 export function registerExpiryDates(
   staff: Pick<Profile, "id" | "licence_expiry" | "archived_at">[],
   agency: Pick<Agency, "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry"> | null,
   viewer: { id: string; licenseeView: boolean },
+  otherInsuranceExpiries: (string | null)[] = [],
 ): (string | null)[] {
   const dates = staff
     .filter((s) => !s.archived_at && (viewer.licenseeView || s.id === viewer.id))
@@ -141,6 +145,7 @@ export function registerExpiryDates(
     agency.pi_expiry,
     agency.cyber_expiry,
     agency.icare_expiry,
+    ...otherInsuranceExpiries,
   ];
 }
 
@@ -205,6 +210,7 @@ export const navCountsFor = cache(async function navCountsFor(
     { data: trustDocRows },
     { data: trustAuditRows },
     people,
+    { data: otherInsuranceRows },
   ] = await Promise.all([
     propertyIds.length > 0
       ? supabase.from("property_items").select("*").in("property_id", propertyIds)
@@ -242,6 +248,10 @@ export const navCountsFor = cache(async function navCountsFor(
     // reads only their own profile, which would leave this empty and turn
     // every settled file's "Send to licensee" into "Licensee signature".
     agencyPeople(supabase),
+    // Other insurance still on the register (0078). The licensee's only: the
+    // database returns nothing to anyone else. Before 0078 runs, an error and
+    // no rows, so nothing extra counts.
+    supabase.from("insurance_policies").select("expiry").is("removed_at", null),
   ]);
 
   const itemsByProperty = new Map<string, Map<string, PropertyItem>>();
@@ -289,8 +299,9 @@ export const navCountsFor = cache(async function navCountsFor(
 
   // Gifts, breaches and complaints need no such filter: the database returns
   // an agent only the ones they logged (0058), the same rows their page shows.
-  const allExpiries = registerExpiryDates(staff, agency, { id: profile.id, licenseeView }).map((d) =>
-    expiryStatus(d),
+  const otherInsuranceExpiries = ((otherInsuranceRows ?? []) as { expiry: string | null }[]).map((r) => r.expiry);
+  const allExpiries = registerExpiryDates(staff, agency, { id: profile.id, licenseeView }, otherInsuranceExpiries).map(
+    (d) => expiryStatus(d),
   );
 
   const breachRowsTyped = (breachRows ?? []) as Pick<Breach, "status" | "notifiable" | "notified_date">[];
