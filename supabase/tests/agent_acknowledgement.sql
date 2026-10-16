@@ -231,7 +231,8 @@ begin
     raise exception 'FAIL 11: the activity record is wrong: %', rec -> 'agent_acknowledgements';
   end if;
 
-  raise notice 'Agent acknowledgement: all checks passed';
 end $$;
+
+select 'Agent acknowledgement: all checks passed' as result;
 
 rollback;
