@@ -43,3 +43,13 @@ test("someone who has left never counts, even for the licensee", () => {
   assert.ok(!dates.includes("2026-01-01"));
   assert.equal(dates.length, 3);
 });
+
+test("other insurance the office added counts for the licensee, like the three policies", () => {
+  const dates = registerExpiryDates(staff, agency, { id: "lic", licenseeView: true }, ["2026-10-25", null]);
+  assert.deepEqual(dates.slice(-2), ["2026-10-25", null]);
+  assert.equal(dates.length, 9);
+});
+
+test("an agent's dot never counts the office's other insurance", () => {
+  assert.deepEqual(registerExpiryDates(staff, agency, { id: "ag1", licenseeView: false }, ["2026-10-25"]), ["2026-10-05"]);
+});

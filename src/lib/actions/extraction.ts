@@ -947,11 +947,22 @@ const INSURANCE_TOOL: Anthropic.Tool = {
         type: "array",
         items: {
           type: "string",
-          enum: ["professional_indemnity", "cyber", "workers_compensation", "public_liability", "other"],
+          enum: [
+            "professional_indemnity",
+            "cyber",
+            "workers_compensation",
+            "public_liability",
+            "office_contents",
+            "motor_vehicle",
+            "other",
+          ],
         },
         description:
           "Every kind of cover the document says the policy provides. 'workers_compensation' includes icare " +
-          "workers insurance. Leave empty if the document doesn't say.",
+          "workers insurance. 'office_contents' is contents, property or a business package covering the " +
+          "office's own premises and things (list 'public_liability' too if the package includes it). " +
+          "'motor_vehicle' is cover for a vehicle, comprehensive, third party or CTP. Leave empty if the " +
+          "document doesn't say.",
       },
       insurer: {
         type: "string",

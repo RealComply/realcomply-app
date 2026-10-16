@@ -16,7 +16,8 @@ import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { ReminderInfo } from "@/components/registers/ReminderLine";
 import type {
-  Agency, Breach, Complaint, CpdRecord, Gift, InsuranceHistoryRow, InsurancePolicyType, LicenceReminder, Profile, Property,
+  Agency, Breach, Complaint, CpdRecord, Gift, InsuranceHistoryRow, InsurancePolicy, InsurancePolicyType, LicenceReminder,
+  Profile, Property,
 } from "@/lib/types";
 
 const TAB_KEYS = new Set(["licence", "insurance", "gifts", "complaints", "breaches"]);
@@ -173,16 +174,32 @@ export default async function RegistersPage({
   // in the cards: "expired" and "expires" depend on today's date, and a
   // finished string can't disagree between server and browser.
   const historyByPolicy: Record<InsurancePolicyType, HistoryEntry[]> = { pi: [], cyber: [], icare: [] };
+  // Other insurance the office added (0078), still on the register.
+  let otherPolicies: InsurancePolicy[] = [];
+  let otherInsuranceReady = false;
+  const otherHistory: Record<string, HistoryEntry[]> = {};
   const urlByPath: Record<string, string> = {};
   if (licenseeView && agency) {
-    const { data: historyRows, error: historyError } = await supabase
-      .from("insurance_history")
-      .select("*")
-      .eq("agency_id", agency.id)
-      .order("changed_at", { ascending: false })
-      .limit(200);
+    const [{ data: historyRows, error: historyError }, { data: policyRows, error: policyError }] = await Promise.all([
+      supabase
+        .from("insurance_history")
+        .select("*")
+        .eq("agency_id", agency.id)
+        .order("changed_at", { ascending: false })
+        .limit(500),
+      supabase
+        .from("insurance_policies")
+        .select("*")
+        .eq("agency_id", agency.id)
+        .is("removed_at", null)
+        .order("created_at", { ascending: true }),
+    ]);
     // Before 0076 has run there is no table: the cards show no history.
     if (historyError) console.error("insurance_history not read:", historyError.message);
+    // Before 0078 has run there is no table: no other insurance, and no link to add any.
+    if (policyError) console.error("insurance_policies not read:", policyError.message);
+    otherInsuranceReady = !policyError;
+    otherPolicies = (policyRows ?? []) as InsurancePolicy[];
     const rows = (historyRows ?? []) as InsuranceHistoryRow[];
     const today = new Date();
     for (const policy of ["pi", "cyber", "icare"] as const) {
@@ -190,9 +207,16 @@ export default async function RegistersPage({
         rows.filter((r) => r.policy_type === policy), nameOf, formatAuDate, formatAuTimestamp, today,
       );
     }
+    for (const p of otherPolicies) {
+      otherHistory[p.id] = describeHistory(
+        rows.filter((r) => r.policy_id === p.id), nameOf, formatAuDate, formatAuTimestamp, today,
+      );
+    }
     const paths = [
       agency.pi_document_path, agency.cyber_document_path, agency.icare_document_path,
+      ...otherPolicies.map((p) => p.document_path),
       ...Object.values(historyByPolicy).flat().map((e) => e.earlierCertificate?.path),
+      ...Object.values(otherHistory).flat().map((e) => e.earlierCertificate?.path),
     ].filter((p): p is string => Boolean(p));
     if (paths.length > 0) {
       const { data: signed } = await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrls([...new Set(paths)], 3600);
@@ -201,7 +225,9 @@ export default async function RegistersPage({
   }
 
   const insuranceStatuses = agency
-    ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry].map((d) => expiryStatus(d))
+    ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry, ...otherPolicies.map((p) => p.expiry)].map((d) =>
+        expiryStatus(d),
+      )
     : [];
   const insuranceBadge = {
     count: insuranceStatuses.filter((st) => st === "expired" || st === "urgent").length,
@@ -273,7 +299,15 @@ export default async function RegistersPage({
               }
               insurance={
                 licenseeView ? (
-                  <InsurancePanel agency={agency} historyByPolicy={historyByPolicy} urlByPath={urlByPath} nameOf={nameOf} />
+                  <InsurancePanel
+                    agency={agency}
+                    historyByPolicy={historyByPolicy}
+                    otherPolicies={otherPolicies}
+                    otherHistory={otherHistory}
+                    canAddOther={otherInsuranceReady}
+                    urlByPath={urlByPath}
+                    nameOf={nameOf}
+                  />
                 ) : null
               }
               gifts={
