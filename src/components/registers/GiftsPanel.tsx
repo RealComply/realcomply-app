@@ -240,10 +240,10 @@ function Tile({
   const color = bad ? "text-red-700" : warn ? "text-rc-amber-deep" : ok ? "text-rc-green-deep" : "text-rc-ink";
   return (
     <div
-      className={`rounded-card border border-rc-border bg-white p-4 shadow-card ${onClick ? "cursor-pointer hover:shadow-card-lg" : ""}`}
+      className={`rounded-card border border-rc-border bg-white px-3.5 py-2.5 shadow-card ${onClick ? "cursor-pointer hover:shadow-card-lg" : ""}`}
       onClick={onClick}
     >
-      <div className={`text-xl font-bold tracking-tight ${color}`}>{n}</div>
+      <div className={`text-lg font-bold tracking-tight ${color}`}>{n}</div>
       <div className="mt-0.5 text-[11px] font-medium text-rc-muted">{l}</div>
     </div>
   );
