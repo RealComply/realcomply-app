@@ -16,6 +16,7 @@ import {
   EVIDENCE_BUCKET,
 } from "@/lib/storage/evidence";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
+import { SEEDED_AT_CREATION } from "@/lib/rules/nsw-sales";
 import type { ActionState } from "@/lib/actions/auth";
 
 // Documents collected at setup time (mandatory — see createProperty below),
@@ -231,6 +232,26 @@ export async function createProperty(
 
   if (error) {
     return { error: error.message };
+  }
+
+  // NEW LISTINGS ONLY (Power of Attorney, 15 Oct 2026). A listing created
+  // from now on is given its Power of Attorney question, unanswered. The
+  // question shows only where this card exists (showIf in
+  // lib/rules/nsw-sales.ts), so listings created before this shipped never
+  // gain a new required card and no stage reopens. If this insert fails, the
+  // listing simply goes without the question, like an older one: never a
+  // reason to fail the listing.
+  {
+    const { error: seedError } = await supabase.from("property_items").insert(
+      SEEDED_AT_CREATION.map((itemKey) => ({
+        agency_id: profile.agency_id,
+        property_id: property.id,
+        item_key: itemKey,
+        status: "open",
+        data: {},
+      })),
+    );
+    if (seedError) console.error("new listing questions not added:", seedError.message);
   }
 
   // Relocate each staged upload to its permanent, property-scoped path and

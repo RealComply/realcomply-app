@@ -6,7 +6,11 @@ import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
 import { attendanceChanges } from "@/lib/attendance-changes";
 import { cpdFolder, isInFolder, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
-import type { BreachCategory, BreachSeverity, GiftDirection, InsurancePolicyType } from "@/lib/types";
+import { firstName, possessive, sameName } from "@/lib/licence-name";
+import { pendingReadProblem, signPendingRead, verifyPendingRead } from "@/lib/pending-read";
+import { formatAuDate } from "@/lib/format-date";
+import { fillFromCertificate } from "@/lib/cpd-one-place";
+import type { BreachCategory, BreachSeverity, GiftDirection } from "@/lib/types";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -20,46 +24,8 @@ function str(formData: FormData, key: string): string | null {
 // Licence and certificate records (people's and the corporation licence) live
 // in actions/licences.ts, alongside the document read and their history.
 
-// ── Insurance register (agency-level policies — PI insurance is a condition
-// of every licence in the agency under s22 PSA Act; cyber and iCare workers
-// insurance aren't PSA Act requirements but sit alongside it as the same
-// kind of agency-level "policy on file, tracked to expiry" record, so they
-// share one action and one card component rather than three near-identical
-// copies. All three are the licensee's to maintain, not any one agent's.) ──
-const POLICY_COLUMNS: Record<InsurancePolicyType, { insurer: string; policyNumber: string; expiry: string }> = {
-  pi: { insurer: "pi_insurer", policyNumber: "pi_policy_number", expiry: "pi_expiry" },
-  cyber: { insurer: "cyber_insurer", policyNumber: "cyber_policy_number", expiry: "cyber_expiry" },
-  icare: { insurer: "icare_insurer", policyNumber: "icare_policy_number", expiry: "icare_expiry" },
-};
-
-export async function updateInsurancePolicy(
-  policyType: InsurancePolicyType,
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const { supabase, profile, access } = await requireAuthContext();
-
-  // access, not the raw flag: the agent on their own plan is the licensee
-  // for their account, and 0058 lets them write the agency row (10 Oct 2026).
-  if (!access.actsAsLicensee) {
-    return { error: "Only the licensee in charge can update the agency's insurance details." };
-  }
-
-  const columns = POLICY_COLUMNS[policyType];
-  const insurer = str(formData, "insurer");
-  const policyNumber = str(formData, "policyNumber");
-  const expiry = str(formData, "expiry");
-
-  const { error } = await supabase
-    .from("agencies")
-    .update({ [columns.insurer]: insurer, [columns.policyNumber]: policyNumber, [columns.expiry]: expiry })
-    .eq("id", profile.agency_id);
-
-  if (error) return { error: "Couldn't save insurance details — try again." };
-
-  revalidatePath("/dashboard/registers");
-  return ok;
-}
+// The Insurance register's policies (details, certificates and their
+// history) live in actions/insurance.ts (0076).
 
 // ── CPD records — manual entry (an external course, a Fair Trading forum,
 // AUSTRAC AML training) alongside whatever recordAttendance auto-logs from
@@ -133,23 +99,44 @@ export async function addCpdRecord(profileId: string, _prev: ActionState, formDa
  * the file with the filename as its title. An unreadable certificate is still
  * evidence; refusing to record it would lose the document to save face.
  */
-export async function addCpdFromCertificate(
-  profileId: string,
-  path: string,
-  fileName: string,
-): Promise<{ error: string | null }> {
-  const { supabase, profile } = await requireAuthContext();
+/**
+ * The name question for a CPD certificate (Adam, 15 Oct 2026), the same as
+ * for a licence: "The name on this certificate is [name]. Is this
+ * [person]'s certificate?" with what was read, not saved yet.
+ */
+export type CpdNameQuestion = {
+  token: string;
+  nameOnDocument: string;
+  personName: string;
+  firstName: string;
+  /** "Contracts · Made-up Training · 2 hours · Completed 10 September 2026" */
+  summary: string;
+};
 
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can add CPD for someone else." };
-  }
-  // The browser says where it put the certificate; it must be that person's
-  // CPD folder, since the licensee's delete later removes whatever file the
-  // record names (review of these fixes, 10 Oct 2026).
-  if (!isInFolder(path, cpdFolder(profile.agency_id, profileId))) {
-    return { error: "Couldn't save that certificate — try again." };
-  }
+/** The row a certificate makes, as read. Held with the name question until it is answered. */
+type CpdRowRead = {
+  activity_name: string;
+  category: "assistant_unit" | "general";
+  hours: number | null;
+  completed_date: string | null;
+  provider: string | null;
+  notes: string | null;
+};
 
+function cpdSummary(row: CpdRowRead): string {
+  const unit = row.category === "assistant_unit";
+  return [
+    row.activity_name,
+    row.provider,
+    row.hours !== null ? `${row.hours} ${unit ? (row.hours === 1 ? "unit" : "units") : row.hours === 1 ? "hour" : "hours"}` : null,
+    row.completed_date ? `Completed ${formatAuDate(row.completed_date)}` : "Date not read",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** Reads a CPD certificate into the row it makes. Never guesses (0051). */
+async function readCpdCertificate(path: string, fileName: string): Promise<{ row: CpdRowRead; nameOnDocument: string }> {
   const { extractCpdCertificate } = await import("@/lib/actions/extraction");
   const { fields } = await extractCpdCertificate(path, fileName);
   const f = fields ?? {};
@@ -165,17 +152,146 @@ export async function addCpdFromCertificate(
   // just that field. An empty field counts as nothing toward the year.
   const completedDate = validIsoDate(f.completedDate);
 
+  return {
+    row: {
+      activity_name: f.activityName?.trim() || fileName.replace(/\.[^.]+$/, ""),
+      category: isUnit ? "assistant_unit" : "general",
+      hours: hours ?? null,
+      completed_date: completedDate,
+      provider: f.provider?.trim() || null,
+      notes: f.deliveryMode ? `Delivery: ${f.deliveryMode}` : null,
+    },
+    nameOnDocument: typeof f.participantName === "string" ? f.participantName.replace(/\s+/g, " ").trim() : "",
+  };
+}
+
+type Supabase = Awaited<ReturnType<typeof requireAuthContext>>["supabase"];
+
+/**
+ * The name question, when the name on the certificate isn't the person's.
+ * The read is held, signed, until it is answered; nothing is saved before.
+ */
+async function nameQuestionFor(
+  supabase: Supabase,
+  p: { profileId: string; askedBy: string; path: string; fileName: string; nameOnDocument: string; row: CpdRowRead; recordId?: string },
+): Promise<CpdNameQuestion | null> {
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!p.nameOnDocument || !secret) return null;
+  const { data: subjectRow } = await supabase.from("profiles").select("full_name, email").eq("id", p.profileId).maybeSingle();
+  const subject = subjectRow as { full_name: string | null; email: string } | null;
+  const personName = subject?.full_name ?? subject?.email ?? "";
+  if (!subject || !subject.full_name || sameName(p.nameOnDocument, subject.full_name)) return null;
+  const token = signPendingRead<CpdRowRead>(
+    {
+      v: 1,
+      kind: "cpd",
+      profileId: p.profileId,
+      ...(p.recordId ? { recordId: p.recordId } : {}),
+      askedBy: p.askedBy,
+      path: p.path,
+      fileName: p.fileName,
+      fresh: true,
+      nameOnDocument: p.nameOnDocument,
+      read: p.row,
+      issuedAt: Date.now(),
+    },
+    secret,
+  );
+  return { token, nameOnDocument: p.nameOnDocument, personName, firstName: firstName(personName), summary: cpdSummary(p.row) };
+}
+
+/** A CPD row that may take a certificate: the person's own or, for the licensee, anyone's; none on it yet. */
+async function rowForCertificate(supabase: Supabase, actor: { id: string; is_licensee_in_charge: boolean | null }, recordId: string) {
+  const { data } = await supabase
+    .from("cpd_records")
+    .select("id, profile_id, agency_id, evidence_path, hours, completed_date, provider")
+    .eq("id", recordId)
+    .maybeSingle();
+  const row = data as {
+    id: string; profile_id: string; agency_id: string; evidence_path: string | null;
+    hours: number | null; completed_date: string | null; provider: string | null;
+  } | null;
+  if (!row) return { problem: "Couldn't find that CPD record." } as const;
+  if (row.profile_id !== actor.id && !actor.is_licensee_in_charge) {
+    return { problem: "Only the licensee in charge can attach a certificate for someone else." } as const;
+  }
+  if (row.evidence_path) return { problem: "This CPD record already has its certificate." } as const;
+  return { row } as const;
+}
+
+/**
+ * A certificate for a CPD row that already exists: one from a training
+ * session, or from a training plan (Adam, 15 Oct 2026: CPD certificates live
+ * in one place only, the CPD record). It goes on that row, not a new one. It
+ * is read the same way, the name on it is checked the same way, and it fills
+ * only what the row is missing: what the session or the plan recorded stays.
+ */
+export async function attachCpdCertificate(
+  recordId: string,
+  path: string,
+  fileName: string,
+): Promise<{ error: string | null; question?: CpdNameQuestion }> {
+  const { supabase, profile } = await requireAuthContext();
+  const found = await rowForCertificate(supabase, profile, recordId);
+  if ("problem" in found) return { error: found.problem ?? "Couldn't attach that certificate." };
+  const { row } = found;
+  // Only a file in that person's CPD folder (see addCpdFromCertificate).
+  if (!isInFolder(path, cpdFolder(row.agency_id, row.profile_id))) {
+    return { error: "Couldn't save that certificate — try again." };
+  }
+
+  const { row: read, nameOnDocument } = await readCpdCertificate(path, fileName);
+  const question = await nameQuestionFor(supabase, {
+    profileId: row.profile_id, askedBy: profile.id, path, fileName, nameOnDocument, row: read, recordId,
+  });
+  if (question) return { error: null, question };
+
+  const { data: saved, error } = await supabase
+    .from("cpd_records")
+    .update({ evidence_path: path, evidence_file_name: fileName, ...fillFromCertificate(row, read) })
+    .eq("id", recordId)
+    .is("evidence_path", null)
+    .select("id");
+  if (error) return { error: "Couldn't save that certificate — try again." };
+  if ((saved ?? []).length === 0) return { error: "This CPD record already has its certificate." };
+
+  revalidatePath("/dashboard/cpd");
+  revalidatePath("/dashboard/training");
+  return { error: null };
+}
+
+export async function addCpdFromCertificate(
+  profileId: string,
+  path: string,
+  fileName: string,
+): Promise<{ error: string | null; question?: CpdNameQuestion }> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can add CPD for someone else." };
+  }
+  // The browser says where it put the certificate; it must be that person's
+  // CPD folder, since the licensee's delete later removes whatever file the
+  // record names (review of these fixes, 10 Oct 2026).
+  if (!isInFolder(path, cpdFolder(profile.agency_id, profileId))) {
+    return { error: "Couldn't save that certificate — try again." };
+  }
+
+  const { row, nameOnDocument } = await readCpdCertificate(path, fileName);
+
+  // The name on the certificate, against the person (Adam, 15 Oct 2026). Any
+  // difference asks before anything is saved, the same as a licence.
+  const question = await nameQuestionFor(supabase, {
+    profileId, askedBy: profile.id, path, fileName, nameOnDocument, row,
+  });
+  if (question) return { error: null, question };
+
   const { error } = await supabase.from("cpd_records").insert({
     agency_id: profile.agency_id,
     profile_id: profileId,
-    activity_name: f.activityName?.trim() || fileName.replace(/\.[^.]+$/, ""),
-    category: isUnit ? "assistant_unit" : "general",
-    hours,
-    completed_date: completedDate,
-    provider: f.provider?.trim() || null,
+    ...row,
     evidence_path: path,
     evidence_file_name: fileName,
-    notes: f.deliveryMode ? `Delivery: ${f.deliveryMode}` : null,
     created_by: profile.id,
   });
 
@@ -183,6 +299,89 @@ export async function addCpdFromCertificate(
 
   revalidatePath("/dashboard/cpd");
   return { error: null };
+}
+
+/** The name answer goes with the certificate it was about (0074). */
+const NO_NAME_ANSWER = { name_on_certificate: null, name_confirmed_by: null, name_confirmed_at: null };
+
+/** The held certificate read, checked the same way as a licence's (lib/pending-read.ts). */
+async function heldCpdRead(token: string) {
+  const { supabase, profile } = await requireAuthContext();
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!secret) return { problem: pendingReadProblem("invalid", "certificate") } as const;
+  const v = verifyPendingRead<CpdRowRead>(token, secret, { kind: "cpd", answeredBy: profile.id, now: Date.now() });
+  if (!v.ok) return { problem: pendingReadProblem(v.reason, "certificate") } as const;
+  const p = v.pending;
+  if (p.profileId !== profile.id && !profile.is_licensee_in_charge) {
+    return { problem: "Only the licensee in charge can add CPD for someone else." } as const;
+  }
+  if (!isInFolder(p.path, cpdFolder(profile.agency_id, p.profileId))) {
+    return { problem: pendingReadProblem("invalid", "certificate") } as const;
+  }
+  return { supabase, profile, pending: p } as const;
+}
+
+/** "Yes, it's Jo's": saves the certificate as read, with the name on it and who confirmed it. */
+export async function confirmCpdCertificateName(token: string): Promise<{ error: string | null }> {
+  const held = await heldCpdRead(token);
+  if ("problem" in held) return { error: held.problem ?? "Couldn't save that." };
+  const { supabase, profile, pending } = held;
+  if (pending.recordId) {
+    // A certificate for a row that already exists (a session's or a plan's).
+    const found = await rowForCertificate(supabase, profile, pending.recordId);
+    if ("problem" in found) return { error: found.problem ?? "Couldn't save that certificate." };
+    if (found.row.profile_id !== pending.profileId) return { error: pendingReadProblem("invalid", "certificate") };
+    const { data: saved, error } = await supabase
+      .from("cpd_records")
+      .update({
+        evidence_path: pending.path,
+        evidence_file_name: pending.fileName,
+        ...fillFromCertificate(found.row, pending.read),
+        name_on_certificate: pending.nameOnDocument,
+        name_confirmed_by: profile.id,
+        name_confirmed_at: new Date().toISOString(),
+      })
+      .eq("id", pending.recordId)
+      .is("evidence_path", null)
+      .select("id");
+    if (error) return { error: "Couldn't save that certificate. Try again." };
+    if ((saved ?? []).length === 0) return { error: "This CPD record already has its certificate." };
+    revalidatePath("/dashboard/cpd");
+    revalidatePath("/dashboard/training");
+    return { error: null };
+  }
+  const { error } = await supabase.from("cpd_records").insert({
+    agency_id: profile.agency_id,
+    profile_id: pending.profileId,
+    ...pending.read,
+    evidence_path: pending.path,
+    evidence_file_name: pending.fileName,
+    created_by: profile.id,
+    name_on_certificate: pending.nameOnDocument,
+    name_confirmed_by: profile.id,
+    name_confirmed_at: new Date().toISOString(),
+  });
+  if (error) return { error: "Couldn't save that certificate. Try again." };
+  revalidatePath("/dashboard/cpd");
+  return { error: null };
+}
+
+/** "No, wrong person": removes the file and saves nothing. */
+export async function rejectCpdCertificateName(token: string): Promise<{ error: string | null; message?: string }> {
+  const held = await heldCpdRead(token);
+  if ("problem" in held) return { error: held.problem ?? "Couldn't do that." };
+  const { supabase, pending } = held;
+  const { data: removed, error } = await supabase.storage.from(EVIDENCE_BUCKET).remove([pending.path]);
+  const gone = !error && (removed?.length ?? 0) > 0;
+  const { data: subjectRow } = await supabase.from("profiles").select("full_name, email").eq("id", pending.profileId).maybeSingle();
+  const subject = subjectRow as { full_name: string | null; email: string } | null;
+  const whose = subject ? possessive(firstName(subject.full_name ?? subject.email)) : "their";
+  return {
+    error: null,
+    message: `The file was removed and nothing was saved. Upload ${whose} own certificate.${
+      gone ? "" : " RealComply couldn't delete the copy just now, so it is still stored, though not on this record."
+    }`,
+  };
 }
 
 /** Corrects anything the reading got wrong. The document stays attached. */
@@ -285,9 +484,10 @@ export async function finalizeCpdEvidence(recordId: string, path: string, fileNa
     return { error: "Couldn't save the certificate — try again." };
   }
 
+  // A different file: the name answered for the old one no longer applies (0074).
   const { error } = await supabase
     .from("cpd_records")
-    .update({ evidence_path: path, evidence_file_name: fileName })
+    .update({ evidence_path: path, evidence_file_name: fileName, ...NO_NAME_ANSWER })
     .eq("id", recordId);
 
   if (error) return { error: "Couldn't save the certificate — try again." };
@@ -303,7 +503,10 @@ export async function removeCpdEvidence(recordId: string): Promise<void> {
   if (!ownerId) return;
   if (ownerId !== profile.id && !profile.is_licensee_in_charge) return;
 
-  await supabase.from("cpd_records").update({ evidence_path: null, evidence_file_name: null }).eq("id", recordId);
+  await supabase
+    .from("cpd_records")
+    .update({ evidence_path: null, evidence_file_name: null, ...NO_NAME_ANSWER })
+    .eq("id", recordId);
   revalidatePath("/dashboard/cpd");
 }
 

@@ -4,7 +4,8 @@ import { requireLicenseePage } from "@/lib/data/current-profile";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { LICENCE_CATEGORY_LABELS, cleanLicenceCategories } from "@/lib/rules/nsw-cpd";
 import { BREACH_CATEGORY_LABELS } from "@/lib/types";
-import type { Agency, Breach, Complaint, CpdRecord, Gift, Profile } from "@/lib/types";
+import type { Agency, Breach, Complaint, CpdRecord, Gift, InsurancePolicy, Profile } from "@/lib/types";
+import { otherInsuranceTitle } from "@/lib/insurance-read";
 import { formatAuDateTimeShort } from "@/lib/format-date";
 import { PrintButton } from "./PrintButton";
 
@@ -40,6 +41,7 @@ export default async function RegistersExportPage() {
     { data: complaintRows },
     { data: breachRows },
     { data: cpdSignoffRows },
+    { data: otherInsuranceRows },
   ] =
     await Promise.all([
       supabase.from("profiles").select("*").order("full_name", { ascending: true }),
@@ -52,7 +54,15 @@ export default async function RegistersExportPage() {
       supabase.from("breaches").select("*").order("identified_date", { ascending: false }),
       // The year's CPD tick (14 Oct 2026: that tick is the CPD).
       supabase.from("cpd_year_signoffs").select("profile_id").eq("cpd_year_start", cpdYear.start),
+      // Other insurance the office added and still holds (0078). None before 0078 runs.
+      supabase
+        .from("insurance_policies")
+        .select("*")
+        .eq("agency_id", profile.agency_id)
+        .is("removed_at", null)
+        .order("created_at", { ascending: true }),
     ]);
+  const otherInsurance = (otherInsuranceRows ?? []) as InsurancePolicy[];
   const cpdDone = new Set(((cpdSignoffRows ?? []) as Array<{ profile_id: string }>).map((r) => r.profile_id));
 
   const staff = (staffRows ?? []) as Profile[];
@@ -148,6 +158,14 @@ export default async function RegistersExportPage() {
                   : "not on file"}
               </span>
             </li>
+            {otherInsurance.map((p) => (
+              <li key={p.id} className="text-sm">
+                <span className="font-medium text-rc-ink">{otherInsuranceTitle(p.kind, p.name)}:</span>{" "}
+                <span className="text-rc-muted">
+                  {`${p.insurer ?? "insurer not on file"} · ${p.policy_number ?? "no policy #"} · expires ${p.expiry ?? "—"}`}
+                </span>
+              </li>
+            ))}
           </ul>
         )}
       </section>

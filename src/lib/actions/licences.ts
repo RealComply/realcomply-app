@@ -3,15 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { extractLicenceDocument } from "@/lib/actions/extraction";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, isInFolder } from "@/lib/storage/evidence";
+import { firstName, possessive } from "@/lib/licence-name";
+import { pendingReadProblem, signPendingRead, verifyPendingRead } from "@/lib/pending-read";
+import { formatAuDate } from "@/lib/format-date";
 import {
   decideLicenceRead,
   emptyState,
   parseReadState,
+  withoutNameConfirmation,
   recordTypedChanges,
   sanitiseLicenceRead,
   LICENCE_FIELD_LABELS,
   type EntityCheck,
+  type LicenceDocumentRead,
   type LicenceReadState,
   type LicenceSubject,
   type LicenceValues,
@@ -45,11 +50,57 @@ export type ActionState = { error: string | null };
 /** What an upload or a read did, in words the card can show as they are. */
 export type LicenceReadResult = {
   error: string | null;
-  outcome?: "saved" | "saved_with_gaps" | "name_mismatch" | "not_a_licence" | "could_not_read";
+  outcome?: "saved" | "saved_with_gaps" | "name_mismatch" | "not_a_licence" | "could_not_read" | "confirm_name" | "removed";
   message?: string;
+  /** The name question (15 Oct 2026), when outcome is "confirm_name". */
+  question?: NameQuestion;
 };
 
-type Snapshot = LicenceValues & { documentPath: string | null; documentFileName: string | null };
+/**
+ * "The name on this licence is [name on licence]. Is this [person]'s
+ * licence?" with what was read, not saved yet. The token carries the read,
+ * signed, back to confirmLicenceName or rejectLicenceName.
+ */
+export type NameQuestion = {
+  token: string;
+  nameOnDocument: string;
+  personName: string;
+  firstName: string;
+  /** "Licence 20123456 · Class 2 · Expires 30 June 2028" */
+  summary: string;
+};
+
+type Snapshot = LicenceValues & {
+  documentPath: string | null;
+  documentFileName: string | null;
+  /** When the name on the document differed and someone confirmed it was this person's (15 Oct 2026). */
+  nameOnDocument?: string | null;
+  nameConfirmedBy?: string | null;
+  nameConfirmedAt?: string | null;
+};
+
+/** The server secret the held read is signed with. Never sent anywhere. */
+function pendingSecret(): string | null {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY || null;
+}
+
+const TYPE_WORDS: Record<LicenceType, string> = {
+  class_1: "Class 1",
+  class_2: "Class 2",
+  certificate_of_registration: "Certificate of registration",
+};
+
+/** "Licence 20123456 · Class 2 · Expires 30 June 2028", from what was read. */
+function readSummary(read: LicenceDocumentRead): string {
+  const what = read.licenceType === "certificate_of_registration" ? "Certificate" : "Licence";
+  return [
+    read.licenceNumber ? `${what} ${read.licenceNumber}` : `${what} number not read`,
+    read.licenceType ? TYPE_WORDS[read.licenceType] : null,
+    read.expiry ? `Expires ${formatAuDate(read.expiry)}` : "Expiry not read",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 function str(formData: FormData, key: string): string | null {
   const v = formData.get(key);
@@ -209,31 +260,83 @@ async function readPersonLicence(
     today: now,
   });
 
-  if (decision.kind !== "save") {
-    // The wrong person's licence, or not a licence at all. Nothing is saved.
-    // A file just uploaded goes straight back out of Storage: it is somebody
-    // else's personal document and has no business sitting on this record.
+  if (decision.kind === "name_mismatch") {
+    // REVERSAL (Adam, 15 Oct 2026): was (2 Oct licence-read brief, rule 4, kept strict in #45): a holder name mismatch on a personal licence saves nothing. Now: show what was read and ask the user to confirm it's this person's licence; Yes saves, No removes the file.
     //
-    // Nothing means nothing (10 Oct 2026). The refusal used to be written to
-    // licence_read, which kept the other person's name in this person's
-    // record. The warning is the message returned below, shown once in the
-    // browser that uploaded it.
+    // Nothing is saved while the question waits, and the file stays where it
+    // is until the answer: "Yes" (confirmLicenceName) saves this read, "No"
+    // (rejectLicenceName) removes the file. The read goes with the question,
+    // signed, so what is saved is exactly what was shown.
+    const secret = pendingSecret();
+    const personName = subject.full_name ?? subject.email;
+    if (secret) {
+      const read = sanitiseLicenceRead(raw);
+      const token = signPendingRead<LicenceDocumentRead>(
+        {
+          v: 1,
+          kind: "licence",
+          profileId: subject.id,
+          askedBy: actor.id,
+          path,
+          fileName,
+          fresh,
+          nameOnDocument: decision.nameOnDocument,
+          read,
+          issuedAt: now.getTime(),
+        },
+        secret,
+      );
+      return {
+        error: null,
+        outcome: "confirm_name",
+        question: {
+          token,
+          nameOnDocument: decision.nameOnDocument,
+          personName,
+          firstName: firstName(personName),
+          summary: readSummary(read),
+        },
+      };
+    }
+    // No way to hold the read: say so, and leave things as they were.
     const kept = fresh && !(await discardUpload(supabase, path));
-    revalidatePath("/dashboard/registers");
-    const who = subject.full_name ?? subject.email;
-    return decision.kind === "name_mismatch"
-      ? {
-          error: null,
-          outcome: "name_mismatch",
-          message: `The name on this document is ${decision.nameOnDocument}, which doesn't match ${who}. Nothing was saved. Check it's the right person's licence.${kept ? NOT_DELETED : ""}`,
-        }
-      : {
-          error: null,
-          outcome: "not_a_licence",
-          message: `This doesn't look like a licence or certificate of registration. Nothing was saved.${kept ? NOT_DELETED : ""}`,
-        };
+    return {
+      error: null,
+      outcome: "name_mismatch",
+      message: `The name on this document is ${decision.nameOnDocument}, not ${personName}. Nothing was saved. Try again in a moment.${kept ? NOT_DELETED : ""}`,
+    };
   }
 
+  if (decision.kind !== "save") {
+    // Not a licence at all. Nothing is saved, and a file just uploaded goes
+    // straight back out of Storage: it has no business on this record.
+    //
+    // Nothing means nothing (10 Oct 2026). The refusal is not written to
+    // licence_read; the warning is the message returned below, shown once in
+    // the browser that uploaded it.
+    const kept = fresh && !(await discardUpload(supabase, path));
+    revalidatePath("/dashboard/registers");
+    return {
+      error: null,
+      outcome: "not_a_licence",
+      message: `This doesn't look like a licence or certificate of registration. Nothing was saved.${kept ? NOT_DELETED : ""}`,
+    };
+  }
+
+  return savePersonRead(supabase, actor, subject, path, fileName, decision, null);
+}
+
+/** Saves a read that is going on the record: the values, the document, and a line in the history. */
+async function savePersonRead(
+  supabase: Supabase,
+  actor: Profile,
+  subject: Profile,
+  path: string,
+  fileName: string,
+  decision: Extract<ReturnType<typeof decideLicenceRead>, { kind: "save" }>,
+  confirmed: { nameOnDocument: string; at: string } | null,
+): Promise<LicenceReadResult> {
+  const before = personSnapshot(subject);
   const v = decision.values;
   const after: Snapshot = {
     holderName: before.holderName,
@@ -242,6 +345,10 @@ async function readPersonLicence(
     expiry: v.expiry,
     documentPath: path,
     documentFileName: fileName,
+    // Who said a licence in another name was this person's, and when.
+    ...(confirmed
+      ? { nameOnDocument: confirmed.nameOnDocument, nameConfirmedBy: actor.id, nameConfirmedAt: confirmed.at }
+      : {}),
   };
 
   // The superseded document is NOT removed from Storage. It and the expiry it
@@ -267,6 +374,110 @@ async function readPersonLicence(
 
   revalidatePath("/dashboard/registers");
   return { error: null, ...savedMessage(decision.state, decision.expired) };
+}
+
+/**
+ * The held read, checked: signed by this server, asked of the person
+ * answering, not too old, and still about this person's licence folder. Who
+ * may answer is who could have asked: the person or their licensee in charge
+ * for an upload; the licensee for "Read from document".
+ */
+async function heldLicenceRead(token: string) {
+  const ctx = await requireAuthContext();
+  const { supabase, profile, access } = ctx;
+  const secret = pendingSecret();
+  if (!secret) return { problem: pendingReadProblem("invalid", "licence") } as const;
+  const v = verifyPendingRead<LicenceDocumentRead>(token, secret, {
+    kind: "licence",
+    answeredBy: profile.id,
+    now: Date.now(),
+  });
+  if (!v.ok) return { problem: pendingReadProblem(v.reason, "licence") } as const;
+  const p = v.pending;
+  if (p.profileId !== profile.id && !profile.is_licensee_in_charge) {
+    return { problem: "Only the licensee in charge can answer for someone else's licence." } as const;
+  }
+  if (!p.fresh && !access.actsAsLicensee) return { problem: "Only the licensee in charge can do this." } as const;
+  const subject = await loadPerson(supabase, p.profileId);
+  if (!subject) return { problem: "Couldn't find that person." } as const;
+  if (!isInFolder(p.path, `${subject.agency_id}/_licences/${subject.id}/`)) {
+    return { problem: pendingReadProblem("invalid", "licence") } as const;
+  }
+  // "Read from document" asked about the file on the record. If that has
+  // changed since, the answer is about a file that is no longer there.
+  if (!p.fresh && subject.licence_document_path !== p.path) {
+    return { problem: "The document on file has changed since. Read it again." } as const;
+  }
+  return { supabase, profile: profile as Profile, subject, pending: p } as const;
+}
+
+/** "Yes, it's Jo's": saves the read as shown, and records the name on the licence and who confirmed it. */
+export async function confirmLicenceName(token: string): Promise<LicenceReadResult> {
+  const held = await heldLicenceRead(token);
+  if ("problem" in held) return { error: held.problem ?? "Couldn't save that." };
+  const { supabase, profile, subject, pending } = held;
+  const now = new Date();
+  const at = now.toISOString();
+  const decision = decideLicenceRead({
+    read: pending.read,
+    subject: "person",
+    expectedNames: subject.full_name ? [subject.full_name] : [],
+    previous: parseReadState(subject.licence_read),
+    by: profile.id,
+    at,
+    fileName: pending.fileName,
+    today: now,
+    nameConfirmedAs: subject.full_name ?? subject.email,
+  });
+  if (decision.kind !== "save") return { error: "Couldn't save that. Upload the licence again." };
+  return savePersonRead(supabase, profile, subject, pending.path, pending.fileName, decision, {
+    nameOnDocument: pending.nameOnDocument,
+    at,
+  });
+}
+
+/** "No, wrong person": removes the file and saves nothing. */
+export async function rejectLicenceName(token: string): Promise<LicenceReadResult> {
+  const held = await heldLicenceRead(token);
+  if ("problem" in held) return { error: held.problem ?? "Couldn't do that." };
+  const { supabase, profile, subject, pending } = held;
+  const own =
+    subject.licence_type === "certificate_of_registration" ? "certificate of registration" : "licence";
+
+  if (pending.fresh) {
+    // Never the document already on the record: only the file just uploaded.
+    const kept = subject.licence_document_path !== pending.path && !(await discardUpload(supabase, pending.path));
+    return {
+      error: null,
+      outcome: "removed",
+      message: `The file was removed and nothing was saved. Upload ${possessive(firstName(subject.full_name ?? subject.email))} own ${own}.${kept ? NOT_DELETED : ""}`,
+    };
+  }
+
+  // "Read from document" on a file already on the record: it comes off the
+  // record, and out of Storage, since it is someone else's licence. Any
+  // earlier "Yes" about it goes with it.
+  const before = personSnapshot(subject);
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      licence_document_path: null,
+      licence_document_file_name: null,
+      licence_read: withoutNameConfirmation(parseReadState(subject.licence_read)),
+    })
+    .eq("id", subject.id);
+  if (error) return { error: "Couldn't remove the file. Try again." };
+  await appendHistory(supabase, {
+    agencyId: subject.agency_id, subject: "person", profileId: subject.id, source: "document_removed",
+    before, after: { ...before, documentPath: null, documentFileName: null }, by: profile.id,
+  });
+  const kept = !(await discardUpload(supabase, pending.path));
+  revalidatePath("/dashboard/registers");
+  return {
+    error: null,
+    outcome: "removed",
+    message: `The file was removed and nothing was saved. Upload ${possessive(firstName(subject.full_name ?? subject.email))} own ${own}.${kept ? NOT_DELETED : ""}`,
+  };
 }
 
 /** Called once the browser has put the file in Storage. */
@@ -371,9 +582,14 @@ export async function removeLicenceDocument(profileId: string): Promise<void> {
   if (!subject?.licence_document_path) return;
   const before = personSnapshot(subject);
 
+  // The name confirmation was about this file, so it goes with it.
   await supabase
     .from("profiles")
-    .update({ licence_document_path: null, licence_document_file_name: null })
+    .update({
+      licence_document_path: null,
+      licence_document_file_name: null,
+      licence_read: withoutNameConfirmation(parseReadState(subject.licence_read)),
+    })
     .eq("id", profileId);
 
   await appendHistory(supabase, {
@@ -435,6 +651,10 @@ async function readCorporationLicence(
   }
 
   // CHANGE (Adam, 14 Oct 2026): was: corporation licence holder matched against the office name and refused on mismatch. Now: matched against the licensed entity name; a mismatch asks to update it, never refuses. Personal licences keep the strict name check.
+  //
+  // (15 Oct 2026: a person's licence no longer refuses on the name either; it
+  // asks "Is this [person]'s licence?" See readPersonLicence. This check is
+  // unchanged.)
   //
   // So no names go in here: the read never refuses a corporation licence on
   // its name. The holder is compared with the licensed entity name below,

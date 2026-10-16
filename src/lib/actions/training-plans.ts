@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { currentCpdYear } from "@/lib/cpd-year";
+import { isInFolder, planItemFolder } from "@/lib/storage/evidence";
 import type { LicenceType, TrainingPlan, TrainingPlanItem } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -300,6 +301,60 @@ export async function completeTrainingPlanItem(
     };
   }
 
+  revalidate();
+  return ok;
+}
+
+/**
+ * A document for a plan item that has no CPD record: training that doesn't
+ * count for CPD (Adam, 15 Oct 2026). An item linked to a CPD record never
+ * takes one here: its certificate lives on the CPD record, in one place only.
+ * Progress against the plan, like marking it done, so an approved plan still
+ * takes it and the acceptance stands.
+ */
+export async function attachPlanItemDocument(itemId: string, path: string, fileName: string): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+  const { data: itemRow } = await supabase.from("training_plan_items").select("*").eq("id", itemId).maybeSingle();
+  const item = itemRow as TrainingPlanItem | null;
+  if (!item) return { error: "Couldn't find that training." };
+  if (item.cpd_record_id) {
+    return { error: "This training is on a CPD record. Its certificate goes on the CPD record." };
+  }
+  const plan = await loadPlan(supabase, item.plan_id);
+  if (!plan) return { error: "Couldn't find that plan." };
+  if (plan.profile_id !== profile.id && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can add a document to someone else's plan." };
+  }
+  // Only a file in that person's folder for plan documents.
+  if (!isInFolder(path, planItemFolder(plan.agency_id, plan.profile_id))) {
+    return { error: "Couldn't save that document. Try again." };
+  }
+  const name = fileName.trim() || "document";
+  const { error } = await supabase
+    .from("training_plan_items")
+    .update({ evidence_path: path, evidence_file_name: name })
+    .eq("id", itemId);
+  if (error) return { error: "Couldn't save that document. Try again." };
+  revalidate();
+  return ok;
+}
+
+/** Takes the document off the plan item. The file stays in the person's folder. */
+export async function removePlanItemDocument(itemId: string): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+  const { data: itemRow } = await supabase.from("training_plan_items").select("*").eq("id", itemId).maybeSingle();
+  const item = itemRow as TrainingPlanItem | null;
+  if (!item) return { error: "Couldn't find that training." };
+  const plan = await loadPlan(supabase, item.plan_id);
+  if (!plan) return { error: "Couldn't find that plan." };
+  if (plan.profile_id !== profile.id && !profile.is_licensee_in_charge) {
+    return { error: "Only the licensee in charge can change someone else's plan." };
+  }
+  const { error } = await supabase
+    .from("training_plan_items")
+    .update({ evidence_path: null, evidence_file_name: null })
+    .eq("id", itemId);
+  if (error) return { error: "Couldn't take the document off. Try again." };
   revalidate();
   return ok;
 }

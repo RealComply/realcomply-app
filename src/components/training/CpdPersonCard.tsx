@@ -5,16 +5,22 @@ import { useActionState, useEffect, useState, type ChangeEvent } from "react";
 import { Check, Paperclip, Trash2 } from "lucide-react";
 import {
   addCpdFromCertificate,
+  attachCpdCertificate,
+  confirmCpdCertificateName,
   deleteCpdRecord,
+  rejectCpdCertificateName,
   setCpdYearComplete,
   updateCpdRecord,
   type ActionState,
+  type CpdNameQuestion,
 } from "@/lib/actions/registers";
+import { NameQuestionBox } from "@/components/NameQuestionBox";
 import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildCpdDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { licenceSummary } from "@/lib/rules/nsw-cpd";
+import { CPD_SOURCE_LABEL, cpdRowSource, type CpdRowSource } from "@/lib/cpd-one-place";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
 
 const initial: ActionState = { error: null };
@@ -33,6 +39,10 @@ const initial: ActionState = { error: null };
 // from whichever trainer they used. That's it. Keep it simple." So the card
 // names every type of licence they hold (ticked on their licence card), and
 // the year's tick covers all of them. No hours, no topics.
+//
+// 15 Oct 2026, Adam: a certificate in another name asks before it is saved,
+// the same as a licence: "Is this [person]'s certificate?" Yes saves it with
+// the name on it and who confirmed it; No removes the file.
 export function CpdPersonCard({
   subject,
   viewerProfile,
@@ -40,6 +50,8 @@ export function CpdPersonCard({
   signoff,
   cpdYearStart,
   cpdYearLabel,
+  nameOf,
+  planRecordIds = [],
 }: {
   subject: Profile;
   viewerProfile: Profile;
@@ -47,6 +59,10 @@ export function CpdPersonCard({
   signoff: CpdYearSignoff | null;
   cpdYearStart: string;
   cpdYearLabel: string;
+  /** Everyone in the office by id, for "Confirmed as Jo Bennett by [name]". */
+  nameOf: Record<string, string>;
+  /** CPD rows made by completing a training plan item, to say so on the row. */
+  planRecordIds?: string[];
 }) {
   // Someone who has left keeps their card as history, read only: nothing
   // to attach or tick for a person no longer in the office (browser
@@ -55,13 +71,18 @@ export function CpdPersonCard({
   const canEdit = !left && (viewerProfile.id === subject.id || Boolean(viewerProfile.is_licensee_in_charge));
   const { actsAsLicensee } = useViewerAccess();
   const done = Boolean(signoff);
+  const planIds = new Set(planRecordIds);
 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ticking, setTicking] = useState(false);
+  // A certificate in another name, read and waiting on Yes or No. Nothing is
+  // saved until it is answered.
+  const [question, setQuestion] = useState<CpdNameQuestion | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // One path for a picked file and a dropped one — see useFileDrop.
-  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: uploading });
+  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: uploading || Boolean(question) });
 
   function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -71,6 +92,7 @@ export function CpdPersonCard({
 
   async function upload(file: File) {
     setError(null);
+    setNotice(null);
     setUploading(true);
     // Always cleared, and a thrown save says so (check, 10 Oct 2026): it left
     // the card on "Reading certificate…" with the drop zone off until a reload.
@@ -82,13 +104,29 @@ export function CpdPersonCard({
         setError(uploadError);
         return;
       }
-      const { error: saveError } = await addCpdFromCertificate(subject.id, path, stored.name);
+      const { error: saveError, question: asked } = await addCpdFromCertificate(subject.id, path, stored.name);
       if (saveError) setError(saveError);
+      if (asked) setQuestion(asked);
     } catch {
       setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");
     } finally {
       setUploading(false);
     }
+  }
+
+  async function answerName(yes: boolean): Promise<string | null> {
+    if (!question) return null;
+    if (yes) {
+      const { error: e } = await confirmCpdCertificateName(question.token);
+      if (e) return e;
+      setQuestion(null);
+      return null;
+    }
+    const result = await rejectCpdCertificateName(question.token);
+    if (result.error) return result.error;
+    setQuestion(null);
+    setNotice(result.message ?? null);
+    return null;
   }
 
   async function toggleDone() {
@@ -128,8 +166,22 @@ export function CpdPersonCard({
       </div>
 
       {records.map((r) => (
-        <CertificateRow key={r.id} record={r} canEdit={canEdit} />
+        <CertificateRow
+          key={r.id}
+          record={r}
+          source={cpdRowSource(r, planIds)}
+          canEdit={canEdit}
+          personName={subject.full_name ?? subject.email}
+          nameOf={nameOf}
+        />
       ))}
+
+      {question && (
+        <div className="mt-3">
+          <NameQuestionBox word="certificate" question={question} onAnswer={answerName} />
+        </div>
+      )}
+      {notice && <p className="mt-2 text-xs text-rc-muted">{notice}</p>}
 
       {/* Drag as well as click (Adam, 9 Sep 2026). The dashed border already
           said "drop a file here" and nothing listened; a drop navigated the
@@ -137,7 +189,7 @@ export function CpdPersonCard({
           control already uploads the moment a file is picked — the two-step
           attach used elsewhere would be a different behaviour on the same
           card. */}
-      {canEdit && (
+      {canEdit && !question && (
         <label
           {...drop.dragProps}
           className={`mt-3 block cursor-pointer rounded-xl border border-dashed px-4 py-4 text-center transition ${
@@ -198,9 +250,27 @@ export function CpdPersonCard({
   );
 }
 
-function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boolean }) {
+// One CPD row. Since 15 Oct 2026 (Adam: CPD certificates live in one place
+// only, the CPD record) it says where its details came from, and a row
+// without a certificate (one from a training session or a training plan)
+// takes its certificate right here. It used to say "Read from certificate" on
+// every row, with a View link that never loaded on rows that had none.
+function CertificateRow({
+  record,
+  source,
+  canEdit,
+  personName,
+  nameOf,
+}: {
+  record: CpdRecord;
+  source: CpdRowSource;
+  canEdit: boolean;
+  personName: string;
+  nameOf: Record<string, string>;
+}) {
   const { actsAsLicensee } = useViewerAccess();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [linkFailed, setLinkFailed] = useState(false);
   const [editing, setEditing] = useState(false);
   // Closes once the save has gone through, not as soon as it is sent (check,
   // 10 Oct 2026): a refused save ("Give the activity a name.") closed the form
@@ -219,7 +289,9 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
       .from(EVIDENCE_BUCKET)
       .createSignedUrl(record.evidence_path, 3600)
       .then(({ data }) => {
-        if (!cancelled) setSignedUrl(data?.signedUrl ?? null);
+        if (cancelled) return;
+        setSignedUrl(data?.signedUrl ?? null);
+        setLinkFailed(!data?.signedUrl);
       });
     return () => {
       cancelled = true;
@@ -239,7 +311,11 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
         action={action}
         className="mt-3 space-y-2 rounded-xl border border-rc-border bg-neutral-50 p-3"
       >
-        <p className="text-[11px] text-rc-muted">Fix anything the reading got wrong. The certificate stays attached.</p>
+        <p className="text-[11px] text-rc-muted">
+          {record.evidence_path
+            ? "Fix anything the reading got wrong. The certificate stays attached."
+            : "Fix anything that's wrong."}
+        </p>
         <input
           name="activityName"
           defaultValue={record.activity_name}
@@ -291,13 +367,18 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
   }
 
   return (
-    <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-rc-border bg-white px-3.5 py-3">
+    <div className="mt-3 rounded-xl border border-rc-border bg-white px-3.5 py-3">
+      <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         {/* Says where the values came from. The evidence model requires the
             source to be visible rather than a silently-filled field — the
             agent should always be able to see what was read, and correct it. */}
-        <span className="mb-1.5 inline-block rounded bg-rc-green-soft px-1.5 py-0.5 text-[10px] font-semibold text-rc-green-deep">
-          Read from certificate
+        <span
+          className={`mb-1.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+            source === "certificate" ? "bg-rc-green-soft text-rc-green-deep" : "bg-neutral-100 text-rc-muted"
+          }`}
+        >
+          {CPD_SOURCE_LABEL[source]}
         </span>
         <p className="text-[13px] font-medium text-rc-ink">
           {record.activity_name}
@@ -312,12 +393,22 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
           {record.completed_date ? <>completed {formatAuDate(record.completed_date)}</> : "completion date not read"}
           {record.notes && <> · {record.notes.replace(/^Delivery: /, "")}</>}
         </p>
+        {/* The name on the certificate, when it wasn't the person's name and
+            someone confirmed it is theirs (15 Oct 2026). */}
+        {record.name_on_certificate && record.name_confirmed_at && (
+          <p className="mt-0.5 text-[11px] text-rc-muted">
+            Name on certificate: {record.name_on_certificate}. Confirmed as {personName} by{" "}
+            {(record.name_confirmed_by && nameOf[record.name_confirmed_by]) || "a team member"} on{" "}
+            {formatAuTimestamp(record.name_confirmed_at)}.
+          </p>
+        )}
         {/* Ask for exactly what the certificate didn't say, and nothing else.
             Until it has its hours, date and approved provider, the entry is
             shown but adds nothing to the year (lib/cpd-hours.ts). */}
         {(missingHours || missingDate || missingProvider) && (
           <MissingCpdFields
             record={record}
+            fromCertificate={Boolean(record.evidence_path) && source === "certificate"}
             missingHours={missingHours}
             missingDate={missingDate}
             missingProvider={missingProvider}
@@ -327,7 +418,9 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2.5 text-xs">
-        {signedUrl ? (
+        {!record.evidence_path ? (
+          canEdit ? null : <span className="text-rc-faint">No certificate</span>
+        ) : signedUrl ? (
           <a
             href={signedUrl}
             target="_blank"
@@ -336,6 +429,10 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
           >
             <Paperclip size={11} /> View
           </a>
+        ) : linkFailed ? (
+          <span className="text-rc-faint" title={record.evidence_file_name ?? undefined}>
+            Can&rsquo;t open just now
+          </span>
         ) : (
           <span className="text-rc-faint">…</span>
         )}
@@ -356,12 +453,99 @@ function CertificateRow({ record, canEdit }: { record: CpdRecord; canEdit: boole
           </>
         )}
       </div>
+      </div>
+      {canEdit && !record.evidence_path && <AttachToRow record={record} />}
+    </div>
+  );
+}
+
+/**
+ * The certificate for a row that has none (one from a training session or a
+ * training plan), taken in this same place. Read the same way as a new one,
+ * with the same name question; it fills only what the row is missing.
+ */
+function AttachToRow({ record }: { record: CpdRecord }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [question, setQuestion] = useState<CpdNameQuestion | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: busy || Boolean(question) });
+
+  function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void upload(file);
+  }
+
+  async function upload(file: File) {
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const supabase = createBrowserClient();
+      const path = buildCpdDocPath(record.agency_id, record.profile_id, file.name);
+      const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
+      if (uploadError) {
+        setError(uploadError);
+        return;
+      }
+      const { error: saveError, question: asked } = await attachCpdCertificate(record.id, path, stored.name);
+      if (saveError) setError(saveError);
+      if (asked) setQuestion(asked);
+    } catch {
+      setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function answerName(yes: boolean): Promise<string | null> {
+    if (!question) return null;
+    if (yes) {
+      const { error: e } = await confirmCpdCertificateName(question.token);
+      if (e) return e;
+      setQuestion(null);
+      return null;
+    }
+    const result = await rejectCpdCertificateName(question.token);
+    if (result.error) return result.error;
+    setQuestion(null);
+    setNotice(result.message ?? null);
+    return null;
+  }
+
+  return (
+    <div className="mt-2 border-t border-rc-border pt-2">
+      {question ? (
+        <NameQuestionBox word="certificate" question={question} onAnswer={answerName} />
+      ) : (
+        <label
+          {...drop.dragProps}
+          className={`inline-flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 text-xs font-semibold transition ${
+            drop.isOver
+              ? "bg-rc-green-soft text-rc-green-deep outline-dashed outline-1 outline-rc-green-deep"
+              : "text-rc-green-deep hover:underline"
+          } ${busy ? "opacity-60" : ""}`}
+          title="Drag the certificate here, or click. A PDF or a photo is fine."
+        >
+          <Paperclip size={11} aria-hidden="true" />
+          {busy ? "Reading certificate…" : "+ Attach the certificate for this"}
+          <input type="file" onChange={handleFile} disabled={busy} className="hidden" />
+        </label>
+      )}
+      {(error ?? drop.dropError) && (
+        <p role="alert" className="mt-1 text-[11px] font-medium text-rc-amber-deep">
+          {error ?? drop.dropError}
+        </p>
+      )}
+      {notice && <p className="mt-1 text-[11px] text-rc-muted">{notice}</p>}
     </div>
   );
 }
 
 function MissingCpdFields({
   record,
+  fromCertificate,
   missingHours,
   missingDate,
   missingProvider,
@@ -369,6 +553,8 @@ function MissingCpdFields({
   canEdit,
 }: {
   record: CpdRecord;
+  /** Read off a certificate: "The certificate doesn't show…". Otherwise "This record doesn't have…". */
+  fromCertificate: boolean;
   missingHours: boolean;
   missingDate: boolean;
   missingProvider: boolean;
@@ -386,7 +572,8 @@ function MissingCpdFields({
   return (
     <form action={action} className="mt-1.5 rounded-md border border-rc-amber/40 bg-rc-amber/10 px-2 py-1.5 text-[11px]">
       <p className="text-rc-amber-deep">
-        The certificate doesn&rsquo;t show the {list}. {canEdit ? `Add ${what.length === 1 ? "it" : "them"} here. ` : ""}
+        {fromCertificate ? "The certificate doesn\u2019t show" : "This record doesn\u2019t have"} the {list}.{" "}
+        {canEdit ? `Add ${what.length === 1 ? "it" : "them"} here. ` : ""}
         It doesn&rsquo;t count toward CPD hours until it has {what.length === 1 ? "it" : "them"}.
       </p>
       {canEdit && (

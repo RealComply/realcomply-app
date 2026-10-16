@@ -4,9 +4,9 @@ import {
   companyNameMatches,
   decideLicenceRead,
   parseReadState,
-  personNameMatches,
   recordTypedChanges,
   sanitiseLicenceRead,
+  withoutNameConfirmation,
 } from "@/lib/licence-read";
 
 // What gets saved when a licence is read off an uploaded document.
@@ -30,7 +30,7 @@ function decide(raw: unknown, opts: { subject?: "person" | "corporation"; names?
 test("clear read: every field is saved and marked as read from the document", () => {
   const d = decide({
     documentIs: "licence",
-    holderName: "SMITH, Jane Maree",
+    holderName: "JANE  SMITH.",
     licenceType: "class_2",
     licenceNumber: "20123456",
     expiryDate: "2027-08-14",
@@ -40,7 +40,9 @@ test("clear read: every field is saved and marked as read from the document", ()
   assert.deepEqual(d.values, { holderName: null, licenceType: "class_2", licenceNumber: "20123456", expiry: "2027-08-14" });
   assert.deepEqual(d.state.missing, []);
   // A document that went on the record keeps the name it was checked against.
-  assert.equal(d.state.lastRead?.nameOnDocument, "SMITH, Jane Maree");
+  assert.equal(d.state.lastRead?.nameOnDocument, "JANE SMITH.");
+  // Same name: no question, so nothing to confirm.
+  assert.equal(d.state.lastRead?.nameConfirmed, undefined);
   assert.equal(d.state.fields.expiry?.source, "document");
   assert.equal(d.state.lastRead?.status, "read");
   assert.equal(d.state.lastRead?.nameChecked, true);
@@ -73,7 +75,7 @@ test("a date that isn't a real date is treated as unreadable, never guessed", ()
   }
 });
 
-test("name mismatch: nothing is saved, and the other person's name is not kept", () => {
+test("name differs: nothing is saved yet, and the name on the document is not kept until confirmed", () => {
   const d = decide({
     documentIs: "licence",
     holderName: "Robert Chen",
@@ -83,7 +85,7 @@ test("name mismatch: nothing is saved, and the other person's name is not kept",
   });
   assert.equal(d.kind, "name_mismatch");
   if (d.kind !== "name_mismatch") return;
-  // For the one-off message in the uploader's browser only.
+  // For the question in the uploader's browser only (lib/pending-read.ts).
   assert.equal(d.nameOnDocument, "Robert Chen");
   assert.equal(d.state.lastRead?.status, "name_mismatch");
   assert.equal(d.state.lastRead?.nameOnDocument, null);
@@ -153,10 +155,7 @@ test("corporation licence in another company's name is refused", () => {
   assert.equal(d.kind, "name_mismatch");
 });
 
-test("name matching tolerates order, case and middle names but not a different person", () => {
-  assert.equal(personNameMatches("SMITH, Jane Maree", "Jane Smith"), true);
-  assert.equal(personNameMatches("JANE O'BRIEN", "Jane O’Brien"), true);
-  assert.equal(personNameMatches("Jane Smithers", "Jane Smith"), false);
+test("company names tolerate Pty Ltd and order, but not a different company", () => {
   assert.equal(companyNameMatches("Cass Property Pty Ltd", "Cass Property"), true);
   assert.equal(companyNameMatches("Cass Properties Pty Ltd", "Harbour Realty"), false);
 });
@@ -210,10 +209,87 @@ test("anything else stored where the question goes is ignored", () => {
   assert.equal(parseReadState({ entityCheck: "yes" })?.entityCheck, undefined);
 });
 
-test("a person's licence in someone else's name is still refused", () => {
+test("a person's licence in someone else's name asks first", () => {
   const d = decide(
     { documentIs: "licence", holderName: "SMITH, Jane", licenceType: "class_2", licenceNumber: "1", expiryDate: "2028-01-01" },
     { subject: "person", names: ["Bob Jones"] },
   );
   assert.equal(d.kind, "name_mismatch");
+});
+
+// ── The name question (Adam, 15 Oct 2026) ────────────────────────────────────
+
+test("a full legal name against a short name asks, and Yes saves it with who confirmed and when", () => {
+  const raw = {
+    documentIs: "licence",
+    holderName: "Joanne Mary Bennett",
+    licenceType: "class_2",
+    licenceNumber: "20123456",
+    expiryDate: "2028-06-30",
+  };
+  const asked = decide(raw, { names: ["Jo Bennett"] });
+  assert.equal(asked.kind, "name_mismatch");
+
+  const yes = decideLicenceRead({
+    read: sanitiseLicenceRead(raw),
+    subject: "person",
+    expectedNames: ["Jo Bennett"],
+    previous: null,
+    by: "lic",
+    at: AT,
+    fileName: "Jo licence 2026.pdf",
+    today: TODAY,
+    nameConfirmedAs: "Jo Bennett",
+  });
+  assert.equal(yes.kind, "save");
+  if (yes.kind !== "save") return;
+  assert.deepEqual(yes.values, { holderName: null, licenceType: "class_2", licenceNumber: "20123456", expiry: "2028-06-30" });
+  assert.equal(yes.state.lastRead?.nameOnDocument, "Joanne Mary Bennett");
+  assert.deepEqual(yes.state.lastRead?.nameConfirmed, { as: "Jo Bennett", by: "lic", at: AT });
+});
+
+test("the corporation licence is not asked about its name here", () => {
+  const d = decide(
+    { documentIs: "corporation_licence", holderName: "Trent Lloyd Corporation Pty Ltd", licenceNumber: "1", expiryDate: "2028-03-01" },
+    { subject: "corporation", names: [] },
+  );
+  assert.equal(d.kind, "save");
+});
+
+test("not a licence is still refused, confirmed or not", () => {
+  const d = decideLicenceRead({
+    read: sanitiseLicenceRead({ documentIs: "other", holderName: "Jo Bennett" }),
+    subject: "person",
+    expectedNames: ["Jo Bennett"],
+    previous: null,
+    by: "lic",
+    at: AT,
+    fileName: "invoice.pdf",
+    today: TODAY,
+    nameConfirmedAs: "Jo Bennett",
+  });
+  assert.equal(d.kind, "not_a_licence");
+});
+
+test("the name confirmation goes when its document leaves the record; the rest of the read stays", () => {
+  const yes = decideLicenceRead({
+    read: sanitiseLicenceRead({ documentIs: "licence", holderName: "Joanne Mary Bennett", licenceType: "class_2", licenceNumber: "20123456", expiryDate: "2028-06-30" }),
+    subject: "person",
+    expectedNames: ["Jo Bennett"],
+    previous: null,
+    by: "lic",
+    at: AT,
+    fileName: "jo.pdf",
+    today: TODAY,
+    nameConfirmedAs: "Jo Bennett",
+  });
+  assert.equal(yes.kind, "save");
+  if (yes.kind !== "save") return;
+  const after = withoutNameConfirmation(yes.state);
+  assert.equal(after?.lastRead?.nameConfirmed, null);
+  assert.equal(after?.lastRead?.nameOnDocument, "Joanne Mary Bennett");
+  assert.deepEqual(after?.fields, yes.state.fields);
+  assert.equal(withoutNameConfirmation(null), null);
+  const plain = { lastRead: null, missing: [], fields: {} };
+  assert.equal(withoutNameConfirmation(plain), plain);
 });
