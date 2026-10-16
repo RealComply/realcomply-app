@@ -135,10 +135,11 @@ begin
   end;
 
   -- 6. Once adopted, it works for everyone in the office; a listing already there stays editable throughout.
-  -- (Set up as the SQL editor: a listing made before the lock.)
+  -- (Set up as the SQL editor: a listing made before the lock. The agent's
+  -- own: an agent can't edit someone else's listing anyway, 0058.)
   reset role;
   perform set_config('request.jwt.claims', '', true);
-  insert into public.properties (agency_id, created_by, address) values (office, ol, '5 AAK Street (already there)') returning id into listing;
+  insert into public.properties (agency_id, created_by, address) values (office, oa, '5 AAK Street (already there)') returning id into listing;
   perform set_config('request.jwt.claims', json_build_object('sub', oa, 'role', 'authenticated')::text, true);
   set local role authenticated;
   update public.properties set address = '5 AAK Street, edited' where id = listing;
