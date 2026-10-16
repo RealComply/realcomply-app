@@ -9,6 +9,7 @@ import {
   Home,
   KeyRound,
   Landmark,
+  Lightbulb,
   LayoutGrid,
   PenLine,
   Users,
@@ -182,6 +183,25 @@ export const NAV_GROUPS: NavGroup[] = [
         Icon: CirclePlay,
         assistantSees: true,
         keywords: ["help", "video", "tour", "walkthrough", "how to", "demo"],
+      },
+      // Directly below Getting started, for everyone signed in (Adam, 15 Oct
+      // 2026). Short notes on obligations outside a listing's file; the
+      // content is lib/rules/nsw-did-you-know.ts.
+      {
+        href: "/dashboard/did-you-know",
+        label: "Did you know?",
+        Icon: Lightbulb,
+        assistantSees: true,
+        keywords: [
+          "tips",
+          "obligations",
+          "licensee in charge",
+          "referrals",
+          "unclaimed money",
+          "disqualified",
+          "conduct rules",
+          "advertising",
+        ],
       },
     ],
   },

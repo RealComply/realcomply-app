@@ -68,12 +68,24 @@ describe("visibleNavLink", () => {
       "Sign-offs",
       "SG Manual",
       "Getting started",
+      "Did you know?",
     ]);
+  });
+
+  it("everyone gets Did you know?, directly below Getting started (15 Oct 2026)", () => {
+    for (const viewer of [
+      { actsAsLicensee: true, pmEnabled: false },
+      { actsAsLicensee: false, pmEnabled: false },
+      { actsAsLicensee: false, pmEnabled: true, isAccountHolder: true },
+    ]) {
+      const menu = NAV_LINKS.filter((l) => visibleNavLink(l, viewer)).map((l) => l.label);
+      assert.equal(menu[menu.indexOf("Getting started") + 1], "Did you know?", JSON.stringify(viewer));
+    }
   });
 
   it("the licensee keeps the whole menu, Billing included", () => {
     const menu = menuFor(true);
-    for (const label of ["Office overview", "Trust accounts", "Team", "Billing", "Getting started"]) {
+    for (const label of ["Office overview", "Trust accounts", "Team", "Billing", "Getting started", "Did you know?"]) {
       assert.ok(menu.includes(label), label);
     }
     assert.equal(menu.length, NAV_LINKS.length);
