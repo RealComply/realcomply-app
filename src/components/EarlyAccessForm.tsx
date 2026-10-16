@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
 import { joinEarlyAccess, type EarlyAccessState } from "@/lib/actions/early-access";
 import { looksAustralianPhone } from "@/lib/early-access/phone";
 
@@ -38,6 +38,11 @@ declare global {
 export function EarlyAccessForm({ source, tone = "light" }: { source?: string; tone?: "light" | "dark" }) {
   const [state, formAction, pending] = useActionState(joinEarlyAccess, initial);
   const [phoneHint, setPhoneHint] = useState(false);
+  // The landing page shows this form twice (top and bottom), so the new
+  // field's ids are unique per form: its visible label then always focuses
+  // its own box.
+  const mobileId = `early-access-mobile-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const mobileHintId = `${mobileId}-hint`;
 
   // Report the conversion once it has actually succeeded, not on click. Meta
   // optimises campaigns against this event, so firing it on submit would train
@@ -131,21 +136,21 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
       />
 
       <label
-        htmlFor="early-access-mobile"
+        htmlFor={mobileId}
         className={`mb-1.5 mt-3 block px-1 text-left text-sm font-medium ${dark ? "text-white/80" : "text-rc-muted"}`}
       >
         Mobile (optional): for a quick call to get you set up
       </label>
       <div className="flex flex-col gap-2.5 sm:flex-row">
         <input
-          id="early-access-mobile"
+          id={mobileId}
           name="mobile"
           type="tel"
           inputMode="tel"
           autoComplete="tel"
           maxLength={30}
           placeholder="04xx xxx xxx"
-          aria-describedby={phoneHint ? "early-access-mobile-hint" : undefined}
+          aria-describedby={phoneHint ? mobileHintId : undefined}
           onBlur={(e) => {
             const v = e.currentTarget.value.trim();
             setPhoneHint(v !== "" && !looksAustralianPhone(v));
@@ -164,7 +169,7 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
       </div>
 
       {phoneHint && (
-        <p id="early-access-mobile-hint" className={`mt-2 px-1 text-left text-sm ${dark ? "text-white/70" : "text-rc-muted"}`}>
+        <p id={mobileHintId} className={`mt-2 px-1 text-left text-sm ${dark ? "text-white/70" : "text-rc-muted"}`}>
           That doesn&rsquo;t look like an Australian number. Check it, or leave it blank.
         </p>
       )}
