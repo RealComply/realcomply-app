@@ -34,7 +34,7 @@ export default async function CpdPage() {
   const supabase = await createClient();
   const year = currentCpdYear();
 
-  const [{ data: staffRows }, { data: cpdRows }, { data: signoffRows }, people] = await Promise.all([
+  const [{ data: staffRows }, { data: cpdRows }, { data: signoffRows }, people, { data: planLinkRows }] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase
       .from("cpd_records")
@@ -46,7 +46,11 @@ export default async function CpdPage() {
     supabase.from("cpd_year_signoffs").select("*").eq("cpd_year_start", year.start),
     // Names only, for "Confirmed as Jo Bennett by [name]" (lib/data/people.ts).
     agencyPeople(supabase),
+    // Which CPD rows came from completing a training plan item, so the row
+    // says so (15 Oct 2026). Own plan or licensee, the same as the rows.
+    supabase.from("training_plan_items").select("cpd_record_id").not("cpd_record_id", "is", null),
   ]);
+  const planRecordIds = ((planLinkRows ?? []) as Array<{ cpd_record_id: string }>).map((r) => r.cpd_record_id);
 
   // CPD is each person's own (0058: own or licensee). An agent or assistant can
   // see their assistant or agent's name but not their certificates or tick, so
@@ -81,7 +85,7 @@ export default async function CpdPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-rc-ink">CPD</h1>
           <p className="mt-1 text-sm text-rc-muted">
-            {year.label} — 1 July to 30 June. Upload each certificate; RealComply reads the rest.
+            {year.label}, 1 July to 30 June. Upload each certificate; RealComply reads the rest.
           </p>
         </div>
         <Link
@@ -118,6 +122,7 @@ export default async function CpdPage() {
               cpdYearStart={year.start}
               cpdYearLabel={year.label}
               nameOf={nameOf}
+              planRecordIds={planRecordIds}
             />
           ))
         )}
