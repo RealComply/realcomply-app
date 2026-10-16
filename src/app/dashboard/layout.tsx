@@ -14,6 +14,9 @@ import { listingsFor } from "@/lib/subscription-end/records";
 import { createServiceClient } from "@/lib/supabase/service";
 import { RecordsView } from "@/components/records/RecordsView";
 import { TrialStartView } from "@/components/billing/TrialStartView";
+import { BeforeYouStartView } from "@/components/onboarding/BeforeYouStartView";
+import { formalAgencyName } from "@/lib/agency-names";
+import { formatAuTimestamp } from "@/lib/format-date";
 import { needsTrialStart, PLANS, type Plan } from "@/lib/billing/entitlement";
 import { isAccountHolder } from "@/lib/subscription-end/access";
 import { agencyLogoUrl } from "@/lib/storage/evidence";
@@ -55,9 +58,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   // A new office whose card is not in yet sees one page: start your 14-day
   // trial (Adam, 9 Oct 2026). See TrialStartView.
+  // Every column, so annexure_gate comes through once 0071 has added it and
+  // nothing breaks before then. One row by primary key.
   const { data: billingRow } = await supabase
     .from("agencies")
-    .select("name, plan, status, stripe_subscription_id, logo_path")
+    .select("*")
     .eq("id", profile.agency_id)
     .maybeSingle();
   const billing = billingRow as {
@@ -66,6 +71,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     status: string | null;
     stripe_subscription_id: string | null;
     logo_path: string | null;
+    licensee_name?: string | null;
+    licensed_entity_name?: string | null;
+    annexure_gate?: boolean | null;
   } | null;
   if (billing && needsTrialStart(billing)) {
     const mayStart =
@@ -83,6 +91,35 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <TrialStartView profile={profile} agencyName={billing.name} mayStart={mayStart} masterPlan={masterPlan} />
     );
   }
+  // "Before you start" (job 7 brief, Part 1; 0071): the agent on their own
+  // plan confirms the five statements once, before using the app. After the
+  // trial start above, because the plan is only known to be theirs once the
+  // card is in. Only where the office's annexure lock is on, so the offices
+  // that existed before it never see it unless RealComply switches theirs on.
+  // Only on a clean read: if their confirmation can't be read, no screen.
+  if (billing?.annexure_gate === true && access.isAgentPlan && access.actsAsLicensee) {
+    const { data: ackRow, error: ackError } = await supabase
+      .from("agent_acknowledgements")
+      .select("id")
+      .eq("profile_id", profile.id)
+      .maybeSingle();
+    if (!ackError && !ackRow) {
+      return (
+        <BeforeYouStartView
+          profile={profile}
+          agencyName={formalAgencyName({
+            tradingName: billing.name ?? "",
+            licensedEntityName: billing.licensed_entity_name ?? null,
+          })}
+          licenseeName={billing.licensee_name?.trim() ?? ""}
+          // No licensee licence number is kept for an agent's own plan yet, so it is typed.
+          licenseeLicenceNumber=""
+          date={formatAuTimestamp(new Date().toISOString())}
+        />
+      );
+    }
+  }
+
   // The sidebar badges. Computed here rather than fetched from the browser so
   // the number is correct in the first paint — a count that appears a second
   // late reads as the page changing its mind.

@@ -180,6 +180,7 @@ const TABLES: Array<{ table: string; file: string; order?: string }> = [
   // Agents confirming they read the adopted annexure and the Supervision
   // Guidelines (0069). confirmed_by gets its name column with the others.
   { table: "sg_read_confirmations", file: "SG annexure and Supervision Guidelines read", order: "confirmed_at" },
+  { table: "agent_acknowledgements", file: "Agent acknowledgements", order: "confirmed_at" },
   { table: "licence_history", file: "Licence history", order: "changed_at" },
   // Every change to an insurance policy, last year's certificate included (0076).
   { table: "insurance_history", file: "Insurance history", order: "changed_at" },

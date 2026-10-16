@@ -1,4 +1,6 @@
 import { requireAccess } from "@/lib/data/current-profile";
+import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
+import { ListingLockCard } from "@/components/annexure/ListingLockCard";
 import { licenseeChangeStatus } from "@/lib/data/licensee-change";
 import { NewLicenseeListingLock } from "@/components/annexure/NewLicenseeListingLock";
 import { createClient } from "@/lib/supabase/server";
@@ -18,10 +20,31 @@ export const maxDuration = 300;
 export default async function NewPropertyPage() {
   const { profile, access } = await requireAccess();
 
+  // The annexure lock (job 7 brief, Parts 4 and 5; 0071): "New listing" at
+  // the top of every page comes here, so the reason shows here too, in place
+  // of the form. createProperty and the database refuse it regardless.
+  const gate = await listingGate(await createClient());
+  if (gate) {
+    const supabase = await createClient();
+    const licenseeName = await licenseeNameFor(supabase, profile.agency_id, { agentPlan: access.isAgentPlan });
+    return (
+      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-10">
+        <h1 className="text-2xl font-bold tracking-tight text-rc-ink">New listing</h1>
+        <div className="mt-6">
+          <ListingLockCard
+            gate={gate}
+            actsAsLicensee={access.actsAsLicensee}
+            licenseeName={licenseeName}
+            agencyId={profile.agency_id}
+          />
+        </div>
+      </main>
+    );
+  }
+
   // After a change of licensee in charge, until the new one adopts the
-  // annexure (0080). "New listing" at the top of every page comes here, so
-  // the reason shows here too, in place of the form. createProperty and the
-  // database refuse it regardless.
+  // annexure (0080). Same place, same reason for showing it here; asked only
+  // when the lock above is off, so the page never shows two.
   const change = await licenseeChangeStatus(await createClient());
   if (change?.annexurePending) {
     return (

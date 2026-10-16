@@ -1,5 +1,7 @@
 "use server";
 
+import { listingGate } from "@/lib/data/listing-gate";
+import { lockedCreateMessage } from "@/lib/agent-acknowledgement";
 import { redirect } from "next/navigation";
 import { licenseeChangeStatus } from "@/lib/data/licensee-change";
 import { LOCKED_LISTING_MESSAGE } from "@/lib/licensee-history";
@@ -168,10 +170,19 @@ export async function createProperty(
     return { error: "No agency found for this account — contact support." };
   }
 
+  // REVERSAL (Adam, 14 Oct 2026): was 22 Sep design, annexure given to licensee within 14 days, no gate. Now: licensee signs the annexure's adoption section and the agent uploads it before their first listing. Add listing is blocked until then; nothing else is.
+  // REVERSAL (Adam, 14 Oct 2026): was (#42 brief, Part 4): Home reminder until adopted, nothing locked. Now: office plans can't add new listings until the licensee adopts the annexure; existing listings carry on.
+  // Asked here so the refusal says why; the database refuses the insert below
+  // on its own as well (0071, properties_listing_gate), whatever route it
+  // comes by.
+  const gate = await listingGate(supabase);
+  if (gate) {
+    return { error: lockedCreateMessage(gate) };
+  }
+
   // After a change of licensee in charge, until the new one adopts the
-  // annexure (0080). Asked here so the refusal says why; the database refuses
-  // the insert below on its own as well (properties_new_licensee_annexure),
-  // whatever route it comes by.
+  // annexure (0080). Same again: the database refuses it on its own too
+  // (properties_new_licensee_annexure).
   const change = await licenseeChangeStatus(supabase);
   if (change?.annexurePending) {
     return { error: LOCKED_LISTING_MESSAGE };

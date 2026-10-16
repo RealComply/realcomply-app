@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Check, Home as HomeIcon, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
+import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
+import { ListingLockCard } from "@/components/annexure/ListingLockCard";
 import { licenseeChangeStatus } from "@/lib/data/licensee-change";
 import { NewLicenseeListingLock } from "@/components/annexure/NewLicenseeListingLock";
 import { navCountsFor } from "@/lib/data/nav-counts";
@@ -11,11 +13,18 @@ export default async function DashboardPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
-  // After a change of licensee in charge, until the new one adopts the
-  // annexure (0080): "Add listing" gives way to why. Existing listings below
+  // Two locks can hold back a new listing, and the page shows one of them:
+  // the annexure lock (job 7 brief, Parts 4 and 5; 0071) while it is on, else
+  // the one after a change of licensee in charge until the new one adopts the
+  // annexure (0080). "Add listing" gives way to why; existing listings below
   // open and save as normal.
-  const change = await licenseeChangeStatus(supabase);
-  const locked = change?.annexurePending === true;
+  const gate = await listingGate(supabase);
+  const lockLicensee = gate
+    ? await licenseeNameFor(supabase, profile.agency_id, { agentPlan: access.isAgentPlan })
+    : null;
+  const change = gate ? null : await licenseeChangeStatus(supabase);
+  const newLicenseeLock = change?.annexurePending === true;
+  const locked = Boolean(gate) || newLicenseeLock;
 
   const { data: properties } = await supabase
     .from("properties")
@@ -57,7 +66,17 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        {locked && (
+        {gate && (
+          <div className="mt-6">
+            <ListingLockCard
+              gate={gate}
+              actsAsLicensee={access.actsAsLicensee}
+              licenseeName={lockLicensee}
+              agencyId={profile.agency_id}
+            />
+          </div>
+        )}
+        {newLicenseeLock && (
           <div className="mt-6">
             <NewLicenseeListingLock isLicensee={access.officeLicensee} licenseeName={change?.licenseeName ?? null} />
           </div>
