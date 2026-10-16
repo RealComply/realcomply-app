@@ -198,12 +198,58 @@ export type ComplianceItem = {
   // a file already attached — see ItemShell.
   hideEvidenceWhen?: (current?: PropertyItem) => boolean;
   /**
+   * When a card left the checklist (ISO time). A retired card is asked for
+   * and waited on by no open listing, and is left out of everything that
+   * describes the platform as it is now (allItemsInRuleset: the SG
+   * annexure's Schedule 1 and the help assistant). It stays only in its
+   * showIf, for the files that must keep showing it: see retiredCardShows.
+   */
+  retiredAt?: string;
+  /**
    * For a "question" card: what No says, and the tick Yes brings with it. The
    * engine (lib/rules/question-card.ts) keeps the answer, the tick, who and
    * when, and a history.
    */
   question?: QuestionSpec;
 };
+
+// ── Retired cards ───────────────────────────────────────────────────────────
+// A finalised compliance file is not stored. It is rebuilt from this list on
+// every view and download (lib/pdf/audit-pack.ts, the summary page, the
+// sign-off link's copy), so deleting a card from the list would quietly
+// rewrite files the licensee has already signed. A retired card therefore
+// stays in the list, and shows only where it must:
+//   * never on an open listing: nothing asks for it or waits on it;
+//   * on a file the licensee signed off before it retired, exactly as it was
+//     (ticked or not), because that is the file they signed;
+//   * on a file signed off later that still holds an answer for it, so a
+//     saved answer is never hidden from the file it belongs to.
+// Saved answers are never deleted (property_items rows stay as they are).
+/** When the licensee signed this file off (sign_licensee), or null while it is open. */
+function signedOffAt(allItems: Record<string, PropertyItem>): string | null {
+  const signed = allItems.sign_licensee;
+  if (signed?.status !== "done") return null;
+  const at = (signed.data as { signedAt?: unknown } | null)?.signedAt;
+  return typeof at === "string" ? at : (signed.recorded_at ?? signed.created_at ?? null);
+}
+
+export function retiredCardShows(key: string, retiredAt: string, allItems: Record<string, PropertyItem>): boolean {
+  const signedAt = signedOffAt(allItems);
+  if (!signedAt) return false;
+  if (allItems[key] != null) return true;
+  const signed = Date.parse(signedAt);
+  return Number.isFinite(signed) && signed < Date.parse(retiredAt);
+}
+
+// REVERSAL 15 Oct 2026 (Adam): these were Campaign cards; moved to Did you know because every ad already carries the agency's details and marketing approval is covered by Vendor approved all marketing and the price guide checks.
+//
+// c2 ("Advertising identifies the licensed agent/agency", s50) and c3
+// ("Marketing reflects the agreement", ACL s18/s30) sat on the On market
+// stage (stage 2, which the SG annexure calls Campaign). They are now notes 4
+// and 5 for all agents on the Did you know page (lib/rules/nsw-did-you-know.ts).
+// From midnight at the start of 16 Oct 2026, Sydney time.
+export const C2_C3_RETIRED_AT = "2026-10-15T13:00:00.000Z";
+
 
 // ── Power of Attorney (Adam, 15 Oct 2026) ───────────────────────────────────
 // NEW LISTINGS ONLY. A listing created after this shipped is given an
@@ -1046,6 +1092,11 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
   },
+  // REVERSAL 15 Oct 2026 (Adam): these were Campaign cards; moved to Did you know because every ad already carries the agency's details and marketing approval is covered by Vendor approved all marketing and the price guide checks.
+  //
+  // Retired, not deleted: see "Retired cards" above. No open listing shows
+  // them or waits on them; a file signed off before they retired still shows
+  // them as it was, and a saved answer stays with its file.
   {
     key: "c2",
     stage: 2,
@@ -1059,6 +1110,8 @@ const items: ComplianceItem[] = [
     // themselves are the record and live wherever they were published.
     hideNote: true,
     hideEvidence: true,
+    retiredAt: C2_C3_RETIRED_AT,
+    showIf: (_p, allItems) => retiredCardShows("c2", C2_C3_RETIRED_AT, allItems),
   },
   {
     key: "c3",
@@ -1073,6 +1126,8 @@ const items: ComplianceItem[] = [
     // Plain tick (Adam, 28 Sep 2026): "no notes or evidence required."
     hideNote: true,
     hideEvidence: true,
+    retiredAt: C2_C3_RETIRED_AT,
+    showIf: (_p, allItems) => retiredCardShows("c3", C2_C3_RETIRED_AT, allItems),
   },
   {
     key: "c4",
@@ -1721,7 +1776,10 @@ export function allItemsInRuleset(): ComplianceItem[] {
   // hideEvidenceWhen against, and this list never reaches a client
   // component (see the doc comment above), so resolveItem's stripping is
   // enough without trying to resolve the dynamic half.
-  return items.map((item) => resolveItem(item, undefined));
+  //
+  // Retired cards are not part of the platform as it is now (15 Oct 2026),
+  // so the annexure's Schedule 1 and the help assistant never list them.
+  return items.filter((item) => !item.retiredAt).map((item) => resolveItem(item, undefined));
 }
 
 export function getItem(key: string): ComplianceItem | undefined {
