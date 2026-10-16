@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import {
   changeLicenseeInCharge,
@@ -52,9 +52,11 @@ export function LicenseeInChargeCard({
   todayIso: string;
 }) {
   const [changing, setChanging] = useState(false);
-  // Said after the change, which the page re-renders around: the person who
-  // made it is now an agent, so the form itself goes.
-  const [doneName, setDoneName] = useState<string | null>(null);
+  // The change's result lives here, not in the form: once it succeeds the
+  // page refreshes with the person who made it as an agent, and the form goes
+  // in the same moment, so a result kept in the form was never seen.
+  const [changeState, changeAction, changePending] = useActionState(changeLicenseeInCharge, initialChange);
+  const doneName = changeState.done?.name ?? null;
 
   return (
     <section
@@ -83,11 +85,10 @@ export function LicenseeInChargeCard({
         <ChangeForm
           candidates={candidates}
           todayIso={todayIso}
+          state={changeState}
+          formAction={changeAction}
+          pending={changePending}
           onCancel={() => setChanging(false)}
-          onDone={(name) => {
-            setDoneName(name);
-            setChanging(false);
-          }}
         />
       ) : (
         <>
@@ -127,7 +128,35 @@ export function LicenseeInChargeCard({
               <summary className="cursor-pointer text-sm font-semibold text-rc-green-deep hover:underline">
                 History ({rows.length})
               </summary>
-              <div className="mt-3 overflow-x-auto">
+              {/* On a phone, one line under another: four columns don't fit
+                  without cutting the dates off. From sm up, the table. */}
+              <ul className="mt-3 divide-y divide-rc-border border-y border-rc-border text-sm sm:hidden">
+                {rows.map((r) => (
+                  <li key={r.id} className="py-2.5">
+                    <p className="font-semibold text-rc-ink">{r.name}</p>
+                    <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                      <dt className="text-rc-muted">From</dt>
+                      <dd className="text-rc-ink">
+                        {r.from}
+                        {canChange && r.missingStart && (
+                          <AddDate lineId={r.id} which="started" label="Add" todayIso={todayIso} compact />
+                        )}
+                      </dd>
+                      <dt className="text-rc-muted">To</dt>
+                      <dd className="text-rc-ink">{r.to}</dd>
+                      <dt className="text-rc-muted">Fair Trading told</dt>
+                      <dd className="text-rc-ink">
+                        {r.fairTradingTold}
+                        {canChange && r.missingFairTrading && (
+                          <AddDate lineId={r.id} which="fair_trading" label="Add" todayIso={todayIso} compact />
+                        )}
+                      </dd>
+                    </dl>
+                    <p className="mt-1 text-xs text-rc-muted">{r.recorded}</p>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 hidden overflow-x-auto sm:block">
                 <table className="w-full min-w-[520px] border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-rc-border text-left text-xs font-bold text-rc-muted">
@@ -178,25 +207,23 @@ const initialChange: ChangeLicenseeState = { error: null };
 function ChangeForm({
   candidates,
   todayIso,
+  state,
+  formAction,
+  pending,
   onCancel,
-  onDone,
 }: {
   candidates: Candidate[];
   todayIso: string;
+  state: ChangeLicenseeState;
+  formAction: (formData: FormData) => void;
+  pending: boolean;
   onCancel: () => void;
-  onDone: (name: string) => void;
 }) {
-  const [state, formAction, pending] = useActionState(changeLicenseeInCharge, initialChange);
-  useEffect(() => {
-    if (state.done) onDone(state.done.name);
-  }, [state.done, onDone]);
   const [newId, setNewId] = useState(candidates[0]?.id ?? "");
   const [tookEffect, setTookEffect] = useState(todayIso);
   const [told, setTold] = useState("");
   const [confirming, setConfirming] = useState(false);
   const chosen = candidates.find((c) => c.id === newId) ?? null;
-
-  if (state.done) return null;
 
   if (candidates.length === 0) {
     return (
