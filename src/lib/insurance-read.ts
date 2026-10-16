@@ -26,9 +26,12 @@
 // changeSource, on the same write.
 //
 // Since 16 Oct 2026 (0078; mockup approved by Adam) an office can add other
-// insurance under the three: public liability, office contents and business,
-// motor vehicle, or one it names. Read by the same rules. A named one has no
-// cover to check the certificate against.
+// insurance under the three: public liability, or one it names. Read by the
+// same rules. A named one has no cover to check the certificate against.
+//
+// CHANGE (Adam, 16 Oct 2026): removed Motor vehicle and Office contents and
+// business. Not Fair Trading requirements; CTP comes with car registration.
+// Offices can still add them under Other.
 
 import type { InsuranceHistoryRow, InsurancePolicyType, InsuranceSnapshot, OtherInsuranceKind } from "@/lib/types";
 
@@ -52,13 +55,15 @@ export const POLICIES: Record<InsurancePolicyType, { title: string; cover: Cover
 };
 
 /**
- * The kinds of other insurance an office can add (0078), in the order the
- * picker lists them. "other" is named by the office and has no cover to check.
+ * The kinds of other insurance an office can add (0078, 0079), in the order
+ * the picker lists them. "other" is named by the office and has no cover to
+ * check.
  */
+// CHANGE (Adam, 16 Oct 2026): removed Motor vehicle and Office contents and
+// business. Not Fair Trading requirements; CTP comes with car registration.
+// Offices can still add them under Other.
 export const OTHER_INSURANCE: Record<OtherInsuranceKind, { label: string; cover: CoverKind | null; coverWords: string }> = {
   public_liability: { label: "Public liability", cover: "public_liability", coverWords: "public liability" },
-  office_contents: { label: "Office contents and business", cover: "office_contents", coverWords: "office contents and business" },
-  motor_vehicle: { label: "Motor vehicle", cover: "motor_vehicle", coverWords: "motor vehicle" },
   other: { label: "Other", cover: null, coverWords: "other" },
 };
 
@@ -85,6 +90,12 @@ function coverFor(policy: AnyPolicy): { cover: CoverKind | null; coverWords: str
 
 export type DocumentKind = "certificate_of_currency" | "policy_schedule" | "other";
 
+/**
+ * Kinds of cover a certificate can state. Wider than the types an office can
+ * pick: office contents and motor vehicle stay here (16 Oct 2026) so that,
+ * say, a car's certificate uploaded as public liability is named and refused
+ * rather than read as no cover at all.
+ */
 export type CoverKind =
   | "professional_indemnity"
   | "cyber"

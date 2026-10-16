@@ -1,6 +1,7 @@
 -- ===== READ ONLY. Other insurance test, 16 October 2026 =====
 --
--- Proves supabase/migrations/0078_other_insurance.sql. Run after it.
+-- Proves supabase/migrations/0078_other_insurance.sql and
+-- 0079_other_insurance_two_types.sql. Run after both.
 -- Safe on the live database: everything happens inside one transaction that
 -- is rolled back at the end, so the made-up offices and people it creates
 -- never exist outside it.
@@ -18,8 +19,8 @@ declare
   agt uuid := gen_random_uuid();     -- one of its agents
   lic2 uuid := gen_random_uuid();    -- the other office's licensee
   pl uuid := gen_random_uuid();      -- a public liability policy
-  car1 uuid := gen_random_uuid();    -- a motor vehicle policy
-  car2 uuid := gen_random_uuid();    -- a second one
+  pl2 uuid := gen_random_uuid();     -- a second public liability policy
+  pl3 uuid := gen_random_uuid();     -- a third
   n integer;
   h record;
   p record;
@@ -61,13 +62,13 @@ begin
     raise exception 'FAIL 1: adding the policy was recorded wrongly (%, %, %, %)', h.policy_type, h.source, h.before, h.after;
   end if;
 
-  -- 2. More than one of the same type is fine (two vehicles).
+  -- 2. More than one of the same type is fine.
   set local role authenticated;
-  insert into public.insurance_policies (id, agency_id, kind, name) values
-    (car1, ag, 'motor_vehicle', 'Toyota Corolla'), (car2, ag, 'motor_vehicle', 'Ford Ranger');
+  insert into public.insurance_policies (id, agency_id, kind) values
+    (pl2, ag, 'public_liability'), (pl3, ag, 'public_liability');
   reset role;
-  select count(*) into n from public.insurance_policies where agency_id = ag and kind = 'motor_vehicle';
-  if n <> 2 then raise exception 'FAIL 2: % motor vehicle policies, expected 2', n; end if;
+  select count(*) into n from public.insurance_policies where agency_id = ag and kind = 'public_liability';
+  if n <> 3 then raise exception 'FAIL 2: % public liability policies, expected 3', n; end if;
 
   -- 3. "Other" needs a name.
   begin
@@ -80,6 +81,28 @@ begin
   end;
   set local role authenticated;
   insert into public.insurance_policies (agency_id, kind, name) values (ag, 'other', 'Management liability');
+  reset role;
+
+  -- 3b. Two types only (0079): Motor vehicle and Office contents and business
+  --     were removed, and go under "Other" instead.
+  begin
+    set local role authenticated;
+    insert into public.insurance_policies (agency_id, kind) values (ag, 'motor_vehicle');
+    reset role;
+    raise exception 'FAIL 3b: a motor vehicle policy was added';
+  exception when check_violation then
+    reset role;
+  end;
+  begin
+    set local role authenticated;
+    insert into public.insurance_policies (agency_id, kind) values (ag, 'office_contents');
+    reset role;
+    raise exception 'FAIL 3b: an office contents policy was added';
+  exception when check_violation then
+    reset role;
+  end;
+  set local role authenticated;
+  insert into public.insurance_policies (agency_id, kind, name) values (ag, 'other', 'Company car');
   reset role;
 
   -- 4. The renewal: next year's certificate moves the expiry on, and last
@@ -112,7 +135,7 @@ begin
   begin
     set local role authenticated;
     update public.insurance_policies
-       set document_path = ag::text || '/_insurance/other/' || car1::text || '/3-x.pdf' where id = pl;
+       set document_path = ag::text || '/_insurance/other/' || pl2::text || '/3-x.pdf' where id = pl;
     reset role;
     raise exception 'FAIL 6: a certificate in another policy''s folder was saved';
   exception when check_violation then
@@ -139,7 +162,7 @@ begin
   -- 7. The type and the office can't change.
   begin
     set local role authenticated;
-    update public.insurance_policies set kind = 'office_contents' where id = car1;
+    update public.insurance_policies set kind = 'other', name = 'Renamed' where id = pl2;
     reset role;
     raise exception 'FAIL 7: the type of a policy was changed';
   exception when raise_exception then
@@ -148,17 +171,17 @@ begin
 
   -- 8. Remove: off the register, stamped by the database, recorded, final.
   set local role authenticated;
-  update public.insurance_policies set removed_at = '2000-01-01', removed_by = agt where id = car2;
+  update public.insurance_policies set removed_at = '2000-01-01', removed_by = agt where id = pl3;
   reset role;
-  select * into p from public.insurance_policies where id = car2;
+  select * into p from public.insurance_policies where id = pl3;
   if p.removed_by is distinct from lic or p.removed_at < now() - interval '1 minute' then
     raise exception 'FAIL 8: who removed it and when were taken from the app (%, %)', p.removed_by, p.removed_at;
   end if;
-  select count(*) into n from public.insurance_history where policy_id = car2 and source = 'policy_removed' and changed_by = lic;
+  select count(*) into n from public.insurance_history where policy_id = pl3 and source = 'policy_removed' and changed_by = lic;
   if n <> 1 then raise exception 'FAIL 8: the removal was not recorded'; end if;
   begin
     set local role authenticated;
-    update public.insurance_policies set insurer = 'Changed after removal' where id = car2;
+    update public.insurance_policies set insurer = 'Changed after removal' where id = pl3;
     reset role;
     raise exception 'FAIL 8: a removed policy was changed';
   exception when raise_exception then
@@ -222,14 +245,14 @@ begin
   select count(*) into n from public.insurance_history where agency_id = ag and policy_type = 'pi' and policy_id is null;
   if n <> 1 then raise exception 'FAIL 11: the PI change wrote % rows, expected 1', n; end if;
 
-  -- 12. The licensee sees all of it: 4 policies, the removed one included
+  -- 12. The licensee sees all of it: 5 policies, the removed one included
   --     (the register leaves it out; the record keeps it), and 5 history rows:
   --     the added policy, its renewal and hand change, the removal, the PI change.
-  --     Adding a policy with nothing on it yet (the two vehicles) writes none.
+  --     Adding a policy with nothing on it yet (the second and third) writes none.
   set local role authenticated;
   select count(*) into n from public.insurance_policies;
   reset role;
-  if n <> 4 then raise exception 'FAIL 12: the licensee sees % policies, expected 4', n; end if;
+  if n <> 5 then raise exception 'FAIL 12: the licensee sees % policies, expected 5', n; end if;
   set local role authenticated;
   select count(*) into n from public.insurance_history;
   reset role;

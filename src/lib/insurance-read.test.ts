@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  OTHER_INSURANCE_KINDS,
   addedMessage,
   couldNotReadState,
   decideInsuranceRead,
@@ -266,7 +267,7 @@ describe("other insurance", () => {
     policyNumber: "PL-55120",
     expiry: "2026-11-01",
   };
-  const decideOther = (read: InsuranceDocumentRead, policy: "public_liability" | "office_contents" | "motor_vehicle" | "other") =>
+  const decideOther = (read: InsuranceDocumentRead, policy: "public_liability" | "other") =>
     decideInsuranceRead({ read, policy, by: jo, at: AT, fileName: "pl-coc.pdf", today: TODAY });
 
   it("reads a public liability certificate onto a public liability policy", () => {
@@ -286,12 +287,14 @@ describe("other insurance", () => {
     );
   });
 
-  it("takes a business package that includes the cover", () => {
-    assert.equal(decideOther({ ...pl, covers: ["public_liability", "office_contents"] }, "office_contents").kind, "save");
+  it("takes a business package that includes public liability", () => {
+    assert.equal(decideOther({ ...pl, covers: ["office_contents", "public_liability"] }, "public_liability").kind, "save");
   });
 
-  it("a policy the office named has no cover to check against", () => {
+  it("a policy the office named has no cover to check against: a car or office contents go under Other", () => {
     assert.equal(decideOther({ ...pl, covers: ["professional_indemnity"] }, "other").kind, "save");
+    assert.equal(decideOther({ ...pl, covers: ["motor_vehicle"] }, "other").kind, "save");
+    assert.equal(decideOther({ ...pl, covers: ["office_contents"] }, "other").kind, "save");
   });
 
   it("still refuses something that isn't a certificate, named or not", () => {
@@ -302,11 +305,18 @@ describe("other insurance", () => {
     assert.equal(decide({ ...clear, covers: ["motor_vehicle"] }).kind, "wrong_cover");
   });
 
-  it("knows its kinds and titles", () => {
-    assert.ok(isOtherInsuranceKind("motor_vehicle"));
+  it("offers two types only: Public liability and Other (CHANGE, Adam, 16 Oct 2026)", () => {
+    assert.deepEqual(OTHER_INSURANCE_KINDS, ["public_liability", "other"]);
+    assert.ok(isOtherInsuranceKind("public_liability"));
+    assert.ok(isOtherInsuranceKind("other"));
+    assert.ok(!isOtherInsuranceKind("motor_vehicle"));
+    assert.ok(!isOtherInsuranceKind("office_contents"));
     assert.ok(!isOtherInsuranceKind("pi"));
     assert.ok(!isOtherInsuranceKind("toString"));
-    assert.equal(otherInsuranceTitle("office_contents", null), "Office contents and business");
+  });
+
+  it("knows its titles", () => {
+    assert.equal(otherInsuranceTitle("public_liability", null), "Public liability");
     assert.equal(otherInsuranceTitle("other", "  Management liability "), "Management liability");
   });
 
@@ -324,8 +334,8 @@ describe("other insurance", () => {
       "Public liability added. Read from the certificate and saved. The expiry date on it has already passed.",
     );
     assert.equal(
-      addedMessage({ title: "Motor vehicle", state: couldNotReadState(jo, AT, "x.pdf"), expired: false }),
-      "Motor vehicle added. The certificate couldn't be read, so the details need typing in on its card.",
+      addedMessage({ title: "Company car", state: couldNotReadState(jo, AT, "x.pdf"), expired: false }),
+      "Company car added. The certificate couldn't be read, so the details need typing in on its card.",
     );
   });
 

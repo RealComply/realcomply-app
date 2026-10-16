@@ -96,11 +96,10 @@ policy number and expiry off it, and asks for anything it can't read. View
 certificate opens it in one click, for when Fair Trading asks. To renew,
 upload next year's certificate: the expiry moves on, and the previous
 certificate stays in the card's History. Other insurance the office holds
-(public liability, office contents and business, a motor vehicle, or one you
-name) goes in with "+ Add other insurance" under the three, and works the
-same way. Add as many as you hold, two vehicles say. Only professional
-indemnity is required by law (s22); the others are there because the office
-chooses to track them.
+(public liability, or any other policy you name) goes in with "+ Add other
+insurance" under the three, and works the same way. Add as many as you hold.
+Only professional indemnity is required by law (s22); the others are there
+because the office chooses to track them.
 
 ## Emails
 

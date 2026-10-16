@@ -136,7 +136,10 @@ export type Agency = {
 export type InsurancePolicyType = "pi" | "cyber" | "icare";
 
 // Other insurance an office adds under the three (0078, 16 Oct 2026).
-export type OtherInsuranceKind = "public_liability" | "office_contents" | "motor_vehicle" | "other";
+// CHANGE (Adam, 16 Oct 2026): removed Motor vehicle and Office contents and
+// business. Not Fair Trading requirements; CTP comes with car registration.
+// Offices can still add them under Other.
+export type OtherInsuranceKind = "public_liability" | "other";
 
 /** One added policy (insurance_policies, 0078). Never deleted: removed_at takes it off the register. */
 export type InsurancePolicy = {
