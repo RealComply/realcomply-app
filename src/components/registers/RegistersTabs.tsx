@@ -1,19 +1,24 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IdCard, ShieldCheck, Gift, Mail, TriangleAlert } from "lucide-react";
 
 const TABS = [
-  // "Licences & certificates", not "Licence register" — a certificate of
+  // "Licences and certificates", not "Licence register" — a certificate of
   // registration is a different credential from a licence, assistant agents
   // hold one and know the difference, and Adam went looking for "a
   // certificate register" without finding it here (18 Aug 2026). Same tab,
   // same records; the name now says what's in it.
-  { key: "licence", label: "Licences & certificates", icon: IdCard },
-  { key: "insurance", label: "Insurance register", icon: ShieldCheck },
-  { key: "gifts", label: "Gift register", icon: Gift },
-  { key: "complaints", label: "Complaints register", icon: Mail },
-  { key: "breaches", label: "Breach register", icon: TriangleAlert },
+  //
+  // CHANGE (Adam, 16 Oct 2026): "register" dropped from every label (the page
+  // is already titled Registers), so all five fit on one line at laptop
+  // width instead of wrapping onto two. Was: Licences & certificates,
+  // Insurance register, Gift register, Complaints register, Breach register.
+  { key: "licence", label: "Licences and certificates", icon: IdCard },
+  { key: "insurance", label: "Insurance", icon: ShieldCheck },
+  { key: "gifts", label: "Gifts", icon: Gift },
+  { key: "complaints", label: "Complaints", icon: Mail },
+  { key: "breaches", label: "Breaches", icon: TriangleAlert },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -79,6 +84,20 @@ export function RegistersTabs({
   const [active, setActive] = useState<TabKey>(
     content[defaultTab] !== null ? defaultTab : (shown[0]?.key ?? defaultTab),
   );
+  // On a phone the tabs scroll sideways on one line (Adam, 16 Oct 2026)
+  // rather than wrapping, so the open tab is scrolled into the strip's view:
+  // ?tab=breaches lands with Breaches showing, not off the right-hand edge.
+  // The strip scrolls, never the page.
+  const strip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = strip.current;
+    const tab = el?.querySelector<HTMLElement>(`[data-tab="${active}"]`);
+    if (!el || !tab) return;
+    const left = tab.offsetLeft;
+    if (left < el.scrollLeft || left + tab.offsetWidth > el.scrollLeft + el.clientWidth) {
+      el.scrollTo({ left: Math.max(0, left - 16) });
+    }
+  }, [active]);
   const badges: Partial<Record<TabKey, TabBadge | undefined>> = {
     licence: licenceBadge,
     insurance: insuranceBadge,
@@ -89,20 +108,24 @@ export function RegistersTabs({
 
   return (
     <div>
-      <div className="flex flex-wrap gap-1 border-b border-rc-border">
+      <div
+        ref={strip}
+        className="relative flex gap-1 overflow-x-auto border-b border-rc-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {shown.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.key}
               type="button"
+              data-tab={tab.key}
               onClick={() => setActive(tab.key)}
               title={
                 badges[tab.key]?.count
-                  ? `${tab.label} — ${badges[tab.key]!.count} needing attention`
+                  ? `${tab.label}: ${badges[tab.key]!.count} needing attention`
                   : tab.label
               }
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold transition ${
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-4 py-2.5 text-sm font-semibold transition ${
                 active === tab.key
                   ? "border-b-2 border-rc-green-deep text-rc-green-deep"
                   : "border-b-2 border-transparent text-rc-muted hover:text-rc-ink"

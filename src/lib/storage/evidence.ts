@@ -147,12 +147,35 @@ export function buildInsuranceDocPath(agencyId: string, policy: "pi" | "cyber" |
   return `${insuranceFolder(agencyId, policy)}${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// Other insurance an office adds (0078): one folder per added policy, by its
+// id. The database refuses a certificate anywhere else.
+export function otherInsuranceFolder(agencyId: string, policyId: string): string {
+  return `${agencyId}/_insurance/other/${policyId}/`;
+}
+
+export function buildOtherInsuranceDocPath(agencyId: string, policyId: string, fileName: string): string {
+  return `${otherInsuranceFolder(agencyId, policyId)}${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 // The provider's record of completion for one CPD activity. Kept per person
 // rather than per agency folder, because retention is the individual's
 // obligation (3 years; 4 for an assistant agent's statement of attainment)
 // and it should stay with them if they move.
 export function buildCpdDocPath(agencyId: string, profileId: string, fileName: string): string {
   return `${agencyId}/_cpd/${profileId}/${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
+// A document for training plan item that has no CPD record: office training
+// that doesn't count for CPD (15 Oct 2026). In the person's own folder, in a
+// folder of its own, so it can't be mistaken for a CPD certificate (those
+// live on the CPD record only) or removed as an unsaved one (0075 looks only
+// at files directly in the person's folder).
+export function planItemFolder(agencyId: string, profileId: string): string {
+  return `${agencyId}/_cpd/${profileId}/training-plan/`;
+}
+
+export function buildPlanItemDocPath(agencyId: string, profileId: string, fileName: string): string {
+  return `${planItemFolder(agencyId, profileId)}${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
 // The agency's own logo, drawn on the finalised compliance record. Same bucket
