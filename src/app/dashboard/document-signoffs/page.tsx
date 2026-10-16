@@ -4,10 +4,17 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AnnexureAdoptionCard } from "@/components/registers/AnnexureAdoptionCard";
+import { FiledRecordCard, when } from "@/components/registers/FiledRecordCard";
 import { SgReadConfirmationsCard } from "@/components/registers/SgReadConfirmationsCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { documentsWaitingOn, notAskedToSign } from "@/lib/signoff/awaiting";
-import type { SgAnnexureAdoption, SgReadConfirmation, SignoffDocument, SignoffSignature } from "@/lib/types";
+import type {
+  AgentAcknowledgement,
+  SgAnnexureAdoption,
+  SgReadConfirmation,
+  SignoffDocument,
+  SignoffSignature,
+} from "@/lib/types";
 
 // Document sign-offs — the generic register for "upload a document, the
 // right people sign it in RealComply" (Adam, 9 Aug 2026). Currently feeds
@@ -19,17 +26,22 @@ export default async function DocumentSignoffsPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
-  const [{ data: docRows }, { data: sigRows }, staff, { data: adoptionRows }, { data: readRows }] = await Promise.all([
-    supabase.from("signoff_documents").select("*").order("created_at", { ascending: false }),
-    supabase.from("signoff_signatures").select("*"),
-    agencyPeople(supabase),
-    // The SG annexure's adoptions (0067). The licensee reads them; anyone else
-    // gets none, and never sees the annexure's document either.
-    supabase.from("sg_annexure_adoptions").select("*"),
-    // Agents' read-and-tick of the annexure and the SG (0069): their own, or
-    // the office's for the licensee in charge.
-    supabase.from("sg_read_confirmations").select("*"),
-  ]);
+  const [{ data: docRows }, { data: sigRows }, staff, { data: adoptionRows }, { data: readRows }, { data: ackRows }] =
+    await Promise.all([
+      supabase.from("signoff_documents").select("*").order("created_at", { ascending: false }),
+      supabase.from("signoff_signatures").select("*"),
+      agencyPeople(supabase),
+      // The SG annexure's adoptions (0067). The licensee reads them; anyone else
+      // gets none, and never sees the annexure's document either.
+      supabase.from("sg_annexure_adoptions").select("*"),
+      // Agents' read-and-tick of the annexure and the SG (0069): their own, or
+      // the office's for the licensee in charge.
+      supabase.from("sg_read_confirmations").select("*"),
+      // An agent's own plan's "Before you start" acknowledgement (0071). Empty
+      // before 0071 has run.
+      supabase.from("agent_acknowledgements").select("*"),
+    ]);
+  const acknowledgements = (ackRows ?? []) as AgentAcknowledgement[];
   const adoptions = (adoptionRows ?? []) as SgAnnexureAdoption[];
   const readConfirmations = (readRows ?? []) as SgReadConfirmation[];
   const nameOf = (id: string | null) =>
@@ -121,7 +133,28 @@ export default async function DocumentSignoffsPage() {
             </p>
           )}
           {documents.map((doc, i) =>
-            doc.category === "sg_annexure" ? (
+            doc.category === "agent_acknowledgement" ? (
+              <FiledRecordCard
+                key={doc.id}
+                document={doc}
+                fileUrl={signedUrls[i]?.data?.signedUrl ?? null}
+                label="Before you start"
+                status="Confirmed"
+                details={acknowledgementDetails(acknowledgements.find((a) => a.signoff_document_id === doc.id))}
+              />
+            ) : doc.category === "sg_annexure_licensee_signed" ? (
+              <FiledRecordCard
+                key={doc.id}
+                document={doc}
+                fileUrl={signedUrls[i]?.data?.signedUrl ?? null}
+                label="SG annexure"
+                status="Uploaded"
+                details={[
+                  { term: "Uploaded by", value: nameOf(doc.uploaded_by) },
+                  { term: "Uploaded", value: when(doc.created_at) },
+                ]}
+              />
+            ) : doc.category === "sg_annexure" ? (
               <AnnexureAdoptionCard
                 key={doc.id}
                 document={doc}
@@ -145,4 +178,15 @@ export default async function DocumentSignoffsPage() {
       </main>
     </>
   );
+}
+
+/** What the acknowledgement's card shows: who, their number, the licensee, when, which wording. */
+function acknowledgementDetails(ack: AgentAcknowledgement | undefined): Array<{ term: string; value: string }> {
+  if (!ack) return [];
+  return [
+    { term: "Agent", value: `${ack.typed_name}, licence or certificate ${ack.agent_licence_number}` },
+    { term: "Licensee in charge", value: `${ack.licensee_name}, licence ${ack.licensee_licence_number}` },
+    { term: "Confirmed", value: when(ack.confirmed_at) },
+    { term: "Wording version", value: ack.wording_version },
+  ];
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { adoptAnnexure, type AdoptState } from "@/lib/actions/sg-annexure";
 import { SG_ANNEXURE_TICK } from "@/lib/legal/sg-annexure";
@@ -53,6 +54,14 @@ export function AdoptAnnexureForm({
         <p className="mt-1.5 text-sm leading-relaxed text-rc-muted">
           A signed copy is on its way to your email. Add it to your Supervision Guidelines.
         </p>
+        {/* The way back (Adam, 14 Oct 2026): nothing on the page led back
+            into RealComply once it was signed. */}
+        <Link
+          href="/dashboard/home"
+          className="mt-4 inline-flex items-center justify-center rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rc-green-deep-600"
+        >
+          Back to RealComply
+        </Link>
       </div>
     );
   }

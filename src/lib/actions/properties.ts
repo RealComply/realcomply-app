@@ -1,5 +1,7 @@
 "use server";
 
+import { listingGate } from "@/lib/data/listing-gate";
+import { lockedCreateMessage } from "@/lib/agent-acknowledgement";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -164,6 +166,16 @@ export async function createProperty(
 
   if (!profile) {
     return { error: "No agency found for this account — contact support." };
+  }
+
+  // REVERSAL (Adam, 14 Oct 2026): was 22 Sep design, annexure given to licensee within 14 days, no gate. Now: licensee signs the annexure's adoption section and the agent uploads it before their first listing. Add listing is blocked until then; nothing else is.
+  // REVERSAL (Adam, 14 Oct 2026): was (#42 brief, Part 4): Home reminder until adopted, nothing locked. Now: office plans can't add new listings until the licensee adopts the annexure; existing listings carry on.
+  // Asked here so the refusal says why; the database refuses the insert below
+  // on its own as well (0071, properties_listing_gate), whatever route it
+  // comes by.
+  const gate = await listingGate(supabase);
+  if (gate) {
+    return { error: lockedCreateMessage(gate) };
   }
 
   // Whose file is this?

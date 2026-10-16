@@ -18,6 +18,8 @@ import { ComplaintsWidget } from "@/components/home/ComplaintsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgManualWidget } from "@/components/home/SgManualWidget";
 import { AnnexureCard } from "@/components/home/AnnexureCard";
+import { AgentAnnexureCard } from "@/components/home/AgentAnnexureCard";
+import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
 import { SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { STAGE_LABELS, type Agency, type Complaint, type Gift, type Profile, type Property, type PropertyItem, type SgManualVersion, type TrainingSession } from "@/lib/types";
 import { isOfficeAgent, myConfirmedVersions, officeAdoption, sgReadDue } from "@/lib/sg-annexure/office-read";
@@ -77,6 +79,23 @@ export default async function HomeDashboardPage({
     searchParams,
   ]);
   const annexureOutstanding = access.officeLicensee && !adoptionError && (adoptionRows ?? []).length === 0;
+
+  // An agent on their own plan whose office has the annexure lock on (job 7
+  // brief, Part 3; 0071): "get your licensee's sign-off", until the signed
+  // annexure is uploaded. Offices that existed before the lock never see it
+  // unless RealComply switches theirs on.
+  let agentAnnexure: { licenseeName: string | null; downloadHref: string } | null = null;
+  if (access.isAgentPlan && (await listingGate(supabase)) === "signed_annexure") {
+    const [licenseeName, { data: tokenRow }] = await Promise.all([
+      licenseeNameFor(supabase, profile.agency_id, { agentPlan: true }),
+      supabase.from("agencies").select("annexure_download_token").eq("id", profile.agency_id).maybeSingle(),
+    ]);
+    const token = (tokenRow as { annexure_download_token?: string | null } | null)?.annexure_download_token;
+    agentAnnexure = {
+      licenseeName,
+      downloadHref: token ? `/annexure/download/${encodeURIComponent(token)}` : "/annexure/download",
+    };
+  }
 
   const { data: properties } = await supabase.from("properties").select("*").order("created_at", { ascending: false });
   const propertyList = (properties ?? []) as Property[];
@@ -219,6 +238,13 @@ export default async function HomeDashboardPage({
           </div>
 
           {annexureOutstanding && <AnnexureCard unavailable={query.annexure === "unavailable"} />}
+          {agentAnnexure && (
+            <AgentAnnexureCard
+              licenseeName={agentAnnexure.licenseeName}
+              downloadHref={agentAnnexure.downloadHref}
+              agencyId={profile.agency_id}
+            />
+          )}
 
           {/* Files an assistant has handed over and prepared for this agent.
               Top of Home, above the tiles, because it is the one thing on the
