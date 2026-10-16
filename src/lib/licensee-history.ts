@@ -176,10 +176,18 @@ export function historyRows(
   formatTimestamp: (iso: string) => string,
 ): HistoryRow[] {
   const who = (id: string | null) => (id ? nameOf[id] ?? "a former team member" : "RealComply");
+  // Newest first by when each spell ended: the current one ("Now") on top,
+  // then the most recent end date. Not by start date: a backfilled line has
+  // none, and falling back to the day it was recorded put it above the
+  // changes that came after it (found on the preview, 16 Oct 2026).
+  const endKey = (l: LicenseeHistoryLine) => (l.ended_at ? l.ended_on ?? l.ended_at.slice(0, 10) : "9999-12-31");
   return [...lines]
     .sort((a, b) => {
-      const as = a.started_on ?? a.recorded_at.slice(0, 10);
-      const bs = b.started_on ?? b.recorded_at.slice(0, 10);
+      const ae = endKey(a);
+      const be = endKey(b);
+      if (ae !== be) return ae < be ? 1 : -1;
+      const as = a.started_on ?? "";
+      const bs = b.started_on ?? "";
       if (as !== bs) return as < bs ? 1 : -1;
       return a.recorded_at < b.recorded_at ? 1 : -1;
     })

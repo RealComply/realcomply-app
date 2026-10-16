@@ -146,6 +146,22 @@ describe("the card and the history", () => {
     assert.equal(rows[1].recorded, "Recorded by RealComply on 1 October 2026.");
   });
 
+  it("newest first even when the oldest line, backfilled, has no start date", () => {
+    // Jane backfilled (no start, ended 30 Sep), Pat 1 to 13 Oct, Jane again from 14 Oct.
+    const rows = historyRows(
+      [
+        line({ id: "jane-old", profile_id: "jane", source: "backfill", started_on: null, ended_on: "2026-09-30",
+               ended_at: "2026-10-16T03:30:00Z", recorded_by: null, recorded_at: "2026-10-16T03:27:00Z" }),
+        line({ id: "pat", started_on: "2026-10-01", ended_on: "2026-10-13", ended_at: "2026-10-16T03:40:00Z",
+               recorded_at: "2026-10-16T03:30:00Z" }),
+        line({ id: "jane-now", profile_id: "jane", started_on: "2026-10-14", recorded_at: "2026-10-16T03:40:00Z" }),
+      ],
+      {},
+      formatAuTimestamp,
+    );
+    assert.deepEqual(rows.map((r) => r.id), ["jane-now", "pat", "jane-old"]);
+  });
+
   it("a date filled in later says who added it and when", () => {
     const [row] = historyRows(
       [line({ fair_trading_told_on: "2026-10-16", fair_trading_recorded_by: "pat", fair_trading_recorded_at: "2026-10-16T02:00:00Z" })],
