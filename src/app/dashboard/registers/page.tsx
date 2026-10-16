@@ -249,7 +249,9 @@ export default async function RegistersPage({
 
   return (
     <>
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10">
+      {/* Wider than it was (max-w-4xl), so the registers use more of the
+          screen (Adam, 16 Oct 2026). */}
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Registers</h1>
