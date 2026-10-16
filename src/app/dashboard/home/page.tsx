@@ -18,6 +18,10 @@ import { ComplaintsWidget } from "@/components/home/ComplaintsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgManualWidget } from "@/components/home/SgManualWidget";
 import { AnnexureCard } from "@/components/home/AnnexureCard";
+import { FairTradingCard, NewLicenseeAnnexureCard } from "@/components/home/LicenseeChangeCards";
+import { fairTradingDueSentence, fairTradingReminder, type LicenseeHistoryLine } from "@/lib/licensee-history";
+import { sydneyDate } from "@/lib/subscription-end/dates";
+import { licenseeChangeStatus } from "@/lib/data/licensee-change";
 import { SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { STAGE_LABELS, type Agency, type Complaint, type Gift, type Profile, type Property, type PropertyItem, type SgManualVersion, type TrainingSession } from "@/lib/types";
 import { isOfficeAgent, myConfirmedVersions, officeAdoption, sgReadDue } from "@/lib/sg-annexure/office-read";
@@ -76,7 +80,31 @@ export default async function HomeDashboardPage({
     supabase.from("sg_annexure_adoptions").select("id").eq("annexure_version", SG_ANNEXURE_VERSION),
     searchParams,
   ]);
-  const annexureOutstanding = access.officeLicensee && !adoptionError && (adoptionRows ?? []).length === 0;
+  // After a change of licensee in charge (0080): the new licensee tells Fair
+  // Trading, and adopts the annexure themselves before the office adds new
+  // listings. Both only on a clean read; no card if the history can't be read
+  // (before 0080 has run).
+  const todayIso = sydneyDate(new Date());
+  const [{ data: myLineRows }, changeStatus] = access.officeLicensee
+    ? await Promise.all([
+        supabase
+          .from("licensee_in_charge_history")
+          .select("*")
+          .eq("profile_id", profile.id)
+          .is("ended_at", null)
+          .order("recorded_at", { ascending: false })
+          .limit(1),
+        licenseeChangeStatus(supabase),
+      ])
+    : [{ data: null }, null];
+  const myLine = ((myLineRows ?? []) as LicenseeHistoryLine[])[0] ?? null;
+  const fairTrading = fairTradingReminder(myLine, todayIso);
+  // With no earlier adoption on file there is no one to name: the usual
+  // annexure card asks instead.
+  const newLicenseeAnnexureFrom =
+    changeStatus?.annexurePending && changeStatus.previousAdopter ? changeStatus.previousAdopter : null;
+  const annexureOutstanding =
+    access.officeLicensee && !adoptionError && (adoptionRows ?? []).length === 0 && !newLicenseeAnnexureFrom;
 
   const { data: properties } = await supabase.from("properties").select("*").order("created_at", { ascending: false });
   const propertyList = (properties ?? []) as Property[];
@@ -219,6 +247,20 @@ export default async function HomeDashboardPage({
           </div>
 
           {annexureOutstanding && <AnnexureCard unavailable={query.annexure === "unavailable"} />}
+          {fairTrading && myLine && (
+            <FairTradingCard
+              lineId={myLine.id}
+              dueSentence={fairTradingDueSentence(fairTrading)}
+              overdue={fairTrading.overdue}
+              todayIso={todayIso}
+            />
+          )}
+          {newLicenseeAnnexureFrom && (
+            <NewLicenseeAnnexureCard
+              previousAdopter={newLicenseeAnnexureFrom}
+              unavailable={query.annexure === "unavailable"}
+            />
+          )}
 
           {/* Files an assistant has handed over and prepared for this agent.
               Top of Home, above the tiles, because it is the one thing on the

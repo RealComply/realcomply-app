@@ -1,13 +1,21 @@
 import Link from "next/link";
 import { Check, Home as HomeIcon, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess } from "@/lib/data/current-profile";
+import { licenseeChangeStatus } from "@/lib/data/licensee-change";
+import { NewLicenseeListingLock } from "@/components/annexure/NewLicenseeListingLock";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { STAGE_LABELS, type Property } from "@/lib/types";
 
 export default async function DashboardPage() {
-  const profile = await requireProfile();
+  const { profile, access } = await requireAccess();
   const supabase = await createClient();
+
+  // After a change of licensee in charge, until the new one adopts the
+  // annexure (0080): "Add listing" gives way to why. Existing listings below
+  // open and save as normal.
+  const change = await licenseeChangeStatus(supabase);
+  const locked = change?.annexurePending === true;
 
   const { data: properties } = await supabase
     .from("properties")
@@ -39,24 +47,34 @@ export default async function DashboardPage() {
                 : `${list.length} listing${list.length === 1 ? "" : "s"} — open one to work through its checklist.`}
             </p>
           </div>
-          <Link
-            href="/dashboard/new"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-semibold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
-          >
-            <Plus size={16} strokeWidth={2.5} /> Add listing
-          </Link>
-        </div>
-
-        {list.length === 0 ? (
-          <div className="mt-10 rounded-card border border-dashed border-rc-border bg-white px-6 py-16 text-center">
-            <p className="text-rc-muted">No listings yet. Add your first one to start its compliance checklist.</p>
+          {!locked && (
             <Link
               href="/dashboard/new"
-              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-semibold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-semibold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
             >
               <Plus size={16} strokeWidth={2.5} /> Add listing
             </Link>
+          )}
+        </div>
+
+        {locked && (
+          <div className="mt-6">
+            <NewLicenseeListingLock isLicensee={access.officeLicensee} licenseeName={change?.licenseeName ?? null} />
           </div>
+        )}
+
+        {list.length === 0 ? (
+          locked ? null : (
+            <div className="mt-10 rounded-card border border-dashed border-rc-border bg-white px-6 py-16 text-center">
+              <p className="text-rc-muted">No listings yet. Add your first one to start its compliance checklist.</p>
+              <Link
+                href="/dashboard/new"
+                className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-semibold text-white shadow-glow-green transition hover:bg-rc-green-deep-600"
+              >
+                <Plus size={16} strokeWidth={2.5} /> Add listing
+              </Link>
+            </div>
+          )
         ) : (
           <ul className="mt-6 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
             {list.map((property) => (

@@ -5,6 +5,11 @@ import { headers } from "next/headers";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 
+// Making someone licensee in charge happens in one place (Adam, 16 Oct 2026;
+// 0080), where it is recorded and sign-offs, billing and the annexure move.
+const CHANGE_ON_OFFICE_PROFILE =
+  "To make someone licensee in charge, use Change licensee in charge on Office profile. They need to be on the team with a class 1 licence on file.";
+
 export type ActionState = { error: string | null };
 
 // Same "figure out the real request origin" logic as lib/actions/auth.ts —
@@ -47,7 +52,13 @@ export async function inviteAgent(
   // Role is chosen at invite time now (Adam, 20 Aug 2026). The old form had a
   // single "licensee in charge" tick; there are three answers.
   const role = String(formData.get("role") ?? "agent");
-  const asLicensee = role === "licensee";
+  // Not as licensee in charge (Adam, 16 Oct 2026; 0080). They join as an
+  // agent, and "Change licensee in charge" on Office profile hands the role
+  // over and records it.
+  if (role === "licensee") {
+    return { error: CHANGE_ON_OFFICE_PROFILE };
+  }
+  const asLicensee = false;
   const asAssistant = role === "assistant";
 
   // Which agents an assistant supports. This IS their access — an assistant
@@ -439,6 +450,13 @@ export async function setStaffRole(
   const role = String(formData.get("role") ?? "");
   if (!["agent", "assistant", "licensee"].includes(role)) {
     return { error: "Choose a role." };
+  }
+  // Only someone who already is one keeps "Licensee in charge" here. Making
+  // someone licensee in charge is "Change licensee in charge" on Office
+  // profile (Adam, 16 Oct 2026; 0080): it records the change and moves
+  // sign-offs, billing and the annexure with it.
+  if (role === "licensee" && !ctx.subject.is_licensee_in_charge) {
+    return { error: CHANGE_ON_OFFICE_PROFILE };
   }
 
   const supportsAgentIds = formData

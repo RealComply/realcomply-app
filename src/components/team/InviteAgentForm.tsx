@@ -17,12 +17,16 @@ const initialState: InviteState = { error: null };
 // tick, which could only ever describe two of the three people who work in an
 // office. An assistant is the third: they prepare files for one or more
 // agents and cannot sign them.
-type Role = "agent" | "assistant" | "licensee";
+//
+// "Licensee in charge" is no longer offered here (Adam, 16 Oct 2026). Invite
+// them as an agent; once they are on the team with a class 1 licence on
+// file, "Change licensee in charge" on Office profile hands the role over and
+// records it (0080).
+type Role = "agent" | "assistant";
 
 const ROLES: Array<{ value: Role; label: string; hint: string }> = [
   { value: "agent", label: "Agent", hint: "Own listings, signs their own files." },
   { value: "assistant", label: "Assistant", hint: "Prepares files for one or more agents." },
-  { value: "licensee", label: "Licensee in charge", hint: "Sees everything, final sign-off." },
 ];
 
 export function InviteAgentForm({ agents }: { agents: Profile[] }) {

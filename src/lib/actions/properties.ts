@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { licenseeChangeStatus } from "@/lib/data/licensee-change";
+import { LOCKED_LISTING_MESSAGE } from "@/lib/licensee-history";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuthContext } from "@/lib/actions/compliance";
@@ -164,6 +166,15 @@ export async function createProperty(
 
   if (!profile) {
     return { error: "No agency found for this account — contact support." };
+  }
+
+  // After a change of licensee in charge, until the new one adopts the
+  // annexure (0080). Asked here so the refusal says why; the database refuses
+  // the insert below on its own as well (properties_new_licensee_annexure),
+  // whatever route it comes by.
+  const change = await licenseeChangeStatus(supabase);
+  if (change?.annexurePending) {
+    return { error: LOCKED_LISTING_MESSAGE };
   }
 
   // Whose file is this?

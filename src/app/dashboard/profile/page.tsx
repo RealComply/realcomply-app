@@ -10,6 +10,16 @@ import { LogoMark } from "@/components/Logo";
 import { roleLabel } from "@/components/UserBar";
 import { describeEntityNameChange, formalAgencyName, type NameChangeVia } from "@/lib/agency-names";
 import { formatAuTimestamp } from "@/lib/format-date";
+import { agencyPeople } from "@/lib/data/people";
+import { sydneyDate } from "@/lib/subscription-end/dates";
+import {
+  currentLicenseeDetails,
+  historyRows,
+  licenceLabel,
+  openLineFor,
+  type LicenseeHistoryLine,
+} from "@/lib/licensee-history";
+import { LicenseeInChargeCard, type Candidate, type HistoryTableRow } from "@/components/profile/LicenseeInChargeCard";
 
 // Profile settings, from the picture top right (Adam, 12 Oct 2026: "if you
 // click on the agent's icon in the top right corner, there should be an option
@@ -26,6 +36,11 @@ import { formatAuTimestamp } from "@/lib/format-date";
 // annexure signing page fill the same record. The licensee's details moved
 // here from Team. The office's other details (licence, insurance, gifts, PM)
 // are changed where they are used, so this page links to them.
+//
+// LICENSEE IN CHARGE (0080; mockup approved by Adam, 16 Oct 2026): who the
+// office's licensee in charge is, since when and when Fair Trading was told,
+// with the history. Office plans only. The current licensee in charge can
+// hand the role on from here.
 
 export default async function ProfileSettingsPage() {
   const { profile, access } = await requireAccess();
@@ -34,7 +49,7 @@ export default async function ProfileSettingsPage() {
   const [{ data: agencyRow }, pm, { data: changeRows }] = await Promise.all([
     supabase
       .from("agencies")
-      .select("name, logo_path, licensed_entity_name, licensed_entity_name_source, licensee_name, licensee_email, website_url")
+      .select("name, plan, logo_path, licensed_entity_name, licensed_entity_name_source, licensee_name, licensee_email, website_url")
       .eq("id", profile.agency_id)
       .maybeSingle(),
     pmAgencySettings(supabase, profile.agency_id),
@@ -48,6 +63,7 @@ export default async function ProfileSettingsPage() {
   ]);
   const agency = agencyRow as {
     name?: string | null;
+    plan?: string | null;
     logo_path?: string | null;
     licensed_entity_name?: string | null;
     licensed_entity_name_source?: string | null;
@@ -76,6 +92,8 @@ export default async function ProfileSettingsPage() {
     }
     lastChange = describeEntityNameChange(last.via, who, formatAuTimestamp(last.changed_at));
   }
+
+  const licensee = access.isAgentPlan ? null : await licenseeCard(supabase, profile, access.officeLicensee);
 
   const officeDetails = [
     { label: "Corporation licence", where: "Registers", href: "/dashboard/registers?tab=licence" },
@@ -111,6 +129,7 @@ export default async function ProfileSettingsPage() {
           ) : (
             <OfficeNamesReadOnly tradingName={agencyName} licensedEntityName={entityName} />
           )}
+          {licensee && <LicenseeInChargeCard {...licensee} />}
         </div>
       </section>
 
@@ -229,4 +248,89 @@ function WhereItShows({
       </div>
     </div>
   );
+}
+
+/**
+ * What the "Licensee in charge" card shows (0080). Null when the history
+ * can't be read (before 0080 has run) or holds nothing for this office.
+ */
+async function licenseeCard(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  profile: { id: string; agency_id: string },
+  officeLicensee: boolean,
+): Promise<React.ComponentProps<typeof LicenseeInChargeCard> | null> {
+  const [{ data: lineRows, error }, people, { data: teamRows }] = await Promise.all([
+    supabase
+      .from("licensee_in_charge_history")
+      .select("*")
+      .eq("agency_id", profile.agency_id)
+      .order("recorded_at", { ascending: true }),
+    agencyPeople(supabase),
+    officeLicensee
+      ? supabase
+          .from("profiles")
+          .select("id, full_name, email, licence_type, licence_number, is_assistant, archived_at, is_licensee_in_charge")
+          .eq("agency_id", profile.agency_id)
+      : Promise.resolve({ data: [] }),
+  ]);
+  if (error) {
+    console.error("licensee_in_charge_history not read:", error.message);
+    return null;
+  }
+  const lines = (lineRows ?? []) as LicenseeHistoryLine[];
+  if (lines.length === 0) return null;
+
+  const nameOf: Record<string, string> = {};
+  for (const p of people) if (p.full_name) nameOf[p.id] = p.full_name;
+
+  // The current licensee in charge: the viewer's own open line if they are
+  // one, else the most recent open line.
+  const open = lines.filter((l) => !l.ended_at).sort((a, b) => (a.recorded_at < b.recorded_at ? 1 : -1));
+  const currentLine = openLineFor(lines, profile.id) ?? open[0] ?? null;
+
+  const rows: HistoryTableRow[] = historyRows(lines, nameOf, formatAuTimestamp).map((r) => {
+    const line = lines.find((l) => l.id === r.id)!;
+    return { ...r, missingStart: !line.started_on, missingFairTrading: !line.fair_trading_told_on };
+  });
+
+  type TeamRow = {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    licence_type: string | null;
+    licence_number: string | null;
+    is_assistant: boolean | null;
+    archived_at: string | null;
+    is_licensee_in_charge: boolean | null;
+  };
+  const candidates: Candidate[] = ((teamRows ?? []) as TeamRow[])
+    .filter(
+      (p) =>
+        p.id !== profile.id &&
+        !p.archived_at &&
+        !p.is_assistant &&
+        p.licence_type === "class_1" &&
+        Boolean(p.licence_number?.trim()),
+    )
+    .map((p) => {
+      const name = p.full_name?.trim() || p.email || "Team member";
+      return { id: p.id, name, label: `${name} (${licenceLabel(p.licence_type, p.licence_number)})` };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "en-AU"));
+
+  return {
+    current: currentLine
+      ? {
+          lineId: currentLine.id,
+          name: currentLine.licensee_name,
+          details: currentLicenseeDetails(currentLine),
+          startedOn: currentLine.started_on,
+          fairTradingToldOn: currentLine.fair_trading_told_on,
+        }
+      : null,
+    rows,
+    canChange: officeLicensee,
+    candidates,
+    todayIso: sydneyDate(new Date()),
+  };
 }
