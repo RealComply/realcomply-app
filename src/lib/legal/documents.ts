@@ -19,7 +19,7 @@
 // Bumping the terms or privacy version also sends every existing user through
 // /accept-terms on their next visit to the app (see lib/legal/acceptance.ts),
 // so any change to accepted text means everyone agrees again, unless Adam
-// decides the change is not material to them and the old version goes in
+// decides otherwise for that change and the old version goes in
 // `stillAccepted`. Talk to Adam before making one.
 //
 // Versions are dates because that is what people cite in correspondence, and
@@ -35,10 +35,10 @@ export type LegalDocument = {
   /** Bump this whenever the text changes. Never edit a version people accepted. */
   version: string;
   /**
-   * Earlier versions whose acceptance still counts, because the change since
-   * was not material to the people who accepted them (the policy's own
-   * "Changes" clause). Only Adam decides that, per change. A new acceptance
-   * always records `version`.
+   * Earlier versions whose acceptance still counts, so people who accepted
+   * one are not sent back through /accept-terms. Only Adam decides that, per
+   * change, and the reason goes next to the entry. A new acceptance always
+   * records `version`.
    */
   stillAccepted?: string[];
   /** Shown under the title so a reader knows which version they are looking at. */
@@ -486,10 +486,10 @@ const TERMS_BODY = `
 `.trim();
 
 // Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 to 9 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-register-9-Oct.md.
-// 16 Oct 2026: "If you register for early access" added under What we collect,
-// for the optional phone number on the early access form. Written in-house at
-// Adam's request, not drafted by a lawyer. See
-// claude/RealComply-privacy-policy-16-Oct.md.
+// 16 Oct 2026: phone numbers added under What we collect ("About you and your
+// staff", and a new "If you register for early access" for the optional phone
+// number on the early access form). Written in-house at Adam's request, not
+// drafted by a lawyer. See claude/RealComply-privacy-policy-16-Oct.md.
 //
 // Verbatim. Do not edit a word, a clause number or a cross-reference here:
 // documents.test.ts checks this text against the brief, character for
@@ -507,11 +507,11 @@ RealComply is operated by RealComply Pty Ltd ACN 700 934 792 from New South Wale
 
 ### About you and your staff
 
-Names, email addresses, agency details, licence and certificate of registration numbers, training and CPD records, and the actions taken in the product, including who signed off what, and when.
+Names, email addresses, phone numbers, agency details, licence and certificate of registration numbers, training and CPD records, and the actions taken in the product, including who signed off what, and when.
 
 ### If you register for early access
 
-Your name, agency name and email address, and your phone number if you choose to give it. We use your phone number only to contact you about setting up RealComply.
+Your name, agency name and email address, and your phone number if you choose to give it. By giving us your phone number, you agree to us calling you about setting up RealComply.
 
 ### About your listings and third-party information
 
@@ -745,9 +745,9 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentKey, LegalDocument> = {
     effective: "16 October 2026",
     reviewed: true,
     body: PRIVACY_BODY,
-    // 16 Oct only added a paragraph about early access registrants, who are
-    // not users yet. Nothing changed for anyone who had already accepted, so
-    // their acceptance of 9 Oct still stands.
+    // Adam's decision, 16 Oct 2026: people who accepted 9 Oct are not asked
+    // to accept again for the phone number change. He has spoken to both
+    // existing client offices directly and they are happy to be called.
     stillAccepted: ["2026-10-09"],
   },
   dpa: {

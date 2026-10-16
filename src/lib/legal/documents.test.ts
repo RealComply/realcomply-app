@@ -9,7 +9,7 @@ import { acceptsCurrentVersions } from "@/lib/legal/acceptance";
 // grammar, not spelling, not clause numbers." This holds the code to that, by
 // comparing each published body with the brief character for character. If
 // it fails, the text in documents.ts has drifted from what Adam approved.
-// The privacy policy has its own brief from 16 Oct 2026 (one paragraph added).
+// The privacy policy has its own brief from 16 Oct 2026 (phone numbers added).
 const BRIEF = readFileSync(join(process.cwd(), "claude/RealComply-legal-documents-publish-brief-9-Oct.md"), "utf8");
 const PRIVACY_BRIEF = readFileSync(join(process.cwd(), "claude/RealComply-privacy-policy-16-Oct.md"), "utf8");
 
@@ -23,7 +23,7 @@ function part(startHeading: string, nextHeading: string | null, brief = BRIEF): 
 
 const EARLY_ACCESS_PARAGRAPH = `### If you register for early access
 
-Your name, agency name and email address, and your phone number if you choose to give it. We use your phone number only to contact you about setting up RealComply.
+Your name, agency name and email address, and your phone number if you choose to give it. By giving us your phone number, you agree to us calling you about setting up RealComply.
 
 `;
 
@@ -36,10 +36,15 @@ describe("published legal documents", () => {
     assert.equal(LEGAL_DOCUMENTS.privacy.body, part("## PART C: Privacy Policy (final text)", null, PRIVACY_BRIEF));
   });
 
-  it("the 16 Oct privacy policy is the 9 Oct one plus the early access paragraph, nothing else", () => {
+  it("the 16 Oct privacy policy is the 9 Oct one plus the phone number words, nothing else", () => {
     const nineOct = part("## PART C: Privacy Policy (final text)", "## PART D:");
-    assert.ok(LEGAL_DOCUMENTS.privacy.body.includes(EARLY_ACCESS_PARAGRAPH));
-    assert.equal(LEGAL_DOCUMENTS.privacy.body.replace(EARLY_ACCESS_PARAGRAPH, ""), nineOct);
+    const body = LEGAL_DOCUMENTS.privacy.body;
+    assert.ok(body.includes(EARLY_ACCESS_PARAGRAPH));
+    assert.ok(body.includes("Names, email addresses, phone numbers, agency details,"));
+    assert.equal(
+      body.replace(EARLY_ACCESS_PARAGRAPH, "").replace("email addresses, phone numbers, agency", "email addresses, agency"),
+      nineOct,
+    );
   });
 
   it("DPA is Part D of the brief, verbatim", () => {

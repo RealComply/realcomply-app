@@ -13,8 +13,8 @@ import { acceptableLegalVersions } from "@/lib/legal/documents";
 // Exact match on the pair, not "newer than". Versions are date strings and
 // would sort, but the question a regulator asks is "did they accept THIS
 // text", and only an exact match answers it. "Current" also takes in an
-// earlier version listed in that document's `stillAccepted`, where the change
-// since was not material to the people who accepted it (16 Oct 2026).
+// earlier version listed in that document's `stillAccepted`, where Adam has
+// decided people who accepted it need not accept again (16 Oct 2026).
 export function acceptsCurrentVersions(
   rows: { terms_version: string; privacy_version: string }[],
   acceptable: { terms: string[]; privacy: string[] } = acceptableLegalVersions(),

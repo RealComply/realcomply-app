@@ -1,10 +1,15 @@
-# Privacy policy change: phone number from the early access form
+# Privacy policy change: phone numbers
 
-**16 Oct 2026. Requested by Master and Adam after the early access form gained an optional mobile number (PR #57).**
+**16 Oct 2026. Requested by Master and Adam after the early access form gained an optional mobile number (PR #57). Wording approved by Adam, 16 Oct 2026.**
 
-One change to the privacy policy of 9 Oct 2026: a new paragraph under "What we collect", headed "If you register for early access". Every other word is unchanged. The new paragraph was written in-house at Adam's request. It was not drafted by a lawyer.
+Two changes to the privacy policy of 9 Oct 2026, both under "What we collect":
 
-Published as version 2026-10-16. The change adds nothing about existing users, so people who accepted version 2026-10-09 are not asked to accept again; new sign-ups accept 2026-10-16.
+1. "About you and your staff" now lists phone numbers.
+2. A new paragraph, "If you register for early access", covers the optional phone number on the early access form and the person's agreement to be called about setting up RealComply.
+
+Every other word is unchanged. The new words were written in-house at Adam's request. They were not drafted by a lawyer.
+
+Published as version 2026-10-16. Adam decided that people who accepted version 2026-10-09 are not asked to accept again: he has spoken to both existing client offices directly and they are happy to be called. New sign-ups accept 2026-10-16.
 
 `src/lib/legal/documents.test.ts` checks the published privacy policy against Part C below, character for character.
 
@@ -24,11 +29,11 @@ RealComply is operated by RealComply Pty Ltd ACN 700 934 792 from New South Wale
 
 ### About you and your staff
 
-Names, email addresses, agency details, licence and certificate of registration numbers, training and CPD records, and the actions taken in the product, including who signed off what, and when.
+Names, email addresses, phone numbers, agency details, licence and certificate of registration numbers, training and CPD records, and the actions taken in the product, including who signed off what, and when.
 
 ### If you register for early access
 
-Your name, agency name and email address, and your phone number if you choose to give it. We use your phone number only to contact you about setting up RealComply.
+Your name, agency name and email address, and your phone number if you choose to give it. By giving us your phone number, you agree to us calling you about setting up RealComply.
 
 ### About your listings and third-party information
 
