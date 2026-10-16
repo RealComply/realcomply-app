@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email/send";
+import { cleanPhone } from "@/lib/early-access/phone";
 import {
   EARLY_ACCESS_SUBJECT,
   earlyAccessAcknowledgementText,
@@ -52,6 +53,10 @@ export async function joinEarlyAccess(
   // given name, and anything longer than 80 characters is a paste accident or
   // someone filling the wrong box.
   const firstName = String(formData.get("firstName") ?? "").trim().slice(0, 80);
+  // Mobile, added 16 Oct 2026 (Adam: "for a quick call to get you set up").
+  // OPTIONAL, and never a reason to refuse a registration: it is tidied and
+  // kept as typed, or dropped if nothing usable was typed. See early-access/phone.ts.
+  const phone = cleanPhone(formData.get("mobile"));
 
   if (!email) {
     return { ok: false, error: "Enter your email address." };
@@ -70,9 +75,19 @@ export async function joinEarlyAccess(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("early_access")
-    .insert({ email, source, agency_name: agencyName, first_name: firstName });
+  const row: { email: string; source: string | null; agency_name: string; first_name: string; phone?: string } = {
+    email,
+    source,
+    agency_name: agencyName,
+    first_name: firstName,
+  };
+  let { error } = await supabase.from("early_access").insert(phone ? { ...row, phone } : row);
+  // If the phone column isn't there (0081 not yet run), the registration is
+  // still the thing that matters: save it without the number.
+  if (error && phone && (error.code === "42703" || error.code === "PGRST204")) {
+    console.error("joinEarlyAccess: phone not saved (column missing), saving without it.");
+    ({ error } = await supabase.from("early_access").insert(row));
+  }
 
   if (error) {
     // 23505 = unique violation, i.e. already on the list. Treat as success:
@@ -97,7 +112,7 @@ export async function joinEarlyAccess(
   // reaching here — and a row created a line ago cannot already have been
   // unsubscribed. Any future send that walks the existing list must check it.
   await sendEarlyAccessAcknowledgement(email, firstName);
-  await notifyEarlyAccessSignup(email, source, agencyName, firstName);
+  await notifyEarlyAccessSignup(email, source, agencyName, firstName, phone);
 
   return { ok: true, error: null };
 }
@@ -147,6 +162,7 @@ async function notifyEarlyAccessSignup(
   source: string | null,
   agencyName: string,
   firstName: string,
+  phone: string | null,
 ): Promise<void> {
   const to = process.env.ADMIN_NOTIFICATION_EMAIL;
   if (!to) {
@@ -166,6 +182,7 @@ async function notifyEarlyAccessSignup(
       `Name: ${firstName}`,
       `Office: ${agencyName}`,
       `Email: ${email}`,
+      `Mobile: ${phone ?? "not given"}`,
       // ?src= on the ad's link, so a run of these reads as which ad is working
       // without going to Meta's own attribution for it.
       `Came from: ${source ?? "no source recorded (typed the address in, or an ad with no ?src= tag)"}`,
