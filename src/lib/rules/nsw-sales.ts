@@ -19,6 +19,7 @@
 
 import type { AuctionOutcomeData, Property, PropertyItem, PropertyStage } from "@/lib/types";
 import { readQuestion, type QuestionSpec } from "@/lib/rules/question-card";
+import type { NotApplicableSpec } from "@/lib/rules/not-applicable";
 
 // ── Auction visibility ──────────────────────────────────────────────────────
 // Every x-series item is conditional on the listing being an auction. The trap
@@ -211,6 +212,12 @@ export type ComplianceItem = {
    * when, and a history.
    */
   question?: QuestionSpec;
+  /**
+   * Offers "Not applicable" on the card, with the small line under it.
+   * Choosing it completes the card; the engine (lib/rules/not-applicable.ts)
+   * keeps who and when, and a history, and the compliance file prints it.
+   */
+  notApplicable?: NotApplicableSpec;
 };
 
 // ── Retired cards ───────────────────────────────────────────────────────────
@@ -1631,6 +1638,23 @@ const items: ComplianceItem[] = [
     // ask it in the same words.
     notePlaceholder: "e.g. Box+Dice, AgentBox, LockedOn",
     evidenceLabel: "CRM record (instead of typing names)",
+    // Adam, 17 Oct 2026: where no building, pest or strata reports exist for
+    // the property, the card can be answered "Not applicable" rather than
+    // listing buyers. Completes the card; who and when are kept, and the
+    // compliance file prints it. Offered on open cards only, so nothing
+    // already answered changes.
+    //
+    // Refused while reports are logged on f3: "no reports exist" cannot be
+    // said of a file that records one.
+    notApplicable: {
+      label: "Not applicable",
+      line: "No building, pest or strata reports exist for this property.",
+      refusedWhileLogged: {
+        itemKey: "f3",
+        message:
+          "A report is logged on the Building, pest or strata reports card for this property, so this card applies. If it was logged by mistake, the licensee in charge can remove it there.",
+      },
+    },
   },
   {
     // REMOVED 23 Aug 2026 (Adam): "Compliance file signed off by the

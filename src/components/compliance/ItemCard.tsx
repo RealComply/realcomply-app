@@ -68,8 +68,10 @@ import {
   setOffersLoggedElsewhere,
   answerQuestion,
   setQuestionTick,
+  setNotApplicable,
 } from "@/lib/actions/compliance";
 import { readQuestion, type Answer, type UploadRecord } from "@/lib/rules/question-card";
+import { readNa } from "@/lib/rules/not-applicable";
 import {
   extractReportDetails,
   rereadAttachedDocument,
@@ -926,6 +928,22 @@ function ChecklistItem({
   // agent actually acts on.
   const spreadMarginal = spreadOver && spreadPct !== null && spreadPct.toFixed(1) === "10.0";
 
+  // Marked "Not applicable" (f4; Adam, 17 Oct 2026): the option, ticked, with
+  // who and when, and nothing else. Unticking it opens the card again with
+  // whatever was on it before. An attached file keeps its control.
+  if (item.notApplicable && readNa(current?.data).notApplicable) {
+    return (
+      <ItemShell
+        item={{ ...item, hideEvidence: item.hideEvidence || !current?.evidence_path }}
+        status={current?.status}
+        propertyId={propertyId}
+        current={current}
+      >
+        <NotApplicableOption item={item} propertyId={propertyId} current={current} />
+      </ItemShell>
+    );
+  }
+
   return (
     <ItemShell
       item={item}
@@ -934,6 +952,10 @@ function ChecklistItem({
       current={current}
       awaitingReview={showsDraft}
     >
+      {/* Offered on an open card only, so nothing already answered changes. */}
+      {item.notApplicable && !isDone && (
+        <NotApplicableOption item={item} propertyId={propertyId} current={current} />
+      )}
       {/* Outside the form below, because its own Add button is a form and
           forms cannot nest. */}
       {item.key === "f4" && <BuyerListItem propertyId={propertyId} current={current} />}
@@ -3187,6 +3209,62 @@ function SendItem({
           says when it went and when it was signed. */}
       {isSendLicensee && <SignoffLinkPanel propertyId={propertyId} links={signoffLinks} />}
     </ItemShell>
+  );
+}
+
+// "Not applicable" on a card that offers it (f4; Adam, 17 Oct 2026). One tick
+// box with its small line, the same shape as the Power of Attorney tick. Ticked
+// completes the card; unticked opens it again. Who and when show under it, as
+// kept for the compliance file. What it says is in the rules file.
+function NotApplicableOption({
+  item,
+  propertyId,
+  current,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+}) {
+  const spec = item.notApplicable;
+  const na = readNa(current?.data);
+  const [pending, startSaving] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  // Shows the moment it is clicked, then settles on what was saved.
+  const [shown, showNow] = useOptimistic(na.notApplicable === true, (_prev, next: boolean) => next);
+
+  if (!spec) return null;
+
+  return (
+    <div className="mb-3">
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={shown}
+          disabled={pending}
+          onChange={(e) => {
+            const on = e.target.checked;
+            setError(null);
+            startSaving(async () => {
+              showNow(on);
+              const result = await setNotApplicable(propertyId, item.key, on);
+              if (result.error) setError(result.error);
+            });
+          }}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-rc-green-deep"
+        />
+        <span>
+          <span className="block text-sm font-semibold text-rc-ink">{spec.label}</span>
+          <span className="block text-xs text-rc-muted">{spec.line}</span>
+        </span>
+      </label>
+      {na.notApplicable && (
+        <p className="mt-1.5 text-[11px] text-rc-faint">
+          Marked by {na.naByName ?? "a team member"}
+          {na.naAt ? ` on ${formatAuTimestamp(na.naAt)}` : ""}. Untick to answer this card another way.
+        </p>
+      )}
+      <FieldError error={error} />
+    </div>
   );
 }
 
