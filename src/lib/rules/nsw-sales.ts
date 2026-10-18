@@ -1608,7 +1608,7 @@ const items: ComplianceItem[] = [
     // uses the language of the provision it cites (Adam, 25 Aug 2026).
     label: "Property reports disclosed to contract requests",
     description:
-      "Anyone who asks you for a copy of the contract for sale is entitled to see your register of building, pest and strata reports — including when there aren't any on file. Add each buyer who asked, or point at the record your CRM already keeps.",
+      "Anyone who asks you for a copy of the contract for sale is entitled to see your register of building, pest and strata reports. Add each buyer who asked, or point at the record your CRM already keeps.",
     // A DIRECT citation, not a "supports" line, and only because the question
     // changed. Until 25 Aug this card asked who received a contract, which no
     // provision requires; it was cited as "supports cl 37(2)" for that reason.
@@ -1625,9 +1625,13 @@ const items: ComplianceItem[] = [
     // name — building inspection, pest, a strata s182 document inspection, a
     // s184 certificate as to financial matters, and Community Land Act Part 10
     // Div 2. The copy says "reports" and lets f3, the register itself, carry
-    // the detail. And the duty survives there being no reports at all: "there
-    // are none on file" is a disclosure, so a yes must be available without
-    // inventing one.
+    // the detail.
+    //
+    // REVERSAL (Adam, 18 Oct 2026): was (25 Aug) "the duty survives there being
+    // no reports at all: 'there are none on file' is a disclosure", and the
+    // description said so ("including when there aren't any on file"). Now:
+    // where no reports exist the card can be answered "Not applicable" (below),
+    // and the description no longer says the duty applies without them.
     legalBasis: "cl 37(2), Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
