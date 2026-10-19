@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
+import { storedFileProblem } from "@/lib/storage/evidence";
 
 // Making someone licensee in charge happens in one place (Adam, 16 Oct 2026;
 // 0080), where it is recorded and sign-offs, billing and the annexure move.
@@ -305,6 +306,10 @@ export async function saveAgencyLogo(
     if (!path.startsWith(`${profile.agency_id}/`)) {
       return { error: "That file doesn't belong to your agency.", saved: false };
     }
+    // An empty logo would leave the compliance record with a broken
+    // masthead (19 Oct 2026); nothing is saved.
+    const empty = await storedFileProblem(supabase, path);
+    if (empty) return { error: empty, saved: false };
   }
 
   const { error } = await supabase.rpc("set_agency_logo", { p_path: path });

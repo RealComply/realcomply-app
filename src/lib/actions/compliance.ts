@@ -33,7 +33,7 @@ import { stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
-import { cardFileRemovable, finalizeEvidenceRecord, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { cardFileRemovable, finalizeEvidenceRecord, storedFileProblem, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type {
   AuctionOutcomeData,
   AuctionOutcomeKind,
@@ -819,6 +819,12 @@ export async function addReportEntry(
     return {
       error: "Attach the report, or if you don't have a copy, say what kind of report it was and when it was done.",
     };
+  }
+
+  // Never an empty report on the register (19 Oct 2026); nothing is logged.
+  if (evidencePath) {
+    const empty = await storedFileProblem(supabase, evidencePath);
+    if (empty) return { error: empty };
   }
 
   // What the document did not state, kept to what cl 37(4) still asks for
@@ -2367,6 +2373,12 @@ export async function uploadEvidence(
   if (!path || !fileName) {
     return { error: "Choose a file to attach." };
   }
+
+  // An empty file is refused before it is read or recorded (19 Oct 2026). The
+  // card is untouched, so an open card stays open. finalizeEvidenceRecord
+  // asks again, for the other way a card gets a file (a new listing).
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
 
   // Refuse copies of personal ID before anything is recorded.
   //

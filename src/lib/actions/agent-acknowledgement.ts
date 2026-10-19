@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { createServiceClient } from "@/lib/supabase/service";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, storedFileProblem } from "@/lib/storage/evidence";
 import { fileAcknowledgementPdf } from "@/lib/agent-acknowledgement-file";
 import { ACK_STATEMENTS, ACK_STATEMENT_TEXTS, ACK_VERSION, ackProblem, tidy } from "@/lib/agent-acknowledgement";
 
@@ -68,6 +68,13 @@ export async function recordSignedAnnexure(path: string, fileName: string): Prom
   const { supabase, access } = await requireAuthContext();
   if (!access.isAgentPlan || !access.actsAsLicensee) {
     return { error: "Only the agent on their own plan uploads the signed annexure." };
+  }
+  // Never an empty annexure on file (19 Oct 2026). Removed like any upload
+  // the database refuses; nothing is filed.
+  const empty = await storedFileProblem(supabase, String(path ?? ""));
+  if (empty) {
+    await supabase.storage.from(EVIDENCE_BUCKET).remove([String(path ?? "")]);
+    return { error: empty };
   }
   const { error } = await supabase.rpc("record_signed_annexure_upload", {
     p_path: String(path ?? ""),

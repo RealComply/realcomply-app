@@ -9,6 +9,7 @@ import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-sig
 import { priceApproval } from "@/lib/rules/price-statement";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { EMPTY_FILE_MESSAGE, downloadedFileProblem } from "@/lib/storage/file-check";
 import type { Property, PropertyItem } from "@/lib/types";
 import { formalAgencyName, namesAsAt, type AgencyNames, type NameChange } from "@/lib/agency-names";
 
@@ -180,10 +181,22 @@ export async function buildAuditPack(
 
     try {
       const { data: blob } = await supabase.storage.from(EVIDENCE_BUCKET).download(row.evidence_path);
+      // An empty or damaged file (19 Oct 2026) is named as one, not passed off
+      // as "could not be opened, held on file": nothing usable is held.
+      const unreadable = blob ? await downloadedFileProblem(blob, fileName) : null;
       attachments.push(
-        blob
-          ? { title, fileName, bytes: new Uint8Array(await blob.arrayBuffer()), kind }
-          : { title, fileName, bytes: null, kind, omittedBecause: "could not be read" },
+        !blob
+          ? { title, fileName, bytes: null, kind, omittedBecause: "could not be read" }
+          : unreadable
+            ? {
+                title,
+                fileName,
+                bytes: null,
+                kind,
+                omittedBecause: unreadable === EMPTY_FILE_MESSAGE ? "came through empty" : "didn't come through whole",
+                needsUploadingAgain: true,
+              }
+            : { title, fileName, bytes: new Uint8Array(await blob.arrayBuffer()), kind },
       );
     } catch {
       attachments.push({ title, fileName, bytes: null, kind, omittedBecause: "could not be read" });

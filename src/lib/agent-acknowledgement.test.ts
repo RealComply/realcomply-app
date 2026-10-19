@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { EMPTY_FILE_MESSAGE } from "@/lib/storage/file-check";
 import {
   ACK_INTRO,
   ACK_LABELS,
@@ -150,6 +151,6 @@ describe("The Home card and the upload", () => {
     );
     assert.equal(signedAnnexureProblem({ name: "photo.heic", type: "image/heic", size: MB }, 150 * MB), "Upload a PDF, JPG or PNG.");
     assert.match(signedAnnexureProblem({ name: "big.pdf", type: "application/pdf", size: 151 * MB }, 150 * MB) ?? "", /over 150 MB/);
-    assert.equal(signedAnnexureProblem({ name: "empty.pdf", type: "application/pdf", size: 0 }, 150 * MB), "This file is empty.");
+    assert.equal(signedAnnexureProblem({ name: "empty.pdf", type: "application/pdf", size: 0 }, 150 * MB), EMPTY_FILE_MESSAGE);
   });
 });

@@ -3,7 +3,14 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
-import { EVIDENCE_BUCKET, MAX_EVIDENCE_BYTES, sanitizeFileName } from "@/lib/storage/evidence";
+import {
+  EMPTY_FILE_MESSAGE,
+  EVIDENCE_BUCKET,
+  MAX_EVIDENCE_BYTES,
+  chosenFileProblem,
+  sanitizeFileName,
+  uploadErrorMessage,
+} from "@/lib/storage/evidence";
 import { UPLOAD_LABEL, signedAnnexureProblem, signedAnnexureType } from "@/lib/agent-acknowledgement";
 import { recordSignedAnnexure } from "@/lib/actions/agent-acknowledgement";
 
@@ -42,12 +49,25 @@ export function SignedAnnexureUpload({
     }
     setBusy(true);
     try {
+      // Its start and end as well as its size: a file still in a cloud
+      // drive can report one and hand over nothing, or only part of itself
+      // (Adam, 19 Oct 2026; lib/storage/file-check.ts).
+      const unreadable = await chosenFileProblem(file);
+      if (unreadable) {
+        setError(unreadable);
+        return;
+      }
       const path = `${agencyId}/_signoffs/licensee-signed/${Date.now()}-${sanitizeFileName(file.name)}`;
       const { error: uploadError } = await createBrowserClient()
         .storage.from(EVIDENCE_BUCKET)
         .upload(path, file, { contentType: signedAnnexureType(file) ?? undefined });
       if (uploadError) {
-        setError("The upload didn’t go through. Check your connection and try again.");
+        // Storage's own refusal of an empty file (0082) in Adam's words.
+        setError(
+          uploadErrorMessage(uploadError.message) === EMPTY_FILE_MESSAGE
+            ? EMPTY_FILE_MESSAGE
+            : "The upload didn’t go through. Check your connection and try again.",
+        );
         return;
       }
       const result = await recordSignedAnnexure(path, file.name);

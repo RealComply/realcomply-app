@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { currentCpdYear } from "@/lib/cpd-year";
-import { isInFolder, planItemFolder } from "@/lib/storage/evidence";
+import { isInFolder, planItemFolder, storedFileProblem } from "@/lib/storage/evidence";
 import type { LicenceType, TrainingPlan, TrainingPlanItem } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -329,6 +329,9 @@ export async function attachPlanItemDocument(itemId: string, path: string, fileN
   if (!isInFolder(path, planItemFolder(plan.agency_id, plan.profile_id))) {
     return { error: "Couldn't save that document. Try again." };
   }
+  // Never an empty document on the plan (19 Oct 2026); nothing is saved.
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
   const name = fileName.trim() || "document";
   const { error } = await supabase
     .from("training_plan_items")

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { extractLicenceDocument } from "@/lib/actions/extraction";
-import { EVIDENCE_BUCKET, isInFolder } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 import { firstName, possessive } from "@/lib/licence-name";
 import { pendingReadProblem, signPendingRead, verifyPendingRead } from "@/lib/pending-read";
 import { formatAuDate } from "@/lib/format-date";
@@ -492,6 +492,9 @@ export async function attachLicenceDocument(
   }
   const subject = await loadPerson(supabase, profileId);
   if (!subject) return { error: "Couldn't find that person." };
+  // Never an empty document on the record (19 Oct 2026); nothing is saved.
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
   return readPersonLicence(supabase, profile as Profile, subject, path, fileName, true);
 }
 
@@ -836,6 +839,9 @@ export async function attachCorporationLicenceDocument(path: string, fileName: s
   }
   const agency = await loadAgency(supabase, profile.agency_id);
   if (!agency) return { error: "Couldn't find the agency." };
+  // Never an empty document on the record (19 Oct 2026); nothing is saved.
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
   return readCorporationLicence(supabase, profile as Profile, agency, path, fileName, true);
 }
 

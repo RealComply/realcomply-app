@@ -1,5 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fileForUpload } from "@/lib/documents/heic-in-the-browser";
+import {
+  DAMAGED_FILE_MESSAGE,
+  EMPTY_FILE_MESSAGE,
+  chosenFileProblem,
+  fileCutShort,
+  fileReadsEmpty,
+  type ReadAt,
+} from "@/lib/storage/file-check";
 
 // REVERSAL 2 Oct 2026 (Adam): source documents are kept for the life of the subscription. Do NOT purge at settlement. They are deleted with everything else 14 days after the subscription ends.
 export const EVIDENCE_BUCKET = "compliance-evidence";
@@ -43,6 +51,10 @@ export const TOO_LARGE_MESSAGE = "This file is over 150 MB. Please upload a smal
 export const WRONG_TYPE_MESSAGE =
   "This file type isn't accepted. Please upload a PDF, photo, Word, Excel or saved email.";
 
+// Empty and damaged files are refused everywhere (Adam, 19 Oct 2026); why,
+// how and where is in lib/storage/file-check.ts.
+export { DAMAGED_FILE_MESSAGE, EMPTY_FILE_MESSAGE, chosenFileProblem, fileReadsEmpty };
+
 /** The type to store a file under, or null if it is not one we accept. */
 export function evidenceContentType(file: { name: string; type: string }): string | null {
   const ext = file.name.toLowerCase().split(".").pop() ?? "";
@@ -53,8 +65,108 @@ export function evidenceContentType(file: { name: string; type: string }): strin
 /** The plain message to show if this file cannot be uploaded, else null. */
 export function evidenceFileProblem(file: { name: string; type: string; size: number }): string | null {
   if (evidenceContentType(file) === null) return WRONG_TYPE_MESSAGE;
+  if (file.size === 0) return EMPTY_FILE_MESSAGE;
   if (file.size > MAX_EVIDENCE_BYTES) return TOO_LARGE_MESSAGE;
   return null;
+}
+
+/**
+ * A stored file's size in bytes and its type, as Storage holds them, or null
+ * when that cannot be told. Asked with the caller's own client, so it reads
+ * only what they may read.
+ */
+export async function storedFileInfo(
+  supabase: SupabaseClient,
+  path: string,
+): Promise<{ size: number; type: string } | null> {
+  const bucket = supabase.storage.from(EVIDENCE_BUCKET);
+  try {
+    const { data, error } = await bucket.info(path);
+    const meta = (data?.metadata ?? {}) as { size?: unknown; mimetype?: unknown };
+    const size = data?.size ?? meta.size;
+    const type = data?.contentType ?? meta.mimetype;
+    if (!error && typeof size === "number") return { size, type: typeof type === "string" ? type : "" };
+  } catch {
+    // Fall through to the folder listing.
+  }
+  // The listing carries the size too, for a Storage that does not answer info.
+  const slash = path.lastIndexOf("/");
+  const folder = slash >= 0 ? path.slice(0, slash) : "";
+  const name = path.slice(slash + 1);
+  try {
+    const { data, error } = await bucket.list(folder, { search: name, limit: 100 });
+    if (error) return null;
+    const meta = (data ?? []).find((entry) => entry.name === name)?.metadata as
+      | { size?: unknown; mimetype?: unknown }
+      | undefined;
+    if (typeof meta?.size !== "number") return null;
+    return { size: meta.size, type: typeof meta.mimetype === "string" ? meta.mimetype : "" };
+  } catch {
+    return null;
+  }
+}
+
+/** The size of a stored file in bytes, or null when it cannot be told. */
+export async function storedFileSize(supabase: SupabaseClient, path: string): Promise<number | null> {
+  return (await storedFileInfo(supabase, path))?.size ?? null;
+}
+
+/**
+ * Reads a stored file a piece at a time, through a short-lived link and a
+ * range request, so checking the start and end of a 150 MB contract fetches
+ * a few kilobytes, not the contract. Null when no link can be made.
+ */
+export async function storedFileReader(supabase: SupabaseClient, path: string): Promise<ReadAt | null> {
+  const { data, error } = await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrl(path, 120);
+  if (error || !data?.signedUrl) return null;
+  const url = data.signedUrl;
+  return async (offset, length) => {
+    if (length <= 0) return new Uint8Array(0);
+    const res = await fetch(url, { headers: { Range: `bytes=${offset}-${offset + length - 1}` }, cache: "no-store" });
+    if (res.status === 206) return new Uint8Array(await res.arrayBuffer());
+    // The whole file came back instead of the piece. Taken only when small.
+    const total = Number(res.headers.get("content-length") ?? Number.NaN);
+    if (res.ok && total <= 2 * 1024 * 1024) {
+      return new Uint8Array(await res.arrayBuffer()).slice(offset, offset + length);
+    }
+    await res.body?.cancel();
+    throw new Error(`no range answer (${res.status})`);
+  };
+}
+
+/**
+ * What to say when Storage refuses an upload. Its refusal of an empty file
+ * (0082, 19 Oct 2026) arrives as a bare "database error, code: P0001", which
+ * the person uploading should never see: it is said in Adam's words. Nothing
+ * else on an upload raises that code.
+ */
+export function uploadErrorMessage(message: string | null | undefined): string | null {
+  if (!message) return null;
+  return /\bP0001\b/.test(message) ? EMPTY_FILE_MESSAGE : message;
+}
+
+/**
+ * The server's own check before a record names an uploaded file: refused when
+ * Storage holds it as empty, or holds a file that will not open (cut short, or
+ * not what its name says). Anything that cannot be told is let through, so a
+ * slow answer from Storage never stops a real upload; the browser has already
+ * checked the same before sending it, and the database refuses an empty one
+ * on its own (0082).
+ */
+export async function storedFileProblem(supabase: SupabaseClient, path: string): Promise<string | null> {
+  const info = await storedFileInfo(supabase, path);
+  if (!info) return null;
+  if (info.size === 0) return EMPTY_FILE_MESSAGE;
+  try {
+    const readAt = await storedFileReader(supabase, path);
+    if (!readAt) return null;
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    return (await fileCutShort({ name, type: info.type, size: info.size }, readAt)) ? DAMAGED_FILE_MESSAGE : null;
+  } catch (e) {
+    // The folder only, never the file name, which often carries a name.
+    console.error("stored file not checked:", path.split("/").slice(0, 3).join("/"), e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 export function sanitizeFileName(name: string): string {
@@ -261,17 +373,24 @@ export async function uploadEvidenceObject(
   // never costs the agent a HEIC conversion first.
   const problem = evidenceFileProblem(params.file);
   if (problem) return { error: problem, file: params.file };
+  // Empty, or will not open (lib/storage/file-check.ts): nothing is sent.
+  const unreadable = await chosenFileProblem(params.file);
+  if (unreadable) return { error: unreadable, file: params.file };
   const file = await fileForUpload(params.file);
 
-  // And the size again after conversion: what is stored is what counts, and a
-  // JPEG off a HEIC is usually the larger of the two.
+  // And again after conversion: what is stored is what counts, and a JPEG
+  // off a HEIC is usually the larger of the two.
+  if (file !== params.file) {
+    const converted = await chosenFileProblem(file);
+    if (converted) return { error: converted, file };
+  }
   if (file.size > MAX_EVIDENCE_BYTES) return { error: TOO_LARGE_MESSAGE, file };
 
   const { error } = await supabase.storage
     .from(EVIDENCE_BUCKET)
     .upload(path, file, { contentType: evidenceContentType(file) ?? undefined });
 
-  return { error: error?.message ?? null, file };
+  return { error: uploadErrorMessage(error?.message), file };
 }
 
 // Records that a property_items row now points at an already-uploaded
@@ -290,6 +409,11 @@ export async function finalizeEvidenceRecord(
   },
 ): Promise<{ error: string | null }> {
   const { agencyId, propertyId, itemKey, path, fileName } = params;
+
+  // Never an empty file on a card (19 Oct 2026). The card is left exactly as
+  // it was: open stays open, and a file already on it stays on it.
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
 
   const { data: existingRow, error: readError } = await supabase
     .from("property_items")

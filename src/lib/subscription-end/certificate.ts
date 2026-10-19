@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { pdfText } from "@/lib/pdf/text";
 import { longDate, longDateTime, sydneyDate } from "./dates";
+import { checkedPdf } from "@/lib/pdf/checked-pdf";
 
 // The deletion certificate (brief, item 7; DPA cl 4.8).
 //
@@ -192,5 +193,5 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Uint
 
   paragraph(CERTIFICATE_CLOSING, { size: 9.5, color: MUTED });
 
-  return pdf.save();
+  return checkedPdf(await pdf.save(), "end-of-subscription certificate");
 }
