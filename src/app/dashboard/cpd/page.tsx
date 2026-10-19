@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { CpdPersonCard } from "@/components/training/CpdPersonCard";
 import { currentCpdYear } from "@/lib/cpd-year";
+import { CPD_REMINDER_SCHEDULE_WORDS } from "@/lib/cpd-reminders";
 import { agencyPeople } from "@/lib/data/people";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
 
@@ -86,6 +87,11 @@ export default async function CpdPage() {
           <h1 className="text-2xl font-bold tracking-tight text-rc-ink">CPD</h1>
           <p className="mt-1 text-sm text-rc-muted">
             {year.label}, 1 July to 30 June. Upload each certificate; RealComply reads the rest.
+          </p>
+          {/* The CPD deadline reminders (lib/cpd-reminders.ts), in one line
+              (Adam, 19 Oct 2026). */}
+          <p className="mt-1 text-xs text-rc-faint">
+            Reminders go out on {CPD_REMINDER_SCHEDULE_WORDS} until your year is ticked off.
           </p>
         </div>
         <Link

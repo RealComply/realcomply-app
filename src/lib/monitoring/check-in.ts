@@ -29,6 +29,7 @@ export type JobCheck =
   | "weekly-digest"
   | "licence-reminders"
   | "trust-reminders"
+  | "cpd-reminders"
   | "pm-retention"
   | "backup-storage"
   | "subscription-end";
@@ -76,6 +77,7 @@ const LABELS: Record<JobCheck, string> = {
   "weekly-digest": "weekly digest",
   "licence-reminders": "licence reminders",
   "trust-reminders": "trust reminders",
+  "cpd-reminders": "CPD reminders",
   "pm-retention": "property management retention reminders",
   "backup-storage": "hourly document backup",
   "subscription-end": "subscription end and day-14 deletion",
