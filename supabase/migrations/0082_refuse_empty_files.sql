@@ -3,7 +3,7 @@
 -- Found on a live listing: an agency agreement and a market appraisal were
 -- saved as 0-byte files and the cards took them as done. The app now refuses
 -- an empty file on screen, before the upload, and on the server (lib/storage/
--- empty-file.ts). This is the same rule in the database, so a file with
+-- file-check.ts). This is the same rule in the database, so a file with
 -- nothing in it can never be kept in the compliance-evidence bucket, whatever
 -- route it comes by, including an upload path added later.
 --
