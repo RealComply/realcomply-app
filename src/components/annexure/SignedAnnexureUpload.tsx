@@ -4,10 +4,9 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import {
-  EMPTY_FILE_MESSAGE,
   EVIDENCE_BUCKET,
   MAX_EVIDENCE_BYTES,
-  fileReadsEmpty,
+  chosenFileProblem,
   sanitizeFileName,
 } from "@/lib/storage/evidence";
 import { UPLOAD_LABEL, signedAnnexureProblem, signedAnnexureType } from "@/lib/agent-acknowledgement";
@@ -48,10 +47,12 @@ export function SignedAnnexureUpload({
     }
     setBusy(true);
     try {
-      // Its bytes as well as its size: a file still in a cloud drive can
-      // report one and hand over nothing (Adam, 19 Oct 2026).
-      if (await fileReadsEmpty(file)) {
-        setError(EMPTY_FILE_MESSAGE);
+      // Its start and end as well as its size: a file still in a cloud
+      // drive can report one and hand over nothing, or only part of itself
+      // (Adam, 19 Oct 2026; lib/storage/file-check.ts).
+      const unreadable = await chosenFileProblem(file);
+      if (unreadable) {
+        setError(unreadable);
         return;
       }
       const path = `${agencyId}/_signoffs/licensee-signed/${Date.now()}-${sanitizeFileName(file.name)}`;

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { EMPTY_FILE_MESSAGE } from "@/lib/storage/empty-file";
+import { EMPTY_FILE_MESSAGE } from "@/lib/storage/file-check";
 import {
   ACK_INTRO,
   ACK_LABELS,

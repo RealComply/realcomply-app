@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { EMPTY_FILE_MESSAGE, MAX_EVIDENCE_BYTES, evidenceFileProblem, fileReadsEmpty } from "@/lib/storage/evidence";
+import { MAX_EVIDENCE_BYTES, chosenFileProblem, evidenceFileProblem } from "@/lib/storage/evidence";
 
 // Drag-and-drop for any upload control, not just the ones built as a drop zone.
 //
@@ -111,15 +111,16 @@ export function useFileDrop({
           return;
         }
 
-        // A file can report a size and still hand over nothing (one still in
-        // a cloud drive), so its first byte is read before it is taken. The
+        // A file can report a size and still hand over nothing, or only
+        // part of itself (one still in a cloud drive), so its start and end
+        // are read before it is taken (lib/storage/file-check.ts). The
         // control it hands to uploads through uploadEvidenceObject, which
         // asks again before sending.
-        void fileReadsEmpty(chosen).then((empty) => {
+        void chosenFileProblem(chosen).then((unreadable) => {
           if (drop !== drops.current) return;
-          if (empty) {
+          if (unreadable) {
             setTookFirstOnly(false);
-            setDropError(EMPTY_FILE_MESSAGE);
+            setDropError(unreadable);
             return;
           }
           // A silent multi-file drop is the same class of bug as a silent

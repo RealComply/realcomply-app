@@ -18,6 +18,7 @@ import {
   scheduleOne,
   type AnnexureSection,
 } from "@/lib/legal/sg-annexure";
+import { checkedPdf } from "@/lib/pdf/checked-pdf";
 
 // The annexure as a PDF: the "Download the full annexure" copy (adoption
 // section blank) and the signed copy (adoption section filled in), from the
@@ -415,7 +416,7 @@ export async function buildSgAnnexurePdf(input: SgAnnexurePdfInput): Promise<Uin
   for (const label of SG_ANNEXURE_AGENT_STATEMENT.fields) field(c, label, null);
 
   stampFooters(c);
-  return doc.save();
+  return checkedPdf(await doc.save(), "SG annexure");
 }
 
 /** "SG annexure - Harbour Realty.pdf", or "... (signed).pdf". Safe in a header and a zip. */

@@ -265,6 +265,12 @@ export async function runStorageBackup({ limit = 50 }: { limit?: number } = {}):
       }
 
       const bytes = new Uint8Array(await blob.arrayBuffer());
+      // A copy that came back short is not a backup (19 Oct 2026). Recorded
+      // as a failure below and tried again on the next run, never marked
+      // backed up.
+      if (typeof object.size === "number" && bytes.length !== object.size) {
+        throw new Error(`copy incomplete: read ${bytes.length} of ${object.size} bytes`);
+      }
 
       await s3.send(
         new PutObjectCommand({

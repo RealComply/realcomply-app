@@ -9,6 +9,7 @@ import type { PriceApproval } from "@/lib/rules/price-statement";
 import { formatAuDate } from "@/lib/format-date";
 import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
 import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
+import { checkedPdf } from "@/lib/pdf/checked-pdf";
 
 /** The answer, tick or upload under a question or document card, with who and when (Sydney). */
 const questionAndDocumentLines = (item: ComplianceItem, current: PropertyItem | undefined): string[] =>
@@ -254,6 +255,12 @@ export type Attachment = {
   kind: "pdf" | "png" | "jpg" | "other";
   /** Why it is not attached, where it is not. Shown in the index. */
   omittedBecause?: string;
+  /**
+   * The stored file itself is empty or will not open (19 Oct 2026), so
+   * "held on file" would not be true: the index says it needs uploading
+   * again instead.
+   */
+  needsUploadingAgain?: boolean;
 };
 
 export type ComplianceRecordInput = {
@@ -803,11 +810,12 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         c.text(a.fileName, { size: 8.5, color: MUTED, indent: 14 });
       } else {
         c.text(`${a.title}`, { size: 9.5, bold: true, color: AMBER, indent: 4 });
-        c.text(`${a.fileName} - ${a.omittedBecause ?? "not attached"}. Held on file.`, {
-          size: 8.5,
-          color: AMBER,
-          indent: 14,
-        });
+        c.text(
+          a.needsUploadingAgain
+            ? `${a.fileName} - ${a.omittedBecause ?? "can't be opened"}. It needs uploading again.`
+            : `${a.fileName} - ${a.omittedBecause ?? "not attached"}. Held on file.`,
+          { size: 8.5, color: AMBER, indent: 14 },
+        );
       }
     });
   }
@@ -892,7 +900,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     }
   }
 
-  return doc.save();
+  return checkedPdf(await doc.save(), "compliance record");
 }
 
 /** A filename that survives Windows, macOS and email. */

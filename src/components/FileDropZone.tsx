@@ -4,11 +4,12 @@ import { useId, useRef, useState, type DragEvent } from "react";
 import { AlertTriangle, Paperclip, Upload, X } from "lucide-react";
 import { useStrayDropGuard } from "@/lib/use-file-drop";
 import {
+  DAMAGED_FILE_MESSAGE,
   EMPTY_FILE_MESSAGE,
   MAX_EVIDENCE_BYTES,
   WRONG_TYPE_MESSAGE,
+  chosenFileProblem,
   evidenceFileProblem,
-  fileReadsEmpty,
 } from "@/lib/storage/evidence";
 
 // A file picker you can also drop a file onto.
@@ -124,13 +125,15 @@ export function FileDropZone({
       refuse(problem);
       return;
     }
-    // A file can report a size and still hand over nothing (one still in a
-    // cloud drive), so its first byte is read before it is shown as chosen.
-    if (await fileReadsEmpty(chosen)) {
-      if (pick === picks.current) refuse(EMPTY_FILE_MESSAGE);
+    // A file can report a size and still hand over nothing, or only part of
+    // itself (one still in a cloud drive), so its start and end are read
+    // before it is shown as chosen. See lib/storage/file-check.ts.
+    const unreadable = await chosenFileProblem(chosen);
+    if (pick !== picks.current) return;
+    if (unreadable) {
+      refuse(unreadable);
       return;
     }
-    if (pick !== picks.current) return;
 
     setTooBig(null);
     setTookFirst(dropped.length > 1);
@@ -243,11 +246,11 @@ export function FileDropZone({
           className="mt-1 flex items-start gap-1.5 text-[11px] font-medium leading-relaxed text-rc-amber-deep"
         >
           <AlertTriangle size={12} className="mt-px shrink-0" />
-          {/* Adam's wording for an empty file stands on its own; the size
-              advice belongs to a file that is too big, not to one of the
-              wrong type or one with nothing in it. */}
+          {/* Adam's wording for an empty or damaged file stands on its own;
+              the size advice belongs to a file that is too big, not to one
+              of the wrong type or one that will not open. */}
           <span>
-            {tooBig === EMPTY_FILE_MESSAGE
+            {tooBig === EMPTY_FILE_MESSAGE || tooBig === DAMAGED_FILE_MESSAGE
               ? tooBig
               : tooBig === WRONG_TYPE_MESSAGE
                 ? `${tooBig} Nothing was attached.`

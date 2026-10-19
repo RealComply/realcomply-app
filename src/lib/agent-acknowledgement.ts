@@ -8,7 +8,7 @@
 // wording never changes what someone confirmed. Change the wording here and
 // bump ACK_VERSION.
 
-import { EMPTY_FILE_MESSAGE } from "@/lib/storage/empty-file";
+import { EMPTY_FILE_MESSAGE } from "@/lib/storage/file-check";
 
 export const ACK_VERSION = "1.0";
 

@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { pdfText } from "./text";
+import { checkedPdf } from "@/lib/pdf/checked-pdf";
 
 // Putting the signature ON the document.
 //
@@ -320,7 +321,7 @@ export async function appendSignaturePage(
     // fine in a viewer. Better to accept those than refuse to sign.
     const pdf = await PDFDocument.load(original, { ignoreEncryption: true });
     await drawSignaturePage(pdf, stamp);
-    return await pdf.save();
+    return await checkedPdf(await pdf.save(), "signed copy");
   } catch (e) {
     console.error("appendSignaturePage failed:", e instanceof Error ? e.message : e);
     return null;
@@ -338,5 +339,5 @@ export async function appendSignaturePage(
 export async function buildSignatureCertificate(stamp: SignatureStamp): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   await drawSignaturePage(pdf, stamp);
-  return await pdf.save();
+  return await checkedPdf(await pdf.save(), "signature certificate");
 }

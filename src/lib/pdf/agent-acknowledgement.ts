@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFP
 import { pdfText } from "@/lib/pdf/text";
 import { formatSignedAt } from "@/lib/pdf/sign-stamp";
 import { ACK_DOCUMENT_TITLE, ACK_INTRO, ACK_STATEMENTS, type AckRun } from "@/lib/agent-acknowledgement";
+import { checkedPdf } from "@/lib/pdf/checked-pdf";
 
 // The agent acknowledgement as a PDF, filed in Registers, Document sign-offs
 // (job 7 brief, Part 2). The office's logo if it has saved one, otherwise the
@@ -228,7 +229,7 @@ export async function buildAgentAcknowledgementPdf(input: AgentAcknowledgementPd
     page.drawText(label, { x: RIGHT - fonts.regular.widthOfTextAtSize(label, 8), y: 32, size: 8, font: fonts.regular, color: FAINT });
   });
 
-  return doc.save();
+  return checkedPdf(await doc.save(), "agent acknowledgement");
 }
 
 /** "Agent acknowledgement - Jane Smith.pdf", plain ASCII for a download header. */
