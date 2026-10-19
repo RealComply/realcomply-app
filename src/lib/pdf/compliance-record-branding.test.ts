@@ -88,3 +88,34 @@ describe("the audit pack's branding", () => {
     });
   });
 });
+
+// Empty and damaged files (19 Oct 2026): an attached document whose stored
+// file is empty or will not open is named as such, never as "held on file".
+describe("an attached document that came through empty", () => {
+  it("is listed as needing uploading again, not as held on file", async () => {
+    const text = pdfText(
+      await pack({
+        attachments: [
+          {
+            title: "Agency agreement signed",
+            fileName: "Exclusive Sales Agreement (made up).pdf",
+            bytes: null,
+            kind: "pdf",
+            omittedBecause: "came through empty",
+            needsUploadingAgain: true,
+          },
+          {
+            title: "Contract for sale",
+            fileName: "Contract (made up).xlsx",
+            bytes: null,
+            kind: "other",
+            omittedBecause: "not a PDF or image",
+          },
+        ],
+      }),
+    ).replace(/\s+/g, " ");
+    assert.ok(text.includes("Exclusive Sales Agreement (made up).pdf - came through empty. It needs uploading again."));
+    assert.ok(!text.includes("came through empty. Held on file"));
+    assert.ok(text.includes("Contract (made up).xlsx - not a PDF or image. Held on file."), "other omissions unchanged");
+  });
+});
