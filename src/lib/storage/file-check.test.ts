@@ -13,7 +13,14 @@ import {
   type ReadAt,
 } from "./file-check";
 import { checkedPdf, generatedPdfProblem } from "@/lib/pdf/checked-pdf";
-import { EVIDENCE_BUCKET, evidenceFileProblem, storedFileProblem, storedFileSize, uploadEvidenceObject } from "./evidence";
+import {
+  EVIDENCE_BUCKET,
+  evidenceFileProblem,
+  storedFileProblem,
+  storedFileSize,
+  uploadErrorMessage,
+  uploadEvidenceObject,
+} from "./evidence";
 
 // Empty files are refused on every upload (Adam, 19 Oct 2026). Found on a live
 // listing: two PDFs saved as 0-byte files and taken as done.
@@ -52,6 +59,19 @@ describe("on screen, when the file is chosen", () => {
       slice: () => ({ arrayBuffer: () => Promise.reject(new Error("NotReadableError")) }),
     } as unknown as Blob;
     assert.equal(await fileReadsEmpty(unreadable), true);
+  });
+});
+
+describe("Storage's own refusal (0082)", () => {
+  it("is said in Adam's words, not as a database error", async () => {
+    const client = {
+      storage: {
+        from: () => ({ upload: async () => ({ error: { message: "database error, code: P0001" } }) }),
+      },
+    } as unknown as SupabaseClient;
+    const { error } = await uploadEvidenceObject(client, { path: "ag/p1/a3/1-x.pdf", file: new File([await realPdf()], "a.pdf", { type: "application/pdf" }) });
+    assert.equal(error, EMPTY_FILE_MESSAGE);
+    assert.equal(uploadErrorMessage("new row violates row-level security policy"), "new row violates row-level security policy");
   });
 });
 

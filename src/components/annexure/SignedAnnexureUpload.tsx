@@ -4,10 +4,12 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import {
+  EMPTY_FILE_MESSAGE,
   EVIDENCE_BUCKET,
   MAX_EVIDENCE_BYTES,
   chosenFileProblem,
   sanitizeFileName,
+  uploadErrorMessage,
 } from "@/lib/storage/evidence";
 import { UPLOAD_LABEL, signedAnnexureProblem, signedAnnexureType } from "@/lib/agent-acknowledgement";
 import { recordSignedAnnexure } from "@/lib/actions/agent-acknowledgement";
@@ -60,7 +62,12 @@ export function SignedAnnexureUpload({
         .storage.from(EVIDENCE_BUCKET)
         .upload(path, file, { contentType: signedAnnexureType(file) ?? undefined });
       if (uploadError) {
-        setError("The upload didn’t go through. Check your connection and try again.");
+        // Storage's own refusal of an empty file (0082) in Adam's words.
+        setError(
+          uploadErrorMessage(uploadError.message) === EMPTY_FILE_MESSAGE
+            ? EMPTY_FILE_MESSAGE
+            : "The upload didn’t go through. Check your connection and try again.",
+        );
         return;
       }
       const result = await recordSignedAnnexure(path, file.name);

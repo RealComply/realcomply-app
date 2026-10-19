@@ -135,6 +135,17 @@ export async function storedFileReader(supabase: SupabaseClient, path: string): 
 }
 
 /**
+ * What to say when Storage refuses an upload. Its refusal of an empty file
+ * (0082, 19 Oct 2026) arrives as a bare "database error, code: P0001", which
+ * the person uploading should never see: it is said in Adam's words. Nothing
+ * else on an upload raises that code.
+ */
+export function uploadErrorMessage(message: string | null | undefined): string | null {
+  if (!message) return null;
+  return /\bP0001\b/.test(message) ? EMPTY_FILE_MESSAGE : message;
+}
+
+/**
  * The server's own check before a record names an uploaded file: refused when
  * Storage holds it as empty, or holds a file that will not open (cut short, or
  * not what its name says). Anything that cannot be told is let through, so a
@@ -379,7 +390,7 @@ export async function uploadEvidenceObject(
     .from(EVIDENCE_BUCKET)
     .upload(path, file, { contentType: evidenceContentType(file) ?? undefined });
 
-  return { error: error?.message ?? null, file };
+  return { error: uploadErrorMessage(error?.message), file };
 }
 
 // Records that a property_items row now points at an already-uploaded
