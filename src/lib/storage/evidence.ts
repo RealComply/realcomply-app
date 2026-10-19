@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fileForUpload } from "@/lib/documents/heic-in-the-browser";
+import { EMPTY_FILE_MESSAGE, fileReadsEmpty } from "@/lib/storage/empty-file";
 
 // REVERSAL 2 Oct 2026 (Adam): source documents are kept for the life of the subscription. Do NOT purge at settlement. They are deleted with everything else 14 days after the subscription ends.
 export const EVIDENCE_BUCKET = "compliance-evidence";
@@ -43,6 +44,10 @@ export const TOO_LARGE_MESSAGE = "This file is over 150 MB. Please upload a smal
 export const WRONG_TYPE_MESSAGE =
   "This file type isn't accepted. Please upload a PDF, photo, Word, Excel or saved email.";
 
+// Empty files are refused everywhere (Adam, 19 Oct 2026); why and where is in
+// lib/storage/empty-file.ts.
+export { EMPTY_FILE_MESSAGE, fileReadsEmpty };
+
 /** The type to store a file under, or null if it is not one we accept. */
 export function evidenceContentType(file: { name: string; type: string }): string | null {
   const ext = file.name.toLowerCase().split(".").pop() ?? "";
@@ -53,8 +58,47 @@ export function evidenceContentType(file: { name: string; type: string }): strin
 /** The plain message to show if this file cannot be uploaded, else null. */
 export function evidenceFileProblem(file: { name: string; type: string; size: number }): string | null {
   if (evidenceContentType(file) === null) return WRONG_TYPE_MESSAGE;
+  if (file.size === 0) return EMPTY_FILE_MESSAGE;
   if (file.size > MAX_EVIDENCE_BYTES) return TOO_LARGE_MESSAGE;
   return null;
+}
+
+/**
+ * The size of a stored file in bytes, as Storage holds it, or null when it
+ * cannot be told. Asked with the caller's own client, so it reads only what
+ * they may read.
+ */
+export async function storedFileSize(supabase: SupabaseClient, path: string): Promise<number | null> {
+  const bucket = supabase.storage.from(EVIDENCE_BUCKET);
+  try {
+    const { data, error } = await bucket.info(path);
+    const size = data?.size ?? (data?.metadata as { size?: unknown } | undefined)?.size;
+    if (!error && typeof size === "number") return size;
+  } catch {
+    // Fall through to the folder listing.
+  }
+  // The listing carries the size too, for a Storage that does not answer info.
+  const slash = path.lastIndexOf("/");
+  const folder = slash >= 0 ? path.slice(0, slash) : "";
+  const name = path.slice(slash + 1);
+  try {
+    const { data, error } = await bucket.list(folder, { search: name, limit: 100 });
+    if (error) return null;
+    const size = (data ?? []).find((entry) => entry.name === name)?.metadata?.size;
+    return typeof size === "number" ? size : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The server's own check before a record names an uploaded file: refused when
+ * Storage holds it as empty. Anything that cannot be told is let through, so a
+ * slow answer from Storage never stops a real upload; the browser has already
+ * refused an empty file before sending it.
+ */
+export async function storedFileProblem(supabase: SupabaseClient, path: string): Promise<string | null> {
+  return (await storedFileSize(supabase, path)) === 0 ? EMPTY_FILE_MESSAGE : null;
 }
 
 export function sanitizeFileName(name: string): string {
@@ -261,10 +305,12 @@ export async function uploadEvidenceObject(
   // never costs the agent a HEIC conversion first.
   const problem = evidenceFileProblem(params.file);
   if (problem) return { error: problem, file: params.file };
+  if (await fileReadsEmpty(params.file)) return { error: EMPTY_FILE_MESSAGE, file: params.file };
   const file = await fileForUpload(params.file);
 
   // And the size again after conversion: what is stored is what counts, and a
   // JPEG off a HEIC is usually the larger of the two.
+  if (file.size === 0) return { error: EMPTY_FILE_MESSAGE, file };
   if (file.size > MAX_EVIDENCE_BYTES) return { error: TOO_LARGE_MESSAGE, file };
 
   const { error } = await supabase.storage
@@ -290,6 +336,11 @@ export async function finalizeEvidenceRecord(
   },
 ): Promise<{ error: string | null }> {
   const { agencyId, propertyId, itemKey, path, fileName } = params;
+
+  // Never an empty file on a card (19 Oct 2026). The card is left exactly as
+  // it was: open stays open, and a file already on it stays on it.
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
 
   const { data: existingRow, error: readError } = await supabase
     .from("property_items")

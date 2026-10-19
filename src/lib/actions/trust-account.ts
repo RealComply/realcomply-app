@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
+import { storedFileProblem } from "@/lib/storage/evidence";
 import { daysUntil, sydneyToday } from "@/lib/trust-account";
 
 export type ActionState = { error: string | null; saved?: boolean };
@@ -157,6 +158,13 @@ export async function saveTrustAudit(
     .eq("trust_account_id", trustAccountId)
     .eq("period_end", periodEnd)
     .maybeSingle();
+
+  // A new audit report that is empty is refused, and nothing is saved (19 Oct
+  // 2026). A save that keeps the report already on record is not asked again.
+  if (filePath && filePath !== existing?.file_path) {
+    const empty = await storedFileProblem(supabase, filePath);
+    if (empty) return { error: empty };
+  }
 
   const row = {
     agency_id: profile.agency_id,

@@ -3,7 +3,13 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
-import { EVIDENCE_BUCKET, MAX_EVIDENCE_BYTES, sanitizeFileName } from "@/lib/storage/evidence";
+import {
+  EMPTY_FILE_MESSAGE,
+  EVIDENCE_BUCKET,
+  MAX_EVIDENCE_BYTES,
+  fileReadsEmpty,
+  sanitizeFileName,
+} from "@/lib/storage/evidence";
 import { UPLOAD_LABEL, signedAnnexureProblem, signedAnnexureType } from "@/lib/agent-acknowledgement";
 import { recordSignedAnnexure } from "@/lib/actions/agent-acknowledgement";
 
@@ -42,6 +48,12 @@ export function SignedAnnexureUpload({
     }
     setBusy(true);
     try {
+      // Its bytes as well as its size: a file still in a cloud drive can
+      // report one and hand over nothing (Adam, 19 Oct 2026).
+      if (await fileReadsEmpty(file)) {
+        setError(EMPTY_FILE_MESSAGE);
+        return;
+      }
       const path = `${agencyId}/_signoffs/licensee-signed/${Date.now()}-${sanitizeFileName(file.name)}`;
       const { error: uploadError } = await createBrowserClient()
         .storage.from(EVIDENCE_BUCKET)

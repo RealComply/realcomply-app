@@ -8,6 +8,8 @@
 // wording never changes what someone confirmed. Change the wording here and
 // bump ACK_VERSION.
 
+import { EMPTY_FILE_MESSAGE } from "@/lib/storage/empty-file";
+
 export const ACK_VERSION = "1.0";
 
 export const ACK_TITLE = "Before you start";
@@ -201,7 +203,7 @@ export function signedAnnexureType(file: { name: string; type: string }): string
 export function signedAnnexureProblem(file: { name: string; type: string; size: number }, maxBytes: number): string | null {
   if (signedAnnexureType(file) === null) return "Upload a PDF, JPG or PNG.";
   if (file.size > maxBytes) return `This file is over ${Math.round(maxBytes / (1024 * 1024))} MB. Please upload a smaller copy.`;
-  if (file.size === 0) return "This file is empty.";
+  if (file.size === 0) return EMPTY_FILE_MESSAGE;
   return null;
 }
 

@@ -15,6 +15,7 @@ import {
   listingFolder,
   listPropertyEvidencePaths,
   moveStagedEvidence,
+  storedFileProblem,
   EVIDENCE_BUCKET,
 } from "@/lib/storage/evidence";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
@@ -30,10 +31,10 @@ import type { ActionState } from "@/lib/actions/auth";
 // ever sees the resulting staged path + original filename as plain
 // strings, then moves the object to its permanent, property-scoped path
 // once the property row exists.
-const SETUP_EVIDENCE_FIELDS: Array<{ field: string; itemKey: string }> = [
-  { field: "agencyAgreementFile", itemKey: "a3" }, // Agency agreement signed; copy served within 48 hours
-  { field: "contractFile", itemKey: "b1" }, // Contract of sale prepared with prescribed documents
-  { field: "comparableSalesFile", itemKey: "a4" }, // Attached to the ESP card (a4b merged in, 22 Aug 2026)
+const SETUP_EVIDENCE_FIELDS: Array<{ field: string; itemKey: string; label: string }> = [
+  { field: "agencyAgreementFile", itemKey: "a3", label: "Agency agreement" }, // Agency agreement signed; copy served within 48 hours
+  { field: "contractFile", itemKey: "b1", label: "Contract for sale" }, // Contract of sale prepared with prescribed documents
+  { field: "comparableSalesFile", itemKey: "a4", label: "Comparable sales report" }, // Attached to the ESP card (a4b merged in, 22 Aug 2026)
 ];
 
 // Creates a new property from the setup-question form (address, type,
@@ -186,6 +187,18 @@ export async function createProperty(
   const change = await licenseeChangeStatus(supabase);
   if (change?.annexurePending) {
     return { error: LOCKED_LISTING_MESSAGE };
+  }
+
+  // An empty document stops the listing before anything is made (19 Oct
+  // 2026): this is how 19 Park Street got an empty agency agreement and an
+  // empty market appraisal, both cards taken as done. The browser refuses one
+  // first; this is the size Storage actually holds.
+  for (const { field, path } of staged) {
+    const empty = await storedFileProblem(supabase, path);
+    if (empty) {
+      const label = SETUP_EVIDENCE_FIELDS.find((f) => f.field === field)?.label ?? "A document";
+      return { error: `${label}: ${empty}` };
+    }
   }
 
   // Whose file is this?

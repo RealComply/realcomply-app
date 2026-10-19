@@ -3,7 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { EMPTY_FILE_MESSAGE, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { readableBytes } from "@/lib/documents/readable-bytes";
 import { getItem } from "@/lib/rules/nsw-sales";
 import {
@@ -731,6 +731,7 @@ export async function extractCpdCertificate(
 
   const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
   if (error || !blob) return { error: "Couldn't download the uploaded file." };
+  if (blob.size === 0) return { error: EMPTY_FILE_MESSAGE };
 
   // readableBytes rather than a plain arrayBuffer: an iPhone photo arrives as
   // HEIC, which nothing downstream can open. See lib/documents/readable-bytes.
@@ -867,6 +868,7 @@ export async function extractLicenceDocument(
 
   const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
   if (error || !blob) return { error: "Couldn't open the uploaded file to read it." };
+  if (blob.size === 0) return { error: EMPTY_FILE_MESSAGE };
 
   // readableBytes rather than a plain arrayBuffer: a phone photo can arrive as
   // HEIC, which nothing downstream can open. See lib/documents/readable-bytes.
@@ -1008,6 +1010,7 @@ export async function extractInsuranceCertificate(
 
   const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
   if (error || !blob) return { error: "Couldn't open the uploaded file to read it." };
+  if (blob.size === 0) return { error: EMPTY_FILE_MESSAGE };
 
   const { base64, contentType } = await readableBytes(blob, fileName);
   const documentBlock = buildDocumentBlock(contentType, base64, fileName);
@@ -1362,6 +1365,7 @@ export async function extractReportDetails(
   if (error || !blob) {
     return { error: "Couldn't download the uploaded file." };
   }
+  if (blob.size === 0) return { error: EMPTY_FILE_MESSAGE };
 
   const { base64, contentType } = await readableBytes(blob, fileName);
 
@@ -1458,6 +1462,9 @@ async function extractOneDocument(
   if (error || !blob) {
     throw new Error("couldn't download the file");
   }
+  // Said in full (19 Oct 2026): an empty file is why a card's details never
+  // filled in, and "Read again" is where the agent finds that out.
+  if (blob.size === 0) throw new Error(EMPTY_FILE_MESSAGE);
 
   const fileName =
     (item.data as { evidenceFileName?: string } | null)?.evidenceFileName ?? path.split("/").pop() ?? "document";

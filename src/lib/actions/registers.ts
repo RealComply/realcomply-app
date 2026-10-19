@@ -5,7 +5,7 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
 import { attendanceChanges } from "@/lib/attendance-changes";
-import { cpdFolder, isInFolder, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { cpdFolder, isInFolder, storedFileProblem, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { firstName, possessive, sameName } from "@/lib/licence-name";
 import { pendingReadProblem, signPendingRead, verifyPendingRead } from "@/lib/pending-read";
 import { formatAuDate } from "@/lib/format-date";
@@ -239,6 +239,9 @@ export async function attachCpdCertificate(
   if (!isInFolder(path, cpdFolder(row.agency_id, row.profile_id))) {
     return { error: "Couldn't save that certificate — try again." };
   }
+  // Never an empty certificate on the record (19 Oct 2026); nothing is saved.
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
 
   const { row: read, nameOnDocument } = await readCpdCertificate(path, fileName);
   const question = await nameQuestionFor(supabase, {
@@ -276,6 +279,9 @@ export async function addCpdFromCertificate(
   if (!isInFolder(path, cpdFolder(profile.agency_id, profileId))) {
     return { error: "Couldn't save that certificate — try again." };
   }
+  // Never an empty certificate on the record (19 Oct 2026); nothing is saved.
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
 
   const { row, nameOnDocument } = await readCpdCertificate(path, fileName);
 
@@ -483,6 +489,8 @@ export async function finalizeCpdEvidence(recordId: string, path: string, fileNa
   if (!isInFolder(path, cpdFolder((row as { agency_id: string }).agency_id, ownerId))) {
     return { error: "Couldn't save the certificate — try again." };
   }
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
 
   // A different file: the name answered for the old one no longer applies (0074).
   const { error } = await supabase
@@ -886,6 +894,9 @@ export async function addSgManualVersion(
   if (!profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can publish a new SG Manual version." };
   }
+  // Never an empty manual for everyone to sign (19 Oct 2026); nothing is saved.
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
 
   const { error } = await supabase.from("sg_manual_versions").insert({
     agency_id: profile.agency_id,

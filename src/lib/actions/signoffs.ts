@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { createServiceClient } from "@/lib/supabase/service";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, storedFileProblem } from "@/lib/storage/evidence";
 import { appendSignaturePage, buildSignatureCertificate } from "@/lib/pdf/sign-stamp";
 import type { SignoffCategory, SignerScope } from "@/lib/types";
 
@@ -54,6 +54,10 @@ export async function createSignoffDocument(params: {
   }
 
   const signerScope: SignerScope = isReconciliation ? "licensee_only" : params.signerScope;
+
+  // Never an empty file put out for signing (19 Oct 2026); nothing is saved.
+  const empty = await storedFileProblem(supabase, params.filePath);
+  if (empty) return { error: empty };
 
   const { data: doc, error: docError } = await supabase
     .from("signoff_documents")
@@ -608,6 +612,9 @@ export async function replaceSignoffDocument(
   if (!profile.is_licensee_in_charge) {
     return { error: "Only the licensee in charge can replace a report that is already on file." };
   }
+  // An empty replacement is refused before the old signature is set aside.
+  const empty = await storedFileProblem(supabase, params.filePath);
+  if (empty) return { error: empty };
 
   const { data: doc } = await supabase
     .from("signoff_documents")

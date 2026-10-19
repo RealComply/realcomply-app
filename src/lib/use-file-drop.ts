@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { MAX_EVIDENCE_BYTES, evidenceFileProblem } from "@/lib/storage/evidence";
+import { EMPTY_FILE_MESSAGE, MAX_EVIDENCE_BYTES, evidenceFileProblem, fileReadsEmpty } from "@/lib/storage/evidence";
 
 // Drag-and-drop for any upload control, not just the ones built as a drop zone.
 //
@@ -66,6 +66,9 @@ export function useFileDrop({
   // boolean flickers as the pointer moves over text inside the target.
   // Counting enters against leaves is the standard fix.
   const depth = useRef(0);
+  // Which drop is the latest, so a slow check on an earlier file never
+  // overrules the one dropped after it.
+  const drops = useRef(0);
 
   return {
     isOver,
@@ -93,6 +96,7 @@ export function useFileDrop({
         const dropped = Array.from(e.dataTransfer?.files ?? []);
         if (dropped.length === 0) return;
         const chosen = dropped[0];
+        const drop = ++drops.current;
 
         // Same rule as FileDropZone: refuse on the spot rather than at submit,
         // and never keep a file that is not going anywhere.
@@ -107,11 +111,23 @@ export function useFileDrop({
           return;
         }
 
-        // A silent multi-file drop is the same class of bug as a silent
-        // failure — the person believes they attached three things.
-        setDropError(null);
-        setTookFirstOnly(dropped.length > 1);
-        onFile(chosen);
+        // A file can report a size and still hand over nothing (one still in
+        // a cloud drive), so its first byte is read before it is taken. The
+        // control it hands to uploads through uploadEvidenceObject, which
+        // asks again before sending.
+        void fileReadsEmpty(chosen).then((empty) => {
+          if (drop !== drops.current) return;
+          if (empty) {
+            setTookFirstOnly(false);
+            setDropError(EMPTY_FILE_MESSAGE);
+            return;
+          }
+          // A silent multi-file drop is the same class of bug as a silent
+          // failure — the person believes they attached three things.
+          setDropError(null);
+          setTookFirstOnly(dropped.length > 1);
+          onFile(chosen);
+        });
       },
     },
   };

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { extractInsuranceCertificate } from "@/lib/actions/extraction";
-import { EVIDENCE_BUCKET, insuranceFolder, isInFolder, otherInsuranceFolder } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, insuranceFolder, isInFolder, otherInsuranceFolder, storedFileProblem } from "@/lib/storage/evidence";
 import { formatAuDate } from "@/lib/format-date";
 import {
   INSURANCE_FIELDS,
@@ -115,6 +115,16 @@ async function discardUpload(supabase: Supabase, path: string): Promise<boolean>
   return deleted;
 }
 
+/**
+ * Adam's message when the stored file is empty (19 Oct 2026), else null. The
+ * empty upload is removed like any refused one; nothing is saved.
+ */
+async function refuseEmpty(supabase: Supabase, path: string): Promise<string | null> {
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) await discardUpload(supabase, path);
+  return empty;
+}
+
 type CertificateRead =
   | { kind: "could_not_read"; message: string; state: InsuranceReadState }
   | { kind: "refused"; result: InsuranceUploadResult }
@@ -171,6 +181,8 @@ export async function attachInsuranceCertificate(
   if (!isInFolder(path, insuranceFolder(profile.agency_id, policy))) {
     return { error: "That upload isn't in this policy's folder. Try again." };
   }
+  const empty = await refuseEmpty(supabase, path);
+  if (empty) return { error: empty };
   const agency = await loadAgency(supabase, profile.agency_id);
   if (!agency) return { error: "Couldn't find the agency." };
 
@@ -347,6 +359,8 @@ export async function addOtherInsurance(input: {
   if (typeof path !== "string" || !isInFolder(path, otherInsuranceFolder(profile.agency_id, policyId))) {
     return { error: "That upload isn't in this policy's folder. Try again." };
   }
+  const empty = await refuseEmpty(supabase, path);
+  if (empty) return { error: empty };
   const name = kind === "other" ? cleanName(input.name) : null;
   if (kind === "other" && !name) {
     await discardUpload(supabase, path);
@@ -404,6 +418,8 @@ export async function attachOtherInsuranceCertificate(
   if (!isInFolder(path, otherInsuranceFolder(profile.agency_id, policy.id))) {
     return { error: "That upload isn't in this policy's folder. Try again." };
   }
+  const empty = await refuseEmpty(supabase, path);
+  if (empty) return { error: empty };
 
   const before = otherValues(policy);
   const now = new Date();

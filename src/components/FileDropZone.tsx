@@ -3,7 +3,13 @@
 import { useId, useRef, useState, type DragEvent } from "react";
 import { AlertTriangle, Paperclip, Upload, X } from "lucide-react";
 import { useStrayDropGuard } from "@/lib/use-file-drop";
-import { MAX_EVIDENCE_BYTES, evidenceFileProblem } from "@/lib/storage/evidence";
+import {
+  EMPTY_FILE_MESSAGE,
+  MAX_EVIDENCE_BYTES,
+  WRONG_TYPE_MESSAGE,
+  evidenceFileProblem,
+  fileReadsEmpty,
+} from "@/lib/storage/evidence";
 
 // A file picker you can also drop a file onto.
 //
@@ -89,26 +95,42 @@ export function FileDropZone({
   // anywhere it is used outside that layout.
   useStrayDropGuard();
 
-  function take(list: FileList | null) {
+  // Which pick is the latest, so a slow check on an earlier file can never
+  // overrule the file chosen after it.
+  const picks = useRef(0);
+
+  function refuse(problem: string) {
+    // Refused, and nothing kept. Holding on to it and greying the button
+    // would put us back where we started: a file on screen that is not
+    // going anywhere, and a form that will not move.
+    setTookFirst(false);
+    setTooBig(problem);
+    onFile(null);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  async function take(list: FileList | null) {
     const dropped = Array.from(list ?? []);
     if (dropped.length === 0) return;
     const chosen = dropped[0];
+    const pick = ++picks.current;
 
-    // The evidence rule (type, then 150 MB) unless this zone sets a smaller
-    // limit of its own, as the agency logo does.
+    // The evidence rule (type, empty, then 150 MB) unless this zone sets a
+    // smaller limit of its own, as the agency logo does.
     const problem =
       evidenceFileProblem(chosen) ??
       (chosen.size > maxBytes ? `${chosen.name} is ${formatBytes(chosen.size)}. The limit is ${formatBytes(maxBytes)}.` : null);
     if (problem) {
-      // Refused, and nothing kept. Holding on to it and greying the button
-      // would put us back where we started: a file on screen that is not
-      // going anywhere, and a form that will not move.
-      setTookFirst(false);
-      setTooBig(problem);
-      onFile(null);
-      if (inputRef.current) inputRef.current.value = "";
+      refuse(problem);
       return;
     }
+    // A file can report a size and still hand over nothing (one still in a
+    // cloud drive), so its first byte is read before it is shown as chosen.
+    if (await fileReadsEmpty(chosen)) {
+      if (pick === picks.current) refuse(EMPTY_FILE_MESSAGE);
+      return;
+    }
+    if (pick !== picks.current) return;
 
     setTooBig(null);
     setTookFirst(dropped.length > 1);
@@ -221,7 +243,16 @@ export function FileDropZone({
           className="mt-1 flex items-start gap-1.5 text-[11px] font-medium leading-relaxed text-rc-amber-deep"
         >
           <AlertTriangle size={12} className="mt-px shrink-0" />
-          <span>{tooBig} Nothing was attached. Try a smaller copy, or split it.</span>
+          {/* Adam's wording for an empty file stands on its own; the size
+              advice belongs to a file that is too big, not to one of the
+              wrong type or one with nothing in it. */}
+          <span>
+            {tooBig === EMPTY_FILE_MESSAGE
+              ? tooBig
+              : tooBig === WRONG_TYPE_MESSAGE
+                ? `${tooBig} Nothing was attached.`
+                : `${tooBig} Nothing was attached. Try a smaller copy, or split it.`}
+          </span>
         </p>
       )}
       {tookFirst && file && (

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
-import { finalizeEvidenceRecord } from "./evidence";
+import { EMPTY_FILE_MESSAGE, finalizeEvidenceRecord } from "./evidence";
 
 // Code review fixes, part E (12 Oct 2026): replacing a card's file puts the
 // new file on the card before the old one is removed, so a save that fails
@@ -22,6 +22,8 @@ let files: Set<string>;
 // What happened, in order: "read", "save", "remove <path>".
 let calls: string[];
 let behaviour: { read: "ok" | "fail"; save: "ok" | "fail" | "refused" };
+// What Storage says each file holds, in bytes (empty files, 19 Oct 2026).
+let sizes: Map<string, number>;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -32,6 +34,14 @@ function stub() {
     const method = (init?.method ?? "GET").toUpperCase();
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     const one = (new Headers(init?.headers).get("Accept") ?? "").includes("vnd.pgrst.object");
+
+    const infoPrefix = "/storage/v1/object/info/compliance-evidence/";
+    if (url.pathname.startsWith(infoPrefix) && method === "GET") {
+      const path = decodeURIComponent(url.pathname.slice(infoPrefix.length));
+      calls.push(`size ${path}`);
+      if (!files.has(path)) return json({ statusCode: "404", error: "not_found", message: "Object not found" }, 400);
+      return json({ id: "f", name: path, bucket_id: "compliance-evidence", size: sizes.get(path) ?? 52_000 });
+    }
 
     if (url.pathname === "/storage/v1/object/compliance-evidence" && method === "DELETE") {
       for (const p of body.prefixes as string[]) {
@@ -99,6 +109,7 @@ beforeEach(() => {
   files = new Set([OLD, NEW]);
   calls = [];
   behaviour = { read: "ok", save: "ok" };
+  sizes = new Map();
   stub();
 });
 
@@ -115,7 +126,7 @@ describe("replacing a card's file", () => {
     assert.equal((cards[0].data as Record<string, unknown>).evidenceFileName, "agreement-signed.pdf");
     assert.ok(!files.has(OLD), "the old file is gone");
     assert.ok(files.has(NEW));
-    assert.deepEqual(calls.filter((c) => c !== "read"), ["save", `remove ${OLD}`], "saved first, removed second");
+    assert.deepEqual(calls.filter((c) => c !== "read"), [`size ${NEW}`, "save", `remove ${OLD}`], "size asked, saved, then removed");
   });
 
   it("the save fails: the card still names the old file, and the old file is still there", async () => {
@@ -159,6 +170,29 @@ describe("replacing a card's file", () => {
     assert.equal(error, null);
     assert.equal(cards[0].evidence_path, NEW);
     assert.ok(files.has(OLD), "still named by a3b, so kept");
+  });
+
+  it("an empty new file is refused with Adam's message: the card and its old file are exactly as they were", async () => {
+    sizes.set(NEW, 0);
+
+    const { error } = await replace();
+
+    assert.equal(error, EMPTY_FILE_MESSAGE);
+    assert.deepEqual(cards[0], doneCard(), "the card is exactly as it was");
+    assert.ok(files.has(OLD), "the old file was not removed");
+    assert.deepEqual(calls, [`size ${NEW}`], "asked the size, then nothing else");
+  });
+
+  it("an empty file on an open card: refused, and the card stays open with no file", async () => {
+    cards = [{ ...doneCard(), status: "open", evidence_path: null, completed_by: null, data: {} }];
+    sizes.set(NEW, 0);
+
+    const { error } = await replace();
+
+    assert.equal(error, EMPTY_FILE_MESSAGE);
+    assert.equal(cards[0].status, "open");
+    assert.equal(cards[0].evidence_path, null);
+    assert.ok(!calls.includes("save"));
   });
 
   it("a first file on an empty card: saved, nothing removed", async () => {
