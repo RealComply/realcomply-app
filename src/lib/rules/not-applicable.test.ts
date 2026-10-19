@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { applyNa, naRecordLines, naRefusal, readNa, withNa } from "./not-applicable";
+import { applyNa, naCarriedThroughSave, naRecordLines, naRefusal, readNa, withNa } from "./not-applicable";
 import { getItem, itemsForStage } from "./nsw-sales";
 import type { Property, PropertyItem } from "@/lib/types";
 
@@ -86,6 +86,34 @@ describe("marking and clearing", () => {
     assert.equal(cleared.notApplicable, false);
     assert.equal("naBy" in cleared, false);
     assert.equal((cleared.naHistory as unknown[]).length, 2);
+  });
+});
+
+describe("a save that rebuilds the card (Mark done, Reopen)", () => {
+  it("carries the history of an earlier mark and change back", () => {
+    const marked = applyNa(readNa({}), true, jo, T1);
+    const cleared = withNa({ entries: [{ name: "Pat" }] }, applyNa(marked, false, jo, T2));
+    assert.deepEqual(
+      naCarriedThroughSave(cleared, sam, T3).naHistory?.map((e) => e.event),
+      ["marked_na", "cleared_na"],
+    );
+  });
+
+  it("records a change back if the card was still marked, and does not carry the mark", () => {
+    const marked = withNa({}, applyNa(readNa({}), true, jo, T1));
+    const carried = naCarriedThroughSave(marked, sam, T2);
+    assert.deepEqual(
+      carried.naHistory?.map((e) => [e.event, e.byName]),
+      [
+        ["marked_na", "Jo Agent (made up)"],
+        ["cleared_na", "Sam Licensee (made up)"],
+      ],
+    );
+    assert.equal("notApplicable" in carried, false);
+  });
+
+  it("carries nothing for a card never marked", () => {
+    assert.deepEqual(naCarriedThroughSave({ entries: [] }, sam, T2), {});
   });
 });
 

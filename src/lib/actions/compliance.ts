@@ -24,7 +24,7 @@ import {
   withQuestion,
   type Answer,
 } from "@/lib/rules/question-card";
-import { applyNa, naRefusal, readNa, withNa } from "@/lib/rules/not-applicable";
+import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/rules/not-applicable";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { agencyPeople } from "@/lib/data/people";
 import { priceStatementByEmail } from "@/lib/rules/price-statement";
@@ -384,6 +384,15 @@ export async function setItemStatus(
     if (key in existingData) kept[key] = existingData[key];
   }
   Object.assign(data, kept);
+  // A card that offers "Not applicable" keeps its history of marks and
+  // changes back through this save too (preview check, 19 Oct 2026: Mark
+  // done after a change back dropped it). See lib/rules/not-applicable.ts.
+  if (rule?.notApplicable) {
+    Object.assign(
+      data,
+      naCarriedThroughSave(existingData, { id: user.id, name: profile.full_name ?? profile.email }, new Date().toISOString()),
+    );
+  }
 
   // amv — closing the vendor AML item by pre-commencement rather than by CDD.
   //

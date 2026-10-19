@@ -81,6 +81,19 @@ export function withNa(raw: unknown, na: NaData): Record<string, unknown> {
   return out;
 }
 
+/**
+ * What a save that rebuilds the card's data (Mark done, Reopen) must carry
+ * over: the history, always. If the card was still marked not applicable, the
+ * save is a change of answer, so the history gets a "cleared" line for it and
+ * the mark itself is not carried. The card's own control never offers Mark
+ * done while it is marked; this is the record staying whole regardless.
+ */
+export function naCarriedThroughSave(existing: unknown, actor: NaActor, at: string): Pick<NaData, "naHistory"> {
+  const na = readNa(existing);
+  const next = na.notApplicable ? applyNa(na, false, actor, at) : na;
+  return next.naHistory && next.naHistory.length > 0 ? { naHistory: next.naHistory } : {};
+}
+
 /** True when another card's entries rule the option out (see refusedWhileLogged). */
 export function naRefusal(
   spec: NotApplicableSpec,
