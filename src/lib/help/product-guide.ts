@@ -147,6 +147,7 @@ function buildItemInventory(): string {
         if (i.requiresDate) flags.push("needs a date");
         if (i.requiredForStageCompletion) flags.push("required to complete the stage");
         if (i.hideEvidence) flags.push("no file attachment");
+        if (i.notApplicable) flags.push(`can be marked "${i.notApplicable.label}": ${i.notApplicable.line}`);
         return `- **${i.label}** (${i.key})${i.legalBasis ? ` — ${i.legalBasis}` : ""}\n  ${i.description}${
           flags.length ? `\n  [${flags.join("; ")}]` : ""
         }`;

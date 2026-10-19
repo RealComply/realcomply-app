@@ -19,6 +19,7 @@
 
 import type { AuctionOutcomeData, Property, PropertyItem, PropertyStage } from "@/lib/types";
 import { readQuestion, type QuestionSpec } from "@/lib/rules/question-card";
+import type { NotApplicableSpec } from "@/lib/rules/not-applicable";
 
 // ── Auction visibility ──────────────────────────────────────────────────────
 // Every x-series item is conditional on the listing being an auction. The trap
@@ -211,6 +212,12 @@ export type ComplianceItem = {
    * when, and a history.
    */
   question?: QuestionSpec;
+  /**
+   * Offers "Not applicable" on the card, with the small line under it.
+   * Choosing it completes the card; the engine (lib/rules/not-applicable.ts)
+   * keeps who and when, and a history, and the compliance file prints it.
+   */
+  notApplicable?: NotApplicableSpec;
 };
 
 // ── Retired cards ───────────────────────────────────────────────────────────
@@ -1601,7 +1608,7 @@ const items: ComplianceItem[] = [
     // uses the language of the provision it cites (Adam, 25 Aug 2026).
     label: "Property reports disclosed to contract requests",
     description:
-      "Anyone who asks you for a copy of the contract for sale is entitled to see your register of building, pest and strata reports — including when there aren't any on file. Add each buyer who asked, or point at the record your CRM already keeps.",
+      "Anyone who asks you for a copy of the contract for sale is entitled to see your register of building, pest and strata reports. Add each buyer who asked, or point at the record your CRM already keeps.",
     // A DIRECT citation, not a "supports" line, and only because the question
     // changed. Until 25 Aug this card asked who received a contract, which no
     // provision requires; it was cited as "supports cl 37(2)" for that reason.
@@ -1618,9 +1625,13 @@ const items: ComplianceItem[] = [
     // name — building inspection, pest, a strata s182 document inspection, a
     // s184 certificate as to financial matters, and Community Land Act Part 10
     // Div 2. The copy says "reports" and lets f3, the register itself, carry
-    // the detail. And the duty survives there being no reports at all: "there
-    // are none on file" is a disclosure, so a yes must be available without
-    // inventing one.
+    // the detail.
+    //
+    // REVERSAL (Adam, 18 Oct 2026): was (25 Aug) "the duty survives there being
+    // no reports at all: 'there are none on file' is a disclosure", and the
+    // description said so ("including when there aren't any on file"). Now:
+    // where no reports exist the card can be answered "Not applicable" (below),
+    // and the description no longer says the duty applies without them.
     legalBasis: "cl 37(2), Property and Stock Agents Regulation 2022 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -1631,6 +1642,23 @@ const items: ComplianceItem[] = [
     // ask it in the same words.
     notePlaceholder: "e.g. Box+Dice, AgentBox, LockedOn",
     evidenceLabel: "CRM record (instead of typing names)",
+    // Adam, 17 Oct 2026: where no building, pest or strata reports exist for
+    // the property, the card can be answered "Not applicable" rather than
+    // listing buyers. Completes the card; who and when are kept, and the
+    // compliance file prints it. Offered on open cards only, so nothing
+    // already answered changes.
+    //
+    // Refused while reports are logged on f3: "no reports exist" cannot be
+    // said of a file that records one.
+    notApplicable: {
+      label: "Not applicable",
+      line: "No building, pest or strata reports exist for this property.",
+      refusedWhileLogged: {
+        itemKey: "f3",
+        message:
+          "A report is logged on the Building, pest or strata reports card for this property, so this card applies. If it was logged by mistake, the licensee in charge can remove it there.",
+      },
+    },
   },
   {
     // REMOVED 23 Aug 2026 (Adam): "Compliance file signed off by the

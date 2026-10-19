@@ -24,6 +24,7 @@ import {
   withQuestion,
   type Answer,
 } from "@/lib/rules/question-card";
+import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/rules/not-applicable";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { agencyPeople } from "@/lib/data/people";
 import { priceStatementByEmail } from "@/lib/rules/price-statement";
@@ -383,6 +384,15 @@ export async function setItemStatus(
     if (key in existingData) kept[key] = existingData[key];
   }
   Object.assign(data, kept);
+  // A card that offers "Not applicable" keeps its history of marks and
+  // changes back through this save too (preview check, 19 Oct 2026: Mark
+  // done after a change back dropped it). See lib/rules/not-applicable.ts.
+  if (rule?.notApplicable) {
+    Object.assign(
+      data,
+      naCarriedThroughSave(existingData, { id: user.id, name: profile.full_name ?? profile.email }, new Date().toISOString()),
+    );
+  }
 
   // amv — closing the vendor AML item by pre-commencement rather than by CDD.
   //
@@ -1179,6 +1189,72 @@ export async function setReportDisclosureLoggedElsewhere(
   formData: FormData,
 ): Promise<ActionState> {
   return setLoggedElsewhere(propertyId, "f4", formData);
+}
+
+/**
+ * "Not applicable" on a card that offers it (f4; Adam, 17 Oct 2026). Marking
+ * completes the card; clearing opens it again, to be answered the usual way.
+ * Who and when, and every change, are kept on the card's data
+ * (lib/rules/not-applicable.ts). What the option says is in the rules file.
+ *
+ * Offered on open cards only, so a card already answered another way keeps
+ * its answer: it is reopened first, then marked. Anything else saved on the
+ * card (a buyer list, a "recorded somewhere else" pointer) is left alone, so
+ * it is still there if the mark is cleared.
+ */
+export async function setNotApplicable(propertyId: string, itemKey: string, on: boolean): Promise<ActionState> {
+  const { supabase, user, profile } = await requireAuthContext();
+  const rule = getItem(itemKey);
+  const spec = rule?.notApplicable;
+  if (!spec) return { error: "This card can't be marked not applicable." };
+
+  if (assistantBlocked(itemKey, profile)) {
+    return { error: ASSISTANT_BLOCKED_MESSAGE };
+  }
+
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", itemKey)
+    .maybeSingle();
+  const current = (row as PropertyItem | null) ?? null;
+  const na = readNa(current?.data);
+
+  if (on) {
+    if (na.notApplicable) return ok;
+    if (current?.status === "done") {
+      return { error: "This card is already answered. Reopen it first to mark it not applicable." };
+    }
+    if (spec.refusedWhileLogged) {
+      const { data: other } = await supabase
+        .from("property_items")
+        .select("data")
+        .eq("property_id", propertyId)
+        .eq("item_key", spec.refusedWhileLogged.itemKey)
+        .maybeSingle();
+      const refusal = naRefusal(spec, (other as { data?: unknown } | null) ?? undefined);
+      if (refusal) return { error: refusal };
+    }
+  } else if (!na.notApplicable) {
+    return ok;
+  }
+
+  const actor = { id: user.id, name: profile.full_name ?? profile.email };
+  const next = applyNa(na, on, actor, new Date().toISOString());
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey,
+    status: on ? "done" : "open",
+    data: withNa(current?.data, next),
+    eventDate: current?.event_date ?? null,
+    completedBy: on ? user.id : null,
+  });
+  if (error) return { error: error.message === STAGE_GATE_MESSAGE ? STAGE_GATE_MESSAGE : "Couldn't save that. Try again." };
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return ok;
 }
 
 /**

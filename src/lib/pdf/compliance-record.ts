@@ -8,10 +8,15 @@ import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import type { PriceApproval } from "@/lib/rules/price-statement";
 import { formatAuDate } from "@/lib/format-date";
 import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
+import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
 
 /** The answer, tick or upload under a question or document card, with who and when (Sydney). */
 const questionAndDocumentLines = (item: ComplianceItem, current: PropertyItem | undefined): string[] =>
   questionAndDocumentRecordLines(item, current, (iso) => `${formatSignedAt(iso)} (Sydney time)`);
+
+/** "Not applicable" under a card that offers it, with who and when (Sydney). */
+const notApplicableLines = (item: ComplianceItem, current: PropertyItem | undefined): string[] =>
+  naRecordLines(item, current, (iso) => `${formatSignedAt(iso)} (Sydney time)`);
 
 // The finalised compliance record, as an actual PDF file.
 //
@@ -554,7 +559,13 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       c.text(item.label, { size: 9.5, bold: true, indent: 4 });
       // An optional upload card with nothing on it is optional, not "open"
       // (the Power of Attorney copy, 15 Oct 2026).
-      const shownStatus = item.kind === "document" && status !== "done" ? "optional" : status;
+      // A card marked "Not applicable" says so rather than "done" (f4, 17 Oct 2026).
+      const shownStatus =
+        item.kind === "document" && status !== "done"
+          ? "optional"
+          : item.notApplicable && status === "done" && readNa(current?.data).notApplicable
+            ? "not applicable"
+            : status;
       c.text(`${shownStatus}${dated}`, {
         size: 9,
         color: status === "flagged" ? AMBER : MUTED,
@@ -563,6 +574,9 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       // The Power of Attorney question: the answer and the tick, each with
       // who and when; and its document card: the upload, who and when.
       for (const line of questionAndDocumentLines(item, current)) {
+        c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+      }
+      for (const line of notApplicableLines(item, current)) {
         c.text(line, { size: 8.5, color: MUTED, indent: 12 });
       }
       if (item.key === "b4" && status === "done" && priceApproval) {
