@@ -209,8 +209,15 @@ begin
   end;
   reset role;
 
-  -- 11. Once the subscription has ended, nothing is added.
-  update public.agencies set ended_at = now() where id = gone;
+  -- 11. Once the subscription has ended, nothing is added. The office ends the
+  --     way a subscription ends (0054): the server moves it to canceled and
+  --     the database stamps ended_at. An end date written onto an active
+  --     office is cleared again, so that would leave it current.
+  perform set_config('request.jwt.claims', '', true);
+  update public.agencies set status = 'canceled' where id = gone;
+  if (select ended_at from public.agencies where id = gone) is null then
+    raise exception 'FAIL 11: the test office did not end';
+  end if;
   perform set_config('request.jwt.claims', json_build_object('sub', ga, 'role', 'authenticated')::text, true);
   set local role authenticated;
   msg := null;
