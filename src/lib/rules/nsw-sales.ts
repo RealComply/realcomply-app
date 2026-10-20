@@ -213,7 +213,8 @@ export type ComplianceItem = {
    */
   question?: QuestionSpec;
   /**
-   * Offers "Not applicable" on the card, with the small line under it.
+   * Offers "Not applicable" on the card, with the small line under it, or
+   * (with `question`) asks a question whose other answer completes the card.
    * Choosing it completes the card; the engine (lib/rules/not-applicable.ts)
    * keeps who and when, and a history, and the compliance file prints it.
    */
@@ -1334,8 +1335,11 @@ const items: ComplianceItem[] = [
     stage: 4,
     kind: "checklist",
     label: "Contract served within 2 business days of exchange",
-    description:
-      "Serve a copy of the contract on each party (or their solicitor) within 2 business days of exchange.",
+    // Was "Serve a copy of the contract on each party (or their solicitor)
+    // within 2 business days of exchange." Now says the duty is the exchanging
+    // agency's, to match the question below (mockup approved by Adam, 20 Oct
+    // 2026).
+    description: "If the agency exchanged contracts, each party gets their copy within 2 business days of exchange.",
     legalBasis: "Sch 2 r17, Property and Stock Agents Regulation 2022 (NSW)",
     // The date stays — it IS the obligation (2 business days), per the
     // requiresDate note in setItemStatus. Only the note and upload go.
@@ -1344,6 +1348,32 @@ const items: ComplianceItem[] = [
     // Adam, 28 Sep 2026: "no notes or evidence required."
     hideNote: true,
     hideEvidence: true,
+    // Adam, 20 Oct 2026 (mockup approved): the card opens by asking who
+    // exchanged contracts. "Our agency" works exactly as before: the date the
+    // copies were served, then Mark done. "Someone else" (a solicitor,
+    // conveyancer or buyer's agent did the exchange) completes the card in one
+    // tap, with no date, form or upload: serving the contract wasn't the
+    // agency's job. Who picked it and when, and every change back, are kept
+    // (lib/rules/not-applicable.ts) and printed on the compliance file.
+    // Offered on open cards only, so nothing already answered changes.
+    //
+    // CHANGE (Adam, 20 Oct 2026): we don't ask who did the exchange. The
+    // mockup first offered solicitor or conveyancer, buyer's agent or other,
+    // with a name. The proof is elsewhere, and Fair Trading won't look for it
+    // here.
+    notApplicable: {
+      label: "Someone else",
+      line: "The agency didn't exchange contracts, so serving the contract within 2 business days wasn't the agency's job. Nothing more needed.",
+      question: {
+        ask: "Who exchanged contracts?",
+        ours: "Our agency",
+        hint: "Pick “Our agency” to record when the copies went out. Pick “Someone else” if a solicitor, conveyancer or buyer's agent did the exchange.",
+      },
+      record: {
+        text: "Exchanged by someone else. Not the agency's to serve.",
+        earlier: "recorded as exchanged by someone else",
+      },
+    },
   },
   {
     // Gap-analysis finding, 7 Aug 2026: a7 (Stage 0) only confirms the agent

@@ -1230,7 +1230,11 @@ export async function setNotApplicable(propertyId: string, itemKey: string, on: 
   if (on) {
     if (na.notApplicable) return ok;
     if (current?.status === "done") {
-      return { error: "This card is already answered. Reopen it first to mark it not applicable." };
+      return {
+        error: spec.question
+          ? `This card is already answered. Reopen it first to choose “${spec.label}”.`
+          : "This card is already answered. Reopen it first to mark it not applicable.",
+      };
     }
     if (spec.refusedWhileLogged) {
       const { data: other } = await supabase
@@ -1254,7 +1258,10 @@ export async function setNotApplicable(propertyId: string, itemKey: string, on: 
     itemKey,
     status: on ? "done" : "open",
     data: withNa(current?.data, next),
-    eventDate: current?.event_date ?? null,
+    // On a card whose date is the obligation (e1, the date the contract was
+    // served), marking drops a date left from before a Reopen: the file would
+    // otherwise show a served date beside "not the agency's to serve".
+    eventDate: on && rule?.requiresDate ? null : (current?.event_date ?? null),
     completedBy: on ? user.id : null,
   });
   if (error) return { error: error.message === STAGE_GATE_MESSAGE ? STAGE_GATE_MESSAGE : "Couldn't save that. Try again." };
