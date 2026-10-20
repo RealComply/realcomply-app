@@ -94,6 +94,7 @@ import {
 import { Disclaimer, ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import { keepsFieldsOnRefusal, sendKeepingFields } from "@/components/compliance/send-keeping-fields";
 import { espReasoningMissing } from "@/lib/rules/esp-reasoning-gate";
+import { COVERING_LETTER_NO_DATE } from "@/lib/documents/covering-letter";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
@@ -820,6 +821,8 @@ function ChecklistItem({
       prescribedDocs?: { key: string; found: boolean }[];
       notAContract?: boolean;
       wrongDocument?: { expected: string; actual: string };
+      /** b1a: the covering letter was read and has no clear date (20 Oct 2026). */
+      coveringLetterNoDate?: boolean;
     };
   };
   const draft = data.aiDraft;
@@ -1076,6 +1079,13 @@ function ChecklistItem({
               really isn&apos;t there, enter the date and attach whatever proves the guide was given — a covering
               email, a signed receipt.
             </span>
+          </p>
+        ) : draft?.coveringLetterNoDate && !current?.event_date ? (
+          // b1a: the covering letter was read and carries no clear date of
+          // its own (20 Oct 2026), so the date box is left blank.
+          <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>{COVERING_LETTER_NO_DATE}</span>
           </p>
         ) : (
           // Only claim a pre-fill when something was actually pre-filled.

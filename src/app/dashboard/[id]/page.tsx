@@ -230,7 +230,8 @@ export default async function PropertyPage({
   // and generating f2 is now gated on the licensee's signature, so this reads
   // as "signed off AND closed out" rather than merely asserted.
   const fileFinalised = p.stage === 5 && allItems["f2"]?.status === "done";
-  const hasSourceDocs = ["a3", "b1", "a4"].some((key) => allItems[key]?.evidence_path);
+  // The solicitor's covering letter (b1a) is read too, for its date (20 Oct 2026).
+  const hasSourceDocs = ["a3", "b1", "a4", "b1a"].some((key) => allItems[key]?.evidence_path);
 
   return (
     <SendBackProvider
