@@ -5,7 +5,7 @@ import { AnnexureText } from "@/components/annexure/AnnexureText";
 import { AdoptAnnexureForm } from "@/components/annexure/AdoptAnnexureForm";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, isInFolder } from "@/lib/storage/evidence";
 import { SG_ANNEXURE_VERSION, annexureDate } from "@/lib/legal/sg-annexure";
 import { linkDetails, type AnnexureLinkDetails } from "@/lib/sg-annexure/adopt";
 
@@ -39,9 +39,13 @@ const PREVIEW: AnnexureLinkDetails = {
   adoptedAt: null,
 };
 
-/** The logo's address for the page, or null. A logo that won't load never stops the page. */
-async function logoUrl(path: string | null): Promise<string | null> {
-  if (!path) return null;
+/**
+ * The logo's address for the page, or null. A logo that won't load never stops
+ * the page. Signed with full rights, so only from the office's own folder
+ * (20 Oct 2026; 0085 refuses any other path).
+ */
+async function logoUrl(path: string | null, agencyId: string): Promise<string | null> {
+  if (!path || !isInFolder(path, `${agencyId}/`)) return null;
   try {
     const { data } = await createServiceClient().storage.from(EVIDENCE_BUCKET).createSignedUrl(path, 60 * 60);
     return data?.signedUrl ?? null;
@@ -115,7 +119,7 @@ export default async function AnnexurePage({ params }: { params: Promise<{ token
     );
   }
 
-  const logo = await logoUrl(details.logoPath);
+  const logo = await logoUrl(details.logoPath, details.agencyId);
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-5 sm:py-14">

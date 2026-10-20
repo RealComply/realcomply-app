@@ -4,7 +4,7 @@ import { ADMIN_COPY_ADDRESS, SENDER_NAME } from "@/lib/email/early-access-invite
 import { buildAnnexureSignedEmail } from "@/lib/email/sg-annexure";
 import { buildSgAnnexurePdf, sgAnnexureFilename, type SgAnnexurePdfInput } from "@/lib/pdf/sg-annexure";
 import { annexureDate } from "@/lib/legal/sg-annexure";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, isInFolder } from "@/lib/storage/evidence";
 import { formalAgencyName } from "@/lib/agency-names";
 
 // Adopting the SG annexure from a link (brief, 14 Oct 2026; 0067).
@@ -86,12 +86,22 @@ export function adoptionRefusal(error: { code?: string; message?: string } | nul
   return "Something went wrong and nothing was signed. Try again in a minute.";
 }
 
-/** The office's logo for a PDF, or null. A logo that will not download never costs anyone the document. */
+/**
+ * The office's logo for a PDF, or null. A logo that will not download never
+ * costs anyone the document. Read with full rights, so only from the office's
+ * own folder (20 Oct 2026): the database refuses any other path (0085), and
+ * this is the same rule where the full-rights read happens.
+ */
 export async function logoFor(
   service: SupabaseClient,
   path: string | null,
+  agencyId: string,
 ): Promise<SgAnnexurePdfInput["logo"]> {
   if (!path) return null;
+  if (!isInFolder(path, `${agencyId}/`)) {
+    console.error("logoFor: logo outside the office's folder, not read:", agencyId);
+    return null;
+  }
   try {
     const { data: blob } = await service.storage.from(EVIDENCE_BUCKET).download(path);
     if (!blob) return null;
@@ -153,7 +163,7 @@ export async function saveSignedCopy(
       agencyName: formalAgencyName({ tradingName: agencyName, licensedEntityName: entityName }),
       licenceNumber: adoption.licence_number,
       effectiveDate: annexureDate(adoption.signed_at),
-      logo: await logoFor(service, agency.logo_path ?? null),
+      logo: await logoFor(service, agency.logo_path ?? null, adoption.agency_id),
       adoption: {
         signedName: adoption.signed_name,
         licenceNumber: adoption.licence_number,
