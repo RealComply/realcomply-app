@@ -329,6 +329,22 @@ export type LicenceReminder = {
   sent_at: string;
 };
 
+// 0084_cpd_reminders.sql. One row per CPD deadline reminder sent. Read-only
+// from the app: the daily job writes them through the service client.
+export type CpdReminder = {
+  id: string;
+  agency_id: string;
+  /** The person reminded, or for a summary the licensee it went to. */
+  profile_id: string;
+  kind: "person" | "summary";
+  cpd_year_start: string;
+  send_date: string;
+  /** Who was on a summary's list. Empty for a person reminder. */
+  outstanding: string[];
+  recipients: string[];
+  sent_at: string;
+};
+
 export type Breach = {
   id: string;
   agency_id: string;
