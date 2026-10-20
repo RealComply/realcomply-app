@@ -767,6 +767,18 @@ function ChecklistItem({
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const status = current?.status;
   const isDone = status === "done";
+  // e1, "Who exchanged contracts?": "Our agency" opens the card as it always
+  // was. Nothing to record, so it lives here; a date left from before a
+  // Reopen means it was answered that way.
+  const [exchangedByUs, setExchangedByUs] = useState(Boolean(current?.event_date));
+  // Picking "Someone else", or changing back from it, starts the question
+  // again with nothing picked.
+  const naMarked = readNa(current?.data).notApplicable === true;
+  const [exchangedFor, setExchangedFor] = useState(naMarked);
+  if (naMarked !== exchangedFor) {
+    setExchangedFor(naMarked);
+    setExchangedByUs(false);
+  }
 
   // a4c is sent from onSubmit, not <form action>: React resets a form once its
   // action has run, refused or not (see useSaveThenClose), and on this card
@@ -939,7 +951,33 @@ function ChecklistItem({
         propertyId={propertyId}
         current={current}
       >
-        <NotApplicableOption item={item} propertyId={propertyId} current={current} />
+        {item.notApplicable.question ? (
+          <NotApplicableQuestion
+            item={item}
+            propertyId={propertyId}
+            current={current}
+            ours={false}
+            onOurs={() => setExchangedByUs(true)}
+          />
+        ) : (
+          <NotApplicableOption item={item} propertyId={propertyId} current={current} />
+        )}
+      </ItemShell>
+    );
+  }
+
+  // Asked as a question and not yet answered (e1): the question and nothing
+  // else, so the date and Mark done only appear once "Our agency" is picked.
+  if (item.notApplicable?.question && !isDone && !exchangedByUs) {
+    return (
+      <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+        <NotApplicableQuestion
+          item={item}
+          propertyId={propertyId}
+          current={current}
+          ours={false}
+          onOurs={() => setExchangedByUs(true)}
+        />
       </ItemShell>
     );
   }
@@ -953,9 +991,19 @@ function ChecklistItem({
       awaitingReview={showsDraft}
     >
       {/* Offered on an open card only, so nothing already answered changes. */}
-      {item.notApplicable && !isDone && (
-        <NotApplicableOption item={item} propertyId={propertyId} current={current} />
-      )}
+      {item.notApplicable &&
+        !isDone &&
+        (item.notApplicable.question ? (
+          <NotApplicableQuestion
+            item={item}
+            propertyId={propertyId}
+            current={current}
+            ours={exchangedByUs}
+            onOurs={() => setExchangedByUs(true)}
+          />
+        ) : (
+          <NotApplicableOption item={item} propertyId={propertyId} current={current} />
+        ))}
       {/* Outside the form below, because its own Add button is a form and
           forms cannot nest. */}
       {item.key === "f4" && <BuyerListItem propertyId={propertyId} current={current} />}
@@ -3263,6 +3311,113 @@ function NotApplicableOption({
           {na.naAt ? ` on ${formatAuTimestamp(na.naAt)}` : ""}. Untick to answer this card another way.
         </p>
       )}
+      <FieldError error={error} />
+    </div>
+  );
+}
+
+// The same option asked as a question (e1, "Who exchanged contracts?"; Adam,
+// 20 Oct 2026, mockup approved). Two answers, the same shape as the Power of
+// Attorney Yes / No. "Our agency" (`ours`) opens the card as it always was;
+// the other answer completes it in one tap. Once saved the card shows what
+// the compliance file records, who and when, and Change, which opens the card
+// again with nothing picked. What it says is in the rules file.
+function NotApplicableQuestion({
+  item,
+  propertyId,
+  current,
+  ours,
+  onOurs,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  /** "Our agency" is picked. */
+  ours: boolean;
+  onOurs: () => void;
+}) {
+  const spec = item.notApplicable;
+  const na = readNa(current?.data);
+  const [pending, startSaving] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  // Shows the moment it is clicked, then settles on what was saved.
+  const [marked, showMarked] = useOptimistic(na.notApplicable === true, (_prev, next: boolean) => next);
+
+  if (!spec?.question) return null;
+  const question = spec.question;
+
+  function save(on: boolean) {
+    setError(null);
+    startSaving(async () => {
+      showMarked(on);
+      const result = await setNotApplicable(propertyId, item.key, on);
+      if (result.error) setError(result.error);
+    });
+  }
+
+  if (na.notApplicable && marked && spec.record) {
+    // The first sentence in bold, as on the mockup.
+    const [, lead, rest] = spec.record.text.match(/^(.*?\.)\s+(.*)$/) ?? [null, spec.record.text, ""];
+    return (
+      <div className="mb-3">
+        <p className="text-sm text-rc-ink">
+          <span className="font-semibold">{lead}</span>
+          {rest && ` ${rest}`}
+        </p>
+        <p className="mt-1.5 text-[11px] text-rc-faint">
+          Recorded by {na.naByName ?? "a team member"}
+          {na.naAt ? `, ${formatAuDateTimeShort(na.naAt)}` : ""}.{" "}
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => save(false)}
+            className="font-semibold text-rc-green-deep hover:underline disabled:opacity-60"
+          >
+            Change
+          </button>
+        </p>
+        <FieldError error={error} />
+      </div>
+    );
+  }
+
+  const picked = marked ? "other" : ours ? "ours" : null;
+  const answers = [
+    { value: "ours", label: question.ours },
+    { value: "other", label: spec.label },
+  ] as const;
+
+  return (
+    <div className="mb-3 space-y-2">
+      <p className="text-sm font-semibold text-rc-ink">{question.ask}</p>
+      <div role="radiogroup" aria-label={question.ask} className="flex flex-wrap gap-2">
+        {answers.map((a) => {
+          const chosen = picked === a.value;
+          return (
+            <button
+              key={a.value}
+              type="button"
+              role="radio"
+              aria-checked={chosen}
+              disabled={pending}
+              onClick={() => {
+                if (chosen) return;
+                if (a.value === "ours") onOurs();
+                else save(true);
+              }}
+              className={
+                chosen
+                  ? "rounded-md border border-rc-green-deep bg-rc-green-deep px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-70"
+                  : "rounded-md border border-rc-border bg-white px-4 py-1.5 text-sm font-semibold text-rc-ink transition hover:bg-rc-bg-alt disabled:opacity-60"
+              }
+            >
+              {a.label}
+            </button>
+          );
+        })}
+      </div>
+      {picked === "other" && <p className="text-xs text-rc-muted">{spec.line}</p>}
+      {picked === null && <p className="text-xs text-rc-muted">{question.hint}</p>}
       <FieldError error={error} />
     </div>
   );

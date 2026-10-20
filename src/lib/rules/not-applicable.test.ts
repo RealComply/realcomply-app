@@ -22,13 +22,15 @@ describe("f4's Not applicable option, in the rules file", () => {
     assert.equal(spec.line, "No building, pest or strata reports exist for this property.");
   });
 
-  it("is offered on f4 only", () => {
+  it("is offered on f4 and, as a question, on e1 only", () => {
     const property = { id: "p", stage: 3 } as unknown as Property;
     const offering = [0, 1, 2, 3, 4, 5]
       .flatMap((stage) => itemsForStage(stage as Property["stage"], property))
       .filter((i) => i.notApplicable)
-      .map((i) => i.key);
-    assert.deepEqual(offering, ["f4"]);
+      .map((i) => i.key)
+      .sort();
+    assert.deepEqual(offering, ["e1", "f4"]);
+    assert.equal(spec.question, undefined, "f4 stays a tick box");
   });
 
   it("f4 is still required for its stage, so Not applicable is what lets the stage move on", () => {
@@ -156,5 +158,83 @@ describe("what the compliance file prints", () => {
     assert.deepEqual(naRecordLines(f4, current({ entries: [{ name: "Pat" }] }), when), []);
     assert.deepEqual(naRecordLines(f4, undefined, when), []);
     assert.deepEqual(naRecordLines(getItem("f3")!, current({ notApplicable: true }), when), []);
+  });
+});
+
+// "Who exchanged contracts?" on the contract served card, e1 (Adam, 20 Oct
+// 2026; mockup approved). The same engine, asked as a question.
+describe("e1's question, in the rules file", () => {
+  const e1 = getItem("e1")!;
+  const e1Spec = e1.notApplicable!;
+
+  it("asks who exchanged contracts, with the two answers and the line Adam asked for", () => {
+    assert.equal(e1Spec.question?.ask, "Who exchanged contracts?");
+    assert.equal(e1Spec.question?.ours, "Our agency");
+    assert.equal(e1Spec.label, "Someone else");
+    assert.equal(
+      e1Spec.line,
+      "The agency didn't exchange contracts, so serving the contract within 2 business days wasn't the agency's job. Nothing more needed.",
+    );
+    assert.equal(e1Spec.record?.text, "Exchanged by someone else. Not the agency's to serve.");
+  });
+
+  it("doesn't ask who did the exchange (Adam, 20 Oct): no refusal, nothing else to fill in", () => {
+    assert.equal(e1Spec.refusedWhileLogged, undefined);
+    assert.equal(e1.hideNote, true);
+    assert.equal(e1.hideEvidence, true);
+  });
+
+  it("is in the Sold stage and still required, so Someone else is what lets the stage move on", () => {
+    assert.equal(e1.stage, 4);
+    assert.equal(e1.requiredForStageCompletion, true);
+    // Our agency still needs the date, as before.
+    assert.equal(e1.requiresDate, true);
+  });
+
+  it("has no em dash and never says compliant", () => {
+    const words = [
+      e1.description,
+      e1Spec.label,
+      e1Spec.line,
+      e1Spec.question!.ask,
+      e1Spec.question!.ours,
+      e1Spec.question!.hint,
+      e1Spec.record!.text,
+      e1Spec.record!.earlier,
+    ];
+    for (const text of words) {
+      assert.ok(!text.includes("—"), text);
+      assert.ok(!/compliant/i.test(text), text);
+    }
+  });
+});
+
+describe("e1 on the compliance file", () => {
+  const e1 = getItem("e1")!;
+  const current = (data: unknown) => ({ data }) as unknown as PropertyItem;
+
+  it("prints the record, who and when", () => {
+    const data = withNa({}, applyNa(readNa({}), true, jo, T1));
+    assert.deepEqual(naRecordLines(e1, current(data), when), [
+      "Exchanged by someone else. Not the agency's to serve. Recorded by Jo Agent (made up) on 2026-10-17.",
+    ]);
+  });
+
+  it("after a change back, keeps the history and says what it was", () => {
+    const marked = applyNa(readNa({}), true, jo, T1);
+    const cleared = applyNa(marked, false, sam, T2);
+    assert.deepEqual(naRecordLines(e1, current(withNa({}, cleared)), when), [
+      "Earlier recorded as exchanged by someone else by Jo Agent (made up) on 2026-10-17; changed by Sam Licensee (made up) on 2026-10-17.",
+    ]);
+    // Then answered "Our agency" and marked done: the history goes through that save.
+    assert.deepEqual(
+      naCarriedThroughSave(withNa({}, cleared), sam, T3).naHistory?.map((e) => e.event),
+      ["marked_na", "cleared_na"],
+    );
+  });
+
+  it("prints nothing for a card answered Our agency the usual way", () => {
+    assert.deepEqual(naRecordLines(e1, current({}), when), []);
+    assert.deepEqual(naRecordLines(e1, undefined, when), []);
   });
 });
