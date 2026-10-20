@@ -60,7 +60,10 @@ export async function runCpdRemindersForMadeUpOffice(
   if (!(await cpdSendDatesThisYear()).includes(sendDate)) return { error: "Choose one of the four send dates." };
 
   const supabase = createServiceClient();
-  const { data: people } = await supabase.from("profiles").select("email").eq("agency_id", agencyId);
+  const [{ data: people }, { data: agency }] = await Promise.all([
+    supabase.from("profiles").select("email").eq("agency_id", agencyId),
+    supabase.from("agencies").select("name").eq("id", agencyId).maybeSingle(),
+  ]);
   const emails = ((people ?? []) as Array<{ email: string | null }>).map((p) => p.email ?? "");
   if (emails.length === 0 || !emails.every(isTestAddress)) {
     return { error: "Only a made-up office whose people are all on your test addresses can be used." };
@@ -83,7 +86,7 @@ export async function runCpdRemindersForMadeUpOffice(
   });
 
   const lines = [
-    `As if it were ${sendDate}: ${result.sentPeople} reminder${result.sentPeople === 1 ? "" : "s"} and ` +
+    `${(agency as { name: string } | null)?.name ?? "The office"}, as if it were ${sendDate}: ${result.sentPeople} reminder${result.sentPeople === 1 ? "" : "s"} and ` +
       `${result.sentSummaries} summar${result.sentSummaries === 1 ? "y" : "ies"} sent, ` +
       `${result.alreadySent} already sent for this date, ${result.done} ticked done.`,
     ...went,

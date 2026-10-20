@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   runCpdRemindersForMadeUpOffice,
   sendTestCpdReminder,
@@ -10,6 +10,8 @@ import {
 // CPD reminders on the staff page (brief, 19 Oct 2026): a test email of
 // either version to a test address, and the real job run for a made-up
 // office as if it were a send date. Both only ever reach getadamc3+ addresses.
+// The pickers hold their choice in state: a form reset after each send would
+// otherwise put the first office back on screen beside the result of another.
 
 const input =
   "min-w-0 flex-1 rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft";
@@ -37,6 +39,9 @@ function Outcome({ state }: { state: CpdAdminState }) {
 export function CpdReminderTest({ offices, dates }: { offices: { id: string; name: string }[]; dates: string[] }) {
   const [testState, sendTest, sendingTest] = useActionState(sendTestCpdReminder, { error: null } as CpdAdminState);
   const [runState, run, running] = useActionState(runCpdRemindersForMadeUpOffice, { error: null } as CpdAdminState);
+  const [version, setVersion] = useState("person");
+  const [office, setOffice] = useState(offices[0]?.id ?? "");
+  const [date, setDate] = useState(dates[0] ?? "");
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
@@ -60,7 +65,13 @@ export function CpdReminderTest({ offices, dates }: { offices: { id: string; nam
         <label className="sr-only" htmlFor="cpd-test-version">
           Which email
         </label>
-        <select id="cpd-test-version" name="version" defaultValue="person" className={select}>
+        <select
+          id="cpd-test-version"
+          name="version"
+          value={version}
+          onChange={(e) => setVersion(e.target.value)}
+          className={select}
+        >
           <option value="person">The person&rsquo;s reminder</option>
           <option value="summary">The licensee&rsquo;s summary</option>
         </select>
@@ -81,7 +92,13 @@ export function CpdReminderTest({ offices, dates }: { offices: { id: string; nam
           <label className="sr-only" htmlFor="cpd-run-office">
             Made-up office
           </label>
-          <select id="cpd-run-office" name="agency" className={select}>
+          <select
+            id="cpd-run-office"
+            name="agency"
+            value={office}
+            onChange={(e) => setOffice(e.target.value)}
+            className={select}
+          >
             {offices.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
@@ -91,7 +108,7 @@ export function CpdReminderTest({ offices, dates }: { offices: { id: string; nam
           <label className="sr-only" htmlFor="cpd-run-date">
             Send date
           </label>
-          <select id="cpd-run-date" name="date" defaultValue={dates[0]} className={select}>
+          <select id="cpd-run-date" name="date" value={date} onChange={(e) => setDate(e.target.value)} className={select}>
             {dates.map((d) => (
               <option key={d} value={d}>
                 {d}
