@@ -3366,7 +3366,7 @@ function NotApplicableQuestion({
         </p>
         <p className="mt-1.5 text-[11px] text-rc-faint">
           Recorded by {na.naByName ?? "a team member"}
-          {na.naAt ? ` on ${formatAuTimestamp(na.naAt)}` : ""}.{" "}
+          {na.naAt ? `, ${formatAuDateTimeShort(na.naAt)}` : ""}.{" "}
           <button
             type="button"
             disabled={pending}
