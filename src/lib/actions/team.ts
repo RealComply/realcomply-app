@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
-import { storedFileProblem } from "@/lib/storage/evidence";
+import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 
 // Making someone licensee in charge happens in one place (Adam, 16 Oct 2026;
 // 0080), where it is recorded and sign-offs, billing and the annexure move.
@@ -303,7 +303,9 @@ export async function saveAgencyLogo(
     if (!/\.(png|jpe?g)$/i.test(path)) {
       return { error: "The logo has to be a PNG or JPG.", saved: false };
     }
-    if (!path.startsWith(`${profile.agency_id}/`)) {
+    // Inside the office's own folder, with no ".." part (20 Oct 2026; the
+    // database refuses any other path too, 0085).
+    if (!isInFolder(path, `${profile.agency_id}/`)) {
       return { error: "That file doesn't belong to your agency.", saved: false };
     }
     // An empty logo would leave the compliance record with a broken

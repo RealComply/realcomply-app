@@ -8,7 +8,7 @@ import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import { priceApproval } from "@/lib/rules/price-statement";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
-import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, isInFolder } from "@/lib/storage/evidence";
 import { EMPTY_FILE_MESSAGE, downloadedFileProblem } from "@/lib/storage/file-check";
 import type { Property, PropertyItem } from "@/lib/types";
 import { formalAgencyName, namesAsAt, type AgencyNames, type NameChange } from "@/lib/agency-names";
@@ -69,8 +69,11 @@ export async function buildAuditPack(
   // A logo that fails to download must never cost the agent their document: the
   // record is what they were asked for, the branding is not. So this falls back
   // to no logo rather than throwing.
+  //
+  // Some callers pass the full-rights client, so only from the office's own
+  // folder (20 Oct 2026; 0085 refuses any other path on the office).
   let logo: { bytes: Uint8Array; type: "png" | "jpg" } | null = null;
-  if (agency?.logo_path) {
+  if (agency?.logo_path && isInFolder(agency.logo_path, `${agencyId}/`)) {
     try {
       const { data: blob } = await supabase.storage.from(EVIDENCE_BUCKET).download(agency.logo_path);
       if (blob) {

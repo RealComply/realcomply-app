@@ -25,7 +25,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     agencyName: formalAgencyName({ tradingName: agencyName, licensedEntityName: details?.licensedEntityName ?? null }),
     licenceNumber: details?.licenceNumber ?? null,
     effectiveDate: null,
-    logo: details?.logoPath ? await logoFor(createServiceClient(), details.logoPath) : null,
+    logo: details?.logoPath ? await logoFor(createServiceClient(), details.logoPath, details.agencyId) : null,
     adoption: null,
   });
 

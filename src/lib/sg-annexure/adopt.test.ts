@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SendEmailInput } from "@/lib/email/send";
 import { pdfText } from "@/lib/testing/pdf-text";
-import { adoptionRefusal, saveSignedCopy } from "./adopt";
+import { adoptionRefusal, logoFor, saveSignedCopy } from "./adopt";
 
 // After the database records an adoption (0067): the signed copy is made,
 // filed in Document sign-offs for the licensee only, and emailed with a copy
@@ -137,5 +137,38 @@ describe("what the signing page says when the database refuses", () => {
   it("says plainly when the subscription has ended, and nothing technical otherwise", () => {
     assert.match(adoptionRefusal({ message: "This agency's subscription has ended, so nothing can be added" }), /subscription has ended/);
     assert.equal(adoptionRefusal({ message: "permission denied for table x" }), "Something went wrong and nothing was signed. Try again in a minute.");
+  });
+});
+
+describe("the logo, read with full rights (20 Oct 2026)", () => {
+  // A storage client that records what it was asked to download.
+  function storage() {
+    const asked: string[] = [];
+    const client = {
+      storage: {
+        from: () => ({
+          download: async (path: string) => {
+            asked.push(path);
+            return { data: new Blob([new Uint8Array([137, 80, 78, 71])]), error: null };
+          },
+        }),
+      },
+    } as unknown as SupabaseClient;
+    return { asked, client };
+  }
+
+  it("reads a logo in the office's own folder", async () => {
+    const { asked, client } = storage();
+    const logo = await logoFor(client, "ag1/_brand/1-logo.png", "ag1");
+    assert.equal(logo?.type, "png");
+    assert.deepEqual(asked, ["ag1/_brand/1-logo.png"]);
+  });
+
+  it("never reads one in another office's folder, or one climbing out with ..", async () => {
+    for (const path of ["ag2/_brand/1-logo.png", "ag1/../ag2/_brand/1-logo.png"]) {
+      const { asked, client } = storage();
+      assert.equal(await logoFor(client, path, "ag1"), null, path);
+      assert.deepEqual(asked, [], path);
+    }
   });
 });
