@@ -25,6 +25,7 @@ import {
   type Answer,
 } from "@/lib/rules/question-card";
 import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/rules/not-applicable";
+import { COVERING_LETTER_KEY, afterAgentSave } from "@/lib/documents/covering-letter";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { agencyPeople } from "@/lib/data/people";
 import { priceStatementByEmail } from "@/lib/rules/price-statement";
@@ -371,7 +372,7 @@ export async function setItemStatus(
   const carried = [...CARRIED_ON_EVERY_ITEM, ...(CARRIED_BY_ITEM[itemKey] ?? [])];
   const { data: existingRow } = await supabase
     .from("property_items")
-    .select("data")
+    .select("data, event_date")
     .eq("property_id", propertyId)
     .eq("item_key", itemKey)
     .maybeSingle();
@@ -391,6 +392,26 @@ export async function setItemStatus(
     Object.assign(
       data,
       naCarriedThroughSave(existingData, { id: user.id, name: profile.full_name ?? profile.email }, new Date().toISOString()),
+    );
+  }
+
+  // b1a — the received date's history (Adam, 20 Oct 2026). The covering
+  // letter can put its date on this card, and the latest action wins, so a
+  // date the agent saves here stands until the letter is read again, and
+  // every change is kept. See lib/documents/covering-letter.ts.
+  if (itemKey === COVERING_LETTER_KEY) {
+    Object.assign(
+      data,
+      afterAgentSave(
+        {
+          event_date: (existingRow as { event_date?: string | null } | null)?.event_date ?? null,
+          data: existingData,
+        },
+        eventDate,
+        status,
+        { id: user.id, name: profile.full_name ?? profile.email },
+        new Date().toISOString(),
+      ),
     );
   }
 

@@ -9,9 +9,10 @@ import { readableBytes } from "@/lib/documents/readable-bytes";
 import {
   COVERING_LETTER_KEY,
   COVERING_LETTER_NO_DATE,
+  COVERING_LETTER_SIGNED_OFF,
   COVERING_LETTER_UNREADABLE,
+  afterLetterRead,
   coveringLetterDate,
-  coveringLetterDraft,
 } from "@/lib/documents/covering-letter";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { getItem } from "@/lib/rules/nsw-sales";
@@ -1747,25 +1748,24 @@ export async function extractForAttachment(propertyId: string, itemKey: string):
 }
 
 /**
- * Reads the covering letter on b1a and offers its date as the date the
- * contract was received. Only ever an offer: the date goes in the card's AI
- * draft, shown in the date box for the agent to check and save, and the
- * card's own date is never written. A date the agent has already saved always
- * stands: then nothing is read. A letter with no clear date says so on the
- * card. See lib/documents/covering-letter.ts.
+ * Reads the covering letter on b1a and puts its date on the card as the date
+ * the contract was received. The latest action wins (Adam, 20 Oct 2026): the
+ * letter's date goes in even over a date the agent typed, as read by AI and
+ * left open for the agent to check; the change is kept in the card's
+ * history. A letter with no clear date changes nothing and says so. See
+ * lib/documents/covering-letter.ts.
  */
 async function readCoveringLetterOnto(propertyId: string): Promise<ActionState> {
   const { supabase } = await requireAuthContext();
 
-  const { data: row } = await supabase
+  const { data: rows } = await supabase
     .from("property_items")
     .select("*")
     .eq("property_id", propertyId)
-    .eq("item_key", COVERING_LETTER_KEY)
-    .maybeSingle();
-  const item = row as PropertyItem | null;
-  // No letter, or the agent's own date: nothing to read.
-  if (!item?.evidence_path || item.event_date) return ok;
+    .in("item_key", [COVERING_LETTER_KEY, "sign_licensee"]);
+  const byKey = new Map(((rows ?? []) as PropertyItem[]).map((r) => [r.item_key, r]));
+  const item = byKey.get(COVERING_LETTER_KEY) ?? null;
+  if (!item?.evidence_path) return ok;
 
   const fileName =
     (item.data as { evidenceFileName?: string } | null)?.evidenceFileName ??
@@ -1776,20 +1776,31 @@ async function readCoveringLetterOnto(propertyId: string): Promise<ActionState> 
   if (!fields) return { error: COVERING_LETTER_UNREADABLE };
 
   const now = new Date();
-  const draft = coveringLetterDraft(item, coveringLetterDate(fields.letterDate, sydneyDate(now)), now.toISOString());
-  if (!draft) return ok;
+  const date = coveringLetterDate(fields.letterDate, sydneyDate(now));
+  // A file the licensee has signed off keeps the date it was signed with.
+  const signedOff = byKey.get("sign_licensee")?.status === "done";
+  if (signedOff && date && date !== item.event_date) return { error: COVERING_LETTER_SIGNED_OFF };
 
-  // Guarded on the date still being blank, so a date the agent saves while
-  // the letter is being read is never put behind an offer.
-  await supabase
+  const next = afterLetterRead(item, date, now.toISOString());
+  // Written only if the card still holds the date this read started from:
+  // a date the agent saved while the letter was being read came later, and
+  // the latest action wins.
+  const write = supabase
     .from("property_items")
-    .update({ data: { ...((item.data as Record<string, unknown>) ?? {}), aiDraft: draft } })
+    .update({
+      data: next.data,
+      event_date: next.eventDate,
+      status: next.status,
+      // An open card is not a completed one; the agent completes it again
+      // once they have checked the date (see setItemStatus).
+      completed_by: next.status === item.status ? item.completed_by : null,
+    })
     .eq("property_id", propertyId)
-    .eq("item_key", COVERING_LETTER_KEY)
-    .is("event_date", null);
+    .eq("item_key", COVERING_LETTER_KEY);
+  await (item.event_date ? write.eq("event_date", item.event_date) : write.is("event_date", null));
 
   revalidatePath(`/dashboard/${propertyId}`);
-  return draft.coveringLetterNoDate ? { error: COVERING_LETTER_NO_DATE } : ok;
+  return date ? ok : { error: COVERING_LETTER_NO_DATE };
 }
 
 /**

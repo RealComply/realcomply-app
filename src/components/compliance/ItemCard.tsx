@@ -94,7 +94,12 @@ import {
 import { Disclaimer, ReasoningAssist } from "@/components/comparables/ReasoningAssist";
 import { keepsFieldsOnRefusal, sendKeepingFields } from "@/components/compliance/send-keeping-fields";
 import { espReasoningMissing } from "@/lib/rules/esp-reasoning-gate";
-import { COVERING_LETTER_NO_DATE } from "@/lib/documents/covering-letter";
+import {
+  COVERING_LETTER_KEY,
+  COVERING_LETTER_NO_DATE,
+  COVERING_LETTER_READ_BY_AI,
+  receivedDateLines,
+} from "@/lib/documents/covering-letter";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 
@@ -821,11 +826,13 @@ function ChecklistItem({
       prescribedDocs?: { key: string; found: boolean }[];
       notAContract?: boolean;
       wrongDocument?: { expected: string; actual: string };
-      /** b1a: the covering letter was read and has no clear date (20 Oct 2026). */
-      coveringLetterNoDate?: boolean;
     };
   };
   const draft = data.aiDraft;
+  // b1a: what the card says about the received date the covering letter can
+  // set, and its history (Adam, 20 Oct 2026). See lib/documents/covering-letter.ts.
+  const received =
+    item.key === COVERING_LETTER_KEY ? receivedDateLines(current?.data, formatAuDate, formatAuDateTimeShort) : null;
   // The file in this slot is a different kind of document than the slot
   // expects, so nothing was read from it. Everything the AI would otherwise
   // have offered on this card is suppressed — see the extraction module's
@@ -1080,13 +1087,27 @@ function ChecklistItem({
               email, a signed receipt.
             </span>
           </p>
-        ) : draft?.coveringLetterNoDate && !current?.event_date ? (
-          // b1a: the covering letter was read and carries no clear date of
-          // its own (20 Oct 2026), so the date box is left blank.
-          <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-            <span>{COVERING_LETTER_NO_DATE}</span>
-          </p>
+        ) : received && (received.readByAi || received.noDate) ? (
+          // b1a: the date on the card came from the covering letter, for the
+          // agent to check, and what it replaced; or the letter had no clear
+          // date, so nothing changed (20 Oct 2026).
+          <div className="space-y-1.5">
+            {received.readByAi && (
+              <p className="flex items-start gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-1.5 text-xs text-rc-green-deep">
+                <Sparkles size={13} className="mt-0.5 shrink-0" />
+                <span>
+                  {COVERING_LETTER_READ_BY_AI}
+                  {received.changedFrom && <span className="block font-semibold">{received.changedFrom}</span>}
+                </span>
+              </p>
+            )}
+            {received.noDate && (
+              <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                <span>{COVERING_LETTER_NO_DATE}</span>
+              </p>
+            )}
+          </div>
         ) : (
           // Only claim a pre-fill when something was actually pre-filled.
           //
@@ -1590,6 +1611,20 @@ function ChecklistItem({
           shown, so the card said "Flagged" and nothing else. */}
       {status === "flagged" && data.flagReason && (
         <p className="mt-2 text-sm text-rc-amber-deep">{data.flagReason}</p>
+      )}
+      {/* b1a: every change to the received date, by the covering letter or a
+          person, with when and the old and new date (20 Oct 2026). */}
+      {received && received.history.length > 0 && (
+        <div className="mt-3 border-t border-rc-border pt-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-rc-faint">History of this date</p>
+          <ul className="mt-1 space-y-0.5">
+            {received.history.map((line, i) => (
+              <li key={i} className="text-[11px] text-rc-muted">
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </ItemShell>
   );
