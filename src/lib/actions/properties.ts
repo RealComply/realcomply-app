@@ -314,7 +314,7 @@ export async function createProperty(
   //
   // FAILURE NEVER BLOCKS THE LISTING. It is created and its documents are
   // attached before this line; if the read fails or times out, the agent gets
-  // their file with the cards empty and the "Extract from uploaded documents"
+  // their file with the cards empty and the "Read uploaded documents"
   // button still there — exactly where they were before this change. So this
   // swallows everything rather than returning an error, which would strand a
   // listing that in fact exists.

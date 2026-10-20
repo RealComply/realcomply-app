@@ -6,6 +6,14 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { downloadedFileProblem } from "@/lib/storage/file-check";
 import { readableBytes } from "@/lib/documents/readable-bytes";
+import {
+  COVERING_LETTER_KEY,
+  COVERING_LETTER_NO_DATE,
+  COVERING_LETTER_UNREADABLE,
+  coveringLetterDate,
+  coveringLetterDraft,
+} from "@/lib/documents/covering-letter";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 import { getItem } from "@/lib/rules/nsw-sales";
 import {
   PRESCRIBED_DOC_KEYS,
@@ -1193,6 +1201,83 @@ export async function extractRevisedEspNotice(
   }
 }
 
+// ── The solicitor's covering letter ────────────────────────────────────────
+//
+// Adam, 20 Oct 2026: on a live listing the letter enclosing the draft contract
+// was uploaded to "Date the contract was received" (b1a) and the documents
+// were read. The contract was read; the letter never was, so the received
+// date stayed blank. It is read now, for its own date and nothing else, and
+// that date is offered on the card for the agent to check, like every other
+// date read off a document. The rules and words are in
+// lib/documents/covering-letter.ts.
+const COVERING_LETTER_TOOL: Anthropic.Tool = {
+  name: "record_covering_letter_date",
+  description:
+    "Record the date of a letter or email from a solicitor or conveyancer that encloses or forwards a contract for sale.",
+  input_schema: {
+    type: "object",
+    properties: {
+      letterDate: {
+        type: "string",
+        description:
+          "The date of the letter or email itself, format YYYY-MM-DD: the date printed at the top of the letter, " +
+          "or the Date or Sent line of an email. Not the date of the contract, an exchange or settlement date, " +
+          "or any other date mentioned in the text. Omit it if the letter or email has no clear date of its own, " +
+          "or if this file is not a letter or email at all.",
+      },
+    },
+  },
+};
+
+/** Reads an uploaded covering letter for its own date. Returns null when it cannot be read. */
+export async function extractCoveringLetterDate(
+  supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>,
+  path: string,
+  fileName: string,
+): Promise<{ letterDate?: string } | null> {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+
+  try {
+    const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
+    if (error || !blob) return null;
+
+    const { base64, contentType } = await readableBytes(blob, fileName);
+    const documentBlock = buildDocumentBlock(contentType, base64, fileName);
+    if (!documentBlock) return null;
+
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 256,
+      system:
+        "You are reading the covering letter or email a NSW solicitor or conveyancer sent to a real estate " +
+        "agency with the draft contract for sale. Record only the date of the letter itself, exactly as printed. " +
+        "Never infer or calculate a date. The date you return is offered to the agent as the date the contract " +
+        "was received, and they check it against the letter, so if no date is clearly printed, omit it.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            documentBlock,
+            { type: "text", text: `This was uploaded as "${fileName}". Call record_covering_letter_date.` },
+          ],
+        },
+      ],
+      tools: [COVERING_LETTER_TOOL],
+      tool_choice: { type: "tool", name: "record_covering_letter_date" },
+    });
+
+    const toolUse = response.content.find(
+      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+    );
+    if (!toolUse) return null;
+    return toolUse.input as { letterDate?: string };
+  } catch (err) {
+    console.error("covering letter read failed:", fileName, err);
+    return null;
+  }
+}
+
 // ── Identity-document screen ───────────────────────────────────────────────
 //
 // Adam, 20 Aug 2026: "if the AI can detect any ID documents, then it rejects
@@ -1612,8 +1697,9 @@ async function extractOneDocument(
 // per the product's diligence-support framing.
 // onlyItemKey scopes the run to a single attachment. Used when a document is
 // attached, where re-reading the other two would burn AI calls on files that
-// have not changed. Omitted for the page-level "Extract from uploaded
-// documents" button, which still sweeps everything.
+// have not changed. Omitted for the page-level "Read uploaded documents"
+// button, which still sweeps everything, the solicitor's covering letter
+// included (20 Oct 2026).
 export async function extractFromDocuments(propertyId: string): Promise<ActionState> {
   return runExtraction(propertyId);
 }
@@ -1653,8 +1739,57 @@ export async function extractForAttachment(propertyId: string, itemKey: string):
   // read the revised price off the notice so every underquoting check has the
   // figure currently on foot.
   if (itemKey === "d3") return readRevisedEspNoticeOnto(propertyId);
+  // The solicitor's covering letter: read for its date as soon as it's on
+  // the card, like the other documents RealComply reads (20 Oct 2026).
+  if (itemKey === COVERING_LETTER_KEY) return readCoveringLetterOnto(propertyId);
   if (!(SOURCE_ITEM_KEYS as readonly string[]).includes(itemKey)) return ok;
   return runExtraction(propertyId, itemKey);
+}
+
+/**
+ * Reads the covering letter on b1a and offers its date as the date the
+ * contract was received. Only ever an offer: the date goes in the card's AI
+ * draft, shown in the date box for the agent to check and save, and the
+ * card's own date is never written. A date the agent has already saved always
+ * stands: then nothing is read. A letter with no clear date says so on the
+ * card. See lib/documents/covering-letter.ts.
+ */
+async function readCoveringLetterOnto(propertyId: string): Promise<ActionState> {
+  const { supabase } = await requireAuthContext();
+
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", COVERING_LETTER_KEY)
+    .maybeSingle();
+  const item = row as PropertyItem | null;
+  // No letter, or the agent's own date: nothing to read.
+  if (!item?.evidence_path || item.event_date) return ok;
+
+  const fileName =
+    (item.data as { evidenceFileName?: string } | null)?.evidenceFileName ??
+    item.evidence_path.split("/").pop() ??
+    "covering letter";
+
+  const fields = await extractCoveringLetterDate(supabase, item.evidence_path, fileName);
+  if (!fields) return { error: COVERING_LETTER_UNREADABLE };
+
+  const now = new Date();
+  const draft = coveringLetterDraft(item, coveringLetterDate(fields.letterDate, sydneyDate(now)), now.toISOString());
+  if (!draft) return ok;
+
+  // Guarded on the date still being blank, so a date the agent saves while
+  // the letter is being read is never put behind an offer.
+  await supabase
+    .from("property_items")
+    .update({ data: { ...((item.data as Record<string, unknown>) ?? {}), aiDraft: draft } })
+    .eq("property_id", propertyId)
+    .eq("item_key", COVERING_LETTER_KEY)
+    .is("event_date", null);
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return draft.coveringLetterNoDate ? { error: COVERING_LETTER_NO_DATE } : ok;
 }
 
 /**
@@ -1802,7 +1937,41 @@ async function readRevisedEspNoticeOnto(propertyId: string): Promise<ActionState
   return ok;
 }
 
+/**
+ * The page-level read: the three set-up documents, then the solicitor's
+ * covering letter (20 Oct 2026). Scoped to one attachment, only that one.
+ */
 async function runExtraction(propertyId: string, onlyItemKey?: string): Promise<ActionState> {
+  if (onlyItemKey) return readSourceDocuments(propertyId, onlyItemKey);
+
+  const { supabase } = await requireAuthContext();
+  const { data: rows } = await supabase
+    .from("property_items")
+    .select("item_key, evidence_path")
+    .eq("property_id", propertyId)
+    .in("item_key", [...SOURCE_ITEM_KEYS, COVERING_LETTER_KEY]);
+  const attached = new Set(
+    ((rows ?? []) as Array<{ item_key: string; evidence_path: string | null }>)
+      .filter((r) => r.evidence_path)
+      .map((r) => r.item_key),
+  );
+  const hasSources = SOURCE_ITEM_KEYS.some((k) => attached.has(k));
+  const hasLetter = attached.has(COVERING_LETTER_KEY);
+  if (!hasSources && !hasLetter) {
+    return {
+      error:
+        "No documents attached yet. Attach the agency agreement, contract, comparable-sales report or the solicitor's covering letter first.",
+    };
+  }
+
+  const results: ActionState[] = [];
+  if (hasSources) results.push(await readSourceDocuments(propertyId));
+  if (hasLetter) results.push(await readCoveringLetterOnto(propertyId));
+  const errors = results.map((r) => r.error).filter((e): e is string => Boolean(e));
+  return errors.length > 0 ? { error: errors.join(" ") } : ok;
+}
+
+async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
 
   if (!process.env.ANTHROPIC_API_KEY) {

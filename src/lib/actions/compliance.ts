@@ -2471,7 +2471,7 @@ export async function uploadEvidence(
   }
 
   // Read the document straight away rather than waiting for someone to press
-  // "Extract from uploaded documents" at the top of the page (Adam, 14 Aug
+  // "Read uploaded documents" at the top of the page (Adam, 14 Aug
   // 2026). He attached a comparable-sales report and reasonably expected the
   // findings to reflect it; nothing re-read the file, so the card kept saying
   // no comparables were present. No-ops unless the file landed on one of the
