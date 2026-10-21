@@ -232,7 +232,7 @@ describe("PM Part B: who ended the tenancy (brief B1)", () => {
     assert.equal(exitItem(i, "notice_period").help, "Minimum notice: 90 days, or 60 if the fixed term is 6 months or less");
     assert.equal(
       exitItem(i, "termination_statement").help,
-      "The termination information statement, plus the landlord's signed statement on the works and why the property must be vacant",
+      "The termination information statement, plus the landlord's signed statement on the works, why the property must be vacant, and the start date",
     );
     assert.equal(
       exitItem(i, "reletting_exclusion").help,
