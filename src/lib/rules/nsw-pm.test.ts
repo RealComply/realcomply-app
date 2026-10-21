@@ -28,12 +28,12 @@ describe("PM water usage questions (brief B5)", () => {
     assert.deepEqual(pmWaterResult({ metered: false }), {
       state: "done",
       next: null,
-      line: "Not separately metered. Water usage is not charged. Taps and toilets checked for leaks at the start of this tenancy.",
+      line: "Not separately metered. Water usage is not charged.",
     });
     assert.deepEqual(pmWaterResult({ metered: true, charged: false }), {
       state: "done",
       next: null,
-      line: "Tenant is not charged for water usage. Taps and toilets checked for leaks at the start of this tenancy.",
+      line: "Tenant is not charged for water usage.",
     });
   });
 
@@ -148,14 +148,15 @@ describe("PM help text after the Regulation check (21 Oct 2026)", () => {
     assert.equal(read("material_facts").reference, "RTA s26(1); RT Reg cl 8");
   });
 
-  it("3. Water usage: the Regulation, and the leak line on every finished answer only", () => {
+  it("3. Water usage: the Regulation, and the leak line only when the tenant is charged (Adam, 21 Oct)", () => {
     assert.equal(read("water_usage").reference, "RTA s39(1); RT Reg cl 10");
     assert.equal(PM_WATER_LEAK_LINE, "Taps and toilets checked for leaks at the start of this tenancy.");
-    for (const a of [{ metered: false }, { metered: true, charged: false }, { metered: true, charged: true, evidence: true }]) {
-      assert.ok(pmWaterResult(a).line!.endsWith(PM_WATER_LEAK_LINE), JSON.stringify(a));
+    // Charged, and the third question answered Yes: the leak line.
+    assert.ok(pmWaterResult({ metered: true, charged: true, evidence: true }).line!.endsWith(PM_WATER_LEAK_LINE));
+    // Not metered, not charged, the third answered No, or not finished: no leak line.
+    for (const a of [{ metered: false }, { metered: true, charged: false }, { metered: true, charged: true, evidence: false }]) {
+      assert.equal(pmWaterResult(a).line!.includes("leaks"), false, JSON.stringify(a));
     }
-    // Not finished: no leak line.
-    assert.equal(pmWaterResult({ metered: true, charged: true, evidence: false }).line!.includes("leaks"), false);
     assert.equal(pmWaterResult({ metered: true }).line, null);
   });
 

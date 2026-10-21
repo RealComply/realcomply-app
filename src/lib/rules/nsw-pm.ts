@@ -632,19 +632,27 @@ export type PmWaterResult = {
   line: string | null;
 };
 
-/** Added to the line once the item is finished (Regulation check, 21 Oct 2026: RT Reg cl 10). */
+/**
+ * Added to the line when the tenant is charged for water and the third
+ * question is answered Yes (Regulation check, 21 Oct 2026: RT Reg cl 10). Not
+ * on "not metered" or "not charged": nobody was asked about leaks there (Adam,
+ * 21 Oct).
+ */
 export const PM_WATER_LEAK_LINE = "Taps and toilets checked for leaks at the start of this tenancy.";
 
 /** What the answers so far mean. The server checks them with this before saving. */
 export function pmWaterResult(a: PmWaterAnswers): PmWaterResult {
-  const finished = (line: string): PmWaterResult => ({ state: "done", next: null, line: `${line} ${PM_WATER_LEAK_LINE}` });
   if (a.metered === undefined) return { state: "open", next: "metered", line: null };
-  if (a.metered === false) return finished("Not separately metered. Water usage is not charged.");
+  if (a.metered === false) return { state: "done", next: null, line: "Not separately metered. Water usage is not charged." };
   if (a.charged === undefined) return { state: "open", next: "charged", line: null };
-  if (a.charged === false) return finished("Tenant is not charged for water usage.");
+  if (a.charged === false) return { state: "done", next: null, line: "Tenant is not charged for water usage." };
   if (a.evidence === undefined) return { state: "open", next: "evidence", line: null };
   if (a.evidence === true) {
-    return finished("Separately metered, tenant charged, and evidence of the water efficiency measures is on file.");
+    return {
+      state: "done",
+      next: null,
+      line: `Separately metered, tenant charged, and evidence of the water efficiency measures is on file. ${PM_WATER_LEAK_LINE}`,
+    };
   }
   return { state: "open", next: null, line: "Water cannot be charged until the property meets the water efficiency measures." };
 }
