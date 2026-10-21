@@ -125,8 +125,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // late reads as the page changing its mind.
   const [counts, pm, accountHolder, logoUrl] = await Promise.all([
     navCountsFor(supabase, profile),
-    // Whether this agency has property management switched on (0052), for
-    // the "Property management" entry beside sales.
+    // Whether this agency has property management (on for office plans,
+    // 0086), for the "Property management" entry beside sales.
     pmAgencySettings(supabase, profile.agency_id),
     // The Billing link for an office founder who is not the licensee: the
     // Billing page lets them in, so the menu and search show it (10 Oct

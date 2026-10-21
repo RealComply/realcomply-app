@@ -38,7 +38,10 @@ import {
 // someone calls the action directly (brief A7). The database adds the agency
 // lock, the who-and-when stamp and the history (migration 0052).
 
-const PM_OFF = "Property management is not switched on for this agency.";
+// PM follows the plan (0086, Adam 21 Oct 2026): on for office plans, never on
+// a single agent plan. The database sets pm_enabled from the plan and refuses
+// PM rows without it; this is the same rule, said to the person.
+const PM_OFF = "Property management comes with the office plans. It is not part of a single agent plan.";
 
 async function requirePm() {
   const ctx = await requireAuthContext();
