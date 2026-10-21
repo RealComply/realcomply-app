@@ -30,6 +30,21 @@ export function fakeSupabase<T>(tables: Record<string, Row[]>): T {
         (tables[table] ??= []).push(row);
         return Promise.resolve({ error: null });
       },
+      // update(values).eq(...): applied to the matching rows when awaited.
+      update: (values: Row) => {
+        const where: ((r: Row) => boolean)[] = [];
+        const update = {
+          eq: (col: string, value: unknown) => {
+            where.push((r) => r[col] === value);
+            return update;
+          },
+          then: <U>(resolve: (r: { error: null }) => U, reject?: (e: unknown) => U) => {
+            for (const r of tables[table] ?? []) if (where.every((f) => f(r))) Object.assign(r, values);
+            return Promise.resolve({ error: null }).then(resolve, reject);
+          },
+        };
+        return update;
+      },
       then: <U>(resolve: (r: Result) => U, reject?: (e: unknown) => U) =>
         Promise.resolve({ data: rows(), error: null }).then(resolve, reject),
     };

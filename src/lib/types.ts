@@ -345,6 +345,22 @@ export type CpdReminder = {
   sent_at: string;
 };
 
+// 0087_announcement_sends.sql. One row per office per one-off announcement
+// from the staff page. Service key only: no one signed in can read it.
+export type AnnouncementSend = {
+  id: string;
+  announcement: string;
+  agency_id: string;
+  /** The licensee in charge it went to. */
+  profile_id: string | null;
+  office_name: string;
+  recipient_name: string | null;
+  recipient: string;
+  status: "sending" | "sent" | "failed";
+  created_at: string;
+  sent_at: string | null;
+};
+
 export type Breach = {
   id: string;
   agency_id: string;
