@@ -35,8 +35,16 @@
 // Known gaps, deliberately not "fixed" by guessing: the help lines were checked
 // against the Acts and Fair Trading's pages, not the Regulation text. A
 // correction is a one-line change here.
+//
+// REGULATION CHECK, 21 Oct 2026 (Adam). The help lines and references were
+// checked against the Residential Tenancies Regulation 2019 and corrected
+// here: pool certificate, material facts, water usage, rent payment, pet
+// grounds, domestic violence termination, advertising photos, the end-of-
+// tenancy survey, the termination statement and the renovation ground's
+// documents. Text and references only. Decided (Adam, 21 Oct): no annual smoke
+// alarm check; do not add one.
 
-export const PM_RULESET_VERSION = "nsw-pm-2026-10-06";
+export const PM_RULESET_VERSION = "nsw-pm-2026-10-21";
 
 // ── Groups a property sits in ──────────────────────────────────────────────
 // In the order of one tenancy. Re-leasing (Part B) starts a new tenancy back
@@ -98,6 +106,9 @@ export type PmStage = {
   items: PmItem[];
 };
 
+/** The Act sections behind the termination statement (the Regulation's clauses are added per item or ground). */
+const TERMINATION_STATEMENT_ACT = "RTA ss85, 86";
+
 export const PM_STAGES: PmStage[] = [
   {
     stage: 1,
@@ -150,7 +161,7 @@ export const PM_STAGES: PmStage[] = [
         key: "material_facts",
         title: "Material facts disclosed",
         help: "Nothing misleading, and no listed material fact hidden",
-        reference: "RTA s26(1)",
+        reference: "RTA s26(1); RT Reg cl 8",
       },
       {
         key: "pre_signing_disclosures",
@@ -213,8 +224,8 @@ export const PM_STAGES: PmStage[] = [
       {
         key: "pool_certificate",
         title: "Pool or spa certificate",
-        help: "Copy of a certificate issued in the last 3 years, given to the tenant at signing. Not needed in a strata scheme of more than 2 lots",
-        reference: "RT Reg Sch 1 cl 45; Swimming Pools Act 1992",
+        help: "A valid certificate of compliance or occupation certificate (valid 3 years from issue), copy given to the tenant at signing. Not needed in a strata or community scheme of more than 2 lots",
+        reference: "RT Reg Sch 1 cl 46; Swimming Pools Act 1992",
         naAllowed: true,
       },
     ],
@@ -242,8 +253,8 @@ export const PM_STAGES: PmStage[] = [
       {
         key: "rent_payment_options",
         title: "Rent payment options offered",
-        help: "Bank transfer and Centrepay, fee-free",
-        reference: "RTA s35",
+        help: "Bank transfer and Centrepay offered. No fee for paying by bank transfer",
+        reference: "RTA s35; RT Reg Sch 1 cl 4",
       },
       {
         key: "bond_limit",
@@ -268,7 +279,7 @@ export const PM_STAGES: PmStage[] = [
         key: "water_usage",
         title: "Water usage",
         help: "Charged only if separately metered and the water efficiency measures are met",
-        reference: "RTA s39(1)",
+        reference: "RTA s39(1); RT Reg cl 10",
         kind: "water",
       },
     ],
@@ -316,15 +327,15 @@ export const PM_STAGES: PmStage[] = [
         key: "termination_statement",
         title: "Termination statement and supporting documents given",
         help: "Given with the notice",
-        reference: "RTA ss85, 86",
+        reference: `${TERMINATION_STATEMENT_ACT}; RT Reg cl 23A to 23I`,
         naAllowed: true,
         exitRole: "statement",
       },
       {
         key: "dv_termination",
         title: "Domestic violence termination",
-        help: "Co-tenants notified within 7 days",
-        reference: "RTA Part 5 Div 3A",
+        help: "Co-tenants told in writing on the approved form, within 7 days after the termination date. Don't reveal the notice or evidence",
+        reference: "RTA s105H",
         naAllowed: true,
       },
       {
@@ -337,8 +348,8 @@ export const PM_STAGES: PmStage[] = [
       {
         key: "exit_survey",
         title: "End-of-tenancy survey",
-        help: "In Rental Bonds Online within 14 days of the first bond claim",
-        reference: "RTA s222A",
+        help: "In Rental Bonds Online when the bond claim is made (or within 14 days of a tenant's claim you haven't agreed to)",
+        reference: "RTA s222A; RT Reg cl 23L",
       },
       {
         key: "tenancy_db_listing",
@@ -445,6 +456,8 @@ export type PmTerminationGround = {
   /** "Cannot be re-let for [exclusion] ...". Null: none (the item is N/A). "depends": the agent checks. */
   exclusion: string | null | "depends";
   reference: string;
+  /** The Regulation clause for this ground's documents, shown on the termination statement item. */
+  documentsReference?: string;
 };
 
 // From the brief's table (B1) and the legal checks of 6 Oct 2026. "Sold" and
@@ -478,9 +491,10 @@ export const PM_TERMINATION_GROUNDS = [
     key: "renovation",
     label: "Renovation",
     notice: "90 days, or 60 if the fixed term is 6 months or less",
-    documents: "the landlord's signed statement on the works and why the property must be vacant",
+    documents: "the landlord's signed statement on the works, why the property must be vacant, and the start date",
     exclusion: "4 weeks",
     reference: "RTA s87F",
+    documentsReference: "RT Reg cl 23D",
   },
   {
     key: "breach",
@@ -541,6 +555,7 @@ export function pmExitItem(
         help: g.documents
           ? `The termination information statement, plus ${g.documents}`
           : "The termination information statement",
+        ...(g.documentsReference ? { reference: `${TERMINATION_STATEMENT_ACT}; ${g.documentsReference}` } : {}),
         naAllowed: false,
         auto: null,
       };
@@ -617,15 +632,19 @@ export type PmWaterResult = {
   line: string | null;
 };
 
+/** Added to the line once the item is finished (Regulation check, 21 Oct 2026: RT Reg cl 10). */
+export const PM_WATER_LEAK_LINE = "Taps and toilets checked for leaks at the start of this tenancy.";
+
 /** What the answers so far mean. The server checks them with this before saving. */
 export function pmWaterResult(a: PmWaterAnswers): PmWaterResult {
+  const finished = (line: string): PmWaterResult => ({ state: "done", next: null, line: `${line} ${PM_WATER_LEAK_LINE}` });
   if (a.metered === undefined) return { state: "open", next: "metered", line: null };
-  if (a.metered === false) return { state: "done", next: null, line: "Not separately metered. Water usage is not charged." };
+  if (a.metered === false) return finished("Not separately metered. Water usage is not charged.");
   if (a.charged === undefined) return { state: "open", next: "charged", line: null };
-  if (a.charged === false) return { state: "done", next: null, line: "Tenant is not charged for water usage." };
+  if (a.charged === false) return finished("Tenant is not charged for water usage.");
   if (a.evidence === undefined) return { state: "open", next: "evidence", line: null };
   if (a.evidence === true) {
-    return { state: "done", next: null, line: "Separately metered, tenant charged, and evidence of the water efficiency measures is on file." };
+    return finished("Separately metered, tenant charged, and evidence of the water efficiency measures is on file.");
   }
   return { state: "open", next: null, line: "Water cannot be charged until the property meets the water efficiency measures." };
 }
@@ -657,8 +676,8 @@ export const PM_EVENT_RECORDS = [
   {
     key: "advertising_photos",
     title: "Photos for advertising",
-    help: "7 days notice before taking them. Written consent before publishing",
-    reference: "RTA ss55(2)(d1), 55A",
+    help: "7 days' notice before taking them. Written consent before publishing, asked no more than 3 weeks before the first ad. No reply within 7 days means no",
+    reference: "RTA ss55AA, 55A",
   },
   {
     key: "details_change",
@@ -670,11 +689,12 @@ export const PM_EVENT_RECORDS = [
 
 export type PmEventRecordKind = (typeof PM_EVENT_RECORDS)[number]["key"];
 
-// The six grounds for refusing a pet, in plain words (RTA s73F). Used for a
+// The six grounds for refusing a pet, in plain words (RTA s73F; RT Reg cl 22A
+// for how many animals is not too many). Used for a
 // tenant's pet request and, as the cautious practice, for a pet on the
 // application (addendum).
 export const PM_PET_GROUNDS = [
-  { key: "too_many", label: "Too many animals at the property" },
+  { key: "too_many", label: "Too many animals at the property (4 or fewer is not too many)" },
   { key: "unsuitable", label: "Property unsuitable: fencing, open space, or the animal could not be kept humanely" },
   { key: "damage_over_bond", label: "Likely damage would cost more than the bond to repair" },
   { key: "landlord_lives_there", label: "The landlord lives at the property" },
@@ -696,7 +716,7 @@ export function pmPetGroundLabel(key: string): string {
 export const PM_PET_REQUEST = {
   title: "Pet requests",
   help: "Reply in writing on the approved form within 21 days. Refuse only on a listed ground",
-  reference: "RTA ss73D, 73F",
+  reference: "RTA ss73D, 73F; RT Reg cl 22A",
   replyDays: 21,
   outcomes: [
     { key: "consent", label: "Consent given" },
