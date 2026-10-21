@@ -79,7 +79,7 @@ export function pmAnnouncementDocument(firstName: string | null, officeName: str
       {
         kind: "paragraph",
         text:
-          "A good first step: in Office profile, note where your PM records are kept (for example PropertyMe). " +
+          "A good first step: at the top of the Property management page, note where your PM records are kept (for example PropertyMe). " +
           "Then add a property to see its checklist.",
       },
       { kind: "paragraph", text: "It's new, so we'd welcome your feedback. Just reply to this email." },
