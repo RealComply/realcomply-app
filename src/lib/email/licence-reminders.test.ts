@@ -37,8 +37,31 @@ const day = (iso: string) => new Date(`${iso}T21:30:00Z`);
 
 // ── The schedule ────────────────────────────────────────────────────────────
 
-test("the schedule is 90, 30, 14, 7 and 0 days", () => {
-  assert.deepEqual([...REMINDER_THRESHOLDS], [90, 30, 14, 7, 0]);
+// REVERSAL 23 Oct 2026: was 90, 30, 14, 7 and 0 (2 Oct). Now 90, 60, 30, 14
+// and 7 for every expiry type (Adam's brief of 22 Oct).
+test("the schedule is 90, 60, 30, 14 and 7 days", () => {
+  assert.deepEqual([...REMINDER_THRESHOLDS], [90, 60, 30, 14, 7]);
+});
+
+test("the 60-day threshold fires at 60 days, between the 90 and the 30", () => {
+  const today = new Date("2026-10-01T00:00:00Z");
+  assert.equal(dueThreshold("2026-11-30", today), 60); // 60 days out
+  assert.equal(dueThreshold("2026-12-01", today), 90); // 61 days out
+  assert.equal(dueThreshold("2026-10-31", today), 30);
+  // After the 90 has gone, the next promised date is the 60-day one.
+  assert.equal(nextReminderDate("2026-12-15", today), "2026-10-16");
+  // No reminder on the day itself any more: once the 7 has gone, nothing is promised.
+  assert.equal(nextReminderDate("2026-10-05", today), null);
+});
+
+test("a licence follows all five steps, one email each, and nothing on the day", async () => {
+  const { tables, deps } = world("2027-01-01");
+  // Every morning from 100 days out to 5 days after, run twice each time.
+  for (let d = new Date("2026-09-23T21:30:00Z"); d <= new Date("2027-01-06T21:30:00Z"); d.setUTCDate(d.getUTCDate() + 1)) {
+    await runLicenceReminders(new Date(d), deps);
+    await runLicenceReminders(new Date(d), deps);
+  }
+  assert.deepEqual(tables.licence_reminders.map((r) => r.threshold_days), [90, 60, 30, 14, 7]);
 });
 
 test("the 14-day threshold fires at 14 days, and only the most urgent crossed one is sent", () => {
