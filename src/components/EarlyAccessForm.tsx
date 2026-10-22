@@ -164,7 +164,9 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
           data-cta="early-access"
           className="shrink-0 rounded-full bg-rc-green-deep px-7 py-3.5 text-base font-bold text-white shadow-glow-green transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
-          {pending ? "Adding you…" : "Get early access"}
+          {/* "Get early access" until 22 Oct 2026 (Adam). Still joins the early
+              access list while customers are invite-only. */}
+          {pending ? "Adding you…" : "Sign up now"}
         </button>
       </div>
 

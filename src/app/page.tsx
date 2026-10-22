@@ -6,6 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import { Logo } from "@/components/Logo";
 import { EarlyAccessForm } from "@/components/EarlyAccessForm";
 import { MetaPixel } from "@/components/MetaPixel";
+import { BeforeAfter } from "@/components/landing/BeforeAfter";
+import { ProductScreen } from "@/components/landing/ProductScreen";
+import { TimeBack } from "@/components/landing/TimeBack";
 
 // The public landing page, restored 13 Aug 2026 as the destination for Meta
 // ads. It had been deleted on 12 Aug in favour of a bare redirect to /login,
@@ -25,6 +28,12 @@ import { MetaPixel } from "@/components/MetaPixel";
 // works." So the page now names what the AI does FOR the reader and still says
 // nothing about how any of it is done. No screens, no worked example, no
 // thresholds, no triggers, no description of what is read or matched.
+//
+// REVERSED AGAIN, 22 Oct 2026 (Adam). The page now shows an example product
+// screen and a worked underquoting flag (src/components/landing). Speed to
+// market against a competitor outweighs hiding the how. The sub-headline was
+// also changed the same day and no longer says what the product is; see
+// DESCRIPTION below.
 //
 // The other fault it fixes is comprehension. Adam, 17 Aug 2026: "because I
 // know what RealComply is, it all makes sense to me, but some of the way these
@@ -58,8 +67,15 @@ import { MetaPixel } from "@/components/MetaPixel";
 // below, and the site-wide fallback in layout.tsx. Change all three together
 // or the ad, the search result and the page start disagreeing.
 
-const DESCRIPTION =
-  "RealComply is software for NSW real estate agencies. It runs the compliance file for every listing you sell, from the agency agreement through to settlement, and builds the record as you go.";
+// REVERSAL, 22 Oct 2026 (Adam). The sub-headline no longer says what the
+// product is. It now leads with momentum, for speed to market against a
+// competitor: "we need to show that we're the bigger, better dog." Adam's
+// call, made knowing the 17 Aug reason for the old line (see the hero below).
+// The old line, kept for reinstatement: "RealComply is software for NSW real
+// estate agencies. It runs the compliance file for every listing you sell,
+// from the agency agreement through to settlement, and builds the record as
+// you go."
+const DESCRIPTION = "Join agencies around NSW in making compliance simple and stress-free.";
 
 export const metadata: Metadata = {
   title: "RealComply — Stay on top of compliance, without a full-time hire",
@@ -74,45 +90,9 @@ export const metadata: Metadata = {
   },
 };
 
-// The three steps. Numbered rather than ticked, because the point is that this
-// is a sequence you move through, not three separate benefits.
-const STEPS = [
-  {
-    title: "Add the listing.",
-    body: "Enter the address and the basics. RealComply builds the checklist for that specific property, because a strata unit and a house with a pool don't need the same things.",
-  },
-  {
-    title: "Work the file as you go.",
-    body: "Each stage of the sale shows only what's required at that point. Attach the agency agreement and the contract, and our AI reads what it can and fills in the details, rather than asking you to type it again.",
-  },
-  {
-    title: "The record is already there.",
-    body: "When your licensee or Fair Trading asks what happened on a listing, the answer is in the file. Nothing to reconstruct at the end.",
-  },
-];
-
-// Every one of these states a RESULT. None states a method. That line is the
-// whole editorial rule for this band and it is easy to cross by accident: a
-// sentence naming what gets compared, what triggers a check, or what the AI
-// reads to reach a conclusion has crossed it.
-const AI_FEATURES = [
-  {
-    title: "It reads your paperwork, so you stop retyping it.",
-    body: "Attach the agency agreement, contract for sale and comparable sales report. The dates, figures and confirmations come across automatically. You simply check and confirm the details instead of retyping them.",
-  },
-  {
-    title: "It tells you what the document might be missing.",
-    body: "Every required document is checked off one by one, and anything missing is flagged before the property goes to market, not after a buyer's solicitor finds it.",
-  },
-  {
-    title: "It watches your live advertising.",
-    body: "Your own listing pages are checked against the estimated selling price every morning, and again the moment you revise a price. If what's advertised slips below where it should be, we'll let you know.",
-  },
-  {
-    title: "It answers questions about the Act.",
-    body: "Ask in plain English and get an answer with the section it came from. Seconds, at your desk, instead of making a call and being put on hold.",
-  },
-];
+// The How it works steps and the four AI feature cards were removed on
+// 22 Oct 2026, replaced by the three infographics in src/components/landing
+// (Adam, signed off in the Landing page updates thread).
 
 // Split by who is reading (Adam, 17 Aug 2026). A principal can read their own
 // column and stop. Each column is also a sequence rather than three unrelated
@@ -275,63 +255,33 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
         </div>
       </section>
 
-      {/* HOW IT WORKS — the band the page never had. Three steps, no screens,
-          no worked example, nothing about what is checked. */}
-      <section className="border-t border-rc-border py-16 sm:py-20" data-section="how">
+      {/* INFOGRAPHICS, 22 Oct 2026. Three animated bands replace "How it
+          works" and "The part that does the work for you" (Adam: "these new
+          parts can replace" both). Each plays when it scrolls into view, and
+          hovering or tapping a part replays it. New data-section names, so
+          Plausible counts these separately from the old bands. */}
+      <section className="border-t border-rc-border py-16 sm:py-20" data-section="before-after">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">How it works</h2>
-          <div className="mt-9 grid gap-5 sm:grid-cols-3">
-            {STEPS.map((s, i) => (
-              <div key={s.title} className="rounded-card border border-rc-border bg-white p-6 shadow-card">
-                <div
-                  className="mb-4 flex h-9 w-9 items-center justify-center rounded-xl text-sm font-extrabold text-rc-green-deep"
-                  style={{ background: "var(--rc-badge-grad-green)" }}
-                  aria-hidden="true"
-                >
-                  {i + 1}
-                </div>
-                <h3 className="text-base font-bold tracking-tight">{s.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-rc-muted">{s.body}</p>
-              </div>
-            ))}
-          </div>
+          <BeforeAfter />
         </div>
       </section>
 
-      {/* THE AI — added 17 Aug 2026 when Adam reversed the say-nothing
-          decision. The opening line is the competitive argument in two
-          sentences, and it is true of every tracker in this market. */}
       <section
         className="border-t border-rc-border py-16 sm:py-20"
         style={{ background: "linear-gradient(180deg,#f7fdfa 0%,#ffffff 100%)" }}
-        data-section="ai"
+        data-section="product-screen"
       >
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          <h2 className="max-w-xl text-3xl font-extrabold tracking-tight sm:text-4xl">
-            The part that does the work for you
-          </h2>
-          <p className="mt-4 max-w-xl text-lg leading-relaxed text-rc-muted">
-            RealComply doesn&rsquo;t just give you a checklist. It reads the documents behind it, flags what&rsquo;s
-            missing, and keeps checking after you&rsquo;ve moved on.
-          </p>
-          <div className="mt-8 grid gap-5 md:grid-cols-2">
-            {AI_FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="rounded-card border border-rc-border border-l-[3px] border-l-rc-green-deep bg-white p-6 shadow-card"
-              >
-                <h3 className="text-[17px] font-bold leading-snug tracking-tight">{f.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-rc-muted">{f.body}</p>
-              </div>
-            ))}
-          </div>
-          {/* Once the page claims the AI does real work, this stops it reading
-              as "the software decides". It is the liability posture and, for a
-              licensee, the reassurance that makes the rest safe to want. */}
-          <p className="mt-7 max-w-xl text-sm leading-relaxed text-rc-faint">
-            You stay the decision-maker throughout. Everything RealComply finds is put to you, and nothing is signed
-            off in your name.
-          </p>
+          {/* The "You stay the decision-maker throughout..." line that sat here
+              was removed 22 Oct 2026 at Adam's request. The licensee sign-off
+              line under the screen and the footer disclaimer still carry it. */}
+          <ProductScreen />
+        </div>
+      </section>
+
+      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20" data-section="time-back">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+          <TimeBack />
         </div>
       </section>
 
@@ -341,7 +291,9 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
       <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20" data-section="outcomes">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <h2 className="max-w-2xl text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Compliance on track. Your time back to do what you do best.
+            {/* Was "Compliance on track. Your time back to do what you do best."
+                Shortened 22 Oct 2026 (Adam): the infographics already say time. */}
+            Compliance on track.
           </h2>
           <div className="mt-9 grid gap-8 md:grid-cols-2 md:gap-12">
             {[
@@ -469,9 +421,12 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
             Spend less time wondering what you&rsquo;ve missed.
           </h2>
+          {/* Was "We're opening RealComply to a small number of NSW agencies at
+              a time. Leave your email and we'll be in touch before the next
+              round." Changed 22 Oct 2026 (Adam). The form behind it is still
+              the early access list: someone gets in touch to set them up. */}
           <p className="mt-3 text-base text-rc-ink-muted">
-            We&rsquo;re opening RealComply to a small number of NSW agencies at a time. Leave your email and we&rsquo;ll
-            be in touch before the next round.
+            Get set up with RealComply in the time it takes to have a coffee.
           </p>
           <EarlyAccessForm source={src} tone="dark" />
           <p className="mt-4 text-base font-bold tracking-tight text-white">No set-up fee. No lock-in contracts.</p>
