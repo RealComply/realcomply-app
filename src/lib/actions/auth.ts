@@ -80,6 +80,13 @@ export async function signup(
     return { error: website.error };
   }
   const websiteUrl = website.url;
+  // REQUIRED for a new office from 23 Oct 2026 (Adam: "that's when we need the
+  // URL to the page that they keep their listings on", so the site can be
+  // scanned). Was optional. Someone joining an existing office by invite is
+  // never asked: the office already has it.
+  if (!inviteToken && !websiteUrl) {
+    return { error: "Add the link to the page with your listings." };
+  }
   // Optional (brief, 14 Oct 2026, Part 4): the company on the corporation
   // licence, if different from the trading name. Saved once the office exists.
   const licensedEntityName = tidyName(String(formData.get("licensedEntityName") ?? ""))?.slice(0, ENTITY_NAME_MAX) ?? null;
