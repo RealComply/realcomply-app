@@ -36,7 +36,7 @@ const ROWS = [
 
 function Row({ before, after, i }: { before: string; after: string; i: number }) {
   const ref = useRef<HTMLDivElement>(null);
-  const gate = useRef(makeGate(1300));
+  const gate = useRef(makeGate(2600));
 
   function go() {
     const row = ref.current;
@@ -45,16 +45,16 @@ function Row({ before, after, i }: { before: string; after: string; i: number })
       { opacity: 0, transform: "translateX(-14px)" },
       { opacity: 1, transform: "none" },
     ], 450);
-    replay(row.querySelector(`.${styles.before} h3`), [{ backgroundSize: "0 2px" }, { backgroundSize: "100% 2px" }], 450, 350);
+    replay(row.querySelector(`.${styles.before} h3`), [{ backgroundSize: "0 1.5px" }, { backgroundSize: "100% 1.5px" }], 1200, 700);
     replay(row.querySelector(`.${styles.arrow}`), [
       { opacity: 0, transform: "translateX(-8px)" },
       { opacity: 1, transform: "translateX(4px)", offset: 0.6 },
       { opacity: 1, transform: "none" },
-    ], 420, 420);
+    ], 420, 1300);
     replay(row.querySelector(`.${styles.after}`), [
       { opacity: 0, transform: "translateX(14px)" },
       { opacity: 1, transform: "none" },
-    ], 450, 600);
+    ], 450, 1500);
   }
 
   return (

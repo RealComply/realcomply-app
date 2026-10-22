@@ -67,13 +67,15 @@
   letter-spacing: -0.01em;
 }
 /* The strike-through. A background line rather than text-decoration so it can
-   be drawn across, and so it follows the text onto a second line. */
+   be drawn across, and so it follows the text onto a second line. Thin and
+   part see-through so the words stay readable under it (Adam, 22 Oct 2026:
+   "once they're crossed out, it's hard to read the words underneath"). */
 .before h3 {
   display: inline;
-  background-image: linear-gradient(#b83232, #b83232);
+  background-image: linear-gradient(rgba(184, 50, 50, 0.55), rgba(184, 50, 50, 0.55));
   background-repeat: no-repeat;
   background-position: 0 58%;
-  background-size: 100% 2px;
+  background-size: 100% 1.5px;
 }
 .arrow {
   display: grid;
@@ -122,25 +124,27 @@
   }
 }
 
+/* Slowed 22 Oct 2026 so each pain point can be read before it is struck
+   out: the row shows, holds for a beat, then the line draws across slowly. */
 .play .row .before {
   animation: fadeLeft 0.5s ease both;
-  animation-delay: calc(var(--i) * 0.35s);
+  animation-delay: calc(var(--i) * 0.7s);
 }
 .play .row .before h3 {
-  animation: strike 0.5s ease both;
-  animation-delay: calc(var(--i) * 0.35s + 0.45s);
+  animation: strike 1.2s ease-in-out both;
+  animation-delay: calc(var(--i) * 0.7s + 1s);
 }
 .play .row .arrow {
   animation: nudge 0.45s ease both;
-  animation-delay: calc(var(--i) * 0.35s + 0.55s);
+  animation-delay: calc(var(--i) * 0.7s + 1.6s);
 }
 .play .row .after {
   animation: fadeRight 0.5s ease both;
-  animation-delay: calc(var(--i) * 0.35s + 0.7s);
+  animation-delay: calc(var(--i) * 0.7s + 1.8s);
 }
 .play .foot {
   animation: rise 0.6s ease both;
-  animation-delay: 2.9s;
+  animation-delay: 6s;
 }
 
 /* ---------- Time back bars ---------- */
@@ -465,10 +469,10 @@
 }
 @keyframes strike {
   from {
-    background-size: 0 2px;
+    background-size: 0 1.5px;
   }
   to {
-    background-size: 100% 2px;
+    background-size: 100% 1.5px;
   }
 }
 @keyframes nudge {

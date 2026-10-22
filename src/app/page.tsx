@@ -272,13 +272,10 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
         data-section="product-screen"
       >
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
+          {/* The "You stay the decision-maker throughout..." line that sat here
+              was removed 22 Oct 2026 at Adam's request. The licensee sign-off
+              line under the screen and the footer disclaimer still carry it. */}
           <ProductScreen />
-          {/* Kept from the old AI band. Once the page shows the software doing
-              real work, this stops it reading as "the software decides". */}
-          <p className="mt-7 max-w-xl text-sm leading-relaxed text-rc-faint">
-            You stay the decision-maker throughout. Everything RealComply finds is put to you, and nothing is signed
-            off in your name.
-          </p>
         </div>
       </section>
 
@@ -294,7 +291,9 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
       <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20" data-section="outcomes">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <h2 className="max-w-2xl text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Compliance on track. Your time back to do what you do best.
+            {/* Was "Compliance on track. Your time back to do what you do best."
+                Shortened 22 Oct 2026 (Adam): the infographics already say time. */}
+            Compliance on track.
           </h2>
           <div className="mt-9 grid gap-8 md:grid-cols-2 md:gap-12">
             {[
