@@ -180,9 +180,20 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           <Link href="/" aria-label="RealComply home">
             <Logo size={19} />
           </Link>
-          <Link href="/login" className="text-sm font-medium text-rc-muted hover:text-rc-ink" data-cta="nav-login">
-            Log in
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link href="/login" className="text-sm font-medium text-rc-muted hover:text-rc-ink" data-cta="nav-login">
+              Log in
+            </Link>
+            {/* Added 23 Oct 2026 (trial brief): jumps to the form in the hero.
+                Not a sign-up page; there is still no self-serve sign-up. */}
+            <a
+              href="#early-access"
+              className="rounded-full bg-rc-ink px-4 py-2 text-sm font-bold text-white transition hover:bg-rc-green-deep"
+              data-cta="nav-trial"
+            >
+              Start free trial
+            </a>
+          </div>
         </div>
       </header>
 
@@ -191,6 +202,12 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
       <section className="relative isolate overflow-hidden" data-section="hero">
         <div className="rc-mesh-bg" />
         <div className="mx-auto max-w-2xl px-4 py-14 text-center sm:px-6 sm:py-20">
+          {/* Trial badge (trial brief, 23 Oct 2026; wording corrected by Adam
+              the same day). Prices include GST, like every price on the site. */}
+          <p className="mb-5 inline-flex items-center gap-2 rounded-full bg-rc-green-soft px-4 py-2 text-sm font-bold text-rc-green-deep">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-rc-green-deep" aria-hidden="true" />
+            14 days free. Agents from $99, offices from $249 a month.
+          </p>
           <h1 className="text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
             Stay on top of compliance. <span className="text-rc-green-deep">Without a full-time hire.</span>
           </h1>
@@ -203,7 +220,9 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               The AI is deliberately NOT in this sentence any more. It is a
               feature, not the category, and leading with it made the product
               harder to place. It gets a band of its own further down. */}
-          <p className="mx-auto mt-4 max-w-lg text-lg text-rc-muted">{DESCRIPTION}</p>
+          <p className="mx-auto mt-4 max-w-lg text-lg text-rc-muted">
+            {DESCRIPTION} Upload your first agency agreement and watch RealComply read and file it.
+          </p>
 
           {/* Anchored so the closed-signup page can send someone straight to
               the form rather than to the top of the page (24 Aug 2026). */}

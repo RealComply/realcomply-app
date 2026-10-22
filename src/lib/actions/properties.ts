@@ -173,6 +173,7 @@ export async function createProperty(
 
   // REVERSAL (Adam, 14 Oct 2026): was 22 Sep design, annexure given to licensee within 14 days, no gate. Now: licensee signs the annexure's adoption section and the agent uploads it before their first listing. Add listing is blocked until then; nothing else is.
   // REVERSAL (Adam, 14 Oct 2026): was (#42 brief, Part 4): Home reminder until adopted, nothing locked. Now: office plans can't add new listings until the licensee adopts the annexure; existing listings carry on.
+  // CHANGE (Adam, 23 Oct 2026, trial brief; 0087): was every listing, the first included, waits for the annexure. Now an office's first listing (counting archived and deleted ones) is free of the lock, on every plan; the lock applies from the second listing. Decided in the database (listing_gate_reason), so this check follows it unchanged.
   // Asked here so the refusal says why; the database refuses the insert below
   // on its own as well (0071, properties_listing_gate), whatever route it
   // comes by.

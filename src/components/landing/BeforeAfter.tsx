@@ -30,7 +30,8 @@ const ROWS = [
   },
   {
     before: "Audit panic. Weekends and nights pulling files together.",
-    after: "Audit ready, every day",
+    // Was "Audit ready, every day" (Adam, trial brief 23 Oct 2026).
+    after: "Audit file on demand",
   },
 ];
 
