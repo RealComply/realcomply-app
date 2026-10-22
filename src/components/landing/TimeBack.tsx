@@ -20,8 +20,10 @@ const BEFORE = [
   { label: "Status", flex: 0.6, phone: 1.3 },
 ];
 
+// Upload is the smallest (Adam, 23 Oct 2026: "it takes such a small amount
+// of time"). Was 1.4, the biggest.
 const AFTER = [
-  { label: "Upload", flex: 1.4 },
+  { label: "Upload", flex: 0.7 },
   { label: "Review", flex: 1 },
   { label: "Sign off", flex: 0.8 },
 ];
