@@ -76,7 +76,10 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
             : "border-rc-green-deep/20 bg-rc-green-soft text-rc-green-deep"
         }`}
       >
-        You are on the list. We will be in touch before we open the next round.
+        {/* Was "You are on the list. We will be in touch before we open the
+            next round." (Adam, 23 Oct 2026: it should be about the trial.) */}
+        Thanks, your free trial application is in. We&rsquo;ll email you shortly with your invite to start your 14
+        days.
       </div>
     );
   }
