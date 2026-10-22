@@ -75,7 +75,7 @@ import { TimeBack } from "@/components/landing/TimeBack";
 // estate agencies. It runs the compliance file for every listing you sell,
 // from the agency agreement through to settlement, and builds the record as
 // you go."
-const DESCRIPTION = "Join agencies around NSW in making compliance a more streamlined and effortless task.";
+const DESCRIPTION = "Join agencies around NSW in making compliance simple and stress-free.";
 
 export const metadata: Metadata = {
   title: "RealComply — Stay on top of compliance, without a full-time hire",

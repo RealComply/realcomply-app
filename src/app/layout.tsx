@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   // the ad, the search result and the page start saying different things.
   // Changed 22 Oct 2026 with the landing page sub-headline (Adam's reversal,
   // recorded in src/app/page.tsx).
-  description: "Join agencies around NSW in making compliance a more streamlined and effortless task.",
+  description: "Join agencies around NSW in making compliance simple and stress-free.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
