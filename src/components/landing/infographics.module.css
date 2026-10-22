@@ -235,7 +235,7 @@
    bars grow taller instead. "Now" stays one row (Adam, same day: two rows
    of three was tried first and didn't read as one week), with phone widths
    from TimeBack.tsx and smaller text that may wrap inside its block. The
-   short "With RealComply" block is wider with its three steps stacked.
+   short "With RealComply" block is wider, its three steps side by side.
    Wide screens are unchanged. */
 @media (max-width: 640px) {
   .bar {
@@ -252,15 +252,15 @@
     text-align: center;
     border-right-width: 1px;
   }
+  /* Side by side like the red bar (Adam, 23 Oct 2026; was stacked). */
   .work {
-    --work-w: 38%;
-    flex-direction: column;
+    --work-w: 48%;
   }
   .work .seg {
-    padding: 6px 4px;
-    font-size: 12px;
-    border-right: 0;
-    border-bottom: 2px solid #fff;
+    padding: 6px 1px;
+    font-size: 10px;
+    white-space: nowrap;
+    border-right-width: 1px;
   }
   .free {
     font-size: 13px;
