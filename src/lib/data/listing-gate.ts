@@ -8,6 +8,7 @@ import { listingGateFrom, type ListingGate } from "@/lib/agent-acknowledgement";
 // REVERSAL (Adam, 14 Oct 2026): was 22 Sep design, annexure given to licensee within 14 days, no gate. Now: licensee signs the annexure's adoption section and the agent uploads it before their first listing. Add listing is blocked until then; nothing else is.
 // REVERSAL (Adam, 14 Oct 2026): was (#42 brief, Part 4): Home reminder until adopted, nothing locked. Now: office plans can't add new listings until the licensee adopts the annexure; existing listings carry on.
 
+// CHANGE (Adam, 23 Oct 2026, trial brief; 0087): was every listing, the first included, waits for the annexure. Now an office's first listing (counting archived and deleted ones) is free of the lock, on every plan; the lock applies from the second listing. Decided in the database (listing_gate_reason), so this check follows it unchanged.
 /** Null when listings can be added; a failed check reads as open (the database still decides). */
 export async function listingGate(supabase: SupabaseClient): Promise<ListingGate> {
   const { data, error } = await supabase.rpc("my_listing_gate");
