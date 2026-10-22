@@ -42,10 +42,13 @@ export function TimeBack() {
 
   function playAfter() {
     if (!afterRef.current || !afterGate.current()) return;
-    replay(afterRef.current.querySelector(`.${styles.work}`), [
+    const work = afterRef.current.querySelector<HTMLElement>(`.${styles.work}`);
+    // Ends where the stylesheet puts it: 24%, or wider on a phone.
+    const end = (work && getComputedStyle(work).getPropertyValue("--work-w").trim()) || "24%";
+    replay(work, [
       { width: "100%" },
       { width: "100%", offset: 0.15 },
-      { width: "24%" },
+      { width: end },
     ], 1300);
     replay(afterRef.current.querySelector(`.${styles.free}`), [{ opacity: 0 }, { opacity: 1 }], 500, 1100);
   }

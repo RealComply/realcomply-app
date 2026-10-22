@@ -194,9 +194,10 @@
   background: #f8d3d1;
 }
 .work {
+  --work-w: 24%;
   display: flex;
   flex: none;
-  width: 24%;
+  width: var(--work-w);
   min-width: 0;
 }
 .work .seg {
@@ -229,10 +230,43 @@
   letter-spacing: -0.01em;
   line-height: 1.3;
 }
+/* Phones (Adam, 23 Oct 2026: the labels weren't showing on mobile). Was:
+   font-size 0, labels hidden because they don't fit in one row. Now the
+   bars grow taller instead: "Now" wraps into two rows of three, and the
+   short "With RealComply" block is wider with its three steps stacked, so
+   every label is readable. Wide screens are unchanged. */
 @media (max-width: 640px) {
-  .trackBefore .seg,
+  .bar {
+    height: auto;
+    min-height: 52px;
+  }
+  .trackBefore .bar {
+    flex-wrap: wrap;
+  }
+  .trackBefore .seg {
+    flex: 1 1 30% !important;
+    padding: 8px 4px;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: normal;
+    text-align: center;
+    border-bottom: 2px solid #fff;
+  }
+  .work {
+    --work-w: 38%;
+    flex-direction: column;
+  }
   .work .seg {
-    font-size: 0;
+    padding: 6px 4px;
+    font-size: 12px;
+    border-right: 0;
+    border-bottom: 2px solid #fff;
+  }
+  .free {
+    font-size: 13px;
+    padding: 0 6px;
+    white-space: normal;
+    text-align: center;
   }
 }
 
@@ -515,7 +549,7 @@
     width: 100%;
   }
   100% {
-    width: 24%;
+    width: var(--work-w);
   }
 }
 @keyframes fadeIn {
