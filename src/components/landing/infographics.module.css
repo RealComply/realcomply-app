@@ -232,25 +232,25 @@
 }
 /* Phones (Adam, 23 Oct 2026: the labels weren't showing on mobile). Was:
    font-size 0, labels hidden because they don't fit in one row. Now the
-   bars grow taller instead: "Now" wraps into two rows of three, and the
-   short "With RealComply" block is wider with its three steps stacked, so
-   every label is readable. Wide screens are unchanged. */
+   bars grow taller instead. "Now" stays one row (Adam, same day: two rows
+   of three was tried first and didn't read as one week), with phone widths
+   from TimeBack.tsx and smaller text that may wrap inside its block. The
+   short "With RealComply" block is wider with its three steps stacked.
+   Wide screens are unchanged. */
 @media (max-width: 640px) {
   .bar {
     height: auto;
     min-height: 52px;
   }
-  .trackBefore .bar {
-    flex-wrap: wrap;
-  }
   .trackBefore .seg {
-    flex: 1 1 30% !important;
-    padding: 8px 4px;
-    font-size: 12px;
-    line-height: 1.2;
+    flex: var(--phone-flex) 1 0 !important;
+    padding: 6px 1px;
+    font-size: 10px;
+    line-height: 1.15;
+    hyphens: none;
     white-space: normal;
     text-align: center;
-    border-bottom: 2px solid #fff;
+    border-right-width: 1px;
   }
   .work {
     --work-w: 38%;
