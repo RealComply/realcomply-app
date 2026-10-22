@@ -219,18 +219,15 @@
   color: var(--rc-green-deep-600);
   background: repeating-linear-gradient(135deg, transparent 0 10px, rgba(12, 166, 120, 0.08) 10px 20px);
 }
-/* Kept smaller than the bars above it (Adam, 22 Oct 2026: "it should be
-   smaller than the timeline boxes"). Sized to its text, not full width. */
+/* No box, just green text (Adam, 22 Oct 2026: the green box was "too big",
+   then "no box at all and invert the" colours). */
 .banner {
-  justify-self: start;
-  border-radius: 999px;
-  background: var(--rc-green-deep-600);
-  color: #fff;
-  padding: 8px 18px;
-  font-size: 15px;
+  margin: 0;
+  color: var(--rc-green-deep-600);
+  font-size: clamp(18px, 2.2vw, 22px);
   font-weight: 800;
   letter-spacing: -0.01em;
-  line-height: 1.4;
+  line-height: 1.3;
 }
 @media (max-width: 640px) {
   .trackBefore .seg,
