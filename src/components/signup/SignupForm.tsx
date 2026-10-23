@@ -38,6 +38,9 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
   // agency was recorded as the licensee whether they were or not.
   const [isLicensee, setIsLicensee] = useState<boolean | null>(null);
   const [state, formAction, pending] = useActionState(signup, initialState);
+  // What was typed, back from a refused sign-up (23 Oct 2026). React empties
+  // the form after every submit; these defaults are what it refills it with.
+  const kept = state.values;
 
   useEffect(() => {
     if (!inviteToken) return;
@@ -161,6 +164,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
             name="agencyName"
             type="text"
             required
+            defaultValue={kept?.agencyName}
             placeholder="Cass Property"
             className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
@@ -181,6 +185,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
             type="text"
             maxLength={ENTITY_NAME_MAX}
             autoComplete="organization"
+            defaultValue={kept?.licensedEntityName}
             placeholder="Example Holdings Pty Ltd"
             className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
@@ -249,6 +254,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
                 type="text"
                 required
                 autoComplete="off"
+                defaultValue={kept?.licenseeName}
                 placeholder="Jane Smith"
                 className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
               />
@@ -257,6 +263,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
                 name="licenseeEmail"
                 type="email"
                 required
+                defaultValue={kept?.licenseeEmail}
                 placeholder="licensee@youragency.com.au"
                 className="mt-2 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
               />
@@ -289,6 +296,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
+            defaultValue={kept?.websiteUrl}
             placeholder="youragency.com.au/buy"
             className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
@@ -307,6 +315,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
           name="fullName"
           type="text"
           required
+          defaultValue={kept?.fullName}
           className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
         />
       </div>
@@ -320,7 +329,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
           type="email"
           required
           autoComplete="email"
-          defaultValue={invite?.email ?? ""}
+          defaultValue={invite?.email ?? kept?.email ?? ""}
           readOnly={!!invite}
           className={`mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft ${
             invite ? "bg-rc-bg-alt text-rc-muted" : ""
@@ -339,8 +348,17 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
           required
           minLength={8}
           autoComplete="new-password"
+          aria-invalid={state.passwordError ? true : undefined}
+          aria-describedby={state.passwordError ? "password-error" : undefined}
           className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
         />
+        {/* A password Supabase refused, in plain words (23 Oct 2026). See
+            lib/auth/password-refusal.ts. */}
+        {state.passwordError && (
+          <p id="password-error" role="alert" className="mt-1.5 text-xs leading-relaxed text-rc-amber-deep">
+            {state.passwordError}
+          </p>
+        )}
       </div>
       {/* Acceptance of the published documents.
           A real checkbox rather than "by continuing you agree", because what
@@ -355,6 +373,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
           name="acceptLegal"
           value="yes"
           required
+          defaultChecked={kept?.acceptLegal}
           className="mt-0.5 shrink-0 accent-rc-green-deep"
         />
         <span>
