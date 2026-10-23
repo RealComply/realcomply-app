@@ -1,8 +1,7 @@
 "use client";
 
-import { useRef } from "react";
 import styles from "./infographics.module.css";
-import { makeGate, replay, useInViewOnce } from "./motion";
+import { useInViewOnce } from "./motion";
 
 // "Same rules. A clearer path." Replaced the How it works band, 22 Oct 2026.
 // Copy is Adam's own, from his edit of the infographic copy doc: titles only,
@@ -35,31 +34,14 @@ const ROWS = [
   },
 ];
 
+// Plays once, when the panel scrolls into view. No replay on hover or tap
+// from 23 Oct 2026 (Adam: "once the before and after animation has passed,
+// don't have them animate again when the mouse is run over them. it is
+// strange in practice"). Was a replay per row on hover and tap from 22 Oct.
+// The other two graphics still replay on hover.
 function Row({ before, after, i }: { before: string; after: string; i: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const gate = useRef(makeGate(2600));
-
-  function go() {
-    const row = ref.current;
-    if (!row || !gate.current()) return;
-    replay(row.querySelector(`.${styles.before}`), [
-      { opacity: 0, transform: "translateX(-14px)" },
-      { opacity: 1, transform: "none" },
-    ], 450);
-    replay(row.querySelector(`.${styles.before} h3`), [{ backgroundSize: "0 1.5px" }, { backgroundSize: "100% 1.5px" }], 1200, 700);
-    replay(row.querySelector(`.${styles.arrow}`), [
-      { opacity: 0, transform: "translateX(-8px)" },
-      { opacity: 1, transform: "translateX(4px)", offset: 0.6 },
-      { opacity: 1, transform: "none" },
-    ], 420, 1300);
-    replay(row.querySelector(`.${styles.after}`), [
-      { opacity: 0, transform: "translateX(14px)" },
-      { opacity: 1, transform: "none" },
-    ], 450, 1500);
-  }
-
   return (
-    <div ref={ref} className={styles.row} style={{ "--i": i } as React.CSSProperties} onMouseEnter={go} onClick={go}>
+    <div className={styles.row} style={{ "--i": i } as React.CSSProperties}>
       <div className={`${styles.cell} ${styles.before}`}>
         <span className={styles.cellLabel}>Before RealComply</span>
         <h3>{before}</h3>
