@@ -101,10 +101,18 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
 
       {/* Honeypot. Hidden from people, offered to naive bots. Not display:none,
           which some fillers skip; off-screen with autocomplete disabled and
-          removed from the tab order so it never reaches a real visitor. */}
+          removed from the tab order so it never reaches a real visitor.
+
+          RENAMED 23 Oct 2026. It was name="company_website". Chrome's autofill
+          reads "company" in a field name as the company box and fills it,
+          hidden or not, when a person picks a saved address, so real people
+          tripped the trap and their sign-ups were thrown away (Adam's friend,
+          23 Oct). The new name means nothing to autofill. Don't give it a name
+          containing company, organisation, business, name, email, phone,
+          address or website. */}
       <div aria-hidden="true" className="absolute left-[-9999px] top-auto h-px w-px overflow-hidden">
         <label htmlFor={`${uid}-hp`}>Leave this empty</label>
-        <input id={`${uid}-hp`} name="company_website" type="text" tabIndex={-1} autoComplete="off" />
+        <input id={`${uid}-hp`} name="rc_trap" type="text" tabIndex={-1} autoComplete="off" />
       </div>
 
       {/* Title, no sub-line (Adam, trial brief 23 Oct 2026). Was no title. */}
