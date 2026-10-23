@@ -199,60 +199,62 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
 
       {/* HERO — what it is, then the single ask, above the fold on a phone.
           Most Meta traffic is mobile, so nothing else competes up here. */}
+      {/* SIDE BY SIDE from 23 Oct 2026 (Adam: "i like the side by side intro
+          on the left and free trial form on the right", from the free trial
+          mockup). On a phone it stacks: intro first, then the form, so the ask
+          is still near the top. Wording unchanged from PR #72. The risk
+          reversal line joins the ticks on the left, as in the mockup. */}
       <section className="relative isolate overflow-hidden" data-section="hero">
         <div className="rc-mesh-bg" />
-        <div className="mx-auto max-w-2xl px-4 py-14 text-center sm:px-6 sm:py-20">
-          {/* Trial badge (trial brief, 23 Oct 2026; wording corrected by Adam
-              the same day). Prices include GST, like every price on the site. */}
-          <p className="mb-5 inline-flex items-center gap-2 rounded-full bg-rc-green-soft px-4 py-2 text-sm font-bold text-rc-green-deep">
-            <span className="h-2 w-2 shrink-0 rounded-full bg-rc-green-deep" aria-hidden="true" />
-            14 days free. Agents from $99, offices from $249 a month.
-          </p>
-          <h1 className="text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
-            Stay on top of compliance. <span className="text-rc-green-deep">Without a full-time hire.</span>
-          </h1>
-          {/* The most important sentence on the page. It replaced "AI
-              compliance support for NSW agencies", which never said what the
-              product is — a first-time reader could not tell software from a
-              consultancy from an outsourced compliance officer, and every line
-              after it assumed they had already answered that.
-
-              The AI is deliberately NOT in this sentence any more. It is a
-              feature, not the category, and leading with it made the product
-              harder to place. It gets a band of its own further down. */}
-          <p className="mx-auto mt-4 max-w-lg text-lg text-rc-muted">
-            {DESCRIPTION} Upload your first agency agreement and watch RealComply read and file it.
-          </p>
-
-          {/* Anchored so the closed-signup page can send someone straight to
-              the form rather than to the top of the page (24 Aug 2026). */}
-          <div id="early-access" className="scroll-mt-24">
-            <EarlyAccessForm source={src} />
-          </div>
-
-          {/* RISK REVERSAL. Adam, 15 Aug 2026: "I really want the person who
-              lands on the landing page to feel like there is absolutely no
-              risk and nothing to lose." Sits directly under the button because
-              that is the moment the hesitation happens. */}
-          <div className="mx-auto mt-5 max-w-md rounded-card border border-rc-green-deep/25 bg-rc-green-soft px-5 py-4">
-            <p className="text-base font-extrabold leading-snug tracking-tight text-rc-green-deep-600 sm:text-lg">
-              No set-up fee. No lock-in contracts.
+        <div className="mx-auto grid max-w-6xl items-center gap-3 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-14">
+          <div className="min-w-0 text-center lg:text-left">
+            {/* Trial badge (trial brief, 23 Oct 2026; wording corrected by Adam
+                the same day). Prices include GST, like every price on the site. */}
+            <p className="mb-5 inline-flex items-center gap-2 rounded-full bg-rc-green-soft px-4 py-2 text-sm font-bold text-rc-green-deep">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-rc-green-deep" aria-hidden="true" />
+              14 days free. Agents from $99, offices from $249 a month.
             </p>
+            <h1 className="text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
+              Stay on top of compliance. <span className="text-rc-green-deep">Without a full-time hire.</span>
+            </h1>
+            {/* The most important sentence on the page. It replaced "AI
+                compliance support for NSW agencies", which never said what the
+                product is — a first-time reader could not tell software from a
+                consultancy from an outsourced compliance officer, and every line
+                after it assumed they had already answered that.
+
+                The AI is deliberately NOT in this sentence any more. It is a
+                feature, not the category, and leading with it made the product
+                harder to place. It gets a band of its own further down. */}
+            <p className="mx-auto mt-4 max-w-lg text-lg text-rc-muted lg:mx-0 lg:text-xl">
+              {DESCRIPTION} Upload your first agency agreement and watch RealComply read and file it.
+            </p>
+
+            {/* RISK REVERSAL. Adam, 15 Aug 2026: "I really want the person who
+                lands on the landing page to feel like there is absolutely no
+                risk and nothing to lose." Now a tick beside the other two,
+                still in view next to the form. "The licensee stays in charge"
+                became "You always have the final say" on 17 Aug 2026. */}
+            <ul className="mx-auto mt-7 grid max-w-md gap-2.5 text-left text-base font-semibold text-rc-ink lg:mx-0">
+              {["Grounded in NSW legislation", "You always have the final say", "No set-up fee. No lock-in contracts."].map(
+                (t) => (
+                  <li key={t} className="flex items-center gap-2.5">
+                    <Tick />
+                    {t}
+                  </li>
+                ),
+              )}
+            </ul>
           </div>
 
-          {/* "The licensee stays in charge" became "You always have the final
-              say" (17 Aug 2026). The old wording answered an objection a
-              first-time reader has not had yet, which plants a worry rather
-              than settling one. Same promise, read as reassurance. */}
-          <div className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm font-semibold text-rc-muted">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
-              Grounded in NSW legislation
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-rc-green-deep" />
-              You always have the final say
-            </span>
+          {/* The form keeps its own top margin and centring on a phone; beside
+              the intro it sits flush in its column. */}
+          <div className="min-w-0 lg:[&>div>*]:mt-0">
+            {/* Anchored so the closed-signup page can send someone straight to
+                the form rather than to the top of the page (24 Aug 2026). */}
+            <div id="early-access" className="scroll-mt-24">
+              <EarlyAccessForm source={src} />
+            </div>
           </div>
         </div>
       </section>
