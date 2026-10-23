@@ -66,7 +66,7 @@ export async function joinEarlyAccess(
   if (trap) {
     console.warn("joinEarlyAccess: spam trap filled, not saved.", { email, agencyName });
     if (email && EMAIL.test(email) && firstName && agencyName) {
-      await notifyEarlyAccessSignup(email, source, agencyName, firstName, phone, true);
+      await notifyEarlyAccessSignup(email, source, agencyName, firstName, phone, "trapped");
     }
     return { ok: true, error: null };
   }
@@ -106,7 +106,14 @@ export async function joinEarlyAccess(
     // 23505 = unique violation, i.e. already on the list. Treat as success:
     // they did what we asked, and saying "already registered" would confirm
     // to a stranger whether a given address is on the list.
+    //
+    // Adam is told from 23 Oct 2026. Until then a repeat sign-up vanished:
+    // no email to him, none to them, and whatever they typed this time (a new
+    // office, a mobile) was lost. Found when his own tests with an address
+    // already on the list "didn't come through". The person still sees the
+    // same "Thanks" and still gets no email, so the page gives nothing away.
     if (error.code === "23505") {
+      await notifyEarlyAccessSignup(email, source, agencyName, firstName, phone, "repeat");
       return { ok: true, error: null };
     }
     // Anything else is ours, not theirs. Don't surface the database message.
@@ -176,8 +183,9 @@ async function notifyEarlyAccessSignup(
   agencyName: string,
   firstName: string,
   phone: string | null,
-  // True when the spam trap was filled: not saved, so Adam checks it by hand.
-  trapped = false,
+  // "trapped": the spam trap was filled, not saved, so Adam checks it by hand.
+  // "repeat": the address was already on the list, nothing new saved.
+  kind: "new" | "trapped" | "repeat" = "new",
 ): Promise<void> {
   const to = process.env.ADMIN_NOTIFICATION_EMAIL;
   if (!to) {
@@ -190,17 +198,26 @@ async function notifyEarlyAccessSignup(
     // Office name in the subject, not just the body. A run of these in an
     // inbox then reads as a list of agencies rather than a list of addresses,
     // which is the whole reason the field was added.
-    subject: trapped
-      ? `RealComply early access (caught by spam trap, check it) — ${agencyName}`
-      : `RealComply early access — ${agencyName}`,
+    subject:
+      kind === "trapped"
+        ? `RealComply early access (caught by spam trap, check it) — ${agencyName}`
+        : kind === "repeat"
+          ? `RealComply early access (already on your list, signed up again) — ${agencyName}`
+          : `RealComply early access — ${agencyName}`,
     text: [
-      ...(trapped
+      ...(kind === "trapped"
         ? [
             "This sign-up filled the form's hidden spam trap, so it was NOT saved and they were NOT emailed.",
             "If it looks like a real person, get in touch with them yourself.",
             "",
           ]
-        : []),
+        : kind === "repeat"
+          ? [
+              "This email address is already on your early access list, so nothing new was saved and they were NOT emailed again.",
+              "The details below are what they typed this time. If they differ from the list, update it or get in touch with them.",
+              "",
+            ]
+          : []),
       "Someone registered for early access on the landing page.",
       "",
       `Name: ${firstName}`,
@@ -212,7 +229,7 @@ async function notifyEarlyAccessSignup(
       `Came from: ${source ?? "no source recorded (typed the address in, or an ad with no ?src= tag)"}`,
       `When: ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney" })} (Sydney)`,
       "",
-      trapped ? "Not in the early_access table." : "The full list is in the Supabase dashboard, table early_access.",
+      kind === "trapped" ? "Not in the early_access table." : "The full list is on the staff page, under Early access.",
     ].join("\n"),
   });
 
