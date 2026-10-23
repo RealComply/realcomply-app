@@ -11,6 +11,7 @@ import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
 import { ENTITY_NAME_MAX, tidyName } from "@/lib/agency-names";
 import { saveSignupEntityName } from "@/lib/auth/signup-entity-name";
 import { nextPage } from "@/lib/auth/next-page";
+import { isPasswordRefusal, passwordRefusalMessage } from "@/lib/auth/password-refusal";
 
 // Resolves the origin the request actually came in on (e.g. the exact
 // Vercel domain the user is visiting), so the email confirmation link
@@ -25,7 +26,39 @@ async function getOrigin() {
   return `https://${host}`;
 }
 
-export type ActionState = { error: string | null };
+// passwordError is shown under the password box rather than at the top of the
+// form, and values are what was typed, handed back so a refused sign-up keeps
+// every box filled in (23 Oct 2026). Never the password: that box is cleared.
+export type ActionState = {
+  error: string | null;
+  passwordError?: string | null;
+  values?: SignupValues;
+};
+
+export type SignupValues = {
+  agencyName: string;
+  licensedEntityName: string;
+  licenseeName: string;
+  licenseeEmail: string;
+  websiteUrl: string;
+  fullName: string;
+  email: string;
+  acceptLegal: boolean;
+};
+
+function signupValues(formData: FormData): SignupValues {
+  const text = (name: string) => String(formData.get(name) ?? "");
+  return {
+    agencyName: text("agencyName"),
+    licensedEntityName: text("licensedEntityName"),
+    licenseeName: text("licenseeName"),
+    licenseeEmail: text("licenseeEmail"),
+    websiteUrl: text("websiteUrl"),
+    fullName: text("fullName"),
+    email: text("email"),
+    acceptLegal: formData.get("acceptLegal") === "yes",
+  };
+}
 
 export async function login(
   _prevState: ActionState,
@@ -45,10 +78,19 @@ export async function login(
   redirect(nextPage(String(formData.get("next") ?? "")));
 }
 
+// React clears a form once its action returns, so anything refused would
+// otherwise come back empty. Every refusal hands back what was typed, which the
+// form puts back in its boxes. A successful sign-up redirects inside
+// createAccount and never reaches the return.
 export async function signup(
   _prevState: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const result = await createAccount(formData);
+  return { ...result, values: signupValues(formData) };
+}
+
+async function createAccount(formData: FormData): Promise<ActionState> {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
   const fullName = String(formData.get("fullName") ?? "");
@@ -200,6 +242,11 @@ export async function signup(
   });
 
   if (signUpError) {
+    // A refused password, in plain words under the password box (23 Oct 2026,
+    // ahead of leaked password protection). See lib/auth/password-refusal.ts.
+    if (isPasswordRefusal(signUpError)) {
+      return { error: null, passwordError: passwordRefusalMessage(signUpError) };
+    }
     // The rate limit deserves its own words. Supabase's own message is "email
     // rate limit exceeded", which tells a new agent nothing they can act on and
     // sounds like they did something wrong.
@@ -384,7 +431,7 @@ export async function requestPasswordReset(
   return { error: null, sent: true };
 }
 
-export type PasswordState = { error: string | null; saved: boolean };
+export type PasswordState = { error: string | null; passwordError?: string | null; saved: boolean };
 
 // Used by both arrivals: someone who followed a reset link (and therefore has
 // a session created by the code exchange in /auth/callback) and someone
@@ -402,8 +449,10 @@ export async function updatePassword(
   // Eight rather than Supabase's default six. Not a policy anyone has to
   // remember or rotate — just a floor low enough that nobody is fighting it
   // and high enough not to be embarrassing in a compliance product.
+  // Was "Use at least 8 characters." at the top of the form. Same check, worded
+  // and placed like Supabase's own refusals since 23 Oct 2026.
   if (password.length < 8) {
-    return { error: "Use at least 8 characters.", saved: false };
+    return { error: null, passwordError: "Your password needs at least 8 characters.", saved: false };
   }
   if (password !== confirmPassword) {
     return { error: "Those two don't match — check the second box.", saved: false };
@@ -427,6 +476,9 @@ export async function updatePassword(
 
   const { error } = await supabase.auth.updateUser({ password });
 
+  if (isPasswordRefusal(error)) {
+    return { error: null, passwordError: passwordRefusalMessage(error), saved: false };
+  }
   if (error) {
     return { error: error.message, saved: false };
   }
