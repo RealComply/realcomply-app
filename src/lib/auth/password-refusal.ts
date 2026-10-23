@@ -12,8 +12,10 @@
 //
 // Never logs, stores or returns the password. It only ever sees the error.
 
+// Reworded 23 Oct 2026 (Adam). Was "This password has appeared in a data
+// breach elsewhere, so it isn't safe to use. Please choose a different one."
 export const LEAKED_PASSWORD_MESSAGE =
-  "This password has appeared in a data breach elsewhere, so it isn't safe to use. Please choose a different one.";
+  "This password appears on public lists of passwords leaked from other websites over the years. Please choose a different one.";
 export const GENERIC_PASSWORD_MESSAGE = "That password can't be used. Please try a different one.";
 
 type MaybeAuthError = {
