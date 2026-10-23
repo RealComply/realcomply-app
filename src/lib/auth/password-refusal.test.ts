@@ -40,7 +40,7 @@ describe("the message under the password box", () => {
     assert.equal(passwordRefusalMessage(weak(["pwned"], PWNED)), LEAKED_PASSWORD_MESSAGE);
     assert.equal(
       LEAKED_PASSWORD_MESSAGE,
-      "This password has appeared in a data breach elsewhere, so it isn't safe to use. Please choose a different one.",
+      "This password appears on public lists of passwords leaked from other websites over the years. Please choose a different one.",
     );
   });
 
