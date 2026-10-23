@@ -83,6 +83,9 @@ export function CompleteStageButton({
   );
 }
 
+// "Read uploaded documents" (Adam, 20 Oct 2026; was "Extract from uploaded
+// documents"). Reads the agency agreement, contract and comparable-sales
+// report, and the solicitor's covering letter for its date.
 export function ExtractDocumentsButton({ propertyId }: { propertyId: string }) {
   const boundAction = extractFromDocuments.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -95,7 +98,7 @@ export function ExtractDocumentsButton({ propertyId }: { propertyId: string }) {
         className="inline-flex items-center gap-1.5 rounded-full border border-rc-green-deep/40 bg-white px-3 py-1.5 text-xs font-semibold text-rc-green-deep transition hover:bg-rc-green-soft disabled:opacity-60"
       >
         <Sparkles size={13} />
-        {pending ? "Reading documents…" : "Extract from uploaded documents"}
+        {pending ? "Reading documents…" : "Read uploaded documents"}
       </button>
       {state.error && <p className="mt-2 text-xs text-rc-amber-deep">{state.error}</p>}
     </form>

@@ -9,7 +9,7 @@
 // list cannot live in it and be imported by a client component.
 //
 // Kept in step with two things in extraction.ts: SOURCE_ITEM_KEYS (the three
-// documents collected at property set-up) and the d3 branch in
+// documents collected at property set-up) and the d3 and b1a branches in
 // extractForAttachment. If a fourth document ever gets a reader, it belongs in
 // all three places — and the symptom of forgetting this one is a card that
 // silently reads a file with nothing on screen to say so, which is exactly the
@@ -19,6 +19,7 @@ export const AI_READ_ITEM_KEYS: ReadonlySet<string> = new Set([
   "b1", // contract for sale
   "a4", // comparable-sales report
   "d3", // notice of revised estimated selling price
+  "b1a", // the solicitor's covering letter, read for its date (20 Oct 2026)
 ]);
 
 export function isAiReadItem(itemKey: string): boolean {

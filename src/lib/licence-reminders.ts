@@ -1,34 +1,41 @@
-// Licence / certificate-of-registration expiry reminders — the scheduling
-// logic, kept separate from the sending so it can be reasoned about (and
-// read by the UI) without touching email.
+// Expiry reminders: the scheduling logic, kept separate from the sending so
+// it can be reasoned about (and read by the UI) without touching email.
+// Started with licences (18 Aug 2026); since 23 Oct 2026 the same schedule
+// covers every item with an expiry date (licences, the corporation licence,
+// and insurance). See lib/email/licence-reminders.ts for the list of items.
 //
 // Adam, 18 Aug 2026: "note the expiry date and set up reminders for each
 // agent and for the principal or licensee so that they're aware of when
 // licences are going to expire."
 //
-// Thresholds are 90 / 30 / 14 / 7 / 0 days. Ninety days is the number Adam
-// asked for on 15 Aug ("reminders for three months prior to expiry"), and it
-// is also the practical one: NSW Fair Trading renewals want doing well before
-// the day, and a Class 2 holder moving to Class 1 needs longer still. The
-// 30, 14 and 7 day nudges exist because a single reminder three months out is
-// a reminder you forget, and the 0 entry catches the day itself.
+// Ninety days is the number Adam asked for on 15 Aug ("reminders for three
+// months prior to expiry"), and it is also the practical one: NSW Fair
+// Trading renewals want doing well before the day, and a Class 2 holder
+// moving to Class 1 needs longer still. The later nudges exist because a
+// single reminder three months out is a reminder you forget.
 //
 // Deliberately NOT a renewal service. RealComply tells the holder the date is
-// coming; the holder renews with Fair Trading. Same posture as everywhere
-// else in the product — diligence support, the licensee decides.
+// coming; the holder renews with Fair Trading (or the office with its
+// insurer). Same posture as everywhere else in the product: diligence
+// support, the licensee decides.
 
 import type { LicenceType } from "@/lib/types";
 
-// REVERSAL, Oct 2026: the 18 Aug schedule was 90, 30, 7 and 0 days. Adam has
-// added a 14-day reminder, so it is now 90, 30, 14, 7 and 0. Only the most
-// urgent threshold already crossed is ever sent (see dueThreshold), so the new
-// step never means two reminders in one morning. The register header, the
-// "Next reminder" line and the reminder emails all read from this list or say
-// the same thing in words; change them together.
-export const REMINDER_THRESHOLDS = [90, 30, 14, 7, 0] as const;
+// REVERSAL, 23 Oct 2026 (Adam's brief "Expiry reminders for everything with
+// an expiry date", 22 Oct): the schedule is now 90, 60, 30, 14 and 7 days,
+// for every expiry type. A 60-day reminder is added, and the reminder ON the
+// day of expiry (the 0 entry) is dropped, because the brief lists exactly
+// these five. History: 18 Aug 2026 was 90, 30, 7, 0; 2 Oct 2026 added 14
+// (90, 30, 14, 7, 0). Something entered after its expiry has passed still
+// gets one "has expired" email (the 7 is the most urgent threshold it has
+// crossed). Only the most urgent threshold already crossed is ever sent (see
+// dueThreshold), so a new step never means two reminders in one morning. The
+// register header, the "Next reminder" line and the reminder emails all read
+// from this list or say the same thing in words; change them together.
+export const REMINDER_THRESHOLDS = [90, 60, 30, 14, 7] as const;
 
 /** The schedule in words, for the register and anything else that states it. */
-export const REMINDER_SCHEDULE_WORDS = "90, 30, 14 and 7 days before it, and on the day";
+export const REMINDER_SCHEDULE_WORDS = "90, 60, 30, 14 and 7 days before it";
 export type ReminderThreshold = (typeof REMINDER_THRESHOLDS)[number];
 
 export function daysUntil(dateStr: string, today: Date = new Date()): number {

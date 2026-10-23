@@ -56,6 +56,7 @@ const SIGNED_OUT_OK = [
   "/annexure/download/x",
   "/unsubscribe",
   "/api/cron/backup-storage",
+  "/api/cron/cpd-reminders",
   "/api/cron/licence-reminders",
   "/api/cron/listing-scan",
   "/api/cron/pm-retention",

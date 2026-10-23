@@ -6,7 +6,9 @@ import { formatAuDate } from "@/lib/format-date";
 import { FounderInvites, type FounderInvite } from "@/components/admin/FounderInvites";
 import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyAccessQueue";
 import { WelcomeTest } from "@/components/admin/WelcomeTest";
-import { earlyAccessStatus, hiddenFromList } from "@/lib/early-access/rules";
+import { CpdReminderTest } from "@/components/admin/CpdReminderTest";
+import { cpdSendDatesThisYear } from "@/lib/actions/cpd-reminders-admin";
+import { earlyAccessStatus, hiddenFromList, isTestAddress } from "@/lib/early-access/rules";
 import { storageBackupConfigured, countEvidenceObjects } from "@/lib/backup/storage-backup";
 import {
   DeleteNowForm,
@@ -185,6 +187,14 @@ export default async function AdminPage() {
 
   const peopleIn = (agencyId: string) => profiles.filter((p) => p.agency_id === agencyId);
   const listingsIn = (agencyId: string) => properties.filter((p) => p.agency_id === agencyId);
+  // For the CPD reminders test: offices whose people, archived included, are
+  // all on Adam's test addresses (the action checks again).
+  const madeUpOffices = agencies
+    .filter((a) => {
+      const people = peopleIn(a.id);
+      return people.length > 0 && people.every((p) => isTestAddress(p.email ?? ""));
+    })
+    .map((a) => ({ id: a.id, name: a.name }));
 
   // Which invites have expired, answered by Postgres rather than by this
   // machine's clock. Two reasons, and the second is the real one. The linter
@@ -529,6 +539,13 @@ export default async function AdminPage() {
 
       <div className="mt-3">
         <WelcomeTest />
+      </div>
+
+      {/* CPD reminders (brief, 19 Oct 2026): a test email of either version,
+          and the real job for a made-up office. Only offices whose people are
+          all on Adam's test addresses, archived people included. */}
+      <div className="mt-3">
+        <CpdReminderTest offices={madeUpOffices} dates={await cpdSendDatesThisYear()} />
       </div>
 
       {/* PERSONAL INVITES (Founder invites until 12 Oct 2026). Making one lives here rather than in Team settings, which is

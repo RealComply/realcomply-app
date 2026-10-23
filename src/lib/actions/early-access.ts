@@ -39,9 +39,14 @@ export async function joinEarlyAccess(
   // Honeypot. A field hidden from people but not from naive form-fillers; if
   // it arrives with anything in it, accept the submission silently and drop it
   // on the floor rather than returning an error a bot could learn from.
-  if (String(formData.get("company_website") ?? "").trim() !== "") {
-    return { ok: true, error: null };
-  }
+  //
+  // NO LONGER SILENT (23 Oct 2026). Under its old name, company_website,
+  // Chrome autofill filled the trap for real people and their sign-ups
+  // vanished without trace. The field is renamed (see EarlyAccessForm), and a
+  // trapped submission that looks like a person now still reaches Adam, marked
+  // as caught by the trap, so a false alarm can never lose a lead again. It is
+  // still not saved and the person still gets no email.
+  const trap = String(formData.get("rc_trap") ?? "").trim();
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const source = String(formData.get("source") ?? "").trim().slice(0, 120) || null;
@@ -57,6 +62,14 @@ export async function joinEarlyAccess(
   // OPTIONAL, and never a reason to refuse a registration: it is tidied and
   // kept as typed, or dropped if nothing usable was typed. See early-access/phone.ts.
   const phone = cleanPhone(formData.get("mobile"));
+
+  if (trap) {
+    console.warn("joinEarlyAccess: spam trap filled, not saved.", { email, agencyName });
+    if (email && EMAIL.test(email) && firstName && agencyName) {
+      await notifyEarlyAccessSignup(email, source, agencyName, firstName, phone, true);
+    }
+    return { ok: true, error: null };
+  }
 
   if (!email) {
     return { ok: false, error: "Enter your email address." };
@@ -163,6 +176,8 @@ async function notifyEarlyAccessSignup(
   agencyName: string,
   firstName: string,
   phone: string | null,
+  // True when the spam trap was filled: not saved, so Adam checks it by hand.
+  trapped = false,
 ): Promise<void> {
   const to = process.env.ADMIN_NOTIFICATION_EMAIL;
   if (!to) {
@@ -175,8 +190,17 @@ async function notifyEarlyAccessSignup(
     // Office name in the subject, not just the body. A run of these in an
     // inbox then reads as a list of agencies rather than a list of addresses,
     // which is the whole reason the field was added.
-    subject: `RealComply early access — ${agencyName}`,
+    subject: trapped
+      ? `RealComply early access (caught by spam trap, check it) — ${agencyName}`
+      : `RealComply early access — ${agencyName}`,
     text: [
+      ...(trapped
+        ? [
+            "This sign-up filled the form's hidden spam trap, so it was NOT saved and they were NOT emailed.",
+            "If it looks like a real person, get in touch with them yourself.",
+            "",
+          ]
+        : []),
       "Someone registered for early access on the landing page.",
       "",
       `Name: ${firstName}`,
@@ -188,7 +212,7 @@ async function notifyEarlyAccessSignup(
       `Came from: ${source ?? "no source recorded (typed the address in, or an ad with no ?src= tag)"}`,
       `When: ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney" })} (Sydney)`,
       "",
-      "The full list is in the Supabase dashboard, table early_access.",
+      trapped ? "Not in the early_access table." : "The full list is in the Supabase dashboard, table early_access.",
     ].join("\n"),
   });
 

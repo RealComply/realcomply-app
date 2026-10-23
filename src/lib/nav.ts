@@ -49,7 +49,7 @@ export type NavLink = {
   countKey?: NavCountKey;
   /** Extra search terms. Never rendered. */
   keywords?: string[];
-  /** Shown only to an agency with property management switched on (0052). */
+  /** Shown only to an agency with property management: every office plan (0086). */
   pmOnly?: boolean;
 };
 
@@ -75,9 +75,9 @@ export const NAV_GROUPS: NavGroup[] = [
         countKey: "listings",
         keywords: ["properties", "files", "campaigns"],
       },
-      // Property management, beside sales (brief, 6 Oct 2026). Off for every
-      // agency unless agencies.pm_enabled is set, so it only appears where PM
-      // is switched on.
+      // Property management, beside sales (brief, 6 Oct 2026). Shown where
+      // agencies.pm_enabled is on, which the database sets from the plan
+      // (0086, 21 Oct): every office plan, never a single agent plan.
       {
         href: "/dashboard/pm",
         label: "Property management",

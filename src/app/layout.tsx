@@ -32,8 +32,9 @@ export const metadata: Metadata = {
   // for NSW real estate agencies...") never said what the product is, which is
   // exactly the fault the rewrite exists to fix. If the three ever diverge,
   // the ad, the search result and the page start saying different things.
-  description:
-    "RealComply is software for NSW real estate agencies. It runs the compliance file for every listing you sell, from the agency agreement through to settlement, and builds the record as you go.",
+  // Changed 22 Oct 2026 with the landing page sub-headline (Adam's reversal,
+  // recorded in src/app/page.tsx).
+  description: "Join agencies around NSW in making compliance simple and stress-free.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

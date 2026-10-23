@@ -67,9 +67,19 @@ export function ChangePasswordForm({ fromReset }: { fromReset: boolean }) {
             required
             minLength={8}
             autoComplete="new-password"
+            aria-invalid={state.passwordError ? true : undefined}
+            aria-describedby={state.passwordError ? "password-error" : undefined}
             className="mt-1 w-full max-w-xs rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
-          <p className="mt-1 text-xs text-rc-muted">At least 8 characters.</p>
+          {/* A refused password, in plain words (23 Oct 2026). See
+              lib/auth/password-refusal.ts. */}
+          {state.passwordError ? (
+            <p id="password-error" role="alert" className="mt-1.5 text-xs leading-relaxed text-rc-amber-deep">
+              {state.passwordError}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-rc-muted">At least 8 characters.</p>
+          )}
         </div>
 
         <div>

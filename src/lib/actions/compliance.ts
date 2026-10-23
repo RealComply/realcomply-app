@@ -25,6 +25,7 @@ import {
   type Answer,
 } from "@/lib/rules/question-card";
 import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/rules/not-applicable";
+import { COVERING_LETTER_KEY, afterAgentSave } from "@/lib/documents/covering-letter";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { agencyPeople } from "@/lib/data/people";
 import { priceStatementByEmail } from "@/lib/rules/price-statement";
@@ -371,7 +372,7 @@ export async function setItemStatus(
   const carried = [...CARRIED_ON_EVERY_ITEM, ...(CARRIED_BY_ITEM[itemKey] ?? [])];
   const { data: existingRow } = await supabase
     .from("property_items")
-    .select("data")
+    .select("data, event_date")
     .eq("property_id", propertyId)
     .eq("item_key", itemKey)
     .maybeSingle();
@@ -391,6 +392,26 @@ export async function setItemStatus(
     Object.assign(
       data,
       naCarriedThroughSave(existingData, { id: user.id, name: profile.full_name ?? profile.email }, new Date().toISOString()),
+    );
+  }
+
+  // b1a — the received date's history (Adam, 20 Oct 2026). The covering
+  // letter can put its date on this card, and the latest action wins, so a
+  // date the agent saves here stands until the letter is read again, and
+  // every change is kept. See lib/documents/covering-letter.ts.
+  if (itemKey === COVERING_LETTER_KEY) {
+    Object.assign(
+      data,
+      afterAgentSave(
+        {
+          event_date: (existingRow as { event_date?: string | null } | null)?.event_date ?? null,
+          data: existingData,
+        },
+        eventDate,
+        status,
+        { id: user.id, name: profile.full_name ?? profile.email },
+        new Date().toISOString(),
+      ),
     );
   }
 
@@ -1230,7 +1251,11 @@ export async function setNotApplicable(propertyId: string, itemKey: string, on: 
   if (on) {
     if (na.notApplicable) return ok;
     if (current?.status === "done") {
-      return { error: "This card is already answered. Reopen it first to mark it not applicable." };
+      return {
+        error: spec.question
+          ? `This card is already answered. Reopen it first to choose “${spec.label}”.`
+          : "This card is already answered. Reopen it first to mark it not applicable.",
+      };
     }
     if (spec.refusedWhileLogged) {
       const { data: other } = await supabase
@@ -1254,7 +1279,10 @@ export async function setNotApplicable(propertyId: string, itemKey: string, on: 
     itemKey,
     status: on ? "done" : "open",
     data: withNa(current?.data, next),
-    eventDate: current?.event_date ?? null,
+    // On a card whose date is the obligation (e1, the date the contract was
+    // served), marking drops a date left from before a Reopen: the file would
+    // otherwise show a served date beside "not the agency's to serve".
+    eventDate: on && rule?.requiresDate ? null : (current?.event_date ?? null),
     completedBy: on ? user.id : null,
   });
   if (error) return { error: error.message === STAGE_GATE_MESSAGE ? STAGE_GATE_MESSAGE : "Couldn't save that. Try again." };
@@ -2464,7 +2492,7 @@ export async function uploadEvidence(
   }
 
   // Read the document straight away rather than waiting for someone to press
-  // "Extract from uploaded documents" at the top of the page (Adam, 14 Aug
+  // "Read uploaded documents" at the top of the page (Adam, 14 Aug
   // 2026). He attached a comparable-sales report and reasonably expected the
   // findings to reflect it; nothing re-read the file, so the card kept saying
   // no comparables were present. No-ops unless the file landed on one of the

@@ -83,8 +83,10 @@ export async function pmAgencySettings(supabase: SupabaseClient, agencyId: strin
     .select("pm_enabled, pm_records_system")
     .eq("id", agencyId)
     .maybeSingle();
-  // Before 0052 has run the columns do not exist and this errors; PM then
-  // reads as off, which is the right answer.
+  // pm_enabled follows the plan (0086): the database sets it on for office
+  // plans and off for single agent plans; nobody sets it by hand. Before 0052
+  // has run the columns do not exist and this errors; PM then reads as off,
+  // which is the right answer.
   const row = data as { pm_enabled?: boolean; pm_records_system?: string | null } | null;
   return { enabled: row?.pm_enabled === true, recordsSystem: row?.pm_records_system ?? null };
 }

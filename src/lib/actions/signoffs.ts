@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { createServiceClient } from "@/lib/supabase/service";
-import { EVIDENCE_BUCKET, storedFileProblem } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 import { appendSignaturePage, buildSignatureCertificate } from "@/lib/pdf/sign-stamp";
 import type { SignoffCategory, SignerScope } from "@/lib/types";
 
@@ -521,6 +521,13 @@ async function stampSignedCopy(
       legalBasis: SIGNED_BASIS[p.category],
     };
 
+    // Read with full rights, so only from this office's own folder (19 Oct
+    // 2026). The database refuses any other path on the document (0083);
+    // this is the same rule where the full-rights read happens.
+    if (!isInFolder(p.filePath, `${p.agencyId}/`)) {
+      console.error("stampSignedCopy: file outside the office's folder, not read:", p.documentId);
+      return;
+    }
     const { data: blob, error: dlError } = await supabase.storage
       .from(EVIDENCE_BUCKET)
       .download(p.filePath);

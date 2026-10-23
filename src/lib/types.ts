@@ -265,8 +265,8 @@ export const BREACH_CATEGORY_LABELS: Record<BreachCategory, string> = {
   other: "Other",
 };
 
-// One row per licence/certificate expiry reminder actually sent — see
-// 0019_licence_reminders.sql. Read-only from the app: the daily cron writes
+// One row per expiry reminder actually sent (licences, and since 0088
+// insurance) — see 0019_licence_reminders.sql and 0088. Read-only from the app: the daily cron writes
 // them through the service client, and the register displays the most recent
 // one so the office can see the reminders are running.
 // Annual training plan — Requirement 2.4 of the NSW Supervision Guidelines.
@@ -321,10 +321,31 @@ export type TrainingPlanItem = {
 export type LicenceReminder = {
   id: string;
   agency_id: string;
-  subject_kind: "profile" | "corporation";
+  // "profile" and "corporation" are licences; since 0088 also
+  // insurance_pi, insurance_cyber, insurance_icare and insurance_policy, and
+  // any kind added later (lib/email/licence-reminders.ts, EXPIRY_SOURCES).
+  subject_kind: string;
   profile_id: string | null;
+  // 0088: which added policy (or other row) it was about. Absent before 0088.
+  subject_id?: string | null;
   expiry_date: string;
   threshold_days: number;
+  recipients: string[];
+  sent_at: string;
+};
+
+// 0084_cpd_reminders.sql. One row per CPD deadline reminder sent. Read-only
+// from the app: the daily job writes them through the service client.
+export type CpdReminder = {
+  id: string;
+  agency_id: string;
+  /** The person reminded, or for a summary the licensee it went to. */
+  profile_id: string;
+  kind: "person" | "summary";
+  cpd_year_start: string;
+  send_date: string;
+  /** Who was on a summary's list. Empty for a person reminder. */
+  outstanding: string[];
   recipients: string[];
   sent_at: string;
 };

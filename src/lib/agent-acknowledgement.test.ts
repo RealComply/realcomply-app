@@ -93,7 +93,7 @@ describe("The lock", () => {
     assert.equal(copy.pill, "Waiting on the signed annexure");
     assert.equal(
       copy.text,
-      "Upload the annexure signed by Jordan Ellis first, then you can add your first listing. Everything else in RealComply works as normal.",
+      "Upload the annexure signed by Jordan Ellis first, then you can add more listings. Everything else in RealComply works as normal.",
     );
     assert.equal(copy.action, "upload");
   });
@@ -107,7 +107,7 @@ describe("The lock", () => {
     assert.equal(copy.pill, "Waiting on the annexure");
     assert.equal(
       copy.text,
-      "Adopt RealComply’s annexure to your Supervision Guidelines, then you can add listings. Everything else works as normal.",
+      "Adopt RealComply’s annexure to your Supervision Guidelines, then you can add more listings. Everything else works as normal.",
     );
     assert.equal(copy.action, "review_and_sign");
   });
@@ -116,7 +116,7 @@ describe("The lock", () => {
     const copy = lockCopy("annexure", { actsAsLicensee: false }, "Jordan Ellis");
     assert.equal(
       copy.text,
-      "Waiting on Jordan Ellis, your licensee in charge, to adopt RealComply’s annexure to your Supervision Guidelines. You can add listings once they have.",
+      "Waiting on Jordan Ellis, your licensee in charge, to adopt RealComply’s annexure to your Supervision Guidelines. You can add more listings once they have.",
     );
     assert.equal(copy.action, null);
     assert.match(lockCopy("annexure", { actsAsLicensee: false }, null).text, /^Waiting on your licensee in charge/);
@@ -130,7 +130,7 @@ describe("The lock", () => {
 
 describe("The Home card and the upload", () => {
   it("has the brief's words", () => {
-    assert.equal(HOME_CARD_TITLE, "Before your first listing: get your licensee’s sign-off");
+    assert.equal(HOME_CARD_TITLE, "Before your second listing: get your licensee’s sign-off");
     assert.equal(
       homeCardText("Jordan Ellis"),
       "Give this to Jordan Ellis and ask them to complete and sign the section headed “Adoption by the licensee in charge”. It explains how RealComply fits within your agency’s supervision system.",

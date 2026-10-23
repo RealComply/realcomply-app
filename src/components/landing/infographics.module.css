@@ -1,0 +1,576 @@
+/* The three landing page infographics (Adam, 22 Oct 2026). Mocked up and
+   signed off in the Landing page updates thread before this was built.
+
+   Every element is visible at rest. The animations only run once the band
+   scrolls into view (the .play class), and hovering or tapping a card, bar or
+   part of the screen replays that part. prefers-reduced-motion turns all of
+   it off. */
+
+.panel {
+  border: 1px solid var(--rc-border);
+  border-radius: 16px;
+  background: #fff;
+  padding: clamp(18px, 3vw, 36px);
+  overflow: hidden;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.tagBefore {
+  background: var(--rc-red-soft);
+  color: #b83232;
+}
+.tagAfter {
+  background: var(--rc-green-soft);
+  color: var(--rc-green-deep-600);
+}
+
+/* ---------- Before and after ---------- */
+
+.rows {
+  display: grid;
+  gap: 10px;
+}
+.head,
+.row {
+  display: grid;
+  grid-template-columns: 1fr 36px 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+.row {
+  cursor: pointer;
+}
+.cell {
+  min-width: 0;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.before {
+  background: var(--rc-red-soft);
+}
+.after {
+  background: var(--rc-green-soft);
+}
+.cell h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+/* The strike-through. A background line rather than text-decoration so it can
+   be drawn across, and so it follows the text onto a second line. Thin and
+   part see-through so the words stay readable under it (Adam, 22 Oct 2026:
+   "once they're crossed out, it's hard to read the words underneath"). */
+.before h3 {
+  display: inline;
+  background-image: linear-gradient(rgba(184, 50, 50, 0.55), rgba(184, 50, 50, 0.55));
+  background-repeat: no-repeat;
+  background-position: 0 58%;
+  background-size: 100% 1.5px;
+}
+.arrow {
+  display: grid;
+  place-items: center;
+  color: var(--rc-green-deep);
+  font-size: 20px;
+  font-weight: 800;
+}
+.foot {
+  margin-top: 18px;
+  border-top: 1px solid var(--rc-border);
+  padding-top: 16px;
+  font-size: clamp(18px, 2.4vw, 22px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--rc-green-deep-600);
+}
+.cellLabel {
+  display: none;
+}
+@media (max-width: 640px) {
+  .head {
+    display: none;
+  }
+  .row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .arrow {
+    transform: rotate(90deg);
+    height: 20px;
+  }
+  .cellLabel {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .before .cellLabel {
+    color: #b83232;
+  }
+  .after .cellLabel {
+    color: var(--rc-green-deep-600);
+  }
+}
+
+/* Slowed 22 Oct 2026 so each pain point can be read before it is struck
+   out: the row shows, holds for a beat, then the line draws across slowly. */
+.play .row .before {
+  animation: fadeLeft 0.5s ease both;
+  animation-delay: calc(var(--i) * 0.7s);
+}
+.play .row .before h3 {
+  animation: strike 1.2s ease-in-out both;
+  animation-delay: calc(var(--i) * 0.7s + 1s);
+}
+.play .row .arrow {
+  animation: nudge 0.45s ease both;
+  animation-delay: calc(var(--i) * 0.7s + 1.6s);
+}
+.play .row .after {
+  animation: fadeRight 0.5s ease both;
+  animation-delay: calc(var(--i) * 0.7s + 1.8s);
+}
+.play .foot {
+  animation: rise 0.6s ease both;
+  animation-delay: 6s;
+}
+
+/* ---------- Time back bars ---------- */
+
+.week {
+  display: grid;
+  gap: 26px;
+}
+.track {
+  cursor: pointer;
+}
+.trackHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.bar {
+  display: flex;
+  height: 52px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--rc-border);
+  background: var(--rc-bg-alt);
+}
+.seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 6px;
+  border-right: 2px solid #fff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trackBefore .seg {
+  background: var(--rc-red-soft);
+  color: #b83232;
+  transform-origin: left;
+}
+.trackBefore .seg:nth-child(even) {
+  background: #f8d3d1;
+}
+.work {
+  --work-w: 24%;
+  display: flex;
+  flex: none;
+  width: var(--work-w);
+  min-width: 0;
+}
+.work .seg {
+  background: var(--rc-green-soft);
+  color: var(--rc-green-deep-600);
+}
+.work .seg:nth-child(even) {
+  background: #d3f3e6;
+}
+.free {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--rc-green-deep-600);
+  background: repeating-linear-gradient(135deg, transparent 0 10px, rgba(12, 166, 120, 0.08) 10px 20px);
+}
+/* No box, just green text (Adam, 22 Oct 2026: the green box was "too big",
+   then "no box at all and invert the" colours). */
+.banner {
+  margin: 0;
+  color: var(--rc-green-deep-600);
+  font-size: clamp(18px, 2.2vw, 22px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+/* Phones (Adam, 23 Oct 2026: the labels weren't showing on mobile). Was:
+   font-size 0, labels hidden because they don't fit in one row. Now the
+   bars grow taller instead. "Now" stays one row (Adam, same day: two rows
+   of three was tried first and didn't read as one week), with phone widths
+   from TimeBack.tsx and smaller text that may wrap inside its block. The
+   short "With RealComply" block is wider, its three steps side by side.
+   Wide screens are unchanged. */
+@media (max-width: 640px) {
+  .bar {
+    height: auto;
+    min-height: 52px;
+  }
+  .trackBefore .seg {
+    flex: var(--phone-flex) 1 0 !important;
+    padding: 6px 1px;
+    font-size: 10px;
+    line-height: 1.15;
+    hyphens: none;
+    white-space: normal;
+    text-align: center;
+    border-right-width: 1px;
+  }
+  /* Side by side like the red bar (Adam, 23 Oct 2026; was stacked). */
+  .work {
+    --work-w: 48%;
+  }
+  .work .seg {
+    padding: 6px 1px;
+    font-size: 10px;
+    white-space: nowrap;
+    border-right-width: 1px;
+  }
+  .free {
+    font-size: 13px;
+    padding: 0 6px;
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+.play .trackBefore .seg {
+  animation: grow 0.5s ease both;
+  animation-delay: calc(var(--i) * 0.18s);
+}
+.play .work {
+  animation: shrink 1.4s cubic-bezier(0.6, 0, 0.2, 1) both;
+  animation-delay: 1.5s;
+}
+.play .free {
+  animation: fadeIn 0.6s ease both;
+  animation-delay: 2.7s;
+}
+.play .banner {
+  animation: rise 0.6s ease both;
+  animation-delay: 3.2s;
+}
+
+/* ---------- Product screen ---------- */
+
+.screenWrap {
+  display: grid;
+  grid-template-columns: minmax(0, 560px);
+  justify-content: center;
+}
+.screen {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--rc-border);
+  border-radius: 14px;
+  background: var(--rc-bg-alt);
+  box-shadow: 0 18px 40px -24px rgba(13, 31, 25, 0.35);
+}
+.screenTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--rc-nav-bg);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+.screenTop span {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+.screenBody {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+.zone {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: box-shadow 0.3s;
+}
+.zone:hover {
+  box-shadow: 0 0 0 2px var(--rc-green);
+}
+.zoneOn,
+.zoneOn:hover {
+  box-shadow: 0 0 0 2px var(--rc-green-deep);
+}
+.drop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--rc-border);
+  background: #fff;
+  font-size: 13px;
+}
+.doc {
+  position: relative;
+  flex: none;
+  width: 22px;
+  height: 28px;
+  border-radius: 3px;
+  border: 1px solid var(--rc-green-deep);
+  background: var(--rc-green-soft);
+}
+.doc::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 7px;
+  height: 2px;
+  background: var(--rc-green-deep);
+  box-shadow:
+    0 5px 0 var(--rc-green-deep),
+    0 10px 0 var(--rc-green-deep);
+}
+.read {
+  margin-left: auto;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--rc-green-deep-600);
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.tile {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--rc-border);
+  border-radius: 8px;
+  background: #fff;
+}
+.tile b {
+  display: block;
+  font-size: 22px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.tile small {
+  font-size: 12px;
+  color: var(--rc-muted);
+}
+.file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--rc-border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+.addr {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.flag {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: #b83232;
+}
+.stages {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 4px;
+}
+.stages i {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--rc-border);
+}
+.stages .done {
+  background: var(--rc-green-deep);
+}
+.stages .held {
+  background: var(--rc-amber);
+}
+.pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pillOk {
+  background: var(--rc-green-soft);
+  color: var(--rc-green-deep-600);
+}
+.pillAttention {
+  background: var(--rc-red-soft);
+  color: #b83232;
+}
+.pulse {
+  animation: pulse 1s ease 2;
+}
+.ask {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--rc-border);
+  background: #fff;
+  font-size: 13px;
+}
+.q {
+  justify-self: end;
+  max-width: 90%;
+  padding: 6px 10px;
+  border-radius: 10px 10px 2px 10px;
+  background: var(--rc-green-soft);
+  color: var(--rc-green-deep-600);
+}
+.a {
+  max-width: 95%;
+  min-height: 2.6em;
+  padding: 6px 10px;
+  border-radius: 10px 10px 10px 2px;
+  background: var(--rc-bg-alt);
+}
+.a code {
+  font-size: 11px;
+  color: var(--rc-green-deep-600);
+}
+
+/* ---------- Shared motion ---------- */
+
+@keyframes fadeLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fadeRight {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes strike {
+  from {
+    background-size: 0 1.5px;
+  }
+  to {
+    background-size: 100% 1.5px;
+  }
+}
+@keyframes nudge {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+    opacity: 0.3;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes shrink {
+  0%,
+  15% {
+    width: 100%;
+  }
+  100% {
+    width: var(--work-w);
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pulse {
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel *,
+  .panel *::before,
+  .panel *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

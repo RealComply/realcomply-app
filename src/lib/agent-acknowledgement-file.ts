@@ -52,7 +52,7 @@ export async function fileAcknowledgementPdf(
       version: ack.wording_version,
       statements,
       confirmedAt: ack.confirmed_at,
-      logo: await logoFor(service, logoPath),
+      logo: await logoFor(service, logoPath, ack.agency_id),
     });
 
     const fileName = agentAcknowledgementFilename(ack.typed_name);

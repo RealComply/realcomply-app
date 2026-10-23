@@ -1,5 +1,6 @@
 // "Not applicable" on a card (the property reports disclosure card, f4; Adam,
-// 17 Oct 2026).
+// 17 Oct 2026), and the same thing asked as a question (the contract served
+// card, e1, "Who exchanged contracts?"; Adam, 20 Oct 2026).
 //
 // The engine only. Which cards offer it, and what the option and its small
 // line say, is in the rules file (lib/rules/nsw-sales.ts, the item's
@@ -44,6 +45,17 @@ export type NotApplicableSpec = {
    * report logged on f3 means reports exist, so "none exist" cannot be said.
    */
   refusedWhileLogged?: { itemKey: string; message: string };
+  /**
+   * Asked as a question rather than offered as a tick box (e1). The card opens
+   * with `ask` and two answers: `ours`, which opens the card as it always was,
+   * and `label`, which completes it. `hint` sits under them until one is picked.
+   */
+  question?: { ask: string; ours: string; hint: string };
+  /**
+   * What the card and the compliance file say once it is chosen, in place of
+   * "label: line", and how the line after a change back describes it.
+   */
+  record?: { text: string; earlier: string };
 };
 
 /** Reads stored data defensively; anything unexpected is "not marked". */
@@ -106,9 +118,10 @@ export function naRefusal(
 
 /**
  * What the compliance file prints under a card that offers "Not applicable".
- * Marked: the option, its line, who and when. Marked once and since changed:
- * one line saying so, so the record shows the earlier answer. Never marked:
- * nothing. `when` formats a timestamp.
+ * Marked: the option, its line, who and when (or, where the rules file gives
+ * a `record`, its words). Marked once and since changed: one line saying so,
+ * so the record shows the earlier answer. Never marked: nothing. `when`
+ * formats a timestamp.
  */
 export function naRecordLines(
   item: { notApplicable?: NotApplicableSpec },
@@ -116,21 +129,19 @@ export function naRecordLines(
   when: (iso: string) => string,
 ): string[] {
   if (!item.notApplicable) return [];
+  const spec = item.notApplicable;
   const na = readNa(current?.data);
   if (na.notApplicable) {
-    return [
-      `${item.notApplicable.label}: ${item.notApplicable.line} Marked by ${na.naByName ?? "a team member"}${
-        na.naAt ? ` on ${when(na.naAt)}` : ""
-      }.`,
-    ];
+    const byWhen = `by ${na.naByName ?? "a team member"}${na.naAt ? ` on ${when(na.naAt)}` : ""}.`;
+    return [spec.record ? `${spec.record.text} Recorded ${byWhen}` : `${spec.label}: ${spec.line} Marked ${byWhen}`];
   }
   const history = na.naHistory ?? [];
   const lastMark = [...history].reverse().find((e) => e.event === "marked_na");
   const lastClear = [...history].reverse().find((e) => e.event === "cleared_na");
   if (!lastMark || !lastClear) return [];
   return [
-    `Earlier marked ${item.notApplicable.label.toLowerCase()} by ${lastMark.byName} on ${when(lastMark.at)}; changed by ${
-      lastClear.byName
-    } on ${when(lastClear.at)}.`,
+    `Earlier ${spec.record?.earlier ?? `marked ${spec.label.toLowerCase()}`} by ${lastMark.byName} on ${when(
+      lastMark.at,
+    )}; changed by ${lastClear.byName} on ${when(lastClear.at)}.`,
   ];
 }
