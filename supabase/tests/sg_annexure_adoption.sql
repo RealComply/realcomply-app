@@ -266,9 +266,16 @@ begin
     raise exception 'FAIL 12b: a Home card link is not marked as one';
   end if;
 
-  -- 13. Once an office's subscription has ended, its link cannot adopt.
+  -- 13. Once an office's subscription has ended, its link cannot adopt. The
+  --     office ends the way a subscription ends (0054): the server moves it to
+  --     canceled and the database stamps ended_at. An end date written onto
+  --     an active office is cleared again, so that would leave it current.
   insert into public.sg_annexure_links (agency_id, sent_to) values (gone, 'sga-gone@example.invalid') returning token into gtok;
-  update public.agencies set ended_at = now() where id = gone;
+  perform set_config('request.jwt.claims', '', true);
+  update public.agencies set status = 'canceled' where id = gone;
+  if (select ended_at from public.agencies where id = gone) is null then
+    raise exception 'FAIL 13: the test office did not end';
+  end if;
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   set local role anon;
   select * into r from public.sg_annexure_link_details(gtok, v);

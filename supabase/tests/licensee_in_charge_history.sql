@@ -96,9 +96,13 @@ begin
     reset role;
   end;
 
-  -- Things that hang off the role, before the change: an existing listing, a
-  -- licensee-only document waiting on lic, an emailed link, an annexure link
-  -- not yet used, and lic's adoption of the annexure.
+  -- Things that hang off the role, before the change: lic's adoption of the
+  -- annexure, an existing listing, a licensee-only document waiting on lic,
+  -- an emailed link and an annexure link not yet used. The adoption comes
+  -- first: an office made after 0072 adds no listing until its licensee in
+  -- charge has adopted the annexure (0071's lock).
+  insert into public.sg_annexure_adoptions (agency_id, annexure_version, signed_name, licence_number, sent_to)
+  values (ag, '1.0', 'LH Licensee', '20100001', 'lh-lic@example.invalid');
   insert into public.properties (id, agency_id, created_by, address) values (prop, ag, pat, '1 Made Up Street (made up)');
   insert into public.signoff_documents (id, agency_id, category, title, file_path, file_name, signer_scope)
   values (doc, ag, 'trust_reconciliation', 'Made-up reconciliation', ag::text || '/_signoffs/x.pdf', 'x.pdf', 'licensee_only');
@@ -106,8 +110,6 @@ begin
   insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement)
   values (ag, prop, 'lh-lic@example.invalid', 'Made-up statement');
   insert into public.sg_annexure_links (agency_id, sent_to, created_by) values (ag, 'lh-lic@example.invalid', lic);
-  insert into public.sg_annexure_adoptions (agency_id, annexure_version, signed_name, licence_number, sent_to)
-  values (ag, '1.0', 'LH Licensee', '20100001', 'lh-lic@example.invalid');
 
   -- Before the change, lic set the office up and is its account holder.
   set local role authenticated;
@@ -210,6 +212,11 @@ begin
   if not ok then raise exception 'FAIL 8: Pat does not have the licensee''s access'; end if;
 
   -- 9. No new listing until Pat adopts the annexure; existing ones carry on.
+  --    lic's adoption still satisfies 0071's lock, which refuses in the same
+  --    words, so the refusal below is this migration's.
+  if public.listing_gate_reason(ag) is not null then
+    raise exception 'FAIL 9: 0071''s lock is not satisfied (%), so the refusal would not show this one', public.listing_gate_reason(ag);
+  end if;
   begin
     set local role authenticated;
     insert into public.properties (agency_id, created_by, address) values (ag, pat, '2 Made Up Street (made up)');

@@ -1,6 +1,7 @@
 -- ===== READ ONLY. Agent acknowledgement and annexure lock test, 14 October 2026 =====
 --
--- Proves supabase/migrations/0071_agent_acknowledgement.sql. Run after it.
+-- Proves supabase/migrations/0071_agent_acknowledgement.sql and 0087 (an
+-- office's first listing is free of the lock). Run after both.
 -- Safe on the live database: everything happens inside one transaction that
 -- is rolled back at the end, so the made-up offices, people, files and
 -- listings it creates never exist outside it.
@@ -56,17 +57,29 @@ begin
   select count(*) into n from public.agencies where id in (solo, office, other) and annexure_gate;
   if n <> 3 then raise exception 'FAIL 1: the lock could not be switched on'; end if;
 
-  -- 2. An agent's own plan, lock on: no new listing until the signed annexure is uploaded.
+  -- 2. An agent's own plan, lock on. The first listing is free of the lock
+  --    (0087); after it, no new listing until the signed annexure is uploaded.
   perform set_config('request.jwt.claims', json_build_object('sub', sa, 'role', 'authenticated')::text, true);
   set local role authenticated;
+  if public.my_listing_gate() is not null then
+    raise exception 'FAIL 2: an agent plan with no listings is waiting on the signed annexure';
+  end if;
+  insert into public.properties (agency_id, created_by, address) values (solo, sa, '1 AAK Street') returning id into listing;
   if public.my_listing_gate() is distinct from 'signed_annexure' then
-    raise exception 'FAIL 2: an agent plan without the signed annexure is not waiting on it';
+    raise exception 'FAIL 2b: after its first listing, an agent plan without the signed annexure is not waiting on it';
   end if;
   begin
-    insert into public.properties (agency_id, created_by, address) values (solo, sa, '1 AAK Street');
-    raise exception 'FAIL 2b: a listing was created before the signed annexure was uploaded';
+    insert into public.properties (agency_id, created_by, address) values (solo, sa, '1A AAK Street');
+    raise exception 'FAIL 2c: a second listing was created before the signed annexure was uploaded';
   exception when check_violation then null;
   end;
+  -- Deleting the first listing does not hand out another free one.
+  delete from public.properties where id = listing;
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL 2d: the agent could not delete their first listing'; end if;
+  if public.my_listing_gate() is distinct from 'signed_annexure' then
+    raise exception 'FAIL 2d: deleting the first listing lifted the lock';
+  end if;
 
   -- 3. The upload: only a PDF, JPG or PNG of no more than 150 MB, in their own office's folder, that has arrived.
   reset role;
@@ -119,12 +132,15 @@ begin
   if public.my_listing_gate() is not null then raise exception 'FAIL 4b: still locked after the upload'; end if;
   insert into public.properties (agency_id, created_by, address) values (solo, sa, '2 AAK Street') returning id into listing;
 
-  -- 5. An office plan, lock on: nobody adds a listing until the licensee adopts the annexure.
+  -- 5. An office plan, lock on. The first listing is free of the lock (0087);
+  --    after it, nobody adds a listing until the licensee adopts the annexure.
   perform set_config('request.jwt.claims', json_build_object('sub', ol, 'role', 'authenticated')::text, true);
-  if public.my_listing_gate() is distinct from 'annexure' then raise exception 'FAIL 5: office not waiting on the annexure'; end if;
+  if public.my_listing_gate() is not null then raise exception 'FAIL 5: an office with no listings is waiting on the annexure'; end if;
+  insert into public.properties (agency_id, created_by, address) values (office, ol, '3 AAK Street');
+  if public.my_listing_gate() is distinct from 'annexure' then raise exception 'FAIL 5: after its first listing, the office is not waiting on the annexure'; end if;
   begin
-    insert into public.properties (agency_id, created_by, address) values (office, ol, '3 AAK Street');
-    raise exception 'FAIL 5b: the licensee added a listing before adopting';
+    insert into public.properties (agency_id, created_by, address) values (office, ol, '3A AAK Street');
+    raise exception 'FAIL 5b: the licensee added a second listing before adopting';
   exception when check_violation then null;
   end;
   perform set_config('request.jwt.claims', json_build_object('sub', oa, 'role', 'authenticated')::text, true);
