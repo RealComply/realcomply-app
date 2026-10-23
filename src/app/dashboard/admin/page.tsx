@@ -7,6 +7,8 @@ import { FounderInvites, type FounderInvite } from "@/components/admin/FounderIn
 import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyAccessQueue";
 import { WelcomeTest } from "@/components/admin/WelcomeTest";
 import { CpdReminderTest } from "@/components/admin/CpdReminderTest";
+import { PmAnnouncement, type PmAnnouncementListRow } from "@/components/admin/PmAnnouncement";
+import { PM_ANNOUNCEMENT_TEST_ADDRESS, pmAnnouncementList } from "@/lib/email/pm-announcement";
 import { cpdSendDatesThisYear } from "@/lib/actions/cpd-reminders-admin";
 import { earlyAccessStatus, hiddenFromList, isTestAddress } from "@/lib/early-access/rules";
 import { storageBackupConfigured, countEvidenceObjects } from "@/lib/backup/storage-backup";
@@ -296,6 +298,30 @@ export default async function AdminPage() {
   const backupIncomplete =
     backupConfigured && (sourceCount === null || sourceCount > backedUp.length);
 
+  // The property management announcement (Adam, 22 Oct 2026): the five
+  // offices as they stand now, and what's recorded for each.
+  const sydneyWhen = (iso: string) =>
+    new Intl.DateTimeFormat("en-AU", {
+      timeZone: "Australia/Sydney",
+      day: "numeric",
+      month: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(iso));
+  const pmAnnouncementRows: PmAnnouncementListRow[] = (await pmAnnouncementList(supabase)).map((r) => ({
+    office: r.office,
+    licenseeName: r.record ? r.record.recipient_name : r.licenseeName,
+    email: r.record ? r.record.recipient : r.email,
+    problem: r.problem,
+    recorded: !r.record
+      ? null
+      : r.record.status === "sent"
+        ? `Sent ${sydneyWhen(r.record.sent_at ?? r.record.created_at)}`
+        : r.record.status === "failed"
+          ? `Tried ${sydneyWhen(r.record.created_at)}, failed`
+          : `Sending since ${sydneyWhen(r.record.created_at)}`,
+  }));
+
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-8">
       <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-rc-red">
@@ -331,6 +357,7 @@ export default async function AdminPage() {
           { href: "#ended", label: "Ended subscriptions" },
           { href: "#early-access", label: "Early access", count: waitingOnDecision },
           { href: "#personal-invites", label: "Personal invites" },
+          { href: "#announcements", label: "Announcements" },
         ].map((link) => (
           <a
             key={link.href}
@@ -560,6 +587,14 @@ export default async function AdminPage() {
 
       <div className="mt-3">
         <FounderInvites invites={personalInvites} siteUrl={siteUrl} />
+      </div>
+
+      {/* ANNOUNCEMENTS. One-off emails to named offices, each office once.
+          The first: property management is now in your account (Adam,
+          22 Oct 2026). */}
+      <h2 id="announcements" className={sectionHeading}>Announcements</h2>
+      <div className="mt-3">
+        <PmAnnouncement rows={pmAnnouncementRows} testAddress={PM_ANNOUNCEMENT_TEST_ADDRESS} />
       </div>
     </main>
   );
