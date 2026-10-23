@@ -110,10 +110,26 @@ export async function joinEarlyAccess(
     // Adam is told from 23 Oct 2026. Until then a repeat sign-up vanished:
     // no email to him, none to them, and whatever they typed this time (a new
     // office, a mobile) was lost. Found when his own tests with an address
-    // already on the list "didn't come through". The person still sees the
-    // same "Thanks" and still gets no email, so the page gives nothing away.
+    // already on the list "didn't come through". The page still shows the
+    // same "Thanks", so it gives nothing away.
+    //
+    // Then (Adam, same night: someone who never went ahead comes back from an
+    // ad, "I feel like that's a gap"): 0089's early_access_repeat fills in any
+    // details their row is missing, never overwriting what is there, and says
+    // whether they unsubscribed. Unless they did, they get the thanks email
+    // again, so a returning lead hears back straight away. If 0089 has not
+    // been run yet, Adam is still told and nobody else is emailed.
     if (error.code === "23505") {
-      await notifyEarlyAccessSignup(email, source, agencyName, firstName, phone, "repeat");
+      const { data: repeat, error: repeatError } = await supabase.rpc("early_access_repeat", {
+        p_email: email,
+        p_first_name: firstName,
+        p_agency_name: agencyName,
+        p_phone: phone ?? "",
+      });
+      if (repeatError) console.error("joinEarlyAccess: early_access_repeat failed:", repeatError.message);
+      const thanked = repeat === "ok";
+      if (thanked) await sendEarlyAccessAcknowledgement(email, firstName);
+      await notifyEarlyAccessSignup(email, source, agencyName, firstName, phone, thanked ? "repeat" : "repeat-quiet");
       return { ok: true, error: null };
     }
     // Anything else is ours, not theirs. Don't surface the database message.
@@ -184,8 +200,10 @@ async function notifyEarlyAccessSignup(
   firstName: string,
   phone: string | null,
   // "trapped": the spam trap was filled, not saved, so Adam checks it by hand.
-  // "repeat": the address was already on the list, nothing new saved.
-  kind: "new" | "trapped" | "repeat" = "new",
+  // "repeat": the address was already on the list; missing details filled in
+  // and the thanks email sent again. "repeat-quiet": the same, but they were
+  // not emailed (they unsubscribed, or 0089 is not run yet).
+  kind: "new" | "trapped" | "repeat" | "repeat-quiet" = "new",
 ): Promise<void> {
   const to = process.env.ADMIN_NOTIFICATION_EMAIL;
   if (!to) {
@@ -201,7 +219,7 @@ async function notifyEarlyAccessSignup(
     subject:
       kind === "trapped"
         ? `RealComply early access (caught by spam trap, check it) — ${agencyName}`
-        : kind === "repeat"
+        : kind === "repeat" || kind === "repeat-quiet"
           ? `RealComply early access (already on your list, signed up again) — ${agencyName}`
           : `RealComply early access — ${agencyName}`,
     text: [
@@ -211,10 +229,13 @@ async function notifyEarlyAccessSignup(
             "If it looks like a real person, get in touch with them yourself.",
             "",
           ]
-        : kind === "repeat"
+        : kind === "repeat" || kind === "repeat-quiet"
           ? [
-              "This email address is already on your early access list, so nothing new was saved and they were NOT emailed again.",
-              "The details below are what they typed this time. If they differ from the list, update it or get in touch with them.",
+              "This email address is already on your early access list, so they came back for another look.",
+              kind === "repeat"
+                ? "They were sent the thanks email again. Any details missing from the list were filled in from what they typed."
+                : "They were NOT emailed (they unsubscribed, or the 0089 SQL has not been run yet).",
+              "The details below are what they typed this time. Nothing already on the list was changed.",
               "",
             ]
           : []),
