@@ -7,6 +7,18 @@ import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { downloadedFileProblem } from "@/lib/storage/file-check";
 import { readableBytes } from "@/lib/documents/readable-bytes";
 import {
+  READER_IMAGE_MAX_BYTES,
+  READER_PART_MAX_BYTES,
+  READER_PARTS_AT_ONCE,
+  READ_FAILED_JUST_NOW,
+  TOO_LARGE_TO_READ,
+  isTooLargeError,
+  mapWithLimit,
+  mergeReads,
+  partNote,
+  splitPdfForReader,
+} from "@/lib/documents/reader-parts";
+import {
   COVERING_LETTER_KEY,
   COVERING_LETTER_NO_DATE,
   COVERING_LETTER_SIGNED_OFF,
@@ -744,13 +756,11 @@ export async function extractCpdCertificate(
   const unreadable = await downloadedFileProblem(blob, fileName);
   if (unreadable) return { error: unreadable };
 
-  // readableBytes rather than a plain arrayBuffer: an iPhone photo arrives as
-  // HEIC, which nothing downstream can open. See lib/documents/readable-bytes.
-  const { base64, contentType } = await readableBytes(blob, fileName);
-
-  const documentBlock = buildDocumentBlock(contentType, base64, fileName);
-  if (!documentBlock) {
-    return { error: `That file type can't be read yet (${contentType}) — the details can be typed in instead.` };
+  const prepared = await prepareRead(blob, fileName);
+  if (!prepared.ok) {
+    return prepared.problem === "too_large"
+      ? { error: TOO_LARGE_TO_READ, fields: {} }
+      : { error: `That file type can't be read yet (${prepared.contentType}) — the details can be typed in instead.` };
   }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -761,9 +771,8 @@ export async function extractCpdCertificate(
   // certificate…" until a reload. A failed read is a read of nothing: the
   // entry is still made from the file, and the card asks for the rest.
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 1024,
+    const answers = await askParts(anthropic, prepared.parts, {
+      maxTokens: 1024,
       system:
         "You are reading a continuing professional development record of completion, or a statement of " +
         "attainment, for a NSW licensed real estate agent's CPD register (RealComply). Record only what the " +
@@ -772,31 +781,13 @@ export async function extractCpdCertificate(
         "a logo or a filename. You have been shown the complete content available to you; do not assume further " +
         "pages exist. You must call record_cpd_certificate exactly once, but calling it with few fields set is a " +
         "completely normal and successful outcome — the agent reviews and completes it, you do not.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            documentBlock,
-            {
-              type: "text",
-              text: `This was uploaded as "${fileName}" for a CPD register. Call record_cpd_certificate with whatever it explicitly states.`,
-            },
-          ],
-        },
-      ],
-      tools: [CPD_CERTIFICATE_TOOL],
-      tool_choice: { type: "tool", name: "record_cpd_certificate" },
+      text: `This was uploaded as "${fileName}" for a CPD register. Call record_cpd_certificate with whatever it explicitly states.`,
+      tool: CPD_CERTIFICATE_TOOL,
     });
-
-    const toolUse = response.content.find(
-      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
-    );
-    if (!toolUse) return { error: null, fields: {} };
-
-    return { error: null, fields: toolUse.input as CpdCertificateFields };
+    return { error: null, fields: mergeReads(answers) as CpdCertificateFields };
   } catch (e) {
     console.error("extractCpdCertificate failed", { fileName, error: e });
-    return { error: "Couldn't read the certificate just now.", fields: {} };
+    return { error: isTooLargeError(e) ? TOO_LARGE_TO_READ : "Couldn't read the certificate just now.", fields: {} };
   }
 }
 
@@ -882,51 +873,35 @@ export async function extractLicenceDocument(
   const unreadable = await downloadedFileProblem(blob, fileName);
   if (unreadable) return { error: unreadable };
 
-  // readableBytes rather than a plain arrayBuffer: a phone photo can arrive as
-  // HEIC, which nothing downstream can open. See lib/documents/readable-bytes.
-  const { base64, contentType } = await readableBytes(blob, fileName);
-  const documentBlock = buildDocumentBlock(contentType, base64, fileName);
-  if (!documentBlock) {
-    return { error: `That file type can't be read (${contentType}). Upload a PDF or a photo instead.` };
+  const prepared = await prepareRead(blob, fileName);
+  if (!prepared.ok) {
+    return prepared.problem === "too_large"
+      ? { error: TOO_LARGE_TO_READ }
+      : { error: `That file type can't be read (${prepared.contentType}). Upload a PDF or a photo instead.` };
   }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 1024,
+    const answers = await askParts(anthropic, prepared.parts, {
+      maxTokens: 1024,
       system:
         "You are reading a document uploaded to the licence register of a NSW real estate agency (RealComply). " +
         "Record only what the document explicitly and literally states. A photo may be skewed, partly covered or " +
         "blurred: if any character of a number or date is uncertain, leave that field out and list it in " +
         "unreadableFields. A wrong expiry date is worse than none, because reminders are scheduled from it. " +
         "You must call record_licence exactly once; leaving fields out is a normal, successful outcome.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            documentBlock,
-            {
-              type: "text",
-              text:
-                `This was uploaded as "${fileName}". FIRST set documentIs from what the document actually is. ` +
-                "THEN record the holder name, licence type, number and expiry date as printed.",
-            },
-          ],
-        },
-      ],
-      tools: [LICENCE_TOOL],
-      tool_choice: { type: "tool", name: "record_licence" },
+      text:
+        `This was uploaded as "${fileName}". FIRST set documentIs from what the document actually is. ` +
+        "THEN record the holder name, licence type, number and expiry date as printed.",
+      tool: LICENCE_TOOL,
     });
-
-    const toolUse = response.content.find(
-      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
-    );
-    return { error: null, raw: toolUse?.input ?? {} };
+    return { error: null, raw: mergeReads(answers) };
   } catch (e) {
     console.error("extractLicenceDocument failed", { fileName, error: e });
-    return { error: "Couldn't read the document just now, so the details need typing in." };
+    return {
+      error: isTooLargeError(e) ? TOO_LARGE_TO_READ : "Couldn't read the document just now, so the details need typing in.",
+    };
   }
 }
 
@@ -1025,18 +1000,18 @@ export async function extractInsuranceCertificate(
   const unreadable = await downloadedFileProblem(blob, fileName);
   if (unreadable) return { error: unreadable };
 
-  const { base64, contentType } = await readableBytes(blob, fileName);
-  const documentBlock = buildDocumentBlock(contentType, base64, fileName);
-  if (!documentBlock) {
-    return { error: `That file type can't be read (${contentType}). Upload a PDF or a photo instead.` };
+  const prepared = await prepareRead(blob, fileName);
+  if (!prepared.ok) {
+    return prepared.problem === "too_large"
+      ? { error: TOO_LARGE_TO_READ }
+      : { error: `That file type can't be read (${prepared.contentType}). Upload a PDF or a photo instead.` };
   }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 1024,
+    const answers = await askParts(anthropic, prepared.parts, {
+      maxTokens: 1024,
       system:
         "You are reading a document uploaded to the insurance register of a NSW real estate agency (RealComply). " +
         "Record only what the document explicitly and literally states. A photo may be skewed, partly covered or " +
@@ -1044,31 +1019,17 @@ export async function extractInsuranceCertificate(
         "unreadableFields. A wrong expiry date is worse than none, because the register shows the policy as " +
         "current from it. You must call record_insurance_certificate exactly once; leaving fields out is a " +
         "normal, successful outcome.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            documentBlock,
-            {
-              type: "text",
-              text:
-                `This was uploaded as "${fileName}". FIRST set documentIs from what the document actually is. ` +
-                "THEN record the cover, the insurer, the policy number and the expiry date as printed.",
-            },
-          ],
-        },
-      ],
-      tools: [INSURANCE_TOOL],
-      tool_choice: { type: "tool", name: "record_insurance_certificate" },
+      text:
+        `This was uploaded as "${fileName}". FIRST set documentIs from what the document actually is. ` +
+        "THEN record the cover, the insurer, the policy number and the expiry date as printed.",
+      tool: INSURANCE_TOOL,
     });
-
-    const toolUse = response.content.find(
-      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
-    );
-    return { error: null, raw: toolUse?.input ?? {} };
+    return { error: null, raw: mergeReads(answers) };
   } catch (e) {
     console.error("extractInsuranceCertificate failed", { fileName, error: e });
-    return { error: "Couldn't read the certificate just now, so the details need typing in." };
+    return {
+      error: isTooLargeError(e) ? TOO_LARGE_TO_READ : "Couldn't read the certificate just now, so the details need typing in.",
+    };
   }
 }
 
@@ -1148,12 +1109,15 @@ export type RevisedEspFields = {
   evidenceProvidedBeforeNotice?: boolean;
 };
 
-/** Reads an uploaded revised-ESP notice. Returns null when it cannot be read. */
+/**
+ * Reads an uploaded revised-ESP notice. Returns null when it cannot be read,
+ * and "too_large" when it is too large to read automatically.
+ */
 export async function extractRevisedEspNotice(
   supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>,
   path: string,
   fileName: string,
-): Promise<RevisedEspFields | null> {
+): Promise<RevisedEspFields | "too_large" | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
   try {
@@ -1164,41 +1128,26 @@ export async function extractRevisedEspNotice(
     // photograph taken on an iPhone — IMG_9352.HEIC — and HEIC was not a format
     // this could open, so the block came back null, the read returned null, and
     // the revised figures were never recorded. readableBytes converts it.
-    const { base64, contentType } = await readableBytes(blob, fileName);
-    const documentBlock = buildDocumentBlock(contentType, base64, fileName);
-    if (!documentBlock) return null;
+    const prepared = await prepareRead(blob, fileName);
+    if (!prepared.ok) return prepared.problem === "too_large" ? "too_large" : null;
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 512,
+    const answers = await askParts(anthropic, prepared.parts, {
+      maxTokens: 512,
       system:
         "You are reading a notice served on a vendor that revises the estimated selling price of a NSW " +
         "residential property. Record only figures and dates printed on the document. Never calculate, infer or " +
         "adjust a price. The figures you return become the price every underquoting check in this product " +
         "measures the agency's advertising against, so a wrong number here produces a wrong compliance finding " +
         "on a real file. If you cannot read a figure cleanly, omit it and let a person enter it.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            documentBlock,
-            { type: "text", text: `This was uploaded as "${fileName}". Call record_revised_esp_notice.` },
-          ],
-        },
-      ],
-      tools: [REVISED_ESP_TOOL],
-      tool_choice: { type: "tool", name: "record_revised_esp_notice" },
+      text: `This was uploaded as "${fileName}". Call record_revised_esp_notice.`,
+      tool: REVISED_ESP_TOOL,
     });
-
-    const toolUse = response.content.find(
-      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
-    );
-    if (!toolUse) return null;
-    return toolUse.input as RevisedEspFields;
+    if (answers.length === 0) return null;
+    return mergeReads(answers) as RevisedEspFields;
   } catch (err) {
     console.error("revised ESP notice read failed:", fileName, err);
-    return null;
+    return isTooLargeError(err) ? "too_large" : null;
   }
 }
 
@@ -1230,52 +1179,40 @@ const COVERING_LETTER_TOOL: Anthropic.Tool = {
   },
 };
 
-/** Reads an uploaded covering letter for its own date. Returns null when it cannot be read. */
+/**
+ * Reads an uploaded covering letter for its own date. Returns null when it
+ * cannot be read, and "too_large" when it is too large to read automatically.
+ */
 export async function extractCoveringLetterDate(
   supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>,
   path: string,
   fileName: string,
-): Promise<{ letterDate?: string } | null> {
+): Promise<{ letterDate?: string } | "too_large" | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
   try {
     const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
     if (error || !blob) return null;
 
-    const { base64, contentType } = await readableBytes(blob, fileName);
-    const documentBlock = buildDocumentBlock(contentType, base64, fileName);
-    if (!documentBlock) return null;
+    const prepared = await prepareRead(blob, fileName);
+    if (!prepared.ok) return prepared.problem === "too_large" ? "too_large" : null;
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 256,
+    const answers = await askParts(anthropic, prepared.parts, {
+      maxTokens: 256,
       system:
         "You are reading the covering letter or email a NSW solicitor or conveyancer sent to a real estate " +
         "agency with the draft contract for sale. Record only the date of the letter itself, exactly as printed. " +
         "Never infer or calculate a date. The date you return is offered to the agent as the date the contract " +
         "was received, and they check it against the letter, so if no date is clearly printed, omit it.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            documentBlock,
-            { type: "text", text: `This was uploaded as "${fileName}". Call record_covering_letter_date.` },
-          ],
-        },
-      ],
-      tools: [COVERING_LETTER_TOOL],
-      tool_choice: { type: "tool", name: "record_covering_letter_date" },
+      text: `This was uploaded as "${fileName}". Call record_covering_letter_date.`,
+      tool: COVERING_LETTER_TOOL,
     });
-
-    const toolUse = response.content.find(
-      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
-    );
-    if (!toolUse) return null;
-    return toolUse.input as { letterDate?: string };
+    if (answers.length === 0) return null;
+    return mergeReads(answers) as { letterDate?: string };
   } catch (err) {
     console.error("covering letter read failed:", fileName, err);
-    return null;
+    return isTooLargeError(err) ? "too_large" : null;
   }
 }
 
@@ -1378,16 +1315,16 @@ export async function screenForIdDocument(
     const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
     if (error || !blob) return null;
 
-    const { base64, contentType } = await readableBytes(blob, fileName);
-    const documentBlock = buildDocumentBlock(contentType, base64, fileName);
+    const prepared = await prepareRead(blob, fileName);
     // A file type we cannot read cannot be screened. Let it through rather
-    // than refusing on the basis of not having looked.
-    if (!documentBlock) return null;
+    // than refusing on the basis of not having looked. The same for a file
+    // too large to read at all (a large PDF is read in parts, every part
+    // screened).
+    if (!prepared.ok) return null;
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 256,
+    const answers = await askParts(anthropic, prepared.parts, {
+      maxTokens: 256,
       system:
         "You are screening a file an Australian real-estate agent is attaching to the 'vendor identity " +
         "verified' item on a compliance record. The purpose is to keep personal source documents — the things " +
@@ -1395,30 +1332,17 @@ export async function screenForIdDocument(
         "letting through the record that a verification was carried out. Judge only what you were shown. " +
         "Answer FALSE when uncertain: refusing a legitimate compliance record is a real cost, and this screen " +
         "backs up a written warning rather than replacing it.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            documentBlock,
-            {
-              type: "text",
-              text: `This was uploaded as "${fileName}". Call screen_for_identity_documents.`,
-            },
-          ],
-        },
-      ],
-      tools: [ID_SCREEN_TOOL],
-      tool_choice: { type: "tool", name: "screen_for_identity_documents" },
+      text: `This was uploaded as "${fileName}". Call screen_for_identity_documents.`,
+      tool: ID_SCREEN_TOOL,
     });
 
-    const toolUse = response.content.find(
-      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+    // Any part that is an identity document makes the file one, named as
+    // that part named it.
+    const hit = (answers as Array<{ isIdentityDocument?: boolean; documentKind?: string }>).find(
+      (a) => a.isIdentityDocument,
     );
-    if (!toolUse) return null;
-
-    const result = toolUse.input as { isIdentityDocument?: boolean; documentKind?: string };
-    if (!result.isIdentityDocument) return null;
-    return result.documentKind?.trim() || "a personal identity or ownership document";
+    if (!hit) return null;
+    return hit.documentKind?.trim() || "a personal identity or ownership document";
   } catch (err) {
     console.error("ID screen failed, allowing upload:", fileName, err);
     return null;
@@ -1458,85 +1382,175 @@ export async function extractReportDetails(
   const unreadable = await downloadedFileProblem(blob, fileName);
   if (unreadable) return { error: unreadable };
 
-  const { base64, contentType } = await readableBytes(blob, fileName);
+  const prepared = await prepareRead(blob, fileName);
+  if (!prepared.ok) {
+    return prepared.problem === "too_large"
+      ? { error: TOO_LARGE_TO_READ }
+      : { error: `File type not supported for extraction yet (${prepared.contentType}).` };
+  }
 
   const MIN_TEXT_CHARS = 400;
-  if (contentType === "text/plain") {
-    const text = Buffer.from(base64, "base64").toString("utf-8");
+  if (prepared.contentType === "text/plain") {
+    const text = Buffer.from(prepared.bytes).toString("utf-8");
     if (text.trim().length < MIN_TEXT_CHARS) {
       return { error: null, fields: {} };
     }
   }
 
-  const documentBlock = buildDocumentBlock(contentType, base64, fileName);
-  if (!documentBlock) {
-    return { error: `File type not supported for extraction yet (${contentType}).` };
-  }
-
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-5",
-    max_tokens: 1024,
-    system:
-      "You are reading a pre-purchase inspection report (pest, building, or strata) for a NSW licensed agent's " +
-      "compliance file (RealComply), to help them fill in their cl 37 report register. This is diligence support " +
-      "only — the agent reviews and confirms everything before it's saved, you do not. Only record a field if " +
-      "the document explicitly and literally states it. Never infer, estimate, or assume a value — especially " +
-      "for preparerInsured, where 'not mentioned' must be left out entirely, never recorded as false. You have " +
-      "been shown the complete content available to you — do not assume further pages exist. If the document " +
-      "doesn't look like a genuine pest, building, or strata report at all, call the tool with an empty object " +
-      "rather than guessing at any field. You must call record_report_details exactly once, but calling it with " +
-      "few or no fields set is a completely normal, successful, and common outcome — do not stretch to fill in " +
-      "a field you're not actually seeing stated.",
-    messages: [
-      {
-        role: "user",
-        content: [
-          documentBlock,
-          {
-            type: "text",
-            text: `This document was uploaded as "${fileName}" for the pre-purchase inspection report register. Call record_report_details with whatever it explicitly states.`,
-          },
-        ],
-      },
-    ],
-    tools: [REPORT_EXTRACTION_TOOL],
-    tool_choice: { type: "tool", name: "record_report_details" },
-  });
+  // Caught (25 Oct 2026). Uncaught, a file over the reader's limits threw
+  // straight through to the card, which sat on "Reading…".
+  let answers: Array<Record<string, unknown>>;
+  try {
+    answers = await askParts(anthropic, prepared.parts, {
+      maxTokens: 1024,
+      system:
+        "You are reading a pre-purchase inspection report (pest, building, or strata) for a NSW licensed agent's " +
+        "compliance file (RealComply), to help them fill in their cl 37 report register. This is diligence support " +
+        "only — the agent reviews and confirms everything before it's saved, you do not. Only record a field if " +
+        "the document explicitly and literally states it. Never infer, estimate, or assume a value — especially " +
+        "for preparerInsured, where 'not mentioned' must be left out entirely, never recorded as false. You have " +
+        "been shown the complete content available to you — do not assume further pages exist. If the document " +
+        "doesn't look like a genuine pest, building, or strata report at all, call the tool with an empty object " +
+        "rather than guessing at any field. You must call record_report_details exactly once, but calling it with " +
+        "few or no fields set is a completely normal, successful, and common outcome — do not stretch to fill in " +
+        "a field you're not actually seeing stated.",
+      text: `This document was uploaded as "${fileName}" for the pre-purchase inspection report register. Call record_report_details with whatever it explicitly states.`,
+      tool: REPORT_EXTRACTION_TOOL,
+    });
+  } catch (e) {
+    console.error("extractReportDetails failed", { fileName, error: e });
+    return { error: isTooLargeError(e) ? TOO_LARGE_TO_READ : `${READ_FAILED_JUST_NOW} Or enter the details yourself.` };
+  }
 
-  const toolUse = response.content.find(
-    (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
-  );
-  if (!toolUse) return { error: null, fields: {} };
-
-  return { error: null, fields: toolUse.input as ReportExtractionFields };
+  return { error: null, fields: mergeReads(answers) as ReportExtractionFields };
 }
 
 function buildDocumentBlock(
   contentType: string,
-  base64: string,
+  bytes: Uint8Array,
   fileName: string,
 ): Anthropic.Messages.ContentBlockParam | null {
+  const base64 = () => Buffer.from(bytes).toString("base64");
   if (contentType === "application/pdf") {
     return {
       type: "document",
-      source: { type: "base64", media_type: "application/pdf", data: base64 },
+      source: { type: "base64", media_type: "application/pdf", data: base64() },
     };
   }
   if (["image/jpeg", "image/png", "image/gif", "image/webp"].includes(contentType)) {
     return {
       type: "image",
-      source: { type: "base64", media_type: contentType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: base64 },
+      source: { type: "base64", media_type: contentType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: base64() },
     };
   }
   if (contentType === "text/plain") {
     return {
       type: "text",
-      text: `Document "${fileName}":\n\n${Buffer.from(base64, "base64").toString("utf-8")}`,
+      text: `Document "${fileName}":\n\n${Buffer.from(bytes).toString("utf-8")}`,
     };
   }
   return null;
+}
+
+// ── Reading a file whole, or in parts when it's large (25 Oct 2026) ─────────
+//
+// Every read goes through these two. A PDF over 20 MB is split into parts of
+// whole pages, copied unchanged, and each part is read; see
+// lib/documents/reader-parts.ts for why nothing is lost. Before this, a PDF
+// over about 24 MB failed and the screen showed the reader's own error, which
+// is where an agent read "32 MB" and shrank her scans to fit.
+
+type ReadPart = { block: Anthropic.Messages.ContentBlockParam; note: string | null };
+
+type PreparedRead =
+  | { ok: true; contentType: string; bytes: Uint8Array; parts: ReadPart[] }
+  | { ok: false; problem: "too_large" }
+  | { ok: false; problem: "unsupported"; contentType: string };
+
+async function prepareRead(blob: Blob, fileName: string): Promise<PreparedRead> {
+  // readableBytes rather than a plain arrayBuffer: a phone photo can arrive as
+  // HEIC, which nothing downstream can open. See lib/documents/readable-bytes.
+  const { bytes, contentType } = await readableBytes(blob, fileName);
+
+  if (contentType === "application/pdf") {
+    const split = await splitPdfForReader(bytes);
+    if (!split.ok) return { ok: false, problem: "too_large" };
+    return {
+      ok: true,
+      contentType,
+      bytes,
+      parts: split.parts.map((part) => ({
+        block: buildDocumentBlock(contentType, part.bytes, fileName)!,
+        note: partNote(part),
+      })),
+    };
+  }
+
+  const block = buildDocumentBlock(contentType, bytes, fileName);
+  if (!block) return { ok: false, problem: "unsupported", contentType };
+  // A photo can't be split. Over the reader's own cap for one image, it
+  // can't be read; never shrunk here, never asked to be shrunk.
+  if (contentType.startsWith("image/") && bytes.length > READER_IMAGE_MAX_BYTES) return { ok: false, problem: "too_large" };
+  if (contentType === "text/plain" && bytes.length > READER_PART_MAX_BYTES) return { ok: false, problem: "too_large" };
+  return { ok: true, contentType, bytes, parts: [{ block, note: null }] };
+}
+
+type PartQuestion = {
+  system: string;
+  /** What the reader is asked. A function when the first part is asked something the rest aren't. */
+  text: string | ((partIndex: number) => string);
+  tool: Anthropic.Messages.Tool;
+  maxTokens: number;
+};
+
+/**
+ * Asks each part, a few at a time, and returns each part's answer (the
+ * tool's input) in page order. A file read whole is one part with no note,
+ * asked exactly as before. A part that answers nothing is left out.
+ */
+async function askParts(
+  anthropic: Anthropic,
+  parts: ReadPart[],
+  question: PartQuestion,
+  firstIndex = 1,
+): Promise<Array<Record<string, unknown>>> {
+  const answers = await mapWithLimit(parts, READER_PARTS_AT_ONCE, async (part, i) => {
+    const text = typeof question.text === "function" ? question.text(firstIndex + i) : question.text;
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: question.maxTokens,
+      system: part.note ? `${question.system} ${part.note}` : question.system,
+      messages: [{ role: "user", content: [part.block, { type: "text", text }] }],
+      tools: [question.tool],
+      tool_choice: { type: "tool", name: question.tool.name },
+    });
+    const toolUse = response.content.find(
+      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
+    );
+    return (toolUse?.input ?? null) as Record<string, unknown> | null;
+  });
+  return answers.filter((a): a is Record<string, unknown> => a !== null);
+}
+
+/** A file the reader can't take, even in parts. */
+class TooLargeToRead extends Error {}
+
+/**
+ * What a failed read says on screen, after the document's name. Plain words
+ * only (25 Oct 2026): the reader's own errors, JSON and byte counts, went
+ * straight onto the screen before, which is where "32 MB" came from.
+ */
+function readFailure(err: unknown): string {
+  if (err instanceof TooLargeToRead || isTooLargeError(err)) {
+    return "too large to read automatically, so enter its details yourself";
+  }
+  if (err instanceof Anthropic.APIError) {
+    console.error("document read failed:", err.status, err.message);
+    return "couldn't be read just now. Try again in a minute";
+  }
+  return err instanceof Error ? err.message : "extraction failed";
 }
 
 async function extractOneDocument(
@@ -1559,7 +1573,11 @@ async function extractOneDocument(
   // details never filled in, and "Read again" is where the agent finds that out.
   const unreadable = await downloadedFileProblem(blob, path.split("/").pop() ?? fileName);
   if (unreadable) throw new Error(unreadable);
-  const { base64, contentType } = await readableBytes(blob, fileName);
+  const prepared = await prepareRead(blob, fileName);
+  if (!prepared.ok) {
+    if (prepared.problem === "too_large") throw new TooLargeToRead();
+    throw new Error(`file type not supported for extraction yet (${prepared.contentType})`);
+  }
 
   // Deterministic backstop, not a prompt instruction: a real contract, agency
   // agreement, or comps report is never this short. Skip the model call
@@ -1568,23 +1586,18 @@ async function extractOneDocument(
   // confirmed hallucination (invented document names) that survived two
   // rounds of prompt-only fixes on a one-line placeholder test file.
   const MIN_TEXT_CHARS = 400;
-  if (contentType === "text/plain") {
-    const text = Buffer.from(base64, "base64").toString("utf-8");
+  if (prepared.contentType === "text/plain") {
+    const text = Buffer.from(prepared.bytes).toString("utf-8");
     if (text.trim().length < MIN_TEXT_CHARS) {
       return [];
     }
   }
 
-  const documentBlock = buildDocumentBlock(contentType, base64, fileName);
-  if (!documentBlock) {
-    throw new Error(`file type not supported for extraction yet (${contentType})`);
-  }
-
   const sourceLabel = SOURCE_LABELS[item.item_key] ?? item.item_key;
+  const expected = EXPECTED_KIND[source];
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-5",
-    max_tokens: 1536,
+  const question: PartQuestion = {
+    maxTokens: 1536,
     system:
       "You are extracting facts from a real-estate compliance document for a NSW licensed agent's compliance " +
       "file (RealComply). This is diligence support only — the licensee reviews everything and decides, you do " +
@@ -1610,37 +1623,35 @@ async function extractOneDocument(
       "must call record_findings exactly once, but calling it with an empty patches array is a completely " +
       "normal, successful, and common outcome — do not stretch to fill the array with a weak or unsupported " +
       "finding just because you're calling the tool.",
-    messages: [
-      {
-        role: "user",
-        content: [
-          documentBlock,
-          {
-            type: "text",
-            text:
-              `This document was uploaded as the ${sourceLabel}, but do not take that on trust — the wrong ` +
-              "file is uploaded often enough to matter, and reading the wrong document produces answers that " +
-              "look right and are not. FIRST set documentIs from what the document actually is. THEN, only if " +
-              `it really is the ${sourceLabel}, call record_findings with any facts it ` +
-              "explicitly and literally states that are relevant to these compliance items: " +
-              promptForSource(source, prescribedDocs) +
-              "\n\nFor every item: only report what is directly readable in the content above; " +
-              "if you're not looking at something substantial enough to ground a finding, leave that item out " +
-              "rather than filling it in.",
-          },
-        ],
-      },
-    ],
-    tools: [EXTRACTION_TOOL],
-    tool_choice: { type: "tool", name: "record_findings" },
-  });
+    text: (partIndex) =>
+      (partIndex === 1
+        ? `This document was uploaded as the ${sourceLabel}, but do not take that on trust — the wrong ` +
+          "file is uploaded often enough to matter, and reading the wrong document produces answers that " +
+          "look right and are not. FIRST set documentIs from what the document actually is. THEN, only if " +
+          `it really is the ${sourceLabel}, call record_findings with any facts it ` +
+          "explicitly and literally states "
+        : // A later part of a split file: its first pages have already been
+          // checked and are the right document. Its own pages may be
+          // annexures that look like something else on their own, and they
+          // still count (a prescribed document is usually one of them).
+          `These pages continue the ${sourceLabel}: its first pages were read separately and confirmed as ` +
+          `the ${sourceLabel}, so set documentIs to ${expected}, whatever these pages look like on their own ` +
+          "(annexures and attachments are part of it). Call record_findings with any facts these pages " +
+          "explicitly and literally state ") +
+      "that are relevant to these compliance items: " +
+      promptForSource(source, prescribedDocs) +
+      "\n\nFor every item: only report what is directly readable in the content above; " +
+      "if you're not looking at something substantial enough to ground a finding, leave that item out " +
+      "rather than filling it in.",
+    tool: EXTRACTION_TOOL,
+  };
 
-  const toolUse = response.content.find(
-    (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
-  );
-  if (!toolUse) return [];
+  // The first part says what the document is. A whole file is one part, read
+  // exactly as before.
+  const [first] = await askParts(anthropic, prepared.parts.slice(0, 1), question);
+  if (!first) return [];
 
-  const input = toolUse.input as { patches?: DraftPatch[]; documentIs?: DocumentKind };
+  const input = first as { patches?: DraftPatch[]; documentIs?: DocumentKind };
 
   // The wrong file in this slot. Record that, and NOTHING else from it.
   //
@@ -1651,7 +1662,6 @@ async function extractOneDocument(
   // contract. Both halves came back in the same tool call and nothing
   // reconciled them.
   const actual = input.documentIs;
-  const expected = EXPECTED_KIND[source];
   if (actual && actual !== expected) {
     return [
       {
@@ -1664,7 +1674,22 @@ async function extractOneDocument(
     ];
   }
 
-  return (input.patches ?? [])
+  // The rest of a split file, then every part's answers as one answer per
+  // item (lib/documents/reader-parts mergeReads: a prescribed document found
+  // in any part is found; the first part to state a figure gives it).
+  // A whole file is used exactly as it was read.
+  let patches = input.patches ?? [];
+  if (prepared.parts.length > 1) {
+    const rest = await askParts(anthropic, prepared.parts.slice(1), question, 2);
+    const byItem = new Map<string, DraftPatch[]>();
+    for (const patch of [input, ...(rest as Array<{ patches?: DraftPatch[] }>)].flatMap((r) => r.patches ?? [])) {
+      if (!patch?.itemKey) continue;
+      byItem.set(patch.itemKey, [...(byItem.get(patch.itemKey) ?? []), patch]);
+    }
+    patches = [...byItem.values()].map((list) => (list.length === 1 ? list[0] : mergeReads(list)));
+  }
+
+  return patches
     .filter((p) => TARGET_ITEM_KEYS.has(p.itemKey))
     // The rule this file exists to enforce. A document only speaks to the
     // items it can actually evidence, whatever the model chose to return.
@@ -1773,6 +1798,7 @@ async function readCoveringLetterOnto(propertyId: string): Promise<ActionState> 
     "covering letter";
 
   const fields = await extractCoveringLetterDate(supabase, item.evidence_path, fileName);
+  if (fields === "too_large") return { error: TOO_LARGE_TO_READ };
   if (!fields) return { error: COVERING_LETTER_UNREADABLE };
 
   const now = new Date();
@@ -1862,6 +1888,10 @@ async function readRevisedEspNoticeOnto(propertyId: string): Promise<ActionState
   };
 
   const fields = await extractRevisedEspNotice(supabase, item.evidence_path, fileName);
+  if (fields === "too_large") {
+    await markReadFailed(TOO_LARGE_TO_READ);
+    return { error: TOO_LARGE_TO_READ };
+  }
   if (!fields) {
     await markReadFailed(
       "The file couldn't be opened for reading. It may be a format we can't read, or the scan may be damaged.",
@@ -2041,7 +2071,7 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
     try {
       patches.push(...(await extractOneDocument(supabase, anthropic, item, prescribedDocs)));
     } catch (err) {
-      failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${err instanceof Error ? err.message : "extraction failed"}`);
+      failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${readFailure(err)}`);
     }
   }
 

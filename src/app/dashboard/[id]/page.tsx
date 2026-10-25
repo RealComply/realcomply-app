@@ -22,6 +22,12 @@ import { stageProgress } from "@/lib/rules/stage-progress";
 import { StageProgressBar } from "@/components/compliance/StageProgressBar";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 
+// "Read uploaded documents" and "Read again" run from this page. A large PDF
+// is now read in parts (25 Oct 2026, lib/documents/reader-parts.ts), and a
+// 150 MB contract can take a couple of minutes, so the page has the same room
+// as creating a listing does.
+export const maxDuration = 300;
+
 function auctionDateLabel(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString("en-AU", {
     weekday: "long",
