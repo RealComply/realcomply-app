@@ -20,7 +20,7 @@ import type { AnnouncementSend } from "@/lib/types";
 // steps: one test to Adam's test address, filled in as if for Foster, then,
 // on Adam's "send", the five.
 //
-// ONCE EACH, the CPD reminders' pattern: the row in announcement_sends (0087)
+// ONCE EACH, the CPD reminders' pattern: the row in announcement_sends (0090)
 // is written BEFORE the email goes, and a unique index on (announcement,
 // office) refuses a second one. A second run finds every office recorded and
 // sends nothing.
@@ -140,8 +140,8 @@ export async function pmAnnouncementList(supabase: Client): Promise<PmAnnounceme
   const agencies = (agencyRows ?? []) as AgencyLookup[];
   const sends = (sendRows ?? []) as AnnouncementSend[];
   // No record to check against, no send: without it a second run would send
-  // again. (Before 0087 is run, the table isn't there.)
-  const noRecord = sendsError ? "The send record can't be read (has 0087 been run?)." : null;
+  // again. (Before 0090 is run, the table isn't there.)
+  const noRecord = sendsError ? "The send record can't be read (has 0090 been run?)." : null;
 
   const rows: PmAnnouncementRow[] = [];
   for (const office of PM_ANNOUNCEMENT_OFFICES) {

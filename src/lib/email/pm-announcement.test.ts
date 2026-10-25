@@ -278,7 +278,7 @@ test("a refused email is recorded as failed and isn't retried by a second run", 
   assert.equal(sent.length, 5);
 });
 
-test("no send record to check against (0087 not run): nothing sends", async () => {
+test("no send record to check against (0090 not run): nothing sends", async () => {
   const { sent, deps } = world();
   const noTable = {
     from: (table: string) => {

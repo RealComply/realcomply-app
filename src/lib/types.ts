@@ -350,7 +350,7 @@ export type CpdReminder = {
   sent_at: string;
 };
 
-// 0087_announcement_sends.sql. One row per office per one-off announcement
+// 0090_announcement_sends.sql. One row per office per one-off announcement
 // from the staff page. Service key only: no one signed in can read it.
 export type AnnouncementSend = {
   id: string;

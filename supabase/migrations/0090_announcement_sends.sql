@@ -1,4 +1,9 @@
--- 0087: One-off announcements, the record of each one sent (22 Oct 2026).
+-- 0090: One-off announcements, the record of each one sent (22 Oct 2026).
+--
+-- NUMBERING. Run on live by Adam on 22 Oct 2026 as "0087", before
+-- 0087_first_listing_before_annexure.sql reached main from another branch.
+-- Renumbered 0090 (25 Oct) so the two never share a number; 0088 and 0089
+-- were taken. The SQL is unchanged and safe to run again.
 --
 -- The first: Adam, 22 Oct 2026, "one-off email telling five offices that
 -- property management is now in their account". Sent from the staff page to
