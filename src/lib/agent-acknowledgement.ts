@@ -110,6 +110,13 @@ export function ackProblem(fields: AckFields, ticked: boolean[]): string | null 
 
 // ── The lock ──────────────────────────────────────────────────────────────
 
+// CHANGE (Adam, 23 Oct 2026, trial brief; 0087). WAS: the lock held back
+// every listing, the first included, so this copy said "your first listing".
+// NOW: the first listing is free of the lock (all plans), so the lock only
+// ever shows once an office already has a listing, and the copy says "more
+// listings" / "second listing". The rule itself is the database's
+// (listing_gate_reason); nothing here decides it.
+
 /**
  * Why this office can't add a listing yet (0071 my_listing_gate), or null.
  * 'signed_annexure': an agent's own plan, until the signed annexure is
@@ -141,7 +148,7 @@ export function lockCopy(
   if (gate === "signed_annexure") {
     return {
       pill: "Waiting on the signed annexure",
-      text: `Upload the annexure signed by ${who} first, then you can add your first listing. Everything else in RealComply works as normal.`,
+      text: `Upload the annexure signed by ${who} first, then you can add more listings. Everything else in RealComply works as normal.`,
       // Someone assisting the agent can't upload it; the agent can.
       action: viewer.actsAsLicensee ? "upload" : null,
     };
@@ -149,7 +156,7 @@ export function lockCopy(
   if (viewer.actsAsLicensee) {
     return {
       pill: "Waiting on the annexure",
-      text: "Adopt RealComply’s annexure to your Supervision Guidelines, then you can add listings. Everything else works as normal.",
+      text: "Adopt RealComply’s annexure to your Supervision Guidelines, then you can add more listings. Everything else works as normal.",
       action: "review_and_sign",
     };
   }
@@ -157,8 +164,8 @@ export function lockCopy(
   return {
     pill: "Waiting on your licensee",
     text: named
-      ? `Waiting on ${named}, your licensee in charge, to adopt RealComply’s annexure to your Supervision Guidelines. You can add listings once they have.`
-      : "Waiting on your licensee in charge to adopt RealComply’s annexure to your Supervision Guidelines. You can add listings once they have.",
+      ? `Waiting on ${named}, your licensee in charge, to adopt RealComply’s annexure to your Supervision Guidelines. You can add more listings once they have.`
+      : "Waiting on your licensee in charge to adopt RealComply’s annexure to your Supervision Guidelines. You can add more listings once they have.",
     action: null,
   };
 }
@@ -166,13 +173,13 @@ export function lockCopy(
 /** The message createProperty returns when the lock is on. */
 export function lockedCreateMessage(gate: Exclude<ListingGate, null>): string {
   return gate === "signed_annexure"
-    ? "Waiting on the signed annexure. Upload the annexure signed by your licensee in charge first, then you can add your first listing."
-    : "Waiting on the annexure. New listings can be added once your licensee in charge has adopted RealComply’s annexure.";
+    ? "Waiting on the signed annexure. Upload the annexure signed by your licensee in charge first, then you can add more listings."
+    : "Waiting on the annexure. More listings can be added once your licensee in charge has adopted RealComply’s annexure.";
 }
 
 // ── The Home card (agent's own plan) ─────────────────────────────────────
 
-export const HOME_CARD_TITLE = "Before your first listing: get your licensee’s sign-off";
+export const HOME_CARD_TITLE = "Before your second listing: get your licensee’s sign-off";
 
 export function homeCardText(licenseeName: string | null | undefined): string {
   const who = tidy(licenseeName) || "your licensee in charge";
@@ -202,7 +209,7 @@ export function signedAnnexureType(file: { name: string; type: string }): string
 /** The plain reason a file can't be uploaded as the signed annexure, or null. */
 export function signedAnnexureProblem(file: { name: string; type: string; size: number }, maxBytes: number): string | null {
   if (signedAnnexureType(file) === null) return "Upload a PDF, JPG or PNG.";
-  if (file.size > maxBytes) return `This file is over ${Math.round(maxBytes / (1024 * 1024))} MB. Please upload a smaller copy.`;
+  if (file.size > maxBytes) return `This file is over ${Math.round(maxBytes / (1024 * 1024))} MB, the most RealComply can take in one file.`;
   if (file.size === 0) return EMPTY_FILE_MESSAGE;
   return null;
 }

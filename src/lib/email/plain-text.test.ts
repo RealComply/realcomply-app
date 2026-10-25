@@ -81,7 +81,10 @@ describe("RealComply's own footer links", () => {
     const doc = holderDocument(
       {
         kind: "profile",
+        family: "licence",
         profileId: "00000000-0000-4000-8000-000000000001",
+        subjectId: null,
+        issuer: null,
         holderName: "Alex Holder",
         holderEmail: "alex@example.test",
         credential: "Class 2 agent's licence",

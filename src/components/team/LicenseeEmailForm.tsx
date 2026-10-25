@@ -81,7 +81,8 @@ export function LicenseeEmailForm({
           listing. For an individual agent subscription this is their employing
           agency's site — the listings live there either way. */}
       <label htmlFor="websiteUrl" className="mt-4 block text-sm font-medium text-rc-ink">
-        Agency website
+        {/* Was "Agency website". Same name as the sign-up box from 23 Oct 2026. */}
+        Link to the page with your listings
       </label>
       <p className="mt-1 text-xs leading-relaxed text-rc-muted">
         Where your listings are published. RealComply uses it to find each listing&rsquo;s page and check the
