@@ -7,6 +7,7 @@ import {
   DAMAGED_FILE_MESSAGE,
   EMPTY_FILE_MESSAGE,
   MAX_EVIDENCE_BYTES,
+  TOO_LARGE_MESSAGE,
   WRONG_TYPE_MESSAGE,
   chosenFileProblem,
   evidenceFileProblem,
@@ -248,11 +249,13 @@ export function FileDropZone({
           <AlertTriangle size={12} className="mt-px shrink-0" />
           {/* Adam's wording for an empty or damaged file stands on its own;
               the size advice belongs to a file that is too big, not to one
-              of the wrong type or one that will not open. */}
+              of the wrong type or one that will not open. And not to one
+              over the 150 MB evidence limit either (25 Oct 2026): never ask
+              for a smaller copy of a document, which costs it quality. */}
           <span>
             {tooBig === EMPTY_FILE_MESSAGE || tooBig === DAMAGED_FILE_MESSAGE
               ? tooBig
-              : tooBig === WRONG_TYPE_MESSAGE
+              : tooBig === WRONG_TYPE_MESSAGE || tooBig === TOO_LARGE_MESSAGE
                 ? `${tooBig} Nothing was attached.`
                 : `${tooBig} Nothing was attached. Try a smaller copy, or split it.`}
           </span>
