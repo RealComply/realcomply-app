@@ -13,6 +13,7 @@ import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { signatureOnCard } from "@/lib/rules/listing-signature";
 import { priceApproval } from "@/lib/rules/price-statement";
+import { saleRecordLines } from "@/lib/rules/sale-price";
 
 
 
@@ -157,6 +158,13 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                           {approval.at && `, ${formatAuDateTimeShort(approval.at)} (Sydney time)`}
                         </p>
                       )}
+                      {/* The sale price, what it was compared with, and any flag and note (f0, 26 Oct 2026). */}
+                      {item.key === "f0" &&
+                        saleRecordLines(current?.data).map((line) => (
+                          <p key={line} className="mt-0.5 text-xs text-rc-muted">
+                            {line}
+                          </p>
+                        ))}
                       {flaggedNote && <p className="mt-0.5 text-xs text-rc-amber-deep">Open flag: {flaggedNote}</p>}
                     </li>
                   );

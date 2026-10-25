@@ -36,6 +36,7 @@ import { useViewerAccess } from "@/components/ViewerAccess";
 import { liveLink, signedLink, type SignoffLink } from "@/lib/data/signoff-links";
 import { withdrawPriceStatementLink } from "@/lib/actions/signoff-links";
 import type { PriceApproval } from "@/lib/rules/price-statement";
+import { espText, SALE_PRICE_NOTE_PROMPT, salePriceFlagText, savedSaleCheck } from "@/lib/rules/sale-price";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -3147,28 +3148,62 @@ function VerbalQuoteLogItem({ item, propertyId, current }: { item: ComplianceIte
 function SaleItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
   const boundAction = recordSale.bind(null, propertyId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
-  const data = (current?.data ?? {}) as { price?: number; outsideRange?: boolean; flagReason?: string };
+  // Read only from what the 26 Oct 2026 rule writes (lib/rules/sale-price.ts).
+  // A card saved under the old rule carried "outsideRange" and a flagReason
+  // naming the revision card by its code; neither is shown.
+  const saved = savedSaleCheck(current?.data);
+  const flag = salePriceFlagText(saved);
+  const esp = espText(saved);
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      <form action={formAction} className="flex gap-2">
-        <input
-          type="number"
-          name="price"
-          defaultValue={data.price ?? ""}
-          placeholder="Final sale price"
-          className="w-48 rounded-md border border-rc-border px-2 py-1 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
-        >
-          Record
-        </button>
+      <form action={formAction} className="space-y-2">
+        <div className="flex gap-2">
+          <input
+            type="number"
+            name="price"
+            defaultValue={saved.price ?? ""}
+            placeholder="Final sale price"
+            className="w-48 rounded-md border border-rc-border px-2 py-1 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+          >
+            Record
+          </button>
+        </div>
+        {saved.price !== null && esp && (
+          <p className="text-xs text-rc-muted">
+            Compared with the {saved.espRevised ? "revised estimated selling price" : "estimated selling price"} ({esp}).
+          </p>
+        )}
+        {/* Said, never held (Adam, 26 Oct 2026): the card is done either way
+            and the note is optional. */}
+        {flag && (
+          <div className="space-y-2 rounded-lg bg-rc-amber/10 p-3">
+            <p className="text-sm text-rc-amber-deep">
+              {flag} {SALE_PRICE_NOTE_PROMPT}
+            </p>
+            <textarea
+              name="note"
+              defaultValue={saved.note ?? ""}
+              rows={2}
+              placeholder="Note (optional)"
+              className="w-full rounded-md border border-rc-border bg-white px-2 py-1 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-ink transition hover:bg-rc-bg-alt disabled:opacity-60"
+            >
+              Save note
+            </button>
+          </div>
+        )}
       </form>
       <FieldError error={state.error} />
-      {data.flagReason && <p className="mt-2 text-sm text-rc-amber-deep">{data.flagReason}</p>}
     </ItemShell>
   );
 }

@@ -1506,8 +1506,12 @@ const items: ComplianceItem[] = [
     stage: 5,
     kind: "sale",
     label: "Final sale price",
+    // REVERSAL (Adam, 26 Oct 2026): compared with the latest ESP, flagged only
+    // when more than 10% above it, and the flag never holds the stage. Was:
+    // flagged outside the original ESP range, and the flag blocked the stage.
+    // See lib/rules/sale-price.ts.
     description:
-      "Record the final sale price. If it lands outside the ESP range, that's flagged for evidence-of-reasonableness — point to the ESP revision log / Change of ESP form if the price moved during the campaign.",
+      "Record the final sale price. It's compared with the latest estimated selling price: the revised one if the ESP was revised, otherwise the one in the agency agreement. If the sale is more than 10% above it, the card says so and you can add a note on how that came about. That never stops the file being completed or signed off.",
     legalBasis: "s72A",
     requiresDate: false,
     requiredForStageCompletion: true,

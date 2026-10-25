@@ -29,6 +29,7 @@ import { COVERING_LETTER_KEY, afterAgentSave } from "@/lib/documents/covering-le
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { agencyPeople } from "@/lib/data/people";
 import { priceStatementByEmail } from "@/lib/rules/price-statement";
+import { checkSalePrice } from "@/lib/rules/sale-price";
 import { liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
 import { stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
@@ -1894,7 +1895,13 @@ export async function markNoVerbalQuotes(propertyId: string): Promise<void> {
   revalidatePath(`/dashboard/${propertyId}`);
 }
 
-// f0 — final sale price, checked against the recorded ESP range.
+// f0 — final sale price, checked against the latest ESP.
+//
+// REVERSAL (Adam, 26 Oct 2026): compared with the latest ESP (the revised one
+// if the ESP was revised), flagged only when more than 10% above its top
+// figure, and always saved as done, so the flag never blocks the Settled stage
+// or the file sign-off. Was: any price outside the ORIGINAL ESP range saved as
+// "flagged" and held the stage. The rule and the story: lib/rules/sale-price.ts.
 export async function recordSale(
   propertyId: string,
   _prevState: ActionState,
@@ -1902,39 +1909,41 @@ export async function recordSale(
 ): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
 
-  const price = Number(formData.get("price") ?? 0);
+  const price = Number(String(formData.get("price") ?? "").replace(/[^0-9.]/g, ""));
   if (!price) {
     return { error: "Enter the final sale price." };
   }
 
-  const { data: espItem } = await supabase
-    .from("property_items")
-    .select("data")
-    .eq("property_id", propertyId)
-    .eq("item_key", "a4")
-    .maybeSingle();
+  const [esp, { data: existing }] = await Promise.all([
+    effectiveEsp(supabase, propertyId),
+    supabase
+      .from("property_items")
+      .select("data, completed_by")
+      .eq("property_id", propertyId)
+      .eq("item_key", "f0")
+      .maybeSingle(),
+  ]);
+  const check = checkSalePrice(price, esp);
+  const before = existing as { data?: { price?: unknown } | null; completed_by?: string | null } | null;
 
-  const espData = (espItem?.data ?? {}) as { espLow?: number; espHigh?: number };
-  const outsideRange =
-    espData.espLow != null && espData.espHigh != null
-      ? price < espData.espLow || price > espData.espHigh
-      : false;
+  // The note is asked for only when the sale is flagged, and kept only then.
+  const note = check.aboveEsp ? String(formData.get("note") ?? "").trim() : "";
 
   const { error } = await upsertItem(supabase, {
     agencyId: profile.agency_id,
     propertyId,
     itemKey: "f0",
-    status: outsideRange ? "flagged" : "done",
+    status: "done",
     data: {
       price,
-      espLow: espData.espLow ?? null,
-      espHigh: espData.espHigh ?? null,
-      outsideRange,
-      flagReason: outsideRange
-        ? "Final price falls outside the recorded ESP range — point to the ESP revision log (d3) as evidence of reasonableness."
-        : undefined,
+      espLow: check.espLow,
+      espHigh: check.espHigh,
+      espRevised: check.espRevised,
+      aboveEsp: check.aboveEsp,
+      ...(note ? { note } : {}),
     },
-    completedBy: user.id,
+    // Adding a note to a price already recorded keeps who recorded the price.
+    completedBy: before?.data?.price === price ? (before.completed_by ?? user.id) : user.id,
   });
 
   revalidatePath(`/dashboard/${propertyId}`);
