@@ -6,6 +6,7 @@ import { PDFDict, PDFDocument, PDFName, PDFRawStream, PDFStream } from "pdf-lib"
 import {
   READER_PART_MAX_BYTES,
   TOO_LARGE_TO_READ,
+  isPartOnlyNote,
   isTooLargeError,
   mapWithLimit,
   mergeReads,
@@ -223,4 +224,28 @@ test("parts are read a few at a time, answers kept in page order", async () => {
   });
   assert.deepEqual(out, [50, 10, 40, 20, 30]);
   assert.equal(most, 3);
+});
+
+test("a part's note about its own pages, or about something not being there, is left out", () => {
+  // Written by the first part of the made-up 120 MB contract, 25 Oct 2026.
+  assert.equal(
+    isPartOnlyNote(
+      "Pages 1-4 show only the cover, a List of Documents index page, and Conditions of Sale Parts 1-2 (placeholder clauses). None of the prescribed documents themselves appear yet in these pages, only an index mention of a property certificate, plan, planning certificate, sewerage diagram, and prescribed notices.",
+    ),
+    true,
+  );
+  for (const n of [
+    "The sewerage diagram was not found.",
+    "The vendor's signature is missing.",
+    "The certificate does not appear in this part.",
+  ]) {
+    assert.equal(isPartOnlyNote(n), true, n);
+  }
+  // A real flag about what IS there stays.
+  for (const n of [
+    "The section 10.7 certificate is dated September 2025, more than a year old.",
+    "Commission is stated as 2.2% in clause 4 but 2.5% in the schedule.",
+  ]) {
+    assert.equal(isPartOnlyNote(n), false, n);
+  }
 });

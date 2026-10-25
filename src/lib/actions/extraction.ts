@@ -12,6 +12,7 @@ import {
   READER_PARTS_AT_ONCE,
   READ_FAILED_JUST_NOW,
   TOO_LARGE_TO_READ,
+  isPartOnlyNote,
   isTooLargeError,
   mapWithLimit,
   mergeReads,
@@ -1682,8 +1683,11 @@ async function extractOneDocument(
   if (prepared.parts.length > 1) {
     const rest = await askParts(anthropic, prepared.parts.slice(1), question, 2);
     const byItem = new Map<string, DraftPatch[]>();
-    for (const patch of [input, ...(rest as Array<{ patches?: DraftPatch[] }>)].flatMap((r) => r.patches ?? [])) {
-      if (!patch?.itemKey) continue;
+    for (const read of [input, ...(rest as Array<{ patches?: DraftPatch[] }>)].flatMap((r) => r.patches ?? [])) {
+      if (!read?.itemKey) continue;
+      // A part's note about its own pages, or about something not being
+      // there, isn't true of the whole document (see isPartOnlyNote).
+      const patch = read.note && isPartOnlyNote(read.note) ? { ...read, note: undefined } : read;
       byItem.set(patch.itemKey, [...(byItem.get(patch.itemKey) ?? []), patch]);
     }
     patches = [...byItem.values()].map((list) => (list.length === 1 ? list[0] : mergeReads(list)));

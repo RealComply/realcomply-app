@@ -138,7 +138,24 @@ export function partNote(part: Pick<ReaderPart, "index" | "count" | "firstPage" 
     `This is part ${part.index} of ${part.count} of one document: pages ${part.firstPage} to ${part.lastPage} of ` +
     `${part.totalPages}. The document was too large to read in one go, so its parts are read separately and the ` +
     "answers combined. This overrides anything above saying you have the complete document. Report only what these " +
-    "pages state, and never describe anything as missing, lacking or not found: it may be on another part's pages."
+    "pages state, and never describe anything as missing, lacking or not found: it may be on another part's pages. " +
+    "Your notes are combined with every other part's and shown to the agent as one, so never mention pages or parts " +
+    "in a note; if these pages give nothing to flag, leave the note out."
+  );
+}
+
+/**
+ * A note from one part of a split file that is about the split itself, or
+ * says something isn't there. Neither holds for the whole document: the part
+ * hasn't seen the other pages. On the made-up 120 MB contract (25 Oct 2026)
+ * the first part wrote "None of the prescribed documents themselves appear
+ * yet in these pages" while every one of them was in a later part. Such a
+ * note is left out of the combined answer; the facts the part read still
+ * count.
+ */
+export function isPartOnlyNote(note: string): boolean {
+  return /\b(pages?|parts?)\s+\d|\bthese pages\b|\bthis part\b|\bnot (yet )?(found|seen|shown|present|included|visible|attached|provided)\b|\b(do|does|did) not (yet )?(appear|include|contain|show)\b|\bnone of\b|\bmissing\b|\babsent\b|\bno sign of\b/i.test(
+    note,
   );
 }
 
