@@ -47,7 +47,9 @@ const EVIDENCE_TYPES: Record<string, string> = {
 };
 const ALLOWED_TYPES = new Set(Object.values(EVIDENCE_TYPES));
 
-export const TOO_LARGE_MESSAGE = "This file is over 150 MB. Please upload a smaller copy.";
+// Never "upload a smaller copy" (Adam, 25 Oct 2026): an agent shrank her
+// scans to fit a limit and lost quality doing it.
+export const TOO_LARGE_MESSAGE = "This file is over 150 MB, the most RealComply can take in one file.";
 export const WRONG_TYPE_MESSAGE =
   "This file type isn't accepted. Please upload a PDF, photo, Word, Excel or saved email.";
 

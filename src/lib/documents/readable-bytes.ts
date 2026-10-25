@@ -39,7 +39,12 @@ import { Buffer } from "node:buffer";
 import { looksLikeHeic } from "@/lib/documents/heic-detect";
 
 export type ReadableBytes = {
-  base64: string;
+  /**
+   * The file's bytes. Not yet encoded for sending: a large PDF is split into
+   * parts first (lib/documents/reader-parts.ts), and each part is encoded on
+   * its own (25 Oct 2026).
+   */
+  bytes: Uint8Array;
   /** The type as the reader should treat it — JPEG once a HEIC has been converted. */
   contentType: string;
   /** True when this arrived as HEIC and was converted, so callers can say so. */
@@ -66,11 +71,7 @@ export async function readableBytes(
   const declared = blob.type || "application/octet-stream";
 
   if (!looksLikeHeic({ contentType: declared, fileName, bytes })) {
-    return {
-      base64: Buffer.from(arrayBuffer).toString("base64"),
-      contentType: declared,
-      convertedFromHeic: false,
-    };
+    return { bytes, contentType: declared, convertedFromHeic: false };
   }
 
   try {
@@ -88,17 +89,9 @@ export async function readableBytes(
       quality: 0.92,
     });
 
-    return {
-      base64: Buffer.from(jpeg).toString("base64"),
-      contentType: "image/jpeg",
-      convertedFromHeic: true,
-    };
+    return { bytes: new Uint8Array(jpeg), contentType: "image/jpeg", convertedFromHeic: true };
   } catch (err) {
     console.error("HEIC conversion failed:", fileName, err);
-    return {
-      base64: Buffer.from(arrayBuffer).toString("base64"),
-      contentType: declared,
-      convertedFromHeic: false,
-    };
+    return { bytes, contentType: declared, convertedFromHeic: false };
   }
 }

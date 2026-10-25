@@ -209,7 +209,7 @@ export function signedAnnexureType(file: { name: string; type: string }): string
 /** The plain reason a file can't be uploaded as the signed annexure, or null. */
 export function signedAnnexureProblem(file: { name: string; type: string; size: number }, maxBytes: number): string | null {
   if (signedAnnexureType(file) === null) return "Upload a PDF, JPG or PNG.";
-  if (file.size > maxBytes) return `This file is over ${Math.round(maxBytes / (1024 * 1024))} MB. Please upload a smaller copy.`;
+  if (file.size > maxBytes) return `This file is over ${Math.round(maxBytes / (1024 * 1024))} MB, the most RealComply can take in one file.`;
   if (file.size === 0) return EMPTY_FILE_MESSAGE;
   return null;
 }
