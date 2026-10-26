@@ -491,7 +491,19 @@ export type InvitePreview = {
   email: string;
   isLicenseeInCharge: boolean;
   isAssistant: boolean;
+  /** What they join as, in words: "a licensee in charge", "an office manager"... (0095). */
+  joiningAs: string;
 } | null;
+
+// The sign-up page's words for each invite role (0095). Before 0095 is run
+// invite_role() doesn't exist, and the two old flags still say it.
+const JOINING_AS: Record<string, string> = {
+  agent: "an agent",
+  assistant: "an assistant",
+  licensee_in_charge: "their licensee in charge",
+  office_manager: "office manager",
+  property_manager: "a property manager",
+};
 
 // Called from the (unauthenticated) signup page when it's reached via an
 // invite link, so it can show "you're joining <agency>" and lock the email
@@ -516,11 +528,16 @@ export async function getInvitePreview(token: string): Promise<InvitePreview> {
   if (error || !row) return null;
   // is_assistant has come back from invite_preview since 0025 and was dropped
   // here, so an assistant's invite said "join … as an agent" (10 Oct 2026).
+  const { data: role } = await supabase.rpc("invite_role", { p_token: trimmed });
+  const joiningAs =
+    (typeof role === "string" && JOINING_AS[role]) ||
+    (row.is_licensee_in_charge ? JOINING_AS.licensee_in_charge : row.is_assistant ? JOINING_AS.assistant : JOINING_AS.agent);
   return {
     agencyName: row.agency_name,
     email: row.email,
     isLicenseeInCharge: row.is_licensee_in_charge,
     isAssistant: row.is_assistant === true,
+    joiningAs,
   };
 }
 

@@ -7,6 +7,7 @@ import { officeManagerWording } from "@/lib/office-manager/card";
 import { TeamOfficeManagerControls } from "@/components/office-manager/TeamOfficeManagerControls";
 import { formatAuTimestamp } from "@/lib/format-date";
 import { InviteAgentForm } from "@/components/team/InviteAgentForm";
+import { inviteOptions } from "@/lib/team/invite-options";
 import { PendingInvitesList } from "@/components/team/PendingInvitesList";
 import { StaffRow } from "@/components/team/StaffRow";
 import type { AgencyInvite, Profile } from "@/lib/types";
@@ -31,10 +32,15 @@ export default async function TeamPage() {
       // Who supports whom. Read once for the whole page rather than per row.
       supabase.from("assistant_agents").select("assistant_id, agent_id"),
       officeManagersOf(supabase, profile.agency_id),
-      supabase.from("agencies").select("name, licensee_name, licensee_email").eq("id", profile.agency_id).maybeSingle(),
+      supabase.from("agencies").select("name, licensee_name, licensee_email, pm_enabled").eq("id", profile.agency_id).maybeSingle(),
       supabase.rpc("office_has_active_licensee"),
     ]);
-  const agency = agencyRow as { name: string; licensee_name: string | null; licensee_email: string | null } | null;
+  const agency = agencyRow as {
+    name: string;
+    licensee_name: string | null;
+    licensee_email: string | null;
+    pm_enabled: boolean | null;
+  } | null;
   const officeName = (agency?.name ?? "").trim();
   // The licensee manages everyone; an office manager everyone but a licensee
   // in charge (0093). Making or withdrawing an office manager is the
@@ -147,11 +153,13 @@ export default async function TeamPage() {
                   isAgent: s.is_agent,
                   isAssistant: Boolean(s.is_assistant),
                   isLicensee: s.is_licensee_in_charge,
+                  isPropertyManager: s.is_property_manager === true,
                   archivedAt: s.archived_at ?? null,
                 }}
                 isSelf={s.id === profile.id}
                 canManage={mayManagePeople && (isLicensee || !s.is_licensee_in_charge)}
                 isOfficeManager={Boolean(currentManager(s.id))}
+                offerPropertyManager={agency?.pm_enabled === true}
                 officeManagerControls={
                   mayAppoint && s.id !== profile.id && !s.is_licensee_in_charge ? (
                     <TeamOfficeManagerControls
@@ -180,11 +188,28 @@ export default async function TeamPage() {
           </ul>
         </div>
 
-        <PendingInvitesList invites={invites} canManage={mayManagePeople} />
+        <PendingInvitesList
+          invites={invites}
+          canManage={mayManagePeople}
+          approvedByName={(id) => staff.find((p) => p.id === id)?.full_name?.trim() || null}
+        />
 
         {mayManagePeople ? (
           <div className="mt-6">
-            <InviteAgentForm agents={agents} />
+            <InviteAgentForm
+              agents={agents}
+              options={inviteOptions({
+                isLicensee,
+                isOfficeManager: access.isOfficeManager,
+                isAgentPlan: access.isAgentPlan,
+                officeHasLicenseeLogin: licenseeHasLogin,
+                pmEnabled: agency?.pm_enabled === true,
+                licenseeName: agency?.licensee_name ?? null,
+                licenseeEmail: agency?.licensee_email ?? null,
+              })}
+              officeName={officeName}
+              licensee={{ name: agency?.licensee_name ?? null, email: agency?.licensee_email ?? null }}
+            />
           </div>
         ) : (
           <p className="mt-6 flex items-center gap-1.5 text-xs text-rc-faint">

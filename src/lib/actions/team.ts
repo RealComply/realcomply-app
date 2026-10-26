@@ -5,6 +5,9 @@ import { headers } from "next/headers";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
+import type { InviteRole } from "@/lib/team/invite-options";
+
+const INVITE_ROLES: InviteRole[] = ["agent", "assistant", "licensee_in_charge", "office_manager", "property_manager"];
 
 // Making someone licensee in charge happens in one place (Adam, 16 Oct 2026;
 // 0080), where it is recorded and sign-offs, billing and the annexure move.
@@ -43,25 +46,62 @@ export async function inviteAgent(
 ): Promise<ActionState & { inviteLink?: string }> {
   const { supabase, profile, access } = await requireAuthContext();
 
-  // The licensee, or an office manager (0093). Never as licensee in charge:
-  // see below, and the database refuses an office manager's anyway.
+  // The licensee, or an office manager (0093). What each may invite is in
+  // lib/team/invite-options.ts, and the database checks it again (0095).
   if (!profile.is_licensee_in_charge && !access.isOfficeManager) {
-    return { error: "Only the licensee in charge can invite agents." };
+    return { error: "Only the licensee in charge or an office manager can invite people." };
   }
 
-  const email = str(formData, "email");
-  const fullName = str(formData, "fullName");
-
-  // Role is chosen at invite time now (Adam, 20 Aug 2026). The old form had a
-  // single "licensee in charge" tick; there are three answers.
+  // Role is chosen at invite time (Adam, 20 Aug 2026), five of them since
+  // 0095 (Adam, 26 Oct 2026).
   const role = String(formData.get("role") ?? "agent");
-  // Not as licensee in charge (Adam, 16 Oct 2026; 0080). They join as an
-  // agent, and "Change licensee in charge" on Office profile hands the role
-  // over and records it.
-  if (role === "licensee") {
-    return { error: CHANGE_ON_OFFICE_PROFILE };
+  if (!INVITE_ROLES.includes(role as InviteRole)) {
+    return { error: "Choose what they do here." };
   }
-  const asLicensee = false;
+
+  let email = str(formData, "email");
+  let fullName = str(formData, "fullName");
+
+  // Licensee in charge: only the licensee named in Office profile, at that
+  // email, exactly as recorded, never what the form says (Adam, 26 Oct 2026).
+  // The database writes them onto the invite whatever is sent.
+  //
+  // REVERSAL (Adam, 26 Oct 2026). Was (0093, the same day): an office manager
+  // couldn't invite a licensee in charge. Now they can invite the one named in
+  // Office profile, while the office has no licensee in charge on RealComply.
+  // Where the licensee is on RealComply, handing over stays Change licensee in
+  // charge on Office profile (Adam, 16 Oct 2026; 0080).
+  if (role === "licensee_in_charge") {
+    if (profile.is_licensee_in_charge) {
+      return { error: CHANGE_ON_OFFICE_PROFILE };
+    }
+    const { data: agencyRow } = await supabase
+      .from("agencies")
+      .select("licensee_name, licensee_email")
+      .eq("id", profile.agency_id)
+      .maybeSingle();
+    const agency = agencyRow as { licensee_name: string | null; licensee_email: string | null } | null;
+    email = agency?.licensee_email?.trim() || null;
+    fullName = agency?.licensee_name?.trim() || null;
+    if (!email) {
+      return { error: "There's no licensee email in Office profile. Email admin@realcomply.com.au to add it." };
+    }
+  }
+
+  // Office manager: the licensee in charge only, ticking the words. The
+  // database writes the words and the time on the invite (0095).
+  if (role === "office_manager") {
+    if (!profile.is_licensee_in_charge || access.isAgentPlan) {
+      return { error: "Only the licensee in charge can invite an office manager." };
+    }
+    if (!fullName) {
+      return { error: "Add their full name. It goes in the words you approve." };
+    }
+    if (formData.get("authorise") !== "yes") {
+      return { error: "Tick the box to approve them as office manager." };
+    }
+  }
+
   const asAssistant = role === "assistant";
 
   // Which agents an assistant supports. This IS their access — an assistant
@@ -86,8 +126,12 @@ export async function inviteAgent(
       agency_id: profile.agency_id,
       email: email.toLowerCase(),
       full_name: fullName,
-      is_licensee_in_charge: asLicensee,
+      is_licensee_in_charge: role === "licensee_in_charge",
       is_assistant: asAssistant,
+      // Only sent when set, so Agent and Assistant invites still work before
+      // 0095 is run.
+      ...(role === "office_manager" ? { is_office_manager: true } : {}),
+      ...(role === "property_manager" ? { is_property_manager: true } : {}),
       supports_agent_ids: asAssistant ? supportsAgentIds : [],
       invited_by: profile.id,
     })
@@ -95,7 +139,9 @@ export async function inviteAgent(
     .single();
 
   if (error || !data) {
-    return { error: "Couldn't create the invite — try again." };
+    // 0095's refusals are written for people: pass them through.
+    if (error?.code === "P0001" && error.message) return { error: error.message };
+    return { error: "Couldn't create the invite. Try again." };
   }
 
   const origin = await getOrigin();
@@ -351,6 +397,9 @@ type StaffRow = {
   is_assistant: boolean;
   is_licensee_in_charge: boolean;
   archived_at: string | null;
+  /** Since 0095. */
+  is_property_manager?: boolean;
+  licence_categories?: string[] | null;
 };
 
 // Shared preamble: the caller must be the licensee, and the subject must be
@@ -381,7 +430,9 @@ async function requireLicenseeAndSubject(profileId: string): Promise<LicenseeChe
 
   const { data } = await supabase
     .from("profiles")
-    .select("id, agency_id, full_name, is_agent, is_assistant, is_licensee_in_charge, archived_at")
+    // Every column, so is_property_manager comes back once 0095 is run and
+    // nothing breaks before.
+    .select("*")
     .eq("id", profileId)
     .maybeSingle();
 
@@ -463,7 +514,7 @@ export async function setStaffRole(
   if (!ctx.ok) return { error: ctx.error };
 
   const role = String(formData.get("role") ?? "");
-  if (!["agent", "assistant", "licensee"].includes(role)) {
+  if (!["agent", "assistant", "property_manager", "licensee"].includes(role)) {
     return { error: "Choose a role." };
   }
   // Only someone who already is one keeps "Licensee in charge" here. Making
@@ -499,6 +550,16 @@ export async function setStaffRole(
       is_agent: role !== "assistant",
       is_assistant: role === "assistant",
       is_licensee_in_charge: role === "licensee",
+      // Property manager (0095): an agent with Property management first in
+      // their menu. Only sent when it changes, so this works before 0095 is
+      // run. Their licence category starts as residential property
+      // management when they have none yet (it sets their CPD).
+      ...(role === "property_manager" || ctx.subject.is_property_manager
+        ? { is_property_manager: role === "property_manager" }
+        : {}),
+      ...(role === "property_manager" && (ctx.subject.licence_categories ?? []).length === 0
+        ? { licence_categories: ["residential_property_management"] }
+        : {}),
     })
     .eq("id", profileId);
 

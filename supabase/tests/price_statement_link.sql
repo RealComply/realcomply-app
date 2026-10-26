@@ -1048,8 +1048,9 @@ begin
 
   -- ══════════════ Who can change the licensee's details ══════════════
   -- 21. The assistant on an agent plan and the office's second member can't;
-  --     the agent on their own plan and the office's founder can. An
-  --     assistant can't even if they were somehow the earliest profile.
+  --     the agent on their own plan can. An assistant can't even if they
+  --     were somehow the earliest profile. (The office's founder could until
+  --     0095; see below.)
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', sas, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -1122,23 +1123,38 @@ begin
   exception when others then msg := sqlerrm; end;
   if msg is null then raise exception 'FAIL 22: a member made themselves licensee in charge'; end if;
 
+  -- Since 0095 (Adam, 26 Oct 2026) the founder of an office whose licensee
+  -- isn't on RealComply can't change the licensee's details either (0058 let
+  -- them). RealComply corrects them; below, straight in the database.
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  perform public.set_agency_licensee('Outside Licensee', 'ps-new-lic@example.invalid');
+  msg := null;
+  begin perform public.set_agency_licensee('Outside Licensee', 'ps-new-lic@example.invalid');
+  exception when others then msg := sqlerrm; end;
+  if msg is null then raise exception 'FAIL 21: the founder of an office without a licensee login changed the licensee''s details'; end if;
+  n := 0;
+  begin
+    update public.agencies set licensee_email = 'ps-new-lic@example.invalid' where id = office;
+    get diagnostics n = row_count;
+  exception when others then n := 0; end;
+  if n <> 0 then raise exception 'FAIL 21: the founder changed the licensee''s email on the table'; end if;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  update public.agencies set licensee_name = 'Outside Licensee', licensee_email = 'ps-new-lic@example.invalid' where id = office;
 
   -- 23. Each change is logged, with who made it: the email, the name on its
   --     own, and a change made straight on the table (the agent on their
   --     own plan may). The account holder can read the log; another member
   --     can't. No change, no row. Nobody reads another office's log.
   select count(*) into n from public.licensee_contact_changes
-   where agency_id = office and changed_by = nf
+   where agency_id = office and changed_by is null
      and old_email = 'ps-outside-lic@example.invalid' and new_email = 'ps-new-lic@example.invalid'
      and old_name = 'Outside Licensee' and new_name = 'Outside Licensee';
   if n <> 1 then raise exception 'FAIL 23: the change to the licensee''s email was not logged'; end if;
-  perform public.set_agency_licensee('Outside Licensee Senior', 'ps-new-lic@example.invalid');
+  update public.agencies set licensee_name = 'Outside Licensee Senior' where id = office;
   select count(*) into n from public.licensee_contact_changes
-   where agency_id = office and changed_by = nf
+   where agency_id = office and changed_by is null
      and old_email = 'ps-new-lic@example.invalid' and new_email = 'ps-new-lic@example.invalid'
      and old_name = 'Outside Licensee' and new_name = 'Outside Licensee Senior';
   if n <> 1 then raise exception 'FAIL 23: a change to the licensee''s name alone was not logged'; end if;
