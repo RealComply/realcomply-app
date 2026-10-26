@@ -3155,8 +3155,10 @@ function SaleItem({ item, propertyId, current }: { item: ComplianceItem; propert
   const flag = salePriceFlagText(saved);
   const esp = espText(saved);
 
+  // A flagged card is done but stays open, so the wording and the note box
+  // are seen rather than folded away with it (amber flags never hide).
   return (
-    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} foldable={!flag}>
       <form action={formAction} className="space-y-2">
         <div className="flex gap-2">
           <input
