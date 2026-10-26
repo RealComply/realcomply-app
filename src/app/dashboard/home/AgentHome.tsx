@@ -11,7 +11,8 @@ import { GiftsWidget } from "@/components/home/GiftsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgReadCard } from "@/components/home/SgReadCard";
 import { OfficeManagerHomeCard } from "@/components/office-manager/OfficeManagerHomeCard";
-import type { OfficeManagerCard } from "@/lib/office-manager/card";
+import { OfficeManagerLines } from "@/components/office-manager/OfficeManagerLine";
+import type { OfficeManagerHome } from "@/lib/data/office-manager";
 import { STAGE_LABELS, type Gift, type Profile, type Property, type TrainingSession } from "@/lib/types";
 
 // An agent's or an assistant's Home: their own work only (Adam, 7 Oct 2026).
@@ -36,7 +37,7 @@ export async function AgentHome({
   /** An agent in an office who has not yet confirmed reading the adopted annexure and the SG (brief, 14 Oct 2026). */
   sgReadShows?: boolean;
   /** Asking to be office manager, or where that is up to (0093). */
-  officeManager?: OfficeManagerCard | null;
+  officeManager?: OfficeManagerHome | null;
 }) {
   const cpdYear = currentCpdYear();
 
@@ -89,13 +90,14 @@ export async function AgentHome({
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
       <div className="relative isolate overflow-hidden rounded-card px-3">
         <div className="rc-mesh-bg" />
+        {officeManager?.line && <OfficeManagerLines lines={[officeManager.line]} />}
         <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Home</h1>
         <p className="mt-1 text-sm text-rc-muted">
           {profile.is_assistant ? "The work of the agents you assist" : "Your own work"} — diligence support only, the
           licensee decides.
         </p>
 
-        {officeManager && <OfficeManagerHomeCard card={officeManager} />}
+        {officeManager?.card && <OfficeManagerHomeCard card={officeManager.card} />}
 
         {sgReadShows && <SgReadCard />}
 

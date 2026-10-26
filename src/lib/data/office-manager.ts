@@ -3,8 +3,11 @@ import type { Profile } from "@/lib/types";
 import type { Access } from "@/lib/access";
 import { isAccountHolder } from "@/lib/subscription-end/access";
 import {
-  officeManagerCard,
+  licenseeOfficeManagerHome,
+  officeManagerHome,
   type OfficeManagerCard,
+  type OfficeManagerLine,
+  type OfficeManagerNews,
   type OfficeManagerRecord,
   type OfficeManagerRequest,
 } from "@/lib/office-manager/card";
@@ -16,17 +19,36 @@ import {
 // Before 0093 is run the tables don't exist, and every read here comes back
 // empty: no card, no record.
 
-const RECORD_COLUMNS = "approved_at, approved_by_name, approved_via, withdrawn_at, withdrawn_via, withdrawn_by_name";
+const RECORD_COLUMNS = "id, approved_at, approved_by_name, approved_via, withdrawn_at, withdrawn_via, withdrawn_by_name";
 
-/** The Home card for the signed-in person, or null. */
-export async function officeManagerCardFor(
+/**
+ * The Home cards the signed-in person has seen (0096). Null before 0096 is
+ * run, or on any error: every card then counts as unseen and shows as before.
+ */
+async function seenHomeNotices(supabase: SupabaseClient): Promise<Set<string> | null> {
+  const { data, error } = await supabase.from("home_notices_seen").select("notice_key").like("notice_key", "om-%");
+  if (error || !data) return null;
+  return new Set((data as { notice_key: string }[]).map((r) => r.notice_key));
+}
+
+export type OfficeManagerHome = { card: OfficeManagerCard | null; line: OfficeManagerLine | null };
+
+/** The Home card for the signed-in person, or once seen, the small line. */
+export async function officeManagerHomeFor(
   supabase: SupabaseClient,
   profile: Profile,
   access: Access,
-): Promise<OfficeManagerCard | null> {
-  if (access.isAgentPlan || access.actsAsLicensee) return null;
-  const [{ data: agency }, licenseeLogin, holder, { data: records, error: recordsError }, { data: requests }] =
-    await Promise.all([
+): Promise<OfficeManagerHome> {
+  const none = { card: null, line: null };
+  if (access.isAgentPlan || access.actsAsLicensee) return none;
+  const [
+    { data: agency },
+    licenseeLogin,
+    holder,
+    { data: records, error: recordsError },
+    { data: requests },
+    seenKeys,
+  ] = await Promise.all([
       supabase.from("agencies").select("licensee_name, licensee_email").eq("id", profile.agency_id).maybeSingle(),
       supabase.rpc("office_has_active_licensee"),
       isAccountHolder(supabase),
@@ -44,10 +66,11 @@ export async function officeManagerCardFor(
         .is("cancelled_at", null)
         .order("created_at", { ascending: false })
         .limit(1),
+      seenHomeNotices(supabase),
     ]);
-  if (recordsError) return null;
+  if (recordsError) return none;
   const a = agency as { licensee_name: string | null; licensee_email: string | null } | null;
-  return officeManagerCard({
+  return officeManagerHome({
     isAgentPlan: access.isAgentPlan,
     isLicensee: access.actsAsLicensee,
     isAccountHolder: holder,
@@ -57,11 +80,35 @@ export async function officeManagerCardFor(
     records: (records ?? []) as OfficeManagerRecord[],
     openRequest: ((requests ?? []) as OfficeManagerRequest[])[0] ?? null,
     now: new Date(),
+    seenKeys,
+    personName: profile.full_name?.trim() || profile.email,
+  });
+}
+
+/**
+ * The licensee in charge's Home (with a login): a card once per new office
+ * manager, then a small line for each (0096). Empty for anyone else.
+ */
+export async function licenseeOfficeManagerHomeFor(
+  supabase: SupabaseClient,
+  profile: Profile,
+  access: Access,
+): Promise<{ cards: OfficeManagerNews[]; lines: OfficeManagerLine[] }> {
+  if (!access.officeLicensee || !profile.agency_id) return { cards: [], lines: [] };
+  const [records, seenKeys] = await Promise.all([
+    officeManagersOf(supabase, profile.agency_id),
+    seenHomeNotices(supabase),
+  ]);
+  return licenseeOfficeManagerHome({
+    isOfficeLicensee: true,
+    viewerId: profile.id,
+    records,
+    seenKeys,
+    now: new Date(),
   });
 }
 
 export type OfficeManagerEntry = OfficeManagerRecord & {
-  id: string;
   approved_by: string | null;
   profile_id: string;
   wording: string;
@@ -73,7 +120,7 @@ export type OfficeManagerEntry = OfficeManagerRecord & {
 export async function officeManagersOf(supabase: SupabaseClient, agencyId: string): Promise<OfficeManagerEntry[]> {
   const { data, error } = await supabase
     .from("office_managers")
-    .select(`id, profile_id, approved_by, wording, withdrawn_by_name, ${RECORD_COLUMNS}`)
+    .select(`profile_id, approved_by, wording, ${RECORD_COLUMNS}`)
     .eq("agency_id", agencyId)
     .order("approved_at", { ascending: false });
   if (error || !data) return [];
