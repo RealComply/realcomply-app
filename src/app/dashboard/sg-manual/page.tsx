@@ -8,6 +8,8 @@ import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard"
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { notAskedToSign } from "@/lib/signoff/awaiting";
+import { staffReminderData } from "@/lib/data/staff-reminders";
+import { StaffRemindersCard } from "@/components/registers/StaffRemindersCard";
 import type { SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // SG Manual store — simple upload + version history (see the SG Manual
@@ -27,6 +29,10 @@ export default async function SgManualPage() {
     supabase.from("signoff_signatures").select("*"),
     supabase.from("agencies").select("aml_precommencement_enabled").eq("id", profile.agency_id).maybeSingle(),
   ]);
+
+  // Who still needs to sign or read, for the reminder card (0093): the
+  // licensee or an office manager only.
+  const reminders = access.runsOffice ? (await staffReminderData(supabase, profile)).stillToDo : [];
 
   const versions = (versionRows ?? []) as SgManualVersion[];
   const nameFor = (id: string | null) => (id ? staff.find((s) => s.id === id)?.full_name ?? "Unknown" : "Unknown");
@@ -109,6 +115,17 @@ export default async function SgManualPage() {
               View all sign-offs →
             </Link>
           </div>
+        )}
+
+        {reminders.length > 0 && (
+          <StaffRemindersCard
+            rows={reminders.map((r) => ({
+              id: r.person.id,
+              name: r.person.full_name?.trim() || r.person.email,
+              kinds: r.kinds,
+              lastRemindedAt: r.lastRemindedAt,
+            }))}
+          />
         )}
 
         {/* And an office manager (0093). */}

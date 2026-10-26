@@ -45,8 +45,14 @@
 --      complaints target; can't invite or appoint a licensee in charge; can't
 --      change the licensee in charge's own record.
 --   6. Leaving the office ends the role.
+--   7. DECIDED (Adam, 26 Oct): an office plan's listing lock also lifts on
+--      the licensee's signed adoption page, as on an agent plan (Raine &
+--      Horne Queanbeyan, whose licensee signed one on 21 Oct).
+--   8. Reminders: the licensee or an office manager emails staff who still
+--      need to sign the SG Manual or read and tick the Supervision
+--      Guidelines (Adam, 26 Oct). A new table records each one.
 --
--- Two new tables, both with their grants in this file. Safe to run twice.
+-- Three new tables, each with its grants in this file. Safe to run twice.
 
 -- ── 1. 0092 undone ──────────────────────────────────────────────────────
 -- The ten functions, exactly as before 0092.
@@ -1293,6 +1299,132 @@ create trigger profiles_end_office_manager_on_leaving
   after update of archived_at on public.profiles
   for each row execute function public.end_office_manager_on_leaving();
 
+-- ── 7. A licensee's signed adoption page counts for an office too ───────
+-- DECIDED (Adam, 26 Oct 2026). An office plan's listing lock lifts when the
+-- licensee in charge adopts the annexure in RealComply (0067), and now also
+-- when the licensee's signed adoption page is on file, as on an agent plan
+-- (0071). Raine & Horne Queanbeyan: Vic signed the page and it was uploaded
+-- on 21 Oct, so Igor isn't held at his second listing while a licensee with
+-- no login has no way to adopt in RealComply. Checked on live, 26 Oct: that
+-- is the only office plan with such a page.
+create or replace function public.listing_gate_reason(p_agency_id uuid)
+ returns text
+ language sql
+ stable security definer
+ set search_path to 'public'
+as $function$
+  select case
+    when a.id is null or not a.annexure_gate then null
+    -- CHANGE (Adam, 23 Oct 2026): the first listing is free of the lock.
+    -- Counts listings that still exist (archived too) and ones deleted.
+    when not exists (select 1 from public.properties p where p.agency_id = a.id)
+     and not exists (select 1 from public.deletion_log d
+                      where d.agency_id = a.id and d.what = 'properties')
+      then null
+    when left(coalesce(a.plan, ''), 6) = 'agent_' then
+      case when exists (select 1 from public.signoff_documents d
+                         where d.agency_id = a.id and d.category = 'sg_annexure_licensee_signed')
+           then null else 'signed_annexure' end
+    else
+      -- 0093: or the licensee's signed adoption page, as on an agent plan.
+      case when exists (select 1 from public.sg_annexure_adoptions ad
+                         where ad.agency_id = a.id and ad.signed_at is not null)
+             or exists (select 1 from public.signoff_documents d
+                         where d.agency_id = a.id and d.category = 'sg_annexure_licensee_signed')
+           then null else 'annexure' end
+  end
+  from (select 1) one
+  left join public.agencies a on a.id = p_agency_id;
+$function$;
+
+-- ── 8. Reminding staff to sign and read the Supervision Guidelines ──────
+-- Adam, 26 Oct 2026: "an office manager should be able to email staff to
+-- make sure they sign this and read the supervision guidelines." The
+-- licensee or an office manager emails the staff who still need to sign the
+-- current SG Manual, or read and tick the annexure and the Supervision
+-- Guidelines. Each send is recorded, and one person gets at most one
+-- reminder a day.
+
+-- An office manager sees who has read and ticked, as the licensee does.
+alter policy "sg_read_confirmations: own or licensee can view" on public.sg_read_confirmations
+  using (((agency_id = current_agency_id()) AND ((confirmed_by = auth.uid()) OR is_office_licensee() OR is_office_manager())));
+
+-- New table, so the grants block.
+create table if not exists public.staff_reminders (
+  id            uuid primary key default gen_random_uuid(),
+  agency_id     uuid not null references public.agencies (id) on delete cascade,
+  -- Who was reminded.
+  profile_id    uuid not null references public.profiles (id) on delete cascade,
+  -- What they were reminded to do.
+  kinds         text[] not null check (cardinality(kinds) > 0 and kinds <@ array['sg_manual_sign', 'sg_read']::text[]),
+  sent_by       uuid references public.profiles (id) on delete set null,
+  created_at    timestamptz not null default now(),
+  -- Null when the email didn't go.
+  email_sent_at timestamptz
+);
+comment on table public.staff_reminders is
+  'Reminder emails to staff to sign the SG Manual or read and tick the annexure and Supervision Guidelines, sent by the licensee or an office manager (0093, Adam 26 Oct 2026). At most one a day per person.';
+create index if not exists staff_reminders_person_idx on public.staff_reminders (agency_id, profile_id, created_at desc);
+
+alter table public.staff_reminders enable row level security;
+drop policy if exists "staff_reminders: office side can view" on public.staff_reminders;
+create policy "staff_reminders: office side can view" on public.staff_reminders
+  for select to authenticated
+  using (agency_id = public.current_agency_id() and public.runs_office());
+
+revoke all on table public.staff_reminders from public, anon, authenticated;
+grant select on public.staff_reminders to authenticated;
+grant select, insert, update, delete on public.staff_reminders to service_role;
+
+-- Records a reminder before it is sent, so two presses send one. Null when
+-- this person was already reminded in the last 20 hours.
+create or replace function public.claim_staff_reminder(p_profile_id uuid, p_kinds text[])
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_agency uuid := public.current_agency_id();
+  v_id uuid;
+begin
+  if v_agency is null or not public.runs_office() then
+    raise exception 'Only the licensee in charge or an office manager can send reminders.' using errcode = '42501';
+  end if;
+  if not exists (select 1 from public.profiles
+                  where id = p_profile_id and agency_id = v_agency and archived_at is null)
+     or p_profile_id = auth.uid() then
+    raise exception 'That person isn''t in your office.';
+  end if;
+  -- One at a time per person, so two presses can't both pass the check below.
+  perform pg_advisory_xact_lock(hashtext('staff_reminders:' || p_profile_id::text));
+  if exists (select 1 from public.staff_reminders
+              where profile_id = p_profile_id and created_at > now() - interval '20 hours') then
+    return null;
+  end if;
+  insert into public.staff_reminders (agency_id, profile_id, kinds, sent_by)
+  values (v_agency, p_profile_id, p_kinds, auth.uid())
+  returning id into v_id;
+  return v_id;
+end
+$$;
+
+create or replace function public.record_staff_reminder_email(p_id uuid, p_sent boolean)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.staff_reminders
+     set email_sent_at = case when p_sent then now() else null end
+   where id = p_id and sent_by = auth.uid();
+$$;
+
+revoke execute on function public.claim_staff_reminder(uuid, text[]) from public, anon;
+revoke execute on function public.record_staff_reminder_email(uuid, boolean) from public, anon;
+grant execute on function public.claim_staff_reminder(uuid, text[]) to authenticated;
+grant execute on function public.record_staff_reminder_email(uuid, boolean) to authenticated;
+
 -- Check: stops with a message if anything above is missing.
 do $$
 begin
@@ -1324,8 +1456,9 @@ begin
 end
 $$;
 
--- What you should see: one row. undone_0092 true, office_side_rules 54,
--- delete_rules_for_office_manager 0, tables_ready true, office_managers 0.
+-- What you should see: one row. undone_0092 true, office_side_rules 56,
+-- delete_rules_for_office_manager 0, tables_ready true, office_managers 0,
+-- signed_page_offices "Raine & Horne Queanbeyan: open".
 select not exists (select 1 from information_schema.columns
                     where table_schema = 'public' and table_name = 'agencies'
                       and column_name = 'licensee_not_on_realcomply') as undone_0092,
@@ -1336,4 +1469,11 @@ select not exists (select 1 from information_schema.columns
            and tablename <> 'assistant_agents') as delete_rules_for_office_manager,
        (to_regclass('public.office_managers') is not null
         and to_regclass('public.office_manager_requests') is not null) as tables_ready,
-       (select count(*) from public.office_managers) as office_managers;
+       (select count(*) from public.office_managers) as office_managers,
+       -- Offices whose lock the licensee's signed page lifts: on live,
+       -- Raine & Horne Queanbeyan, which should read "open".
+       (select string_agg(btrim(a.name) || ': ' || coalesce(public.listing_gate_reason(a.id), 'open'), '; ')
+          from public.agencies a
+         where left(coalesce(a.plan, ''), 6) <> 'agent_'
+           and exists (select 1 from public.signoff_documents d
+                        where d.agency_id = a.id and d.category = 'sg_annexure_licensee_signed')) as signed_page_offices;

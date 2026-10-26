@@ -245,6 +245,55 @@ begin
   select count(*) into n from public.office_managers where profile_id = b and withdrawn_at is null;
   if n <> 0 then raise exception 'FAIL 9b: still office manager after the licensee withdrew it'; end if;
 
+  -- 11. An office plan's listing lock lifts on the licensee's signed
+  --     adoption page, as on an agent plan (Adam, 26 Oct).
+  update public.agencies set annexure_gate = true where id = o1;
+  if public.listing_gate_reason(o1) is distinct from 'annexure' then
+    raise exception 'FAIL 11: office one not waiting on the annexure (got %)', public.listing_gate_reason(o1);
+  end if;
+  insert into public.signoff_documents (agency_id, category, title, file_path, file_name, signer_scope, uploaded_by)
+  values (o1, 'sg_annexure_licensee_signed', 'Signed SG annexure (licensee adoption)',
+          o1::text || '/_signoffs/licensee-signed/1-signed.pdf', 'signed.pdf', 'licensee_only', f);
+  if public.listing_gate_reason(o1) is not null then
+    raise exception 'FAIL 11b: the licensee''s signed page didn''t lift the lock (got %)', public.listing_gate_reason(o1);
+  end if;
+
+  -- 12. Reminders to sign and read the Supervision Guidelines: the licensee
+  --     or an office manager, at most one a day per person; an agent can't.
+  perform set_config('request.jwt.claims', json_build_object('sub', l, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  if public.claim_staff_reminder(b, array['sg_manual_sign', 'sg_read']) is null then
+    raise exception 'FAIL 12: the licensee couldn''t remind an agent';
+  end if;
+  if public.claim_staff_reminder(b, array['sg_read']) is not null then
+    raise exception 'FAIL 12b: reminded the same person twice in a day';
+  end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', b, 'role', 'authenticated')::text, true);
+  begin
+    perform public.claim_staff_reminder(l, array['sg_read']);
+    raise exception 'FAIL 12c: an agent sent a reminder';
+  exception when insufficient_privilege then null;
+  end;
+  perform set_config('request.jwt.claims', json_build_object('sub', l, 'role', 'authenticated')::text, true);
+  perform public.grant_office_manager(b);
+  perform set_config('request.jwt.claims', json_build_object('sub', b, 'role', 'authenticated')::text, true);
+  if public.claim_staff_reminder(l, array['sg_manual_sign']) is null then
+    raise exception 'FAIL 12d: an office manager couldn''t send a reminder';
+  end if;
+  begin
+    perform public.claim_staff_reminder(b, array['sg_read']);
+    raise exception 'FAIL 12e: reminded themselves';
+  exception when raise_exception then null;
+  end;
+  -- 13. ...and sees who has read and ticked, as the licensee does.
+  reset role;
+  insert into public.sg_read_confirmations (agency_id, confirmed_by, annexure_version) values (o2, l, '1.0');
+  set local role authenticated;
+  select count(*) into n from public.sg_read_confirmations where agency_id = o2;
+  if n <> 1 then raise exception 'FAIL 13: an office manager can''t see who has read and ticked'; end if;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+
   -- 10. Not for an agent on their own plan.
   perform set_config('request.jwt.claims', json_build_object('sub', s, 'role', 'authenticated')::text, true);
   set local role authenticated;
