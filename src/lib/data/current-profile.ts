@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
-import { accessFrom, type Access } from "@/lib/access";
+import { accessFrom, type Access, type AgencyFooting } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import type { Profile } from "@/lib/types";
@@ -138,8 +138,10 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
 export const requireAccess = cache(async function requireAccess(): Promise<{ profile: Profile; access: Access }> {
   const profile = await requireProfile();
   const supabase = await createClient();
-  const { data: agency } = await supabase.from("agencies").select("plan").eq("id", profile.agency_id).maybeSingle();
-  return { profile, access: accessFrom(profile, (agency as { plan?: string } | null)?.plan) };
+  // Every column, so licensee_not_on_realcomply comes through once 0092 has
+  // added it and nothing breaks before then.
+  const { data: agency } = await supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle();
+  return { profile, access: accessFrom(profile, agency as AgencyFooting | null) };
 });
 
 /**

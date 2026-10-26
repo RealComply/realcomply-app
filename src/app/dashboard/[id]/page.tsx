@@ -204,7 +204,7 @@ export default async function PropertyPage({
     licenseeName: agencyDetails?.licensee_name ?? null,
     licenseeEmail: agencyDetails?.licensee_email ?? null,
     actsAsLicensee: access.actsAsLicensee,
-    agentPlan: access.isAgentPlan,
+    agentPlan: access.worksAsAgentPlan,
     links: priceLinks,
     stale: livePrice ? priceRequestStale(livePrice, storedItems) : false,
     approval: priceApproval(allItems["b4"], new Map(people.map((x) => [x.id, { full_name: x.full_name }]))),

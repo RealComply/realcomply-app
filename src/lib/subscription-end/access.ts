@@ -56,16 +56,20 @@ export async function isAccountHolder(supabase: SupabaseClient): Promise<boolean
 export async function endedStateFor(supabase: SupabaseClient, profile: Profile): Promise<EndedState | null> {
   const { data } = await supabase
     .from("agencies")
-    .select("id, name, ended_at, plan")
+    // Every column, so licensee_not_on_realcomply comes through once 0092
+    // has added it and nothing breaks before then.
+    .select("*")
     .eq("id", profile.agency_id)
     .maybeSingle();
 
-  const agency = data as { id: string; name: string; ended_at: string | null; plan: string | null } | null;
+  const agency = data as
+    | { id: string; name: string; ended_at: string | null; plan: string | null; licensee_not_on_realcomply?: boolean | null }
+    | null;
   if (!agency?.ended_at) return null;
 
   // The agent on their own plan is the account holder (lib/access.ts).
-  const access = accessFrom(profile, agency.plan);
-  const holder = (await isAccountHolder(supabase)) || (access.isAgentPlan && access.actsAsLicensee);
+  const access = accessFrom(profile, agency);
+  const holder = (await isAccountHolder(supabase)) || (access.worksAsAgentPlan && access.actsAsLicensee);
 
   return {
     agencyId: agency.id,

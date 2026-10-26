@@ -197,19 +197,19 @@ describe("approverNameTooLong", () => {
 describe("noLicenseeEmailMessage", () => {
   it("sends the agent on their own plan to Team", () => {
     assert.equal(
-      noLicenseeEmailMessage({ actsAsLicensee: true, isAgentPlan: true }),
+      noLicenseeEmailMessage({ actsAsLicensee: true, worksAsAgentPlan: true }),
       "Add your licensee in charge's email in Team settings first.",
     );
   });
   it("sends their assistant to the agent, who can add it", () => {
     assert.equal(
-      noLicenseeEmailMessage({ actsAsLicensee: false, isAgentPlan: true }),
+      noLicenseeEmailMessage({ actsAsLicensee: false, worksAsAgentPlan: true }),
       "Ask your agent to add your licensee in charge's email in Team settings.",
     );
   });
   it("sends an office whose licensee isn't on RealComply to support", () => {
     assert.equal(
-      noLicenseeEmailMessage({ actsAsLicensee: false, isAgentPlan: false }),
+      noLicenseeEmailMessage({ actsAsLicensee: false, worksAsAgentPlan: false }),
       "There's no email on file for your licensee in charge. Contact RealComply support to add it.",
     );
   });

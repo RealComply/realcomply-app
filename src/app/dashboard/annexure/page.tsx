@@ -21,7 +21,7 @@ export const metadata = { title: "The annexure · RealComply" };
 
 export default async function OfficeAnnexurePage() {
   const { profile, access } = await requireAccess();
-  if (access.isAgentPlan) redirect("/dashboard/home");
+  if (access.worksAsAgentPlan) redirect("/dashboard/home");
 
   const supabase = await createClient();
   const [{ data: agencyRow }, adoption] = await Promise.all([

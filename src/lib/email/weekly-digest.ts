@@ -442,7 +442,7 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
         sections.push(...trainingSection);
       }
 
-      const link = digestLink(accessFrom(profile, bundle.agency.plan).actsAsLicensee);
+      const link = digestLink(accessFrom(profile, bundle.agency).actsAsLicensee);
       sections.push({ kind: "button", label: link.label, href: link.href });
 
       const doc: EmailDocument = {

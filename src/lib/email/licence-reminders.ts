@@ -398,7 +398,7 @@ export async function runLicenceReminders(
     // licensee in charge keeps the corporation licence and gets the test
     // reminder, but the job looked only at the flag: nobody was told about
     // the corporation licence, and nobody about their assistant's certificate.
-    const licensees = profiles.filter((p) => accessFrom(p, agency.plan).actsAsLicensee);
+    const licensees = profiles.filter((p) => accessFrom(p, agency).actsAsLicensee);
 
     const subjects: Subject[] = [];
     for (const source of EXPIRY_SOURCES) {

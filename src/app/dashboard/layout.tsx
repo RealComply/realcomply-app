@@ -97,7 +97,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // card is in. Only where the office's annexure lock is on, so the offices
   // that existed before it never see it unless RealComply switches theirs on.
   // Only on a clean read: if their confirmation can't be read, no screen.
-  if (billing?.annexure_gate === true && access.isAgentPlan && access.actsAsLicensee) {
+  if (billing?.annexure_gate === true && access.worksAsAgentPlan && access.actsAsLicensee) {
     const { data: ackRow, error: ackError } = await supabase
       .from("agent_acknowledgements")
       .select("id")

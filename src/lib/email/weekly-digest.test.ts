@@ -8,16 +8,16 @@ const agent = { is_licensee_in_charge: false, is_assistant: false, archived_at: 
 
 describe("digestLink", () => {
   it("sends the licensee in charge to Office overview", () => {
-    assert.match(digestLink(accessFrom(licensee, "office_1").actsAsLicensee).href, /\/dashboard\/portfolio$/);
+    assert.match(digestLink(accessFrom(licensee, { plan: "office_1" }).actsAsLicensee).href, /\/dashboard\/portfolio$/);
   });
 
   it("sends an agent in an office to their listings, not to a page that is not found for them", () => {
-    const link = digestLink(accessFrom(agent, "office_2").actsAsLicensee);
+    const link = digestLink(accessFrom(agent, { plan: "office_2" }).actsAsLicensee);
     assert.match(link.href, /\/dashboard$/);
     assert.equal(link.label, "Open your listings");
   });
 
   it("sends the agent on their own plan to Office overview, which they can open", () => {
-    assert.match(digestLink(accessFrom(agent, "agent_1").actsAsLicensee).href, /\/dashboard\/portfolio$/);
+    assert.match(digestLink(accessFrom(agent, { plan: "agent_1" }).actsAsLicensee).href, /\/dashboard\/portfolio$/);
   });
 });

@@ -13,7 +13,7 @@ import { draftEspReasoning } from "@/lib/data/esp-draft";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { redirect } from "next/navigation";
-import { accessFrom } from "@/lib/access";
+import { accessFrom, type AgencyFooting } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
 import {
@@ -120,7 +120,9 @@ export async function requireAuthContext() {
   // the dashboard, which for an ended agency is the records page.
   const { data: agency } = await supabase
     .from("agencies")
-    .select("ended_at, plan")
+    // Every column, so licensee_not_on_realcomply comes through once 0092
+    // has added it and nothing breaks before then.
+    .select("*")
     .eq("id", (profile as { agency_id: string }).agency_id)
     .maybeSingle();
   if ((agency as { ended_at?: string | null } | null)?.ended_at) {
@@ -130,7 +132,10 @@ export async function requireAuthContext() {
   // Who may do what (lib/access.ts; the database rules in 0058 are the ones
   // that count). Every action that is the licensee's checks access, not the
   // raw flag, so the agent on their own plan counts as the licensee.
-  const access = accessFrom(profile as { is_licensee_in_charge: boolean; is_assistant: boolean; archived_at?: string | null }, (agency as { plan?: string } | null)?.plan);
+  const access = accessFrom(
+    profile as { is_licensee_in_charge: boolean; is_assistant: boolean; archived_at?: string | null },
+    agency as AgencyFooting | null,
+  );
 
   return { supabase, user, profile, access };
 }

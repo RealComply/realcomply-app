@@ -267,8 +267,13 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
                 placeholder="licensee@youragency.com.au"
                 className="mt-2 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
               />
+              {/* Office plans too (Adam, 26 Oct 2026; 0092): whatever plan
+                  they choose next, the person signing up runs the account
+                  and the licensee signs by email link, as on an agent's own
+                  plan. Said here so it is no surprise later. */}
               <p className="mt-1.5 text-xs leading-relaxed text-rc-muted">
-                Sign-off requests go to this address, and their name goes on the file.
+                Sign-off requests go to this address, and their name goes on the file. You run the account, and
+                your licensee signs by email link without needing a login.
               </p>
             </div>
           )}

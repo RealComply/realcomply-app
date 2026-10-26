@@ -93,7 +93,7 @@ export default async function ProfileSettingsPage() {
     lastChange = describeEntityNameChange(last.via, who, formatAuTimestamp(last.changed_at));
   }
 
-  const licensee = access.isAgentPlan ? null : await licenseeCard(supabase, profile, access.officeLicensee);
+  const licensee = access.worksAsAgentPlan ? null : await licenseeCard(supabase, profile, access.officeLicensee);
 
   const officeDetails = [
     { label: "Corporation licence", where: "Registers", href: "/dashboard/registers?tab=licence" },

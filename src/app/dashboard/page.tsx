@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   // open and save as normal.
   const gate = await listingGate(supabase);
   const lockLicensee = gate
-    ? await licenseeNameFor(supabase, profile.agency_id, { agentPlan: access.isAgentPlan })
+    ? await licenseeNameFor(supabase, profile.agency_id, { agentPlan: access.worksAsAgentPlan })
     : null;
   const change = gate ? null : await licenseeChangeStatus(supabase);
   const newLicenseeLock = change?.annexurePending === true;
