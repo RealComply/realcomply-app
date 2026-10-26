@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireLicenseePage } from "@/lib/data/current-profile";
+import { requireOfficePage } from "@/lib/data/current-profile";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { LICENCE_CATEGORY_LABELS, cleanLicenceCategories } from "@/lib/rules/nsw-cpd";
 import { BREACH_CATEGORY_LABELS } from "@/lib/types";
@@ -23,7 +23,7 @@ const LICENCE_TYPE_LABELS: Record<string, string> = {
 export default async function RegistersExportPage() {
   // Licensee only (Adam, 7 Oct 2026): a typed address refuses, not just a
   // hidden link.
-  const { profile, access } = await requireLicenseePage();
+  const { profile, access } = await requireOfficePage();
   const supabase = await createClient();
   const cpdYear = currentCpdYear();
 

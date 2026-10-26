@@ -45,7 +45,8 @@ export async function createSignoffDocument(params: {
   // REVERSAL (Adam, 7 Oct 2026): trust accounts are the licensee's only, and
   // an assistant no longer has them (brief: agent access, 8 Oct). The
   // database refuses an assistant's document too (0058).
-  const mayPublish = access.actsAsLicensee;
+  // Or an office manager (0093): uploading is office side; signing is not.
+  const mayPublish = access.runsOffice;
 
   if (!mayPublish) {
     return isReconciliation
@@ -139,7 +140,7 @@ export async function createSignoffDocument(params: {
 // have worked, but it asks everyone who already signed to sign again.
 export async function askStaffToSign(documentId: string, _prev: ActionState, _formData: FormData): Promise<ActionState> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) {
+  if (!access.runsOffice) {
     return { error: "Only the licensee in charge can ask staff to sign." };
   }
 

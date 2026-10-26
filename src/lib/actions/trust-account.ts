@@ -37,8 +37,8 @@ function openedOnFrom(formData: FormData): { openedOn: string | null; error: str
 // statement about the business, not clerical work.
 
 export async function createTrustAccount(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can add a trust account." };
   }
 
@@ -58,8 +58,8 @@ export async function createTrustAccount(_prev: ActionState, formData: FormData)
 }
 
 export async function renameTrustAccount(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can rename a trust account." };
   }
 
@@ -87,8 +87,8 @@ export async function setTrustAccountArchived(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
-  if (!profile.is_licensee_in_charge) {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can close a trust account." };
   }
 
@@ -123,9 +123,9 @@ export async function saveTrustAudit(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  if (!(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can record the trust account audit." };
   }
 

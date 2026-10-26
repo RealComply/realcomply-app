@@ -10,6 +10,8 @@ import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home
 import { GiftsWidget } from "@/components/home/GiftsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgReadCard } from "@/components/home/SgReadCard";
+import { OfficeManagerHomeCard } from "@/components/office-manager/OfficeManagerHomeCard";
+import type { OfficeManagerCard } from "@/lib/office-manager/card";
 import { STAGE_LABELS, type Gift, type Profile, type Property, type TrainingSession } from "@/lib/types";
 
 // An agent's or an assistant's Home: their own work only (Adam, 7 Oct 2026).
@@ -27,11 +29,14 @@ export async function AgentHome({
   supabase,
   profile,
   sgReadShows = false,
+  officeManager = null,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   profile: Profile;
   /** An agent in an office who has not yet confirmed reading the adopted annexure and the SG (brief, 14 Oct 2026). */
   sgReadShows?: boolean;
+  /** Asking to be office manager, or where that is up to (0093). */
+  officeManager?: OfficeManagerCard | null;
 }) {
   const cpdYear = currentCpdYear();
 
@@ -89,6 +94,8 @@ export async function AgentHome({
           {profile.is_assistant ? "The work of the agents you assist" : "Your own work"} — diligence support only, the
           licensee decides.
         </p>
+
+        {officeManager && <OfficeManagerHomeCard card={officeManager} />}
 
         {sgReadShows && <SgReadCard />}
 

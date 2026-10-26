@@ -76,7 +76,7 @@ export async function GET(request: Request) {
       .ilike("address", `%${term}%`)
       .order("created_at", { ascending: false })
       .limit(6),
-    access.actsAsLicensee
+    access.runsOffice
       ? supabase
           .from("profiles")
           .select("id, full_name, email, is_licensee_in_charge, is_assistant, is_agent")

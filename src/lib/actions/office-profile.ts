@@ -14,7 +14,7 @@ export type OfficeNamesState = { error: string | null; saved: boolean };
 
 export async function saveOfficeNames(_prev: OfficeNamesState, formData: FormData): Promise<OfficeNamesState> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) {
+  if (!access.runsOffice) {
     return { error: "Only the licensee in charge can change the office's names.", saved: false };
   }
 

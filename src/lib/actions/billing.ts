@@ -57,7 +57,7 @@ export async function startCheckout(
   // use RealComply at all until this has run, so they must be able to. The
   // agent on their own plan also counts as the licensee (lib/access.ts), the
   // same rule the Billing page uses to let them in.
-  if (!profile.is_licensee_in_charge && !access.actsAsLicensee && !(await isAccountHolder(supabase))) {
+  if (!profile.is_licensee_in_charge && !access.runsOffice && !(await isAccountHolder(supabase))) {
     return { error: "Only the licensee in charge or the account holder can set up billing for the agency." };
   }
 
@@ -215,7 +215,7 @@ export async function openBillingPortal(_prev: BillingActionState, _formData: Fo
   // Same rule as the Billing page (10 Oct 2026). Licensee only left the agent
   // on their own plan, and an office founder who is not the licensee, with a
   // subscription they had started and no way to cancel it or change the card.
-  if (!access.actsAsLicensee && !(await isAccountHolder(supabase))) {
+  if (!access.runsOffice && !(await isAccountHolder(supabase))) {
     return { error: "Only the licensee in charge or the account holder can manage billing." };
   }
 

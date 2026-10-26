@@ -50,16 +50,21 @@ export function UserBar({
   agencyName = null,
   pmEnabled = false,
   actsAsLicensee = false,
+  runsOffice = false,
+  isOfficeManager = false,
   isAccountHolder = false,
 }: {
   profile: Profile;
   agencyName?: string | null;
   pmEnabled?: boolean;
   actsAsLicensee?: boolean;
+  /** The licensee or an office manager (0093). */
+  runsOffice?: boolean;
+  isOfficeManager?: boolean;
   isAccountHolder?: boolean;
 }) {
   const name = profile.full_name ?? profile.email;
-  const role = roleLabel(profile);
+  const role = isOfficeManager ? `${roleLabel(profile)} · Office manager` : roleLabel(profile);
 
   return (
     // pl-16 on mobile clears the sidebar's floating menu button, which is
@@ -78,7 +83,7 @@ export function UserBar({
           Real<span className="text-rc-green-deep">Comply</span>
         </span>
       </Link>
-      <GlobalSearch actsAsLicensee={actsAsLicensee} pmEnabled={pmEnabled} isAccountHolder={isAccountHolder} />
+      <GlobalSearch actsAsLicensee={actsAsLicensee} runsOffice={runsOffice} pmEnabled={pmEnabled} isAccountHolder={isAccountHolder} />
 
       <Link
         href="/dashboard/new"

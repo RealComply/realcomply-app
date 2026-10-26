@@ -130,7 +130,14 @@ export async function requireAuthContext() {
   // Who may do what (lib/access.ts; the database rules in 0058 are the ones
   // that count). Every action that is the licensee's checks access, not the
   // raw flag, so the agent on their own plan counts as the licensee.
-  const access = accessFrom(profile as { is_licensee_in_charge: boolean; is_assistant: boolean; archived_at?: string | null }, (agency as { plan?: string } | null)?.plan);
+  // An office manager (0093) gets the office side: runsOffice. Before 0093 is
+  // run the function doesn't exist and nobody is one.
+  const { data: officeManager, error: officeManagerError } = await supabase.rpc("is_office_manager");
+  const access = accessFrom(
+    profile as { is_licensee_in_charge: boolean; is_assistant: boolean; archived_at?: string | null },
+    (agency as { plan?: string } | null)?.plan,
+    !officeManagerError && officeManager === true,
+  );
 
   return { supabase, user, profile, access };
 }

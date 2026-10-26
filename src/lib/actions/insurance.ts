@@ -175,7 +175,7 @@ export async function attachInsuranceCertificate(
 ): Promise<InsuranceUploadResult> {
   if (!isPolicy(policy)) return { error: "Unknown policy." };
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return { error: NOT_YOURS };
+  if (!access.runsOffice) return { error: NOT_YOURS };
   // Only a file in this policy's own folder (the database refuses anything
   // else too, 0076), so this can never be pointed at another document.
   if (!isInFolder(path, insuranceFolder(profile.agency_id, policy))) {
@@ -252,7 +252,7 @@ export async function saveInsuranceDetails(
 ): Promise<ActionState> {
   if (!isPolicy(policy)) return { error: "Unknown policy." };
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return { error: NOT_YOURS };
+  if (!access.runsOffice) return { error: NOT_YOURS };
 
   const sent = sentValues(formData);
   if (sent.expiry && !validIsoDate(sent.expiry)) return { error: "Enter the expiry date as a date." };
@@ -353,7 +353,7 @@ export async function addOtherInsurance(input: {
   if (!isOtherInsuranceKind(kind)) return { error: "Choose the type of insurance." };
   if (typeof policyId !== "string" || !UUID.test(policyId)) return { error: "Something went wrong. Try again." };
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return { error: NOT_YOURS };
+  if (!access.runsOffice) return { error: NOT_YOURS };
   // Only a file in this new policy's own folder (the database refuses
   // anything else too, 0078).
   if (typeof path !== "string" || !isInFolder(path, otherInsuranceFolder(profile.agency_id, policyId))) {
@@ -412,7 +412,7 @@ export async function attachOtherInsuranceCertificate(
   fileName: string,
 ): Promise<InsuranceUploadResult> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return { error: NOT_YOURS };
+  if (!access.runsOffice) return { error: NOT_YOURS };
   const policy = await loadOtherPolicy(supabase, profile.agency_id, policyId);
   if (!policy) return { error: "Couldn't find that policy. It may have been removed." };
   if (!isInFolder(path, otherInsuranceFolder(profile.agency_id, policy.id))) {
@@ -470,7 +470,7 @@ export async function saveOtherInsuranceDetails(
   formData: FormData,
 ): Promise<ActionState> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return { error: NOT_YOURS };
+  if (!access.runsOffice) return { error: NOT_YOURS };
 
   const sent = sentValues(formData);
   if (sent.expiry && !validIsoDate(sent.expiry)) return { error: "Enter the expiry date as a date." };

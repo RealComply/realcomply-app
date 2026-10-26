@@ -114,7 +114,7 @@ export default async function TrainingPage({
   // but not that person's plan or attendance, so a card for them would always
   // read empty whatever they had done (preview check, 9 Oct 2026). They get
   // their own card only; the licensee gets everyone's.
-  const people = access.actsAsLicensee ? staff : staff.filter((s) => s.id === profile.id);
+  const people = access.runsOffice ? staff : staff.filter((s) => s.id === profile.id);
 
   // Someone archived has left: their card stays as history, but they don't
   // need a plan (check, 10 Oct 2026; they kept the badge up for good).
@@ -169,7 +169,7 @@ export default async function TrainingPage({
       </WhyDisclosure>
 
       {/* The licensee runs the office's training log (Adam, 7 Oct 2026). */}
-      {access.actsAsLicensee && (
+      {access.runsOffice && (
         <div className="mt-4">
           <AddSessionForm />
         </div>
@@ -179,7 +179,7 @@ export default async function TrainingPage({
         {sessions.length === 0 ? (
           <p className="text-sm text-rc-muted">
             {/* Anyone else sees only the sessions they attended (0058). */}
-            {access.actsAsLicensee ? "No training sessions logged yet." : "No sessions you attended yet."}
+            {access.runsOffice ? "No training sessions logged yet." : "No sessions you attended yet."}
           </p>
         ) : (
           sessions.map((session) => (
@@ -189,7 +189,7 @@ export default async function TrainingPage({
               staff={staff}
               attendeeIds={attendeesBySession.get(session.id) ?? []}
               canDelete={access.actsAsLicensee}
-              ownOnly={!access.actsAsLicensee}
+              ownOnly={!access.runsOffice}
             />
           ))
         )}
@@ -199,7 +199,7 @@ export default async function TrainingPage({
         <section className="mt-8">
           <h2 className="text-sm font-semibold text-rc-ink">Per-agent training record</h2>
           <p className="mt-1 text-xs text-rc-muted">
-            {access.actsAsLicensee ? (
+            {access.runsOffice ? (
               <>
                 Who&rsquo;s attended what — mark attendance on a session above (&ldquo;Edit attendance&rdquo;) to
                 populate this.

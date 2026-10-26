@@ -37,6 +37,8 @@ export function StaffRow({
   agents,
   supporting,
   subtitle,
+  isOfficeManager = false,
+  officeManagerControls = null,
 }: {
   person: StaffPerson;
   isSelf: boolean;
@@ -45,6 +47,10 @@ export function StaffRow({
   /** The agents this person assists now, so the Role form opens with them ticked. */
   supporting: string[];
   subtitle: string;
+  /** Approved by the licensee as office manager (0093). */
+  isOfficeManager?: boolean;
+  /** Make office manager / Withdraw, for the licensee in charge (0093). */
+  officeManagerControls?: React.ReactNode;
 }) {
   const [editing, setEditing] = useState<"name" | "role" | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
@@ -103,6 +109,11 @@ export function StaffRow({
               Assistant
             </span>
           )}
+          {!archived && isOfficeManager && (
+            <span className="rounded-full bg-rc-green-soft px-2 py-0.5 text-[11px] font-medium text-rc-green-deep">
+              Office manager
+            </span>
+          )}
 
           {canManage && !archived && (
             <button
@@ -126,6 +137,8 @@ export function StaffRow({
           )}
         </div>
       </div>
+
+      {!archived && officeManagerControls}
 
       {removeState.error && (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-rc-amber-deep">

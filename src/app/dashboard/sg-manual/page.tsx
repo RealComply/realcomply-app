@@ -8,6 +8,8 @@ import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard"
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { notAskedToSign } from "@/lib/signoff/awaiting";
+import { staffReminderData } from "@/lib/data/staff-reminders";
+import { StaffRemindersCard } from "@/components/registers/StaffRemindersCard";
 import type { SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
 
 // SG Manual store — simple upload + version history (see the SG Manual
@@ -28,6 +30,10 @@ export default async function SgManualPage() {
     supabase.from("agencies").select("aml_precommencement_enabled").eq("id", profile.agency_id).maybeSingle(),
   ]);
 
+  // Who still needs to sign or read, for the reminder card (0093): the
+  // licensee or an office manager only.
+  const reminders = access.runsOffice ? (await staffReminderData(supabase, profile)).stillToDo : [];
+
   const versions = (versionRows ?? []) as SgManualVersion[];
   const nameFor = (id: string | null) => (id ? staff.find((s) => s.id === id)?.full_name ?? "Unknown" : "Unknown");
 
@@ -47,7 +53,7 @@ export default async function SgManualPage() {
   // who joined after it was published and before 0060 began adding new
   // starters. Only the licensee reads every row, so only they can tell.
   const notAsked =
-    access.actsAsLicensee && currentSignoff?.signer_scope === "all_staff" ? notAskedToSign(staff, currentSigs) : [];
+    access.runsOffice && currentSignoff?.signer_scope === "all_staff" ? notAskedToSign(staff, currentSigs) : [];
   // The signed copy where there is one, so opening the current version from
   // this page shows the signature page rather than the bare upload. The
   // version list below still links each original.
@@ -65,7 +71,7 @@ export default async function SgManualPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Supervision Guidelines Manual</h1>
             <p className="mt-1 text-sm text-rc-muted">
-              {profile.is_licensee_in_charge
+              {profile.is_licensee_in_charge || access.isOfficeManager
                 ? "Upload and keep the current version on file, with history."
                 : "The office's current version, with history. The licensee in charge publishes new versions."}
             </p>
@@ -101,7 +107,7 @@ export default async function SgManualPage() {
               signatures={currentSigs}
               profiles={staff}
               currentProfile={profile}
-              ownOnly={!access.actsAsLicensee}
+              ownOnly={!access.runsOffice}
               fileUrl={currentSignoffUrl}
               notAsked={notAsked}
             />
@@ -111,7 +117,19 @@ export default async function SgManualPage() {
           </div>
         )}
 
-        {profile.is_licensee_in_charge ? (
+        {reminders.length > 0 && (
+          <StaffRemindersCard
+            rows={reminders.map((r) => ({
+              id: r.person.id,
+              name: r.person.full_name?.trim() || r.person.email,
+              kinds: r.kinds,
+              lastRemindedAt: r.lastRemindedAt,
+            }))}
+          />
+        )}
+
+        {/* And an office manager (0093). */}
+        {profile.is_licensee_in_charge || access.isOfficeManager ? (
           <div className="mt-6">
             <SgManualUploader profile={profile} isFirstUpload={versions.length === 0} />
           </div>

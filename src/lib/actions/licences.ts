@@ -394,10 +394,10 @@ async function heldLicenceRead(token: string) {
   });
   if (!v.ok) return { problem: pendingReadProblem(v.reason, "licence") } as const;
   const p = v.pending;
-  if (p.profileId !== profile.id && !profile.is_licensee_in_charge) {
+  if (p.profileId !== profile.id && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { problem: "Only the licensee in charge can answer for someone else's licence." } as const;
   }
-  if (!p.fresh && !access.actsAsLicensee) return { problem: "Only the licensee in charge can do this." } as const;
+  if (!p.fresh && !access.runsOffice) return { problem: "Only the licensee in charge can do this." } as const;
   const subject = await loadPerson(supabase, p.profileId);
   if (!subject) return { problem: "Couldn't find that person." } as const;
   if (!isInFolder(p.path, `${subject.agency_id}/_licences/${subject.id}/`)) {
@@ -486,8 +486,8 @@ export async function attachLicenceDocument(
   path: string,
   fileName: string,
 ): Promise<LicenceReadResult> {
-  const { supabase, profile } = await requireAuthContext();
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (profile.id !== profileId && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can attach someone else's licence document." };
   }
   const subject = await loadPerson(supabase, profileId);
@@ -505,7 +505,7 @@ export async function attachLicenceDocument(
  */
 export async function readLicenceFromDocument(profileId: string): Promise<LicenceReadResult> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee || (profile.id !== profileId && !profile.is_licensee_in_charge)) {
+  if (!access.runsOffice || (profile.id !== profileId && !(profile.is_licensee_in_charge || access.isOfficeManager))) {
     return { error: "Only the licensee in charge can do this." };
   }
   const subject = await loadPerson(supabase, profileId);
@@ -523,9 +523,9 @@ export async function readLicenceFromDocument(profileId: string): Promise<Licenc
 // Typed corrections. Anyone can maintain their own licence record; the
 // licensee can also fix a colleague's.
 export async function updateLicence(profileId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
+  if (profile.id !== profileId && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can update someone else's licence details." };
   }
 
@@ -756,7 +756,7 @@ async function pendingEntityCheck(): Promise<
   | { error: null; supabase: Supabase; actor: Profile; agency: Agency; check: EntityCheck; state: LicenceReadState }
 > {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can update the corporation licence." };
+  if (!access.runsOffice) return { error: "Only the licensee in charge can update the corporation licence." };
   const agency = await loadAgency(supabase, profile.agency_id);
   if (!agency) return { error: "Couldn't find the agency." };
   const state = parseReadState(agency.corporation_licence_read);
@@ -834,7 +834,7 @@ export async function rejectCorporationLicenceUpload(): Promise<ActionState> {
 
 export async function attachCorporationLicenceDocument(path: string, fileName: string): Promise<LicenceReadResult> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) {
+  if (!access.runsOffice) {
     return { error: "Only the licensee in charge can update the corporation licence." };
   }
   const agency = await loadAgency(supabase, profile.agency_id);
@@ -847,7 +847,7 @@ export async function attachCorporationLicenceDocument(path: string, fileName: s
 
 export async function readCorporationLicenceFromDocument(): Promise<LicenceReadResult> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can do this." };
+  if (!access.runsOffice) return { error: "Only the licensee in charge can do this." };
   const agency = await loadAgency(supabase, profile.agency_id);
   if (!agency?.corporation_licence_document_path) return { error: "There's no document on file to read." };
   return readCorporationLicence(
@@ -865,7 +865,7 @@ export async function updateCorporationLicence(_prev: ActionState, formData: For
 
   // Same gate as the insurance policies: an agency-level record that an agent
   // should be able to read but not rewrite.
-  if (!access.actsAsLicensee) {
+  if (!access.runsOffice) {
     return { error: "Only the licensee in charge can update the corporation licence." };
   }
 
@@ -942,7 +942,7 @@ export async function fillLicenceGaps(target: GapTarget, _prev: ActionState, for
   const number = formData.has("licenceNumber") ? str(formData, "licenceNumber") : undefined;
 
   if (target.kind === "person") {
-    if (profile.id !== target.profileId && !profile.is_licensee_in_charge) {
+    if (profile.id !== target.profileId && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
       return { error: "Only the licensee in charge can update someone else's licence details." };
     }
     const subject = await loadPerson(supabase, target.profileId);
@@ -971,7 +971,7 @@ export async function fillLicenceGaps(target: GapTarget, _prev: ActionState, for
       agencyId: subject.agency_id, subject: "person", profileId: subject.id, source: "typed", before, after, by: profile.id,
     });
   } else {
-    if (!access.actsAsLicensee) {
+    if (!access.runsOffice) {
       return { error: "Only the licensee in charge can update the corporation licence." };
     }
     const agency = await loadAgency(supabase, profile.agency_id);
@@ -1017,7 +1017,7 @@ export async function sendTestLicenceReminder(
   memberId: string,
 ): Promise<{ error: string | null; sentTo?: string[]; failedTo?: string[] }> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) {
+  if (!access.runsOffice) {
     return { error: "Only the licensee in charge can send a test reminder." };
   }
 

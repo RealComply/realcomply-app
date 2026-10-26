@@ -57,9 +57,14 @@ export function StaffRegisterCard({
 }) {
   // Someone else's licence stays with the licensee IN CHARGE, not the agent
   // on their own plan: the database lets only them update another person's
-  // profile ("profiles: licensee can update agency members", 0058).
-  const canEdit = !former && (viewerProfile.id === profile.id || viewerProfile.is_licensee_in_charge);
-  const { actsAsLicensee } = useViewerAccess();
+  // profile ("profiles: licensee can update agency members", 0058). And an
+  // office manager, for anyone but a licensee in charge (0093).
+  const { runsOffice, isOfficeManager } = useViewerAccess();
+  const canEdit =
+    !former &&
+    (viewerProfile.id === profile.id ||
+      Boolean(viewerProfile.is_licensee_in_charge) ||
+      (isOfficeManager && !profile.is_licensee_in_charge));
   const categories = cleanLicenceCategories(profile.licence_categories);
   const status = expiryStatus(profile.licence_expiry);
 
@@ -176,7 +181,7 @@ export function StaffRegisterCard({
           target={{ kind: "person", profileId: profile.id }}
           nameOf={nameOf}
           canEdit={canEdit}
-          canReread={Boolean(actsAsLicensee && canEdit && profile.licence_document_path && detailsMissing)}
+          canReread={Boolean(runsOffice && canEdit && profile.licence_document_path && detailsMissing)}
           onReread={() => readLicenceFromDocument(profile.id)}
           lastResult={readResult}
         />

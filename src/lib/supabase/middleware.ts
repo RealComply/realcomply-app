@@ -32,6 +32,12 @@ export function isPublicPath(pathname: string): boolean {
     // without a RealComply login. The token is the credential; the page reads
     // and writes only through 0067's functions.
     pathname.startsWith("/annexure/") ||
+    // /office-manager/<token> and /office-manager/withdraw/<token> are public
+    // for the same reason (0093, 26 Oct 2026): a licensee in charge with no
+    // login approves an office manager, or withdraws it, from an email. The
+    // token is the credential; the pages read and write only through 0093's
+    // functions.
+    pathname.startsWith("/office-manager/") ||
     // The legal documents are public for the same kind of reason: a privacy
     // policy only account holders can read is not published, and the Stripe
     // customer portal and Meta's app review both link to them signed out.

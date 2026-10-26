@@ -159,13 +159,15 @@ describe("sign-up, the signing page and Office profile fill the same record", ()
     assert.ok(form.includes("formalAgencyName({ tradingName: agencyName, licensedEntityName: entity })"));
   });
 
-  test("Office profile edits both names, the licensee in charge or an agent on their own plan only", () => {
+  test("Office profile edits both names: the licensee in charge, an agent on their own plan, or an office manager (0093)", () => {
     const action = src("./actions/office-profile.ts");
-    assert.ok(action.includes("if (!access.actsAsLicensee)"));
+    assert.ok(action.includes("if (!access.runsOffice)"));
     assert.ok(action.includes('supabase.rpc("set_agency_trading_name"'));
     assert.ok(action.includes('p_via: "office_profile"'));
     const page = src("../app/dashboard/profile/page.tsx");
-    assert.ok(/access\.actsAsLicensee \? \([\s\S]*<OfficeDetailsForm[\s\S]*<LicenseeEmailForm[\s\S]*\) : \([\s\S]*<OfficeNamesReadOnly/.test(page));
+    assert.ok(/access\.runsOffice \? \([\s\S]*<OfficeDetailsForm[\s\S]*\) : \([\s\S]*<OfficeNamesReadOnly/.test(page));
+    // The licensee's own details stay with the licensee.
+    assert.ok(/access\.actsAsLicensee && \([\s\S]*<LicenseeEmailForm/.test(page));
   });
 
   test("the name history is in Download all records", () => {

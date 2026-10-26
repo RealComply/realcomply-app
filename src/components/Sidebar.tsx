@@ -101,6 +101,7 @@ function toggleListings() {
 
 export function Sidebar({
   actsAsLicensee = false,
+  runsOffice = false,
   isAccountHolder = false,
   isPlatformAdmin = false,
   pmEnabled = false,
@@ -109,6 +110,8 @@ export function Sidebar({
   agencyLogoUrl = null,
 }: {
   actsAsLicensee?: boolean;
+  /** The licensee or an office manager (0093): the office side of the menu. */
+  runsOffice?: boolean;
   /** For the Billing link only (lib/nav.ts). */
   isAccountHolder?: boolean;
   isPlatformAdmin?: boolean;
@@ -207,7 +210,7 @@ export function Sidebar({
           empty. */}
       {NAV_GROUPS.map((g) => ({
         ...g,
-        links: g.links.filter((l) => visibleNavLink(l, { actsAsLicensee, pmEnabled, isAccountHolder })),
+        links: g.links.filter((l) => visibleNavLink(l, { actsAsLicensee, runsOffice, pmEnabled, isAccountHolder })),
       }))
         .filter((group) => group.links.length > 0)
         .map((group, gi) => (
@@ -219,7 +222,7 @@ export function Sidebar({
               gi === 0 ? "mt-0.5" : "mt-4"
             }`}
           >
-            {!actsAsLicensee && group.heading === "Compliance records" ? "Your record" : group.heading}
+            {!runsOffice && group.heading === "Compliance records" ? "Your record" : group.heading}
           </div>
           {group.links.map(({ href, label, Icon, exact, countKey }) => {
             const active = isActive(pathname, href, exact);

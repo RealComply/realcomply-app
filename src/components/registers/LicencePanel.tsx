@@ -45,7 +45,8 @@ export function LicencePanel({
 }) {
   // The licensee's controls go to the agent on their own plan too
   // (lib/access.ts), not only to whoever has the licensee-in-charge flag.
-  const { actsAsLicensee } = useViewerAccess();
+  // The licensee or an office manager (0093).
+  const { runsOffice } = useViewerAccess();
   const nameOf: Record<string, string> = {
     ...names,
     ...Object.fromEntries([...staff, ...formerStaff].map((s) => [s.id, s.full_name ?? s.email])),
@@ -78,7 +79,7 @@ export function LicencePanel({
         emailed {REMINDER_SCHEDULE_WORDS}. The licensee in charge is copied on every one. RealComply
         reminds; the holder renews with NSW Fair Trading. Upload the renewed licence here once it comes
         through: RealComply reads the new date and the reminders for the old one stop.
-        {actsAsLicensee && (
+        {runsOffice && (
           <TestReminderControl
             members={staff.filter((s) => !s.archived_at).map((s) => ({ id: s.id, name: s.full_name ?? s.email }))}
           />
@@ -87,11 +88,11 @@ export function LicencePanel({
 
       {/* The entity's own licence, above the people. The individuals' licences
           hang off the corporation licence, not the other way around. */}
-      {agency && actsAsLicensee && (
+      {agency && runsOffice && (
         <div className="mt-4">
           <CorporationLicenceCard
             agency={agency}
-            canEdit={actsAsLicensee}
+            canEdit={runsOffice}
             reminderInfo={corporationReminderInfo}
             nameOf={nameOf}
           />

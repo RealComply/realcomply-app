@@ -68,8 +68,10 @@ export function CpdPersonCard({
   // to attach or tick for a person no longer in the office (browser
   // re-check, 10 Oct 2026).
   const left = Boolean(subject.archived_at);
-  const canEdit = !left && (viewerProfile.id === subject.id || Boolean(viewerProfile.is_licensee_in_charge));
-  const { actsAsLicensee } = useViewerAccess();
+  // And an office manager, for anyone (0093): CPD records are office side.
+  const { actsAsLicensee, isOfficeManager } = useViewerAccess();
+  const canEdit =
+    !left && (viewerProfile.id === subject.id || Boolean(viewerProfile.is_licensee_in_charge) || isOfficeManager);
   const done = Boolean(signoff);
   const planIds = new Set(planRecordIds);
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireLicenseePage } from "@/lib/data/current-profile";
+import { requireOfficePage } from "@/lib/data/current-profile";
 import { TrustAccountSwitcher } from "@/components/registers/TrustAccountSwitcher";
 import { TrustAccountPanel } from "@/components/registers/TrustAccountPanel";
 import { formatAuDate } from "@/lib/format-date";
@@ -31,9 +31,12 @@ export default async function TrustAccountsPage({
 }: {
   searchParams: Promise<{ account?: string }>;
 }) {
-  // Licensee only (Adam, 7 Oct 2026): a typed address refuses, not just a
-  // hidden link.
-  const { profile } = await requireLicenseePage();
+  // The licensee, or an office manager (0093): a typed address refuses
+  // anyone else, not just a hidden link (Adam, 7 Oct 2026).
+  const { profile, access } = await requireOfficePage();
+  // An office manager adds accounts and uploads reconciliations; signing
+  // stays with the licensee in charge.
+  const manages = Boolean(profile.is_licensee_in_charge || access.isOfficeManager);
   const supabase = await createClient();
   const { account: requestedAccount } = await searchParams;
 
@@ -125,7 +128,7 @@ export default async function TrustAccountsPage({
         <TrustAccountSwitcher
           accounts={accounts}
           activeId={active?.id ?? ""}
-          canManage={Boolean(profile.is_licensee_in_charge)}
+          canManage={manages}
           toneOf={toneOf}
           closedAccounts={closedAccounts}
         />
@@ -144,7 +147,7 @@ export default async function TrustAccountsPage({
               trustAccountId={active.id}
               accountName={active.name}
               // No assistant since Adam's 7 Oct reversal: this page refuses them.
-              canUpload={Boolean(!active.archived_at && profile.is_licensee_in_charge)}
+              canUpload={Boolean(!active.archived_at && manages)}
               canSign={Boolean(!active.archived_at && profile.is_licensee_in_charge)}
               signerName={profile.full_name ?? ""}
               auditPeriodEnd={auditPeriod}
@@ -160,7 +163,7 @@ export default async function TrustAccountsPage({
         ) : (
           <div className="p-8 text-center text-sm text-rc-muted">
             No trust accounts yet.
-            {profile.is_licensee_in_charge
+            {manages
               ? " Add one above — most agencies start with Sales and Property management."
               : " Your licensee in charge can add one."}
           </div>

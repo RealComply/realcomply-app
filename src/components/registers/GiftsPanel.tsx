@@ -41,7 +41,7 @@ export function GiftsPanel({
   // The licensee's controls go to the agent on their own plan too
   // (lib/access.ts), not only to whoever has the licensee-in-charge flag
   // (check of 10 Oct 2026).
-  const { actsAsLicensee } = useViewerAccess();
+  const { actsAsLicensee, runsOffice } = useViewerAccess();
   const [adding, setAdding] = useState(autoOpenAdd);
   const [state, formAction, pending] = useActionState(addGift, initialState);
   useOnSaved(pending, state.error, () => setAdding(false));
@@ -90,7 +90,7 @@ export function GiftsPanel({
             )
           }
           l="Disclosure threshold"
-          onClick={actsAsLicensee && !editingThreshold ? () => setEditingThreshold(true) : undefined}
+          onClick={runsOffice && !editingThreshold ? () => setEditingThreshold(true) : undefined}
         />
       </div>
       {thresholdState.error && <p className="mt-1 text-xs text-rc-amber-deep">{thresholdState.error}</p>}
@@ -194,7 +194,7 @@ export function GiftsPanel({
                       </span>
                     </td>
                     <td className="py-2 text-right">
-                      {actsAsLicensee && (
+                      {runsOffice && (
                         <div className="flex justify-end gap-2">
                           {g.status === "flagged" && (
                             <form action={markGiftReviewed.bind(null, g.id)}>
@@ -203,11 +203,14 @@ export function GiftsPanel({
                               </button>
                             </form>
                           )}
-                          <form action={deleteGift.bind(null, g.id)}>
-                            <button type="submit" className="text-xs text-rc-faint hover:text-rc-amber-deep">
-                              Remove
-                            </button>
-                          </form>
+                          {/* Removing is the licensee's only (0058), not an office manager's. */}
+                          {actsAsLicensee && (
+                            <form action={deleteGift.bind(null, g.id)}>
+                              <button type="submit" className="text-xs text-rc-faint hover:text-rc-amber-deep">
+                                Remove
+                              </button>
+                            </form>
+                          )}
                         </div>
                       )}
                     </td>

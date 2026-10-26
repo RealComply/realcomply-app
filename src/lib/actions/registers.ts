@@ -31,9 +31,9 @@ function str(formData: FormData, key: string): string | null {
 // AUSTRAC AML training) alongside whatever recordAttendance auto-logs from
 // CPD-eligible training sessions. ──────────────────────────────────────────
 export async function addCpdRecord(profileId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
+  if (profile.id !== profileId && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can log CPD for someone else." };
   }
 
@@ -201,7 +201,13 @@ async function nameQuestionFor(
 }
 
 /** A CPD row that may take a certificate: the person's own or, for the licensee, anyone's; none on it yet. */
-async function rowForCertificate(supabase: Supabase, actor: { id: string; is_licensee_in_charge: boolean | null }, recordId: string) {
+async function rowForCertificate(
+  supabase: Supabase,
+  actor: { id: string; is_licensee_in_charge: boolean | null },
+  recordId: string,
+  // An office manager attaches for anyone too (0093).
+  officeManager = false,
+) {
   const { data } = await supabase
     .from("cpd_records")
     .select("id, profile_id, agency_id, evidence_path, hours, completed_date, provider")
@@ -212,7 +218,7 @@ async function rowForCertificate(supabase: Supabase, actor: { id: string; is_lic
     hours: number | null; completed_date: string | null; provider: string | null;
   } | null;
   if (!row) return { problem: "Couldn't find that CPD record." } as const;
-  if (row.profile_id !== actor.id && !actor.is_licensee_in_charge) {
+  if (row.profile_id !== actor.id && !actor.is_licensee_in_charge && !officeManager) {
     return { problem: "Only the licensee in charge can attach a certificate for someone else." } as const;
   }
   if (row.evidence_path) return { problem: "This CPD record already has its certificate." } as const;
@@ -231,8 +237,8 @@ export async function attachCpdCertificate(
   path: string,
   fileName: string,
 ): Promise<{ error: string | null; question?: CpdNameQuestion }> {
-  const { supabase, profile } = await requireAuthContext();
-  const found = await rowForCertificate(supabase, profile, recordId);
+  const { supabase, profile, access } = await requireAuthContext();
+  const found = await rowForCertificate(supabase, profile, recordId, access.isOfficeManager);
   if ("problem" in found) return { error: found.problem ?? "Couldn't attach that certificate." };
   const { row } = found;
   // Only a file in that person's CPD folder (see addCpdFromCertificate).
@@ -268,9 +274,9 @@ export async function addCpdFromCertificate(
   path: string,
   fileName: string,
 ): Promise<{ error: string | null; question?: CpdNameQuestion }> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
+  if (profile.id !== profileId && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can add CPD for someone else." };
   }
   // The browser says where it put the certificate; it must be that person's
@@ -312,29 +318,29 @@ const NO_NAME_ANSWER = { name_on_certificate: null, name_confirmed_by: null, nam
 
 /** The held certificate read, checked the same way as a licence's (lib/pending-read.ts). */
 async function heldCpdRead(token: string) {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
   const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!secret) return { problem: pendingReadProblem("invalid", "certificate") } as const;
   const v = verifyPendingRead<CpdRowRead>(token, secret, { kind: "cpd", answeredBy: profile.id, now: Date.now() });
   if (!v.ok) return { problem: pendingReadProblem(v.reason, "certificate") } as const;
   const p = v.pending;
-  if (p.profileId !== profile.id && !profile.is_licensee_in_charge) {
+  if (p.profileId !== profile.id && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { problem: "Only the licensee in charge can add CPD for someone else." } as const;
   }
   if (!isInFolder(p.path, cpdFolder(profile.agency_id, p.profileId))) {
     return { problem: pendingReadProblem("invalid", "certificate") } as const;
   }
-  return { supabase, profile, pending: p } as const;
+  return { supabase, profile, access, pending: p } as const;
 }
 
 /** "Yes, it's Jo's": saves the certificate as read, with the name on it and who confirmed it. */
 export async function confirmCpdCertificateName(token: string): Promise<{ error: string | null }> {
   const held = await heldCpdRead(token);
   if ("problem" in held) return { error: held.problem ?? "Couldn't save that." };
-  const { supabase, profile, pending } = held;
+  const { supabase, profile, access, pending } = held;
   if (pending.recordId) {
     // A certificate for a row that already exists (a session's or a plan's).
-    const found = await rowForCertificate(supabase, profile, pending.recordId);
+    const found = await rowForCertificate(supabase, profile, pending.recordId, access.isOfficeManager);
     if ("problem" in found) return { error: found.problem ?? "Couldn't save that certificate." };
     if (found.row.profile_id !== pending.profileId) return { error: pendingReadProblem("invalid", "certificate") };
     const { data: saved, error } = await supabase
@@ -392,12 +398,12 @@ export async function rejectCpdCertificateName(token: string): Promise<{ error: 
 
 /** Corrects anything the reading got wrong. The document stays attached. */
 export async function updateCpdRecord(recordId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   const { data: row } = await supabase.from("cpd_records").select("profile_id").eq("id", recordId).maybeSingle();
   const ownerId = (row as { profile_id: string } | null)?.profile_id;
   if (!ownerId) return { error: "Couldn't find that entry." };
-  if (ownerId !== profile.id && !profile.is_licensee_in_charge) {
+  if (ownerId !== profile.id && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can change someone else's CPD." };
   }
 
@@ -436,7 +442,7 @@ export async function setCpdYearComplete(
 ): Promise<{ error: string | null }> {
   const { supabase, profile, access } = await requireAuthContext();
 
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
+  if (profile.id !== profileId && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can confirm this for someone else." };
   }
 
@@ -477,12 +483,12 @@ export async function setCpdYearComplete(
 // pointer. Adam, 18 Aug 2026: "upload the CPD certificate and tick it off
 // against each staff member."
 export async function finalizeCpdEvidence(recordId: string, path: string, fileName: string): Promise<{ error: string | null }> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   const { data: row } = await supabase.from("cpd_records").select("profile_id, agency_id").eq("id", recordId).maybeSingle();
   const ownerId = (row as { profile_id: string } | null)?.profile_id;
   if (!ownerId) return { error: "Couldn't find that CPD record." };
-  if (ownerId !== profile.id && !profile.is_licensee_in_charge) {
+  if (ownerId !== profile.id && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can attach a certificate for someone else." };
   }
   // Only a file in that person's CPD folder (see addCpdFromCertificate).
@@ -572,7 +578,7 @@ export async function deleteCpdRecord(recordId: string): Promise<void> {
 // runs the office's training log (Adam, 7 Oct 2026; was any member). ───────
 export async function addTrainingSession(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can add to the training log." };
+  if (!access.runsOffice) return { error: "Only the licensee in charge can add to the training log." };
 
   const title = str(formData, "title");
   const sessionDate = str(formData, "sessionDate");
@@ -645,7 +651,7 @@ export async function recordAttendance(sessionId: string, _prev: ActionState, fo
   const { supabase, profile, access } = await requireAuthContext();
   // Rewriting attendance replaces other people's session CPD records, so it
   // is the licensee's alone (Adam, 7 and 9 Oct 2026; was any member).
-  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can record attendance." };
+  if (!access.runsOffice) return { error: "Only the licensee in charge can record attendance." };
 
   const { data: sessionRow } = await supabase
     .from("training_sessions")
@@ -760,7 +766,7 @@ export async function addGift(_prev: ActionState, formData: FormData): Promise<A
   const notes = str(formData, "notes");
 
   // An agent logs their own gifts; the licensee can log one for anyone.
-  if (agentId !== profile.id && !access.actsAsLicensee) {
+  if (agentId !== profile.id && !access.runsOffice) {
     return { error: "You can log your own gifts. Ask the licensee to log one for someone else." };
   }
   if (!giftDate) return { error: "Enter the date." };
@@ -793,7 +799,7 @@ export async function addGift(_prev: ActionState, formData: FormData): Promise<A
 // diligence, don't scrub the record" principle as everywhere else).
 export async function markGiftReviewed(giftId: string): Promise<void> {
   const { supabase, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return;
+  if (!access.runsOffice) return;
   await supabase.from("gifts").update({ status: "reviewed" }).eq("id", giftId).eq("status", "flagged");
   revalidatePath("/dashboard/registers");
 }
@@ -807,7 +813,7 @@ export async function deleteGift(giftId: string): Promise<void> {
 
 export async function updateGiftThreshold(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return { error: "Only the licensee in charge can change the threshold." };
+  if (!access.runsOffice) return { error: "Only the licensee in charge can change the threshold." };
 
   const thresholdRaw = str(formData, "giftThreshold");
   const threshold = thresholdRaw ? Number(thresholdRaw) : NaN;
@@ -889,9 +895,9 @@ export async function addSgManualVersion(
   versionLabel: string | null,
   notes: string | null = null,
 ): Promise<{ error: string | null }> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  if (!(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can publish a new SG Manual version." };
   }
   // Never an empty manual for everyone to sign (19 Oct 2026); nothing is saved.
@@ -948,7 +954,7 @@ export async function addBreach(_prev: ActionState, formData: FormData): Promise
   if (!description) return { error: "Describe what happened." };
   // Anyone can log their own breach and sees only those they logged (Adam,
   // 9 Oct 2026); only the licensee records one against someone else.
-  if (agentId && agentId !== profile.id && !access.actsAsLicensee) {
+  if (agentId && agentId !== profile.id && !access.runsOffice) {
     return { error: "You can log your own breaches. The licensee records one against someone else." };
   }
 
@@ -1026,7 +1032,7 @@ export async function recordBreachNotification(
 // close a breach while this checked the raw flag (10 Oct 2026).
 export async function closeBreach(breachId: string): Promise<void> {
   const { supabase, access } = await requireAuthContext();
-  if (!access.actsAsLicensee) return;
+  if (!access.runsOffice) return;
   await supabase
     .from("breaches")
     .update({ status: "closed", closed_date: new Date().toISOString().slice(0, 10) })
