@@ -3,7 +3,9 @@ import { Building2, FileWarning, ShieldCheck, MessageSquareWarning, Gift as Gift
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { agencyPeople } from "@/lib/data/people";
-import { officeManagerCardFor } from "@/lib/data/office-manager";
+import { licenseeOfficeManagerHomeFor, officeManagerHomeFor } from "@/lib/data/office-manager";
+import { OfficeManagerNewsCard } from "@/components/office-manager/OfficeManagerHomeCard";
+import { OfficeManagerLines } from "@/components/office-manager/OfficeManagerLine";
 import { AgentHome } from "./AgentHome";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
@@ -68,8 +70,9 @@ export default async function HomeDashboardPage({
       sgReadShows =
         confirmedVersions !== null && sgReadDue({ officeAgent: true, adoption, confirmedVersions });
     }
-    // Asking to be office manager, and where that is up to (0093).
-    const officeManager = await officeManagerCardFor(supabase, profile, access);
+    // Asking to be office manager, and where that is up to (0093); once the
+    // approval has been seen, a small line instead (0096).
+    const officeManager = await officeManagerHomeFor(supabase, profile, access);
     return <AgentHome supabase={supabase} profile={profile} sgReadShows={sgReadShows} officeManager={officeManager} />;
   }
 
@@ -90,6 +93,8 @@ export default async function HomeDashboardPage({
   // listings. Both only on a clean read; no card if the history can't be read
   // (before 0080 has run).
   const todayIso = sydneyDate(new Date());
+  // Someone made office manager: a card once, then a small line (0096).
+  const officeManagersPromise = licenseeOfficeManagerHomeFor(supabase, profile, access);
   const [{ data: myLineRows }, changeStatus] = access.officeLicensee
     ? await Promise.all([
         supabase
@@ -253,6 +258,7 @@ export default async function HomeDashboardPage({
   // ── Top-line risk count for the stat row ────────────────────────────────
   const licenceRisk = licenceExpired + licenceExpiringSoon;
   const piRisk = piStatus === "expired" || piStatus === "urgent" ? 1 : 0;
+  const officeManagers = await officeManagersPromise;
 
   return (
     <>
@@ -261,6 +267,7 @@ export default async function HomeDashboardPage({
           <div className="rc-mesh-bg" />
           <div className="flex items-center justify-between">
             <div>
+              <OfficeManagerLines lines={officeManagers.lines} />
               <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Home</h1>
               <p className="mt-1 text-sm text-rc-muted">
                 Everything at a glance — diligence support only, the licensee decides.
@@ -290,6 +297,9 @@ export default async function HomeDashboardPage({
               agencyId={profile.agency_id}
             />
           )}
+          {officeManagers.cards.map((news) => (
+            <OfficeManagerNewsCard key={news.noticeKey} news={news} />
+          ))}
 
           {/* Files an assistant has handed over and prepared for this agent.
               Top of Home, above the tiles, because it is the one thing on the

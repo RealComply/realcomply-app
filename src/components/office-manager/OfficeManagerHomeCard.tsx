@@ -4,12 +4,17 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { UserCog } from "lucide-react";
 import { askLicenseeToApprove, cancelOfficeManagerRequest, type AskState } from "@/lib/actions/office-manager";
-import type { OfficeManagerCard } from "@/lib/office-manager/card";
+import type { OfficeManagerCard, OfficeManagerNews } from "@/lib/office-manager/card";
 import { formatAuTimestamp } from "@/lib/format-date";
+import { useHomeNotice } from "./useHomeNotice";
 
 // The office manager card on Home (0093; mockup approved by Adam, 26 Oct
 // 2026, with his wording for the first state). Which state shows is decided
 // in lib/office-manager/card.ts.
+//
+// Seen once (Adam, 26 Oct 2026, 0096): "approved" and "withdrawn" show once,
+// with "Got it". After "Got it" or a second visit, approved becomes the small
+// line at the top of Home (OfficeManagerLine) and withdrawn goes.
 
 const initial: AskState = { error: null, sent: false };
 
@@ -25,6 +30,19 @@ function Chip({ tone, children }: { tone: "green" | "amber" | "grey"; children: 
         ? "border-rc-amber-deep/30 bg-rc-amber/10 text-rc-amber-deep"
         : "border-rc-border bg-rc-bg-alt text-rc-muted";
   return <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cls}`}>{children}</span>;
+}
+
+function GotIt({ onClick, pending }: { onClick: () => void; pending: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={pending}
+      className="inline-flex min-h-11 items-center justify-center self-start rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rc-green-deep-600 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      Got it
+    </button>
+  );
 }
 
 function AskButton({ label, secondary = false }: { label: string; secondary?: boolean }) {
@@ -53,6 +71,8 @@ function AskButton({ label, secondary = false }: { label: string; secondary?: bo
 
 export function OfficeManagerHomeCard({ card }: { card: OfficeManagerCard }) {
   const first = card.licenseeName.split(/\s+/)[0] || card.licenseeName;
+  const notice = useHomeNotice(card.kind === "approved" || card.kind === "withdrawn" ? card.noticeKey : null);
+  if (notice.hidden) return null;
 
   if (card.kind === "ask") {
     return (
@@ -137,7 +157,7 @@ export function OfficeManagerHomeCard({ card }: { card: OfficeManagerCard }) {
       >
         <div className="space-y-2">
           <Chip tone="green">Office manager</Chip>
-          <h2 className="text-base font-bold text-rc-ink">You&rsquo;re office manager</h2>
+          <h2 className="text-base font-bold text-rc-ink">You&rsquo;re now office manager</h2>
           <p className="text-sm leading-relaxed text-rc-muted">
             {card.approvedByName} approved this {card.viaLink ? "by email link" : "in Team"} on{" "}
             {formatAuTimestamp(card.approvedAt)}. Team, Office profile, Registers, Training, Trust accounts and the SG
@@ -150,6 +170,10 @@ export function OfficeManagerHomeCard({ card }: { card: OfficeManagerCard }) {
           <Link href="/dashboard/document-signoffs#office-managers" className="inline-block text-sm font-semibold text-rc-green-deep hover:underline">
             See the approval in Sign-offs &rarr;
           </Link>
+
+          <div className="pt-1">
+            <GotIt onClick={notice.gotIt} pending={notice.pending} />
+          </div>
         </div>
       </section>
     );
@@ -164,7 +188,41 @@ export function OfficeManagerHomeCard({ card }: { card: OfficeManagerCard }) {
           On {formatAuTimestamp(card.withdrawnAt)}. Your own listings and records are as they were. Anything you uploaded
           for the office stays on file.
         </p>
-        {card.mayAskAgain && <AskButton label={`Ask ${first} again`} secondary />}
+        <div className="flex flex-wrap items-start gap-3 pt-1">
+          <GotIt onClick={notice.gotIt} pending={notice.pending} />
+          {card.mayAskAgain && <AskButton label={`Ask ${first} again`} secondary />}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The licensee in charge's Home, once per new office manager (0096): who,
+ * approved by whom and when, and what stays with the licensee. Then the
+ * small line.
+ */
+export function OfficeManagerNewsCard({ news }: { news: OfficeManagerNews }) {
+  const notice = useHomeNotice(news.noticeKey);
+  if (notice.hidden) return null;
+  const first = news.personName.split(/\s+/)[0] || news.personName;
+  return (
+    <section
+      aria-label="Office manager, approved"
+      className="mt-6 rounded-card border border-rc-green-deep/25 bg-white px-4 py-4 shadow-card sm:px-5"
+    >
+      <div className="space-y-2">
+        <Chip tone="green">Office manager</Chip>
+        <h2 className="text-base font-bold text-rc-ink">{news.personName} is now office manager</h2>
+        <p className="text-sm leading-relaxed text-rc-muted">
+          {news.approvedByViewer ? "You" : news.approvedByName} approved this{" "}
+          {news.viaLink ? "by email link" : "in Team"} on {formatAuTimestamp(news.approvedAt)}. {first} can now manage{" "}
+          {OFFICE_SIDE}.
+        </p>
+        <p className="text-sm leading-relaxed text-rc-muted">{LICENSEE_KEEPS} stay with you.</p>
+        <div className="pt-1">
+          <GotIt onClick={notice.gotIt} pending={notice.pending} />
+        </div>
       </div>
     </section>
   );

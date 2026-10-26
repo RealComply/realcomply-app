@@ -104,3 +104,18 @@ export function formatAuDateTimeShort(iso: string | null | undefined): string {
   const month = MONTHS[Number(new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", month: "numeric" }).format(d)) - 1].slice(0, 3);
   return `${parts.day} ${month} ${parts.year}, ${parts.hour}:${parts.minute} ${String(parts.dayPeriod ?? "").toLowerCase()}`;
 }
+
+/**
+ * A timestamp as a short Sydney day and month: "26 Oct". The year is added
+ * only when it isn't this year in Sydney: "26 Oct 2025". Used in the small
+ * office manager line at the top of Home (0096).
+ */
+export function formatAuDayMonth(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const part = (date: Date, unit: "day" | "month" | "year") =>
+    Number(new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", [unit]: "numeric" }).format(date));
+  const dayMonth = `${part(d, "day")} ${MONTHS[part(d, "month") - 1].slice(0, 3)}`;
+  return part(d, "year") === part(now, "year") ? dayMonth : `${dayMonth} ${part(d, "year")}`;
+}
