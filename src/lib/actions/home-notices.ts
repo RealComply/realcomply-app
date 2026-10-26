@@ -3,18 +3,14 @@
 import { refresh } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-// Records that the signed-in person has seen an office manager card on Home,
-// and when they pressed "Got it" (0096; Adam, 26 Oct 2026). The database
-// checks the card is about their own office; the record is theirs alone.
+// Records when the signed-in person pressed "Got it" on an office manager
+// card on Home (0096; Adam, 26 Oct 2026). The database checks the card is
+// about their own office; the record is theirs alone.
 
 const NOTICE_KEY = /^om-(approved|withdrawn):[0-9a-f-]{36}$/;
 
-/** The card was on their Home. Changes nothing on screen: the next visit shows the small line. */
-export async function noteHomeNoticeSeen(key: string): Promise<void> {
-  if (!NOTICE_KEY.test(key)) return;
-  const supabase = await createClient();
-  await supabase.rpc("note_home_notice", { p_key: key, p_dismiss: false });
-}
+// The first view is recorded from the browser (useHomeNotice), so the page
+// isn't drawn again while the card is on screen.
 
 /** "Got it": recorded, then Home is drawn again with the small line in place of the card. */
 export async function gotItHomeNotice(key: string): Promise<{ ok: boolean }> {
