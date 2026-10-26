@@ -95,7 +95,14 @@ export async function cancelOfficeManagerRequest(): Promise<void> {
 
 // ── The licensee's link pages (no login) ─────────────────────────────────
 
-export type ApproveState = { error: string | null; approved: boolean; approvedAt?: string; approvedByName?: string };
+export type ApproveState = {
+  error: string | null;
+  approved: boolean;
+  approvedAt?: string;
+  approvedByName?: string;
+  /** Whether the licensee's copy, with the withdraw link, went. The page only says it did when it did. */
+  emailed?: boolean;
+};
 
 /** The licensee approves by typing their name. Their confirmation email carries the withdraw link. */
 export async function approveOfficeManagerByLink(_prev: ApproveState, formData: FormData): Promise<ApproveState> {
@@ -121,11 +128,14 @@ export async function approveOfficeManagerByLink(_prev: ApproveState, formData: 
   } catch (e) {
     console.error("office manager approval email failed", e);
   }
-  return { error: null, approved: true, approvedByName: typedName };
+  // The record couldn't be read back: the time it was approved, to the minute.
+  return { error: null, approved: true, approvedByName: typedName, approvedAt: new Date().toISOString(), emailed: false };
 }
 
-/** Emails the licensee their confirmation, with the withdraw link. Returns when and by whom it was approved. */
-async function emailTheApproval(token: string): Promise<{ approvedAt: string; approvedByName: string } | null> {
+/** Emails the licensee their confirmation, with the withdraw link. Returns when and by whom it was approved, and whether the email went. */
+async function emailTheApproval(
+  token: string,
+): Promise<{ approvedAt: string; approvedByName: string; emailed: boolean } | null> {
   const service = createServiceClient();
   const { data: req } = await service
     .from("office_manager_requests")
@@ -154,8 +164,13 @@ async function emailTheApproval(token: string): Promise<{ approvedAt: string; ap
     wording: manager.wording,
     withdrawUrl: `${appBaseUrl()}/office-manager/withdraw/${manager.withdraw_token}`,
   });
-  await sendEmail({ to: request.sent_to, ...email, ...(who?.email ? { replyTo: who.email } : {}) });
-  return { approvedAt: manager.approved_at, approvedByName: manager.approved_by_name };
+  let emailed = false;
+  try {
+    emailed = await sendEmail({ to: request.sent_to, ...email, ...(who?.email ? { replyTo: who.email } : {}) });
+  } catch (e) {
+    console.error("office manager approval email failed", e);
+  }
+  return { approvedAt: manager.approved_at, approvedByName: manager.approved_by_name, emailed };
 }
 
 export type WithdrawState = { error: string | null; withdrawn: boolean; withdrawnAt?: string };
@@ -187,6 +202,7 @@ export async function withdrawOfficeManagerByLink(_prev: WithdrawState, formData
     return { error: "This link is no longer valid. The approval may already have been withdrawn.", withdrawn: false };
   }
   // The withdrawal stands whether or not the email to the office manager goes.
+  let withdrawnAt = new Date().toISOString();
   try {
     const { data: row } = await createServiceClient()
       .from("office_managers")
@@ -195,13 +211,13 @@ export async function withdrawOfficeManagerByLink(_prev: WithdrawState, formData
       .maybeSingle();
     const done = row as { profile_id: string; agency_id: string; withdrawn_at: string; withdrawn_by_name: string | null } | null;
     if (done) {
+      withdrawnAt = done.withdrawn_at;
       await tellOfficeManager(done);
-      return { error: null, withdrawn: true, withdrawnAt: done.withdrawn_at };
     }
   } catch (e) {
     console.error("office manager withdrawal email failed", e);
   }
-  return { error: null, withdrawn: true };
+  return { error: null, withdrawn: true, withdrawnAt };
 }
 
 // ── The licensee with a login, in Team ───────────────────────────────────

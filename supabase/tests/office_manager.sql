@@ -268,6 +268,22 @@ begin
   if public.claim_staff_reminder(b, array['sg_read']) is not null then
     raise exception 'FAIL 12b: reminded the same person twice in a day';
   end if;
+  -- A reminder whose email didn't go blocks for 5 minutes only (0094)...
+  reset role;
+  update public.staff_reminders set created_at = now() - interval '6 minutes' where profile_id = b;
+  set local role authenticated;
+  if public.claim_staff_reminder(b, array['sg_read']) is null then
+    raise exception 'FAIL 12f: a reminder that didn''t go blocked the next one';
+  end if;
+  -- ...and one that went blocks for 20 hours.
+  reset role;
+  update public.staff_reminders
+     set email_sent_at = now() - interval '1 hour', created_at = now() - interval '1 hour'
+   where profile_id = b;
+  set local role authenticated;
+  if public.claim_staff_reminder(b, array['sg_read']) is not null then
+    raise exception 'FAIL 12g: reminded again within a day of one that went';
+  end if;
   perform set_config('request.jwt.claims', json_build_object('sub', b, 'role', 'authenticated')::text, true);
   begin
     perform public.claim_staff_reminder(l, array['sg_read']);

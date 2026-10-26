@@ -75,7 +75,7 @@ export function officeManagerRequestDocument(input: OfficeManagerRequestEmail): 
       { kind: "button", label: "Check and approve", href: input.url },
       {
         kind: "note",
-        text: `If you don't want ${input.personName} to be office manager, don't approve it. If you do approve, you can withdraw it at any time from the confirmation email we send you. This link is for you only and expires on ${input.expiresAt}. If you weren't expecting it, reply to this email and let us know.`,
+        text: `If you don't want ${input.personName} to be office manager, don't approve it. If you do approve, you can withdraw it at any time from the confirmation email we send you. This link is for you only and expires on ${input.expiresAt}. If you weren't expecting it, email admin@realcomply.com.au and let us know.`,
       },
     ],
     footer: [`Sent by ${input.officeName} through RealComply.`, DILIGENCE_LINE],

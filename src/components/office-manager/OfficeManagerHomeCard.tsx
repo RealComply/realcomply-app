@@ -159,7 +159,7 @@ export function OfficeManagerHomeCard({ card }: { card: OfficeManagerCard }) {
     <section aria-label="Office manager, withdrawn" className="mt-6 rounded-card border border-rc-border bg-white px-4 py-4 shadow-card sm:px-5">
       <div className="space-y-2">
         <Chip tone="grey">Withdrawn</Chip>
-        <h2 className="text-base font-bold text-rc-ink">{card.licenseeName} withdrew your office manager approval</h2>
+        <h2 className="text-base font-bold text-rc-ink">{card.withdrawnByName} withdrew your office manager approval</h2>
         <p className="text-sm leading-relaxed text-rc-muted">
           On {formatAuTimestamp(card.withdrawnAt)}. Your own listings and records are as they were. Anything you uploaded
           for the office stays on file.

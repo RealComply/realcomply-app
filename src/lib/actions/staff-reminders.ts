@@ -12,7 +12,8 @@ import { appBaseUrl } from "@/lib/site-url";
 // the annexure and the Supervision Guidelines (Adam, 26 Oct 2026; 0093). The
 // licensee or an office manager. Each send is claimed in the database first
 // (claim_staff_reminder), which refuses anyone reminded in the last 20 hours,
-// so two presses or two people send one email.
+// so two presses or two people send one email. A reminder whose email failed
+// holds for 5 minutes only, then can go again (0094).
 
 export type ReminderSendState = { error: string | null; sent: number; skipped: number; failed: number };
 
@@ -64,7 +65,12 @@ export async function sendStaffReminders(): Promise<ReminderSendState> {
 
   revalidatePath("/dashboard/sg-manual");
   return {
-    error: failed > 0 ? `${failed} reminder${failed === 1 ? "" : "s"} could not be sent. Try again in a few minutes.` : null,
+    error:
+      failed > 0
+        ? `${failed} reminder${failed === 1 ? "" : "s"} could not be sent. Try again in a few minutes.`
+        : sent === 0 && skipped > 0
+          ? "Already reminded in the last day, or a reminder is on its way. Try again later."
+          : null,
     sent,
     skipped,
     failed,

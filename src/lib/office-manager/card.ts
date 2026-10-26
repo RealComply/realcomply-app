@@ -19,6 +19,8 @@ export type OfficeManagerRecord = {
   approved_via: "team" | "email_link";
   withdrawn_at: string | null;
   withdrawn_via: "team" | "email_link" | "left_office" | null;
+  /** Who withdrew it, as recorded. */
+  withdrawn_by_name?: string | null;
 };
 
 export type OfficeManagerRequest = {
@@ -46,7 +48,7 @@ export type OfficeManagerCard =
   | { kind: "ask"; licenseeName: string; licenseeEmail: string | null }
   | { kind: "waiting"; licenseeName: string; sentTo: string; sentAt: string | null; emailFailed: boolean }
   | { kind: "approved"; licenseeName: string; approvedByName: string; approvedAt: string; viaLink: boolean }
-  | { kind: "withdrawn"; licenseeName: string; withdrawnAt: string; mayAskAgain: boolean };
+  | { kind: "withdrawn"; licenseeName: string; withdrawnByName: string; withdrawnAt: string; mayAskAgain: boolean };
 
 const within = (iso: string, now: Date, days: number) => now.getTime() - new Date(iso).getTime() < days * 86_400_000;
 
@@ -83,6 +85,9 @@ export function officeManagerCard(input: OfficeManagerCardInput): OfficeManagerC
     return {
       kind: "withdrawn",
       licenseeName,
+      // The name on the record: where the licensee is on RealComply, the
+      // office's licensee name is often blank.
+      withdrawnByName: last.withdrawn_by_name?.trim() || input.licenseeName?.trim() || "Your licensee in charge",
       withdrawnAt: last.withdrawn_at,
       mayAskAgain: !input.officeHasLicenseeLogin && input.isAccountHolder,
     };

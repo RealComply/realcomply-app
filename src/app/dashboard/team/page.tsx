@@ -60,6 +60,7 @@ export default async function TeamPage() {
   // cannot sign anything, so offering them is offering a dead end.
   const agents = staff.filter((s) => s.is_agent && !s.archived_at);
   const activeCount = staff.filter((s) => !s.archived_at).length;
+  const licenseeOnTeam = staff.find((s) => s.is_licensee_in_charge && !s.archived_at) ?? null;
   const nameOf = (id: string) => staff.find((s) => s.id === id)?.full_name ?? "someone";
 
   // "Assistant to Adam Castelnuovo and Sue Nguyen" — the arrangement stated in
@@ -89,12 +90,19 @@ export default async function TeamPage() {
             website) moved to Office profile in Profile settings, with the
             office's names (brief, 14 Oct 2026, Part 6). A pointer stays here,
             where people looked for them. */}
-        {/* An office manager whose licensee isn't on RealComply: who the
-            licensee is, and the approval that lets them run the office. */}
+        {/* An office manager: who the licensee is, and the approval that
+            lets them run the office. */}
         {access.isOfficeManager && (
           <section aria-label="Licensee in charge" className="mt-6 rounded-card border border-rc-border bg-white p-4 text-sm shadow-card">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">Licensee in charge</h2>
-            {!licenseeHasLogin && (
+            {licenseeHasLogin ? (
+              licenseeOnTeam && (
+                <p className="mt-2 text-rc-ink">
+                  <span className="font-semibold">{licenseeOnTeam.full_name?.trim() || licenseeOnTeam.email}</span>
+                  <span className="text-rc-muted"> · {licenseeOnTeam.email} · Signs in RealComply.</span>
+                </p>
+              )
+            ) : (
               <p className="mt-2 text-rc-ink">
                 <span className="font-semibold">{agency?.licensee_name?.trim() || "Not recorded"}</span>
                 {agency?.licensee_email ? <span className="text-rc-muted"> · {agency.licensee_email}</span> : null}

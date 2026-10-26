@@ -103,6 +103,16 @@ describe("the office manager card on Home", () => {
     assert.equal(card?.kind === "withdrawn" && card.mayAskAgain, true);
     const withLogin = officeManagerCard({ ...base, records: [record], officeHasLicenseeLogin: true });
     assert.equal(withLogin?.kind === "withdrawn" && withLogin.mayAskAgain, false);
+    // Named from the record, even where the office's licensee name is blank.
+    const named = officeManagerCard({
+      ...base,
+      licenseeName: null,
+      officeHasLicenseeLogin: true,
+      records: [{ ...record, withdrawn_via: "team" as const, withdrawn_by_name: "Sam Licensee" }],
+    });
+    assert.equal(named?.kind === "withdrawn" && named.withdrawnByName, "Sam Licensee");
+    const unnamed = officeManagerCard({ ...base, licenseeName: null, records: [record] });
+    assert.equal(unnamed?.kind === "withdrawn" && unnamed.withdrawnByName, "Your licensee in charge");
     assert.equal(officeManagerCard({ ...base, records: [record], now: new Date("2026-11-20T00:00:00Z") })?.kind, "ask");
   });
 

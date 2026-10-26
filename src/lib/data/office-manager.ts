@@ -16,7 +16,7 @@ import {
 // Before 0093 is run the tables don't exist, and every read here comes back
 // empty: no card, no record.
 
-const RECORD_COLUMNS = "approved_at, approved_by_name, approved_via, withdrawn_at, withdrawn_via";
+const RECORD_COLUMNS = "approved_at, approved_by_name, approved_via, withdrawn_at, withdrawn_via, withdrawn_by_name";
 
 /** The Home card for the signed-in person, or null. */
 export async function officeManagerCardFor(

@@ -44,7 +44,18 @@ export function ApproveOfficeManagerForm({
           <dd className="text-rc-ink">{wording}</dd>
         </dl>
         <p className="mt-3 text-sm leading-relaxed text-rc-muted">
-          We&rsquo;ve emailed you a copy. To withdraw your approval at any time, use the link in that email.
+          {state.emailed ? (
+            <>We&rsquo;ve emailed you a copy. To withdraw your approval at any time, use the link in that email.</>
+          ) : (
+            <>
+              Your approval is recorded. We couldn&rsquo;t email you a copy just now. To withdraw your approval at any
+              time, email{" "}
+              <a href="mailto:admin@realcomply.com.au" className="font-semibold text-rc-green-deep underline">
+                admin@realcomply.com.au
+              </a>
+              .
+            </>
+          )}
         </p>
       </section>
     );

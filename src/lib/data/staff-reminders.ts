@@ -35,11 +35,13 @@ export async function staffReminderData(supabase: SupabaseClient, profile: Profi
         .maybeSingle(),
       officeAdoption(supabase),
       supabase.from("sg_read_confirmations").select("confirmed_by, annexure_version").eq("agency_id", profile.agency_id),
+      // Only reminders that went: one whose email failed can be sent again (0094).
       supabase
         .from("staff_reminders")
-        .select("profile_id, created_at")
+        .select("profile_id, email_sent_at")
         .eq("agency_id", profile.agency_id)
-        .order("created_at", { ascending: false }),
+        .not("email_sent_at", "is", null)
+        .order("email_sent_at", { ascending: false }),
       supabase.from("agencies").select("name").eq("id", profile.agency_id).maybeSingle(),
     ]);
   const docId = (sgDoc as { id: string } | null)?.id ?? null;
@@ -54,7 +56,10 @@ export async function staffReminderData(supabase: SupabaseClient, profile: Profi
       signatures: (sigs ?? []) as Array<{ document_id: string; signer_id: string; signed_at: string | null }>,
       adoptedVersion: adoption?.version ?? null,
       readConfirmations: (reads ?? []) as Array<{ confirmed_by: string | null; annexure_version: string }>,
-      reminders: (reminders ?? []) as Array<{ profile_id: string; created_at: string }>,
+      reminders: ((reminders ?? []) as Array<{ profile_id: string; email_sent_at: string }>).map((r) => ({
+        profile_id: r.profile_id,
+        created_at: r.email_sent_at,
+      })),
     }),
     sgVersionLabel: (versionRow as { version_label: string | null } | null)?.version_label?.trim() || null,
     officeName: ((agency as { name?: string } | null)?.name ?? "").trim(),
