@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
 import { WidgetCard } from "./WidgetCard";
+import { RoofMark } from "@/components/RoofMark";
 
 export type NeedsAttentionItem = {
   propertyId: string;
@@ -61,7 +62,7 @@ export function NeedsAttentionWidget({
           ))}
           {items.length > 5 && (
             <li className="px-3 py-2 text-xs text-neutral-400">
-              +{items.length - 5} more on the {own ? "Listings" : "Office overview"} page →
+              +{items.length - 5} more on the {own ? "Listings" : "Office overview"} page<RoofMark />
             </li>
           )}
         </ul>

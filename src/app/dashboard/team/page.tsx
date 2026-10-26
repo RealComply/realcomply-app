@@ -11,6 +11,7 @@ import { inviteOptions } from "@/lib/team/invite-options";
 import { PendingInvitesList } from "@/components/team/PendingInvitesList";
 import { StaffRow } from "@/components/team/StaffRow";
 import type { AgencyInvite, Profile } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 // Team — where the licensee in charge adds real agents to the office
 // profile. Every agent used to have to sign up independently, which
@@ -88,7 +89,7 @@ export default async function TeamPage() {
             <p className="mt-1 text-sm text-rc-muted">Who&rsquo;s in your office, and who&rsquo;s been invited.</p>
           </div>
           <Link href="/dashboard/home" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-            ← Home
+            <RoofMark back />Home
           </Link>
         </div>
 

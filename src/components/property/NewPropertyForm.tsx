@@ -13,6 +13,7 @@ import { SaleMethodFields } from "@/components/property/SaleMethodFields";
 import { PropertyFigures } from "@/components/property/PropertyFigures";
 import { ExtractionProgress } from "@/components/property/ExtractionProgress";
 import type { Profile } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 const initialState: ActionState = { error: null };
 
@@ -282,7 +283,7 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
   return (
     <main className="mx-auto w-full max-w-lg flex-1 px-4 py-10">
       <Link href="/dashboard" className="text-sm text-rc-muted transition hover:text-rc-ink hover:underline">
-        ← Back to properties
+        <RoofMark back />Back to properties
       </Link>
       <h1 className="mt-3 text-xl font-semibold text-rc-ink">Add a listing</h1>
       <p className="mt-1 text-sm text-rc-muted">

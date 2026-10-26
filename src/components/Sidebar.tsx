@@ -7,6 +7,7 @@ import { Check, ChevronRight, KeyRound, Menu, PanelLeftClose, PanelLeftOpen, X }
 import { LogoMark } from "@/components/Logo";
 import { navGroupsFor, visibleNavLink } from "@/lib/nav";
 import { EMPTY_NAV_COUNTS, type NavCounts } from "@/lib/data/nav-counts";
+import { RoofMark } from "@/components/RoofMark";
 
 // Left sidebar navigation, replacing the seven-link top bar (TopNav) that had
 // outgrown its row and scrolled sideways on smaller screens.
@@ -411,7 +412,7 @@ export function Sidebar({
                       onClick={() => setOpen(false)}
                       className="rounded-[7px] px-1.5 py-1.5 text-[11.8px] font-semibold text-rc-nav-muted transition hover:bg-white/[0.06] hover:text-white"
                     >
-                      See all {counts.listingRows.length} listings →
+                      See all {counts.listingRows.length} listings<RoofMark tone="onDark" />
                     </Link>
                   )}
                 </div>

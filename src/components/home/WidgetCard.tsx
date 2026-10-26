@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { DonutRing, type RingSegment } from "@/components/DonutRing";
 import { ClickableCard } from "./ClickableCard";
+import { RoofMark } from "@/components/RoofMark";
 
 // Shared shell for every Home dashboard widget. Deliberately dumb/presentational
 // — all data-shaping happens in the page — so each widget is a self-contained
@@ -25,8 +26,8 @@ export function WidgetCard({
   icon: LucideIcon;
   title: string;
   href?: string;
-  /** Without an arrow: the card adds one. Callers ending theirs in "→" gave
-   *  "Registers → →" on Home (10 Oct 2026). */
+  /** Without a mark: the card adds the roof (RoofMark). Callers that ended
+   *  theirs in an arrow gave two on Home (10 Oct 2026). */
   hrefLabel?: string;
   metric?: string | number;
   caption?: string;
@@ -76,7 +77,7 @@ export function WidgetCard({
         </div>
         {href && (
           <Link href={href} className="shrink-0 text-xs font-medium text-rc-faint transition group-hover:text-rc-green-deep">
-            {hrefLabel} →
+            {hrefLabel}<RoofMark />
           </Link>
         )}
       </div>

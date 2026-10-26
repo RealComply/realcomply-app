@@ -2,6 +2,7 @@
 
 import styles from "./infographics.module.css";
 import { useInViewOnce } from "./motion";
+import { RoofMark } from "@/components/RoofMark";
 
 // "Same rules. A clearer path." Replaced the How it works band, 22 Oct 2026.
 // Copy is Adam's own, from his edit of the infographic copy doc: titles only,
@@ -47,7 +48,7 @@ function Row({ before, after, i }: { before: string; after: string; i: number })
         <h3>{before}</h3>
       </div>
       <div className={styles.arrow} aria-hidden="true">
-        →
+        <RoofMark spaced={false} />
       </div>
       <div className={`${styles.cell} ${styles.after}`}>
         <span className={styles.cellLabel}>With RealComply</span>

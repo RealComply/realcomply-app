@@ -6,6 +6,7 @@ import { StatTile } from "@/components/home/WidgetCard";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
 import { STAGE_LABELS, type Agency, type Complaint, type Profile, type Property, type PropertyItem } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 // Office overview — the command-centre from the website IA mockup (KPIs,
 // cross-property "needs you" queue, weekly review loop, listings table,
@@ -109,7 +110,7 @@ export default async function PortfolioPage() {
               <p className="mt-1 text-sm text-rc-muted">The whole agency at a glance — diligence support only, the licensee decides.</p>
             </div>
             <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-              All listings →
+              All listings<RoofMark />
             </Link>
           </div>
 

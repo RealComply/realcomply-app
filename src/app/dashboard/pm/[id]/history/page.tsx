@@ -29,6 +29,7 @@ import {
   type PmWaterAnswers,
 } from "@/lib/rules/nsw-pm";
 import { pmStageItems, pmTenancyFiled, type PmTicks } from "@/lib/rules/pm-engine";
+import { RoofMark } from "@/components/RoofMark";
 
 // History for one PM property (brief B8): the original onboarding record and
 // every past tenancy, read-only, with who ticked what and when, and every
@@ -82,7 +83,7 @@ export default async function PmHistoryPage({ params }: { params: Promise<{ id: 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
       <Link href={`/dashboard/pm/${property.id}`} className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-        ← Back to the property
+        <RoofMark back />Back to the property
       </Link>
       <h1 className="mt-3 text-xl font-bold tracking-tight text-rc-ink sm:text-2xl">History</h1>
       <p className="mt-1 text-sm text-rc-muted">{property.address}. Read-only.</p>

@@ -11,6 +11,7 @@ import { notAskedToSign } from "@/lib/signoff/awaiting";
 import { staffReminderData } from "@/lib/data/staff-reminders";
 import { StaffRemindersCard } from "@/components/registers/StaffRemindersCard";
 import type { SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 // SG Manual store — simple upload + version history (see the SG Manual
 // scope decision: the full AI gap-analysis/redline review flow from the
@@ -77,7 +78,7 @@ export default async function SgManualPage() {
             </p>
           </div>
           <Link href="/dashboard/registers" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-            ← Registers
+            <RoofMark back />Registers
           </Link>
         </div>
 
@@ -112,7 +113,7 @@ export default async function SgManualPage() {
               notAsked={notAsked}
             />
             <Link href="/dashboard/document-signoffs" className="mt-1 inline-block text-xs text-rc-muted transition hover:text-rc-green-deep hover:underline">
-              View all sign-offs →
+              View all sign-offs<RoofMark />
             </Link>
           </div>
         )}
