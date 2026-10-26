@@ -112,7 +112,7 @@ export default async function ProfileSettingsPage() {
       <section className="mt-6">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">Office profile</h2>
         <div className="mt-2 space-y-5">
-          {access.actsAsLicensee ? (
+          {access.runsOffice ? (
             <>
               <OfficeDetailsForm
                 tradingName={agencyName}
@@ -120,11 +120,15 @@ export default async function ProfileSettingsPage() {
                 fromLicence={agency?.licensed_entity_name_source === "licence"}
                 lastChange={lastChange}
               />
-              <LicenseeEmailForm
-                current={agency?.licensee_email ?? null}
-                currentName={agency?.licensee_name ?? null}
-                website={agency?.website_url ?? null}
-              />
+              {/* The licensee's own details stay with the licensee, not an
+                  office manager (0093). */}
+              {access.actsAsLicensee && (
+                <LicenseeEmailForm
+                  current={agency?.licensee_email ?? null}
+                  currentName={agency?.licensee_name ?? null}
+                  website={agency?.website_url ?? null}
+                />
+              )}
             </>
           ) : (
             <OfficeNamesReadOnly tradingName={agencyName} licensedEntityName={entityName} />
@@ -133,7 +137,7 @@ export default async function ProfileSettingsPage() {
         </div>
       </section>
 
-      {profile.is_licensee_in_charge ? (
+      {profile.is_licensee_in_charge || access.isOfficeManager ? (
         <section className="mt-5 grid gap-5 md:grid-cols-2">
           <AgencyLogoForm currentPath={logoPath} currentUrl={logoUrl} />
           <WhereItShows
@@ -176,7 +180,7 @@ export default async function ProfileSettingsPage() {
         </Link>
       </section>
 
-      {access.actsAsLicensee && (
+      {access.runsOffice && (
         <section className="mt-5 rounded-card border border-rc-border bg-white p-5 shadow-card">
           <h2 className="text-base font-bold text-rc-ink">Your office&rsquo;s other details</h2>
           <p className="mt-1 text-sm text-rc-muted">Set up when you joined. Change them where they&rsquo;re used:</p>

@@ -3,6 +3,7 @@ import { Building2, FileWarning, ShieldCheck, MessageSquareWarning, Gift as Gift
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { agencyPeople } from "@/lib/data/people";
+import { officeManagerCardFor } from "@/lib/data/office-manager";
 import { AgentHome } from "./AgentHome";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
@@ -67,7 +68,9 @@ export default async function HomeDashboardPage({
       sgReadShows =
         confirmedVersions !== null && sgReadDue({ officeAgent: true, adoption, confirmedVersions });
     }
-    return <AgentHome supabase={supabase} profile={profile} sgReadShows={sgReadShows} />;
+    // Asking to be office manager, and where that is up to (0093).
+    const officeManager = await officeManagerCardFor(supabase, profile, access);
+    return <AgentHome supabase={supabase} profile={profile} sgReadShows={sgReadShows} officeManager={officeManager} />;
   }
 
   const cpdYear = currentCpdYear();

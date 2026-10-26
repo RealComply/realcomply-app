@@ -131,7 +131,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // The Billing link for an office founder who is not the licensee: the
     // Billing page lets them in, so the menu and search show it (10 Oct
     // 2026). Only asked when it could change anything.
-    access.actsAsLicensee ? Promise.resolve(false) : isAccountHolder(supabase),
+    access.runsOffice ? Promise.resolve(false) : isAccountHolder(supabase),
     // The agency's logo, under RealComply's at the top of the sidebar (12 Oct
     // 2026). Signed here, once, for the sidebar to show.
     agencyLogoUrl(supabase, billing?.logo_path),
@@ -148,6 +148,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <StrayDropGuard />
       <Sidebar
         actsAsLicensee={access.actsAsLicensee}
+        runsOffice={access.runsOffice}
         isAccountHolder={accountHolder}
         isPlatformAdmin={profile.is_platform_admin === true}
         pmEnabled={pm.enabled}
@@ -166,10 +167,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
           agencyName={billing?.name ?? null}
           pmEnabled={pm.enabled}
           actsAsLicensee={access.actsAsLicensee}
+          runsOffice={access.runsOffice}
+          isOfficeManager={access.isOfficeManager}
           isAccountHolder={accountHolder}
         />
         <ViewerAccessProvider
-          value={{ actsAsLicensee: access.actsAsLicensee, officeLicensee: access.officeLicensee }}
+          value={{
+            actsAsLicensee: access.actsAsLicensee,
+            officeLicensee: access.officeLicensee,
+            runsOffice: access.runsOffice,
+            isOfficeManager: access.isOfficeManager,
+          }}
         >
           {children}
         </ViewerAccessProvider>

@@ -215,6 +215,14 @@ begin
     raise exception 'FAIL 5e: an office manager changed the licensee''s email';
   exception when check_violation then null;
   end;
+  -- Office profile yes, the licensee's details no.
+  perform public.set_agency_website('https://example.invalid/office-two');
+  begin
+    perform public.set_agency_licensee_email('om-mine@example.invalid');
+    raise exception 'FAIL 5l: an office manager changed the licensee''s email through Office profile';
+  exception when raise_exception then
+    if sqlerrm not like 'Only the licensee in charge%' then raise; end if;
+  end;
   update public.profiles set full_name = 'Renamed' where id = l;
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL 8: an office manager changed the licensee''s record'; end if;

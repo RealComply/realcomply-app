@@ -49,6 +49,8 @@ const SIGNED_OUT_OK = [
   "/signoff/x/file",
   // Adopting the SG annexure from an email (0067), and its PDF.
   "/annexure/x",
+  "/office-manager/x", // the licensee approves an office manager (0093)
+  "/office-manager/withdraw/x",
   "/annexure/x/pdf",
   // The annexure an agent on their own plan gives their licensee (14 Oct 2026),
   // and the same with their office's names on the Agency line (0070).

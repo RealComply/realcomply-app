@@ -18,6 +18,8 @@ describe("accessFrom", () => {
       officeLicensee: true,
       isAssistant: false,
       isAgentPlan: false,
+      runsOffice: true,
+      isOfficeManager: false,
     });
   });
 
@@ -53,6 +55,46 @@ describe("accessFrom", () => {
   it("an assistant is flagged as one", () => {
     assert.equal(accessFrom(assistant, "office_1").isAssistant, true);
     assert.equal(accessFrom(assistant, "office_1").actsAsLicensee, false);
+  });
+});
+
+describe("an office manager (0093)", () => {
+  const agent = { is_licensee_in_charge: false, is_assistant: false };
+
+  it("runs the office side, but is not the licensee", () => {
+    const a = accessFrom(agent, "office_1", true);
+    assert.equal(a.runsOffice, true);
+    assert.equal(a.isOfficeManager, true);
+    assert.equal(a.actsAsLicensee, false);
+    assert.equal(a.officeLicensee, false);
+  });
+
+  it("is nothing without the licensee's approval", () => {
+    const a = accessFrom(agent, "office_1");
+    assert.equal(a.runsOffice, false);
+    assert.equal(a.isOfficeManager, false);
+  });
+
+  it("is never one on an agent plan, or once removed from the office", () => {
+    assert.equal(accessFrom({ ...agent, is_assistant: true }, "agent_1", true).isOfficeManager, false);
+    assert.equal(accessFrom({ ...agent, archived_at: "2026-10-26T00:00:00Z" }, "office_1", true).runsOffice, false);
+  });
+
+  it("the licensee still runs the office, office manager or not", () => {
+    assert.equal(accessFrom({ is_licensee_in_charge: true, is_assistant: false }, "office_1").runsOffice, true);
+  });
+
+  it("gets the licensee's menu, without Office overview", () => {
+    const menu = NAV_LINKS.filter((l) =>
+      visibleNavLink(l, { actsAsLicensee: false, runsOffice: true, pmEnabled: true }),
+    ).map((l) => l.label);
+    const licensee = NAV_LINKS.filter((l) => visibleNavLink(l, { actsAsLicensee: true, pmEnabled: true })).map(
+      (l) => l.label,
+    );
+    assert.deepEqual(menu, licensee.filter((label) => label !== "Office overview"));
+    for (const label of ["Team", "Registers", "Trust accounts", "SG Manual", "Billing", "Training", "CPD"]) {
+      assert.ok(menu.includes(label), label);
+    }
   });
 });
 

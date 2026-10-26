@@ -295,7 +295,10 @@ export const navCountsFor = cache(async function navCountsFor(
     Agency,
     "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry" | "plan"
   > | null;
-  const licenseeView = accessFrom(profile, agency?.plan).actsAsLicensee;
+  // The office's registers for the licensee or an office manager (0093).
+  // Before 0093 is run the function doesn't exist: nobody is one.
+  const { data: officeManager, error: officeManagerError } = await supabase.rpc("is_office_manager");
+  const licenseeView = accessFrom(profile, agency?.plan, !officeManagerError && officeManager === true).runsOffice;
 
   // Gifts, breaches and complaints need no such filter: the database returns
   // an agent only the ones they logged (0058), the same rows their page shows.

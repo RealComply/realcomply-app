@@ -95,7 +95,8 @@ export function InsuranceCard({
   urlByPath: Record<string, string>;
   nameOf: Record<string, string>;
 }) {
-  const { actsAsLicensee: canEdit } = useViewerAccess();
+  // The licensee or an office manager (0093).
+  const { runsOffice: canEdit } = useViewerAccess();
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState(saveActionFor(target), initialState);
   useOnSaved(pending, state.error, () => setEditing(false));

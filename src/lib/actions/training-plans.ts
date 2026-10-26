@@ -66,9 +66,9 @@ async function withdrawAcceptance(supabase: SupabaseClient, plan: TrainingPlan):
  * Plans made before keep what they were signed with.
  */
 export async function createTrainingPlan(profileId: string, _prev: ActionState, _formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (profile.id !== profileId && !profile.is_licensee_in_charge) {
+  if (profile.id !== profileId && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can start a plan for someone else." };
   }
 
@@ -113,11 +113,11 @@ export async function saveTrainingPlanConsultation(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   const plan = await loadPlan(supabase, planId);
   if (!plan) return { error: "Couldn't find that plan." };
-  if (plan.profile_id !== profile.id && !profile.is_licensee_in_charge) {
+  if (plan.profile_id !== profile.id && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can edit someone else's plan." };
   }
   if (plan.principal_signed_at) {
@@ -146,11 +146,11 @@ export async function saveTrainingPlanConsultation(
 }
 
 export async function addTrainingPlanItem(planId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   const plan = await loadPlan(supabase, planId);
   if (!plan) return { error: "Couldn't find that plan." };
-  if (plan.profile_id !== profile.id && !profile.is_licensee_in_charge) {
+  if (plan.profile_id !== profile.id && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can add training to someone else's plan." };
   }
   if (plan.principal_signed_at) {
@@ -230,7 +230,7 @@ export async function completeTrainingPlanItem(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
   const { data: itemRow } = await supabase.from("training_plan_items").select("*").eq("id", itemId).maybeSingle();
   const item = itemRow as TrainingPlanItem | null;
@@ -238,7 +238,7 @@ export async function completeTrainingPlanItem(
 
   const plan = await loadPlan(supabase, item.plan_id);
   if (!plan) return { error: "Couldn't find that plan." };
-  if (plan.profile_id !== profile.id && !profile.is_licensee_in_charge) {
+  if (plan.profile_id !== profile.id && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can complete training on someone else's plan." };
   }
 
@@ -313,7 +313,7 @@ export async function completeTrainingPlanItem(
  * takes it and the acceptance stands.
  */
 export async function attachPlanItemDocument(itemId: string, path: string, fileName: string): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
   const { data: itemRow } = await supabase.from("training_plan_items").select("*").eq("id", itemId).maybeSingle();
   const item = itemRow as TrainingPlanItem | null;
   if (!item) return { error: "Couldn't find that training." };
@@ -322,7 +322,7 @@ export async function attachPlanItemDocument(itemId: string, path: string, fileN
   }
   const plan = await loadPlan(supabase, item.plan_id);
   if (!plan) return { error: "Couldn't find that plan." };
-  if (plan.profile_id !== profile.id && !profile.is_licensee_in_charge) {
+  if (plan.profile_id !== profile.id && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
     return { error: "Only the licensee in charge can add a document to someone else's plan." };
   }
   // Only a file in that person's folder for plan documents.

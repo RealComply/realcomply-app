@@ -50,7 +50,8 @@ export default async function RegistersPage({
   // licence, while the reminder emails kept sending them here to do exactly
   // that, and the reminders never stopped. A person still maintains their own
   // licence (0058: own profile, own licence_history, own _licences folder).
-  const licenseeView = access.actsAsLicensee;
+  // The licensee, or an office manager (0093).
+  const licenseeView = access.runsOffice;
   const defaultTab = (tab && TAB_KEYS.has(tab) ? tab : "licence") as
     | "licence" | "insurance" | "gifts" | "complaints" | "breaches";
 

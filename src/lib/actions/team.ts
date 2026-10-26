@@ -41,9 +41,11 @@ export async function inviteAgent(
   _prev: ActionState & { inviteLink?: string },
   formData: FormData,
 ): Promise<ActionState & { inviteLink?: string }> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  // The licensee, or an office manager (0093). Never as licensee in charge:
+  // see below, and the database refuses an office manager's anyway.
+  if (!profile.is_licensee_in_charge && !access.isOfficeManager) {
     return { error: "Only the licensee in charge can invite agents." };
   }
 
@@ -113,9 +115,9 @@ export async function setAssistantAgents(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  if (!profile.is_licensee_in_charge && !access.isOfficeManager) {
     return { error: "Only the licensee in charge can change who an assistant supports." };
   }
 
@@ -155,9 +157,9 @@ export async function setAssistantAgents(
 }
 
 export async function revokeInvite(inviteId: string): Promise<void> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  if (!profile.is_licensee_in_charge && !access.isOfficeManager) {
     return;
   }
 
@@ -285,9 +287,10 @@ export async function saveAgencyLogo(
   _prev: { error: string | null; saved: boolean },
   formData: FormData,
 ): Promise<{ error: string | null; saved: boolean }> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  // The licensee, or an office manager (0093): the logo is Office profile.
+  if (!profile.is_licensee_in_charge && !access.isOfficeManager) {
     return { error: "Only the licensee in charge can change the agency logo.", saved: false };
   }
 
@@ -368,9 +371,11 @@ type LicenseeCheck =
 // members carry optional fields, which is how the first attempt at this failed
 // to compile.
 async function requireLicenseeAndSubject(profileId: string): Promise<LicenseeCheck> {
-  const { supabase, profile } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
 
-  if (!profile.is_licensee_in_charge) {
+  // The licensee, or an office manager for anyone but a licensee in charge
+  // (0093; the database refuses the rest).
+  if (!profile.is_licensee_in_charge && !access.isOfficeManager) {
     return { ok: false, error: "Only the licensee in charge can change someone's details." };
   }
 
@@ -383,6 +388,9 @@ async function requireLicenseeAndSubject(profileId: string): Promise<LicenseeChe
   const subject = data as StaffRow | null;
   if (!subject || subject.agency_id !== profile.agency_id) {
     return { ok: false, error: "That person isn't in your agency." };
+  }
+  if (!profile.is_licensee_in_charge && subject.is_licensee_in_charge) {
+    return { ok: false, error: "Only the licensee in charge can change their own details." };
   }
 
   return { ok: true, supabase, profile, subject };

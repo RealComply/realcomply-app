@@ -39,9 +39,11 @@
 --      line by line). Every "can delete" rule for a record, the complaints
 --      register, the annexure, sign-offs and signatures are NOT on that
 --      list. (Taking an assistant off an agent is Team, so it is.)
---   5. Guards: an office manager can't change the licensee's name or email,
---      the AML setting or the complaints target; can't invite or appoint a
---      licensee in charge; can't change the licensee in charge's own record.
+--   5. Office profile: the trading name, licensed entity name, listings page
+--      and logo, for an office manager too. Guards: an office manager can't
+--      change the licensee's name or email, the AML setting or the
+--      complaints target; can't invite or appoint a licensee in charge; can't
+--      change the licensee in charge's own record.
 --   6. Leaving the office ends the role.
 --
 -- Two new tables, both with their grants in this file. Safe to run twice.
@@ -1057,6 +1059,123 @@ begin
   return p_customer_id;
 end
 $function$;
+
+-- Office profile: the trading name, the licensed entity name, the listings
+-- page and the logo, for an office manager too. The licensee's own name and
+-- email stay with may_change_agency_details() (the licensee, or the account
+-- holder of an office with no licensee in charge, as since 0066).
+create or replace function public.may_change_office_details()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.may_change_agency_details() or public.is_office_manager();
+$$;
+revoke execute on function public.may_change_office_details() from public, anon;
+grant execute on function public.may_change_office_details() to authenticated, service_role;
+
+-- The four setters, exactly as live apart from that check.
+CREATE OR REPLACE FUNCTION public.set_agency_licensed_entity_name(p_name text, p_via text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_name text := nullif(regexp_replace(btrim(coalesce(p_name, '')), '\s+', ' ', 'g'), '');
+begin
+  if not public.may_change_office_details() then
+    raise exception 'Only the licensee in charge can change the licensed entity name.';
+  end if;
+  if p_via is null or p_via not in ('office_profile', 'corporation_licence', 'sign_up') then
+    raise exception 'Say where the licensed entity name came from.';
+  end if;
+  if length(v_name) > 200 then
+    raise exception 'That name is too long.';
+  end if;
+  perform set_config('realcomply.name_change_via', p_via, true);
+  update public.agencies
+     set licensed_entity_name = v_name,
+         licensed_entity_name_source = case when v_name is null then null
+                                            when p_via = 'corporation_licence' then 'licence'
+                                            else 'typed' end
+   where id = public.current_agency_id()
+     and (licensed_entity_name is distinct from v_name
+          or licensed_entity_name_source is distinct from
+             (case when v_name is null then null when p_via = 'corporation_licence' then 'licence' else 'typed' end));
+  perform set_config('realcomply.name_change_via', '', true);
+end
+$function$
+;
+CREATE OR REPLACE FUNCTION public.set_agency_logo(p_path text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_agency_id uuid := public.current_agency_id();
+begin
+  if v_agency_id is null then
+    raise exception 'no agency for this user';
+  end if;
+
+  -- 0093: the licensee in charge, or an office manager.
+  if not exists (
+    select 1 from public.profiles
+     where id = auth.uid() and is_licensee_in_charge
+  ) and not public.is_office_manager() then
+    raise exception 'only the licensee in charge can change the agency logo';
+  end if;
+
+  update public.agencies
+     set logo_path = nullif(btrim(p_path), '')
+   where id = v_agency_id;
+end;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.set_agency_trading_name(p_name text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_name text := nullif(regexp_replace(btrim(coalesce(p_name, '')), '\s+', ' ', 'g'), '');
+begin
+  if not public.may_change_office_details() then
+    raise exception 'Only the licensee in charge can change the trading name.';
+  end if;
+  if v_name is null then
+    raise exception 'Type your trading name.';
+  end if;
+  if length(v_name) > 200 then
+    raise exception 'That name is too long.';
+  end if;
+  perform set_config('realcomply.name_change_via', 'office_profile', true);
+  update public.agencies set name = v_name where id = public.current_agency_id();
+  perform set_config('realcomply.name_change_via', '', true);
+end
+$function$
+;
+CREATE OR REPLACE FUNCTION public.set_agency_website(p_url text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if not public.may_change_office_details() then
+    raise exception 'Only the licensee in charge can change the listings page.';
+  end if;
+  update public.agencies
+     set website_url = nullif(btrim(p_url), '')
+   where id = public.current_agency_id();
+end
+$function$
+;
 
 -- ── 5. Guards ───────────────────────────────────────────────────────────
 

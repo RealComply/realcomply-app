@@ -47,7 +47,7 @@ export default async function SgManualPage() {
   // who joined after it was published and before 0060 began adding new
   // starters. Only the licensee reads every row, so only they can tell.
   const notAsked =
-    access.actsAsLicensee && currentSignoff?.signer_scope === "all_staff" ? notAskedToSign(staff, currentSigs) : [];
+    access.runsOffice && currentSignoff?.signer_scope === "all_staff" ? notAskedToSign(staff, currentSigs) : [];
   // The signed copy where there is one, so opening the current version from
   // this page shows the signature page rather than the bare upload. The
   // version list below still links each original.
@@ -65,7 +65,7 @@ export default async function SgManualPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Supervision Guidelines Manual</h1>
             <p className="mt-1 text-sm text-rc-muted">
-              {profile.is_licensee_in_charge
+              {profile.is_licensee_in_charge || access.isOfficeManager
                 ? "Upload and keep the current version on file, with history."
                 : "The office's current version, with history. The licensee in charge publishes new versions."}
             </p>
@@ -101,7 +101,7 @@ export default async function SgManualPage() {
               signatures={currentSigs}
               profiles={staff}
               currentProfile={profile}
-              ownOnly={!access.actsAsLicensee}
+              ownOnly={!access.runsOffice}
               fileUrl={currentSignoffUrl}
               notAsked={notAsked}
             />
@@ -111,7 +111,8 @@ export default async function SgManualPage() {
           </div>
         )}
 
-        {profile.is_licensee_in_charge ? (
+        {/* And an office manager (0093). */}
+        {profile.is_licensee_in_charge || access.isOfficeManager ? (
           <div className="mt-6">
             <SgManualUploader profile={profile} isFirstUpload={versions.length === 0} />
           </div>

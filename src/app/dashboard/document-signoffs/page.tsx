@@ -8,6 +8,8 @@ import { FiledRecordCard, when } from "@/components/registers/FiledRecordCard";
 import { SgReadConfirmationsCard } from "@/components/registers/SgReadConfirmationsCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { documentsWaitingOn, notAskedToSign } from "@/lib/signoff/awaiting";
+import { officeManagersOf } from "@/lib/data/office-manager";
+import { formatAuTimestamp } from "@/lib/format-date";
 import type {
   AgentAcknowledgement,
   SgAnnexureAdoption,
@@ -25,6 +27,9 @@ import type {
 export default async function DocumentSignoffsPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
+  // Office manager approvals (0093): who, approved by whom, how, when and the
+  // wording. The licensee and the office manager see them; an agent doesn't.
+  const officeManagers = access.runsOffice ? await officeManagersOf(supabase, profile.agency_id) : [];
 
   const [{ data: docRows }, { data: sigRows }, staff, { data: adoptionRows }, { data: readRows }, { data: ackRows }] =
     await Promise.all([
@@ -72,7 +77,7 @@ export default async function DocumentSignoffsPage() {
   // office was never asked to sign it, as the SG Manual page does.
   const currentSg = documents.find((d) => d.category === "sg_manual" && d.signer_scope === "all_staff");
   const notAskedOnCurrentSg =
-    access.actsAsLicensee && currentSg
+    access.runsOffice && currentSg
       ? notAskedToSign(staff, signatures.filter((s) => s.document_id === currentSg.id))
       : [];
 
@@ -103,7 +108,7 @@ export default async function DocumentSignoffsPage() {
             second way in would keep producing undated rows that the calendar
             there cannot place. Signed reconciliations still appear in the list
             below like any other document. */}
-        {profile.is_licensee_in_charge && (
+        {(profile.is_licensee_in_charge || access.isOfficeManager) && (
           <div className="mt-6 rounded-card border border-rc-border bg-rc-bg-alt px-4 py-3 text-sm text-rc-muted">
             Trust account reconciliations are now uploaded and signed on the{" "}
             <Link
@@ -120,10 +125,10 @@ export default async function DocumentSignoffsPage() {
           <SgReadConfirmationsCard confirmations={readConfirmations} nameOf={nameOf} />
           {/* An agent or assistant sees only the documents they sign (0058),
               so "nothing here yet" would wrongly say the office has none. */}
-          {documents.length === 0 && !access.actsAsLicensee && (
+          {documents.length === 0 && !access.runsOffice && (
             <p className="text-sm text-rc-muted">Nothing waiting on your signature.</p>
           )}
-          {documents.length === 0 && access.actsAsLicensee && (
+          {documents.length === 0 && access.runsOffice && (
             <p className="text-sm text-rc-muted">
               Nothing here yet. Publishing a new{" "}
               <Link href="/dashboard/sg-manual" className="text-rc-green-deep hover:underline">
@@ -168,13 +173,50 @@ export default async function DocumentSignoffsPage() {
               signatures={signatures.filter((s) => s.document_id === doc.id)}
               profiles={staff}
               currentProfile={profile}
-              ownOnly={!access.actsAsLicensee}
+              ownOnly={!access.runsOffice}
               fileUrl={signedUrls[i]?.data?.signedUrl ?? null}
               notAsked={doc.id === currentSg?.id ? notAskedOnCurrentSg : []}
             />
             ),
           )}
         </div>
+
+        {officeManagers.length > 0 && (
+          <section id="office-managers" className="mt-10 scroll-mt-6">
+            <h2 className="text-sm font-semibold text-rc-ink">Office manager approvals</h2>
+            <p className="mt-1 text-xs text-rc-muted">
+              Approved by the licensee in charge, in Team or by email link. Withdrawn approvals stay on the record.
+            </p>
+            <ul className="mt-3 space-y-3">
+              {officeManagers.map((m) => (
+                <li key={m.id} className="rounded-card border border-rc-border bg-white p-4 text-sm shadow-card">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-rc-ink">{m.person_name}</p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        m.withdrawn_at ? "bg-rc-bg-alt text-rc-muted" : "bg-rc-green-soft text-rc-green-deep"
+                      }`}
+                    >
+                      {m.withdrawn_at ? "Withdrawn" : "Office manager"}
+                    </span>
+                  </div>
+                  <p className="mt-2 break-words text-rc-ink">&ldquo;{m.wording}&rdquo;</p>
+                  <p className="mt-2 text-xs text-rc-muted">
+                    Approved by {m.approved_by_name}, {m.approved_via === "email_link" ? "by email link" : "in Team"},{" "}
+                    {formatAuTimestamp(m.approved_at)}.
+                    {m.withdrawn_at
+                      ? m.withdrawn_via === "left_office"
+                        ? ` Ended when they left the office, ${formatAuTimestamp(m.withdrawn_at)}.`
+                        : ` Withdrawn by ${m.withdrawn_by_name ?? "the licensee"}, ${
+                            m.withdrawn_via === "email_link" ? "by email link" : "in Team"
+                          }, ${formatAuTimestamp(m.withdrawn_at)}.`
+                      : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </main>
     </>
   );

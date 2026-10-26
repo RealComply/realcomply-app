@@ -226,7 +226,7 @@ function BreachRow({
   // Close and Remove are the licensee's, which includes the agent on their own
   // plan (lib/access.ts; 0058 lets them). They checked the raw flag, so that
   // agent could never close a breach (check of 10 Oct 2026).
-  const { actsAsLicensee } = useViewerAccess();
+  const { actsAsLicensee, runsOffice } = useViewerAccess();
   const [actioning, setActioning] = useState(false);
   const [actionState, actionForm, actionPending] = useActionState(
     recordCorrectiveAction.bind(null, b.id),
@@ -292,7 +292,7 @@ function BreachRow({
               {actioning ? "Cancel" : "Record action"}
             </button>
           )}
-          {b.status === "action_taken" && actsAsLicensee && (
+          {b.status === "action_taken" && runsOffice && (
             <form action={closeBreach.bind(null, b.id)}>
               <button type="submit" className="text-xs text-rc-green-deep hover:underline">
                 Close

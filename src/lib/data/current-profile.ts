@@ -138,8 +138,15 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
 export const requireAccess = cache(async function requireAccess(): Promise<{ profile: Profile; access: Access }> {
   const profile = await requireProfile();
   const supabase = await createClient();
-  const { data: agency } = await supabase.from("agencies").select("plan").eq("id", profile.agency_id).maybeSingle();
-  return { profile, access: accessFrom(profile, (agency as { plan?: string } | null)?.plan) };
+  const [{ data: agency }, { data: officeManager, error: officeManagerError }] = await Promise.all([
+    supabase.from("agencies").select("plan").eq("id", profile.agency_id).maybeSingle(),
+    // 0093. Before it is run the function doesn't exist: nobody is one.
+    supabase.rpc("is_office_manager"),
+  ]);
+  return {
+    profile,
+    access: accessFrom(profile, (agency as { plan?: string } | null)?.plan, !officeManagerError && officeManager === true),
+  };
 });
 
 /**
@@ -150,5 +157,15 @@ export const requireAccess = cache(async function requireAccess(): Promise<{ pro
 export async function requireLicenseePage(): Promise<{ profile: Profile; access: Access }> {
   const ctx = await requireAccess();
   if (!ctx.access.actsAsLicensee) notFound();
+  return ctx;
+}
+
+/**
+ * For a page on the office side (Team, Trust…): the licensee, or an office
+ * manager they approved (0093). Refuses a typed address the same way.
+ */
+export async function requireOfficePage(): Promise<{ profile: Profile; access: Access }> {
+  const ctx = await requireAccess();
+  if (!ctx.access.runsOffice) notFound();
   return ctx;
 }

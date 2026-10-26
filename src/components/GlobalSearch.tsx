@@ -35,10 +35,12 @@ function matchesPage(link: NavLink, term: string): boolean {
 
 export function GlobalSearch({
   actsAsLicensee = false,
+  runsOffice = false,
   pmEnabled = false,
   isAccountHolder = false,
 }: {
   actsAsLicensee?: boolean;
+  runsOffice?: boolean;
   pmEnabled?: boolean;
   isAccountHolder?: boolean;
 }) {
@@ -50,7 +52,7 @@ export function GlobalSearch({
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const pages = NAV_LINKS.filter((l) => visibleNavLink(l, { actsAsLicensee, pmEnabled, isAccountHolder }));
+  const pages = NAV_LINKS.filter((l) => visibleNavLink(l, { actsAsLicensee, runsOffice, pmEnabled, isAccountHolder }));
   const trimmed = term.trim().toLowerCase();
 
   const rows: Row[] = [

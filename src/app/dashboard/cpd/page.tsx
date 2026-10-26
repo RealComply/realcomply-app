@@ -57,7 +57,7 @@ export default async function CpdPage() {
   // see their assistant or agent's name but not their certificates or tick, so
   // a card for that person read "Not yet" whatever they had done (preview
   // check, 9 Oct 2026). They get their own card only; the licensee everyone's.
-  const staff = ((staffRows ?? []) as Profile[]).filter((s) => access.actsAsLicensee || s.id === profile.id);
+  const staff = ((staffRows ?? []) as Profile[]).filter((s) => access.runsOffice || s.id === profile.id);
   // Who confirmed a certificate in another name (15 Oct 2026) may be anyone in
   // the office, and an agent can't read the licensee's profile (0058), only
   // their name. The preview check showed "by a team member" to Jo otherwise.

@@ -51,6 +51,8 @@ export type NavLink = {
   keywords?: string[];
   /** Shown only to an agency with property management: every office plan (0086). */
   pmOnly?: boolean;
+  /** The licensee's only: not shown to an office manager (0093). */
+  licenseeOnly?: boolean;
 };
 
 export type NavCountKey = "listings" | "signoffs" | "registers" | "trust";
@@ -86,7 +88,15 @@ export const NAV_GROUPS: NavGroup[] = [
         pmOnly: true,
         keywords: ["pm", "rentals", "tenancies", "leasing", "landlord", "tenant"],
       },
-      { href: "/dashboard/portfolio", label: "Office overview", Icon: LayoutGrid, keywords: ["portfolio", "team files"] },
+      // Every listing in the office: the licensee's only, not an office
+      // manager's (not decided, 26 Oct 2026).
+      {
+        href: "/dashboard/portfolio",
+        label: "Office overview",
+        Icon: LayoutGrid,
+        licenseeOnly: true,
+        keywords: ["portfolio", "team files"],
+      },
     ],
   },
   {
@@ -222,10 +232,13 @@ export const NAV_LINKS: NavLink[] = NAV_GROUPS.flatMap((g) => g.links);
  */
 export function visibleNavLink(
   link: NavLink,
-  viewer: { actsAsLicensee: boolean; pmEnabled: boolean; isAccountHolder?: boolean },
+  viewer: { actsAsLicensee: boolean; runsOffice?: boolean; pmEnabled: boolean; isAccountHolder?: boolean },
 ): boolean {
   if (link.pmOnly && !viewer.pmEnabled) return false;
   if (viewer.actsAsLicensee) return true;
+  // An office manager (0093): the licensee's menu, less what stays with the
+  // licensee.
+  if (viewer.runsOffice) return link.licenseeOnly !== true;
   // The founder of an office who answered "not the licensee" at sign-up pays
   // for it, and the Billing page lets them in (actsAsLicensee or account
   // holder). Hiding the link left them no way back to it after checkout

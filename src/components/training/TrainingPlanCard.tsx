@@ -54,7 +54,10 @@ export function TrainingPlanCard({
 }) {
   const isSelf = viewerProfile.id === subject.id;
   const isLicensee = Boolean(viewerProfile.is_licensee_in_charge);
-  const canEdit = isSelf || isLicensee;
+  // An office manager keeps anyone's plan up to date; signing it stays with
+  // the licensee (0093).
+  const { isOfficeManager } = useViewerAccess();
+  const canEdit = isSelf || isLicensee || isOfficeManager;
   const approved = Boolean(plan?.principal_signed_at);
 
   const [open, setOpen] = useState(false);
