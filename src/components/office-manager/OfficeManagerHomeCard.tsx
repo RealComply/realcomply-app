@@ -6,6 +6,7 @@ import { UserCog } from "lucide-react";
 import { askLicenseeToApprove, cancelOfficeManagerRequest, type AskState } from "@/lib/actions/office-manager";
 import type { OfficeManagerCard } from "@/lib/office-manager/card";
 import { formatAuTimestamp } from "@/lib/format-date";
+import { RoofMark } from "@/components/RoofMark";
 
 // The office manager card on Home (0093; mockup approved by Adam, 26 Oct
 // 2026, with his wording for the first state). Which state shows is decided
@@ -148,7 +149,7 @@ export function OfficeManagerHomeCard({ card }: { card: OfficeManagerCard }) {
             {card.viaLink ? ", by email link" : ""}.
           </p>
           <Link href="/dashboard/document-signoffs#office-managers" className="inline-block text-sm font-semibold text-rc-green-deep hover:underline">
-            See the approval in Sign-offs &rarr;
+            See the approval in Sign-offs<RoofMark />
           </Link>
         </div>
       </section>

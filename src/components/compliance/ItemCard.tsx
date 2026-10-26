@@ -103,6 +103,7 @@ import {
 } from "@/lib/documents/covering-letter";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
+import { RoofMark } from "@/components/RoofMark";
 
 const initialState: ActionState = { error: null };
 
@@ -3138,7 +3139,7 @@ function VerbalQuoteLogItem({ item, propertyId, current }: { item: ComplianceIte
           onClick={() => setShowForm(false)}
           className="mt-2 text-xs text-rc-faint transition hover:underline"
         >
-          ← Back
+          <RoofMark back />Back
         </button>
       )}
     </ItemShell>

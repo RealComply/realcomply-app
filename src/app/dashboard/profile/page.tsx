@@ -129,6 +129,26 @@ export default async function ProfileSettingsPage() {
                   website={agency?.website_url ?? null}
                 />
               )}
+              {/* Only the licensee changes the licensee's name and email
+                  (Adam, 26 Oct 2026; 0095, checked by the database). An
+                  office manager of an office whose licensee isn't on
+                  RealComply sees them, and where corrections go. */}
+              {!access.actsAsLicensee && !licensee && (
+                <div className="rounded-card border border-rc-border bg-white p-4 text-sm shadow-card">
+                  <h3 className="text-sm font-semibold text-rc-ink">Licensee in charge</h3>
+                  <p className="mt-1 text-rc-ink">
+                    <span className="font-semibold">{agency?.licensee_name?.trim() || "Not recorded"}</span>
+                    {agency?.licensee_email ? <span className="text-rc-muted"> · {agency.licensee_email}</span> : null}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-rc-muted">
+                    Only the licensee in charge can change these. If they&rsquo;re wrong, email{" "}
+                    <a href="mailto:admin@realcomply.com.au" className="font-semibold text-rc-green-deep underline">
+                      admin@realcomply.com.au
+                    </a>{" "}
+                    and we&rsquo;ll correct them.
+                  </p>
+                </div>
+              )}
             </>
           ) : (
             <OfficeNamesReadOnly tradingName={agencyName} licensedEntityName={entityName} />

@@ -152,6 +152,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         isAccountHolder={accountHolder}
         isPlatformAdmin={profile.is_platform_admin === true}
         pmEnabled={pm.enabled}
+        isPropertyManager={profile.is_property_manager === true}
         counts={counts}
         agencyName={billing?.name ?? null}
         agencyLogoUrl={logoUrl}

@@ -16,6 +16,7 @@ import type {
   TrainingPlanItem,
   TrainingSession,
 } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 // Training — one section, two tabs (Adam, 18 Aug 2026).
 //
@@ -249,7 +250,7 @@ export default async function TrainingPage({
           </p>
         </div>
         <Link href="/dashboard/cpd" className="shrink-0 text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-          CPD →
+          CPD<RoofMark />
         </Link>
       </div>
 

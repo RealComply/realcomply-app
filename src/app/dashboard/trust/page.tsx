@@ -17,6 +17,7 @@ import {
 import type {
   Profile, SignoffDocument, SignoffSignature, TrustAccount, TrustAudit,
 } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 // Trust accounts — its own page, its own nav entry (Adam, 25 Aug 2026).
 //
@@ -120,7 +121,7 @@ export default async function TrustAccountsPage({
           href="/dashboard/registers"
           className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep"
         >
-          Registers →
+          Registers<RoofMark />
         </Link>
       </div>
 

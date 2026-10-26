@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { moveOutOutgoingTenant } from "@/lib/actions/pm";
 import type { ActionState } from "@/lib/actions/auth";
 import { todayInSydney } from "@/components/pm/pm-dates";
+import { RoofMark } from "@/components/RoofMark";
 
 // "Tenant has moved out" for an outgoing tenancy (brief B2), with the date.
 // The property stays where it is; only the old tenancy is updated.
@@ -21,7 +22,7 @@ export function PmOutgoingMoveOut({ propertyId, tenancyId }: { propertyId: strin
         onClick={() => setAsking(true)}
         className="rounded-full bg-rc-green-deep px-3.5 py-1.5 text-[13px] font-semibold text-white transition hover:bg-rc-green-deep-600"
       >
-        Tenant has moved out →
+        Tenant has moved out<RoofMark tone="inherit" />
       </button>
     );
   }

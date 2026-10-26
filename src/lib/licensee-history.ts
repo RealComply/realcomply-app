@@ -79,7 +79,8 @@ export type LicenseeHistoryLine = {
   licensee_name: string;
   licence_type: string | null;
   licence_number: string | null;
-  source: "backfill" | "first" | "change" | "team";
+  /** "invite": the licensee named in Office profile, joining by invite (0095). Not a handover. */
+  source: "backfill" | "first" | "change" | "team" | "invite";
   started_on: string | null;
   ended_on: string | null;
   ended_at: string | null;

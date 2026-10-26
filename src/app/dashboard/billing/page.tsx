@@ -9,6 +9,7 @@ import { formatAuDate } from "@/lib/format-date";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { ManageBillingButton } from "@/components/billing/ManageBillingButton";
 import { isAccountHolder } from "@/lib/subscription-end/access";
+import { RoofMark } from "@/components/RoofMark";
 
 // Billing.
 //
@@ -67,7 +68,7 @@ export default async function BillingPage({
           <p className="mt-1 text-sm text-rc-muted">Your plan, what it covers, and how much of it you&rsquo;ve used.</p>
         </div>
         <Link href="/dashboard/home" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-          ← Home
+          <RoofMark back />Home
         </Link>
       </div>
 

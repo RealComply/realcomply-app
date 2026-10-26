@@ -21,6 +21,7 @@ import { stageHold } from "@/lib/rules/stage-hold";
 import { stageProgress } from "@/lib/rules/stage-progress";
 import { StageProgressBar } from "@/components/compliance/StageProgressBar";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 // "Read uploaded documents" and "Read again" run from this page. A large PDF
 // is now read in parts (25 Oct 2026, lib/documents/reader-parts.ts), and a
@@ -251,7 +252,7 @@ export default async function PropertyPage({
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <Link href="/dashboard" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-            ← All properties
+            <RoofMark back />All properties
           </Link>
           <TestModeToggle propertyId={p.id} testMode={p.test_mode} />
         </div>

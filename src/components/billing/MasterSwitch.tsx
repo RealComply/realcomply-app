@@ -5,6 +5,7 @@ import Link from "next/link";
 import { KeyRound } from "lucide-react";
 import { setAgencyBillingAsMaster, type BillingActionState } from "@/lib/actions/billing";
 import { PLANS, type Plan } from "@/lib/billing/entitlement";
+import { RoofMark } from "@/components/RoofMark";
 
 // The RealComply master controls, on the billing page and visible to nobody else.
 //
@@ -59,7 +60,7 @@ export function MasterSwitch({
           already knows to look for RealComply-only controls. */}
       <p className="mt-2 text-sm">
         <Link href="/dashboard/admin" className="font-semibold text-rc-red hover:underline">
-          See everyone who has signed up →
+          See everyone who has signed up<RoofMark tone="inherit" />
         </Link>
       </p>
 

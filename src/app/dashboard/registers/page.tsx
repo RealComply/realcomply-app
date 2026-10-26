@@ -19,6 +19,7 @@ import type {
   Agency, Breach, Complaint, CpdRecord, Gift, InsuranceHistoryRow, InsurancePolicy, InsurancePolicyType, LicenceReminder,
   Profile, Property,
 } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 const TAB_KEYS = new Set(["licence", "insurance", "gifts", "complaints", "breaches"]);
 
@@ -269,10 +270,10 @@ export default async function RegistersPage({
               </Link>
             )}
             <Link href="/dashboard/training" className="text-rc-muted transition hover:text-rc-green-deep">
-              Training log →
+              Training log<RoofMark />
             </Link>
             <Link href="/dashboard/document-signoffs" className="text-rc-muted transition hover:text-rc-green-deep">
-              Document sign-offs →
+              Document sign-offs<RoofMark />
             </Link>
           </div>
         </div>
