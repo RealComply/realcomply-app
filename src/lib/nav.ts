@@ -221,6 +221,23 @@ export const NAV_GROUPS: NavGroup[] = [
 export const NAV_LINKS: NavLink[] = NAV_GROUPS.flatMap((g) => g.links);
 
 /**
+ * The menu's groups in the order this person sees them. A property manager
+ * (0095; Adam, 26 Oct 2026) has Property management first, straight after
+ * Home and above Listings. Nothing else moves, and they keep Listings: they
+ * can still list sales.
+ */
+export function navGroupsFor(viewer: { isPropertyManager?: boolean }): NavGroup[] {
+  if (!viewer.isPropertyManager) return NAV_GROUPS;
+  return NAV_GROUPS.map((group) => {
+    const pm = group.links.find((l) => l.href === "/dashboard/pm");
+    if (!pm) return group;
+    const rest = group.links.filter((l) => l !== pm);
+    const home = rest.findIndex((l) => l.href === "/dashboard/home");
+    return { ...group, links: [...rest.slice(0, home + 1), pm, ...rest.slice(home + 1)] };
+  });
+}
+
+/**
  * The links this viewer gets.
  *
  * REVERSAL (Adam, 7 Oct 2026). Was: only an assistant had a reduced menu, and

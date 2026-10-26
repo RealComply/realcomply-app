@@ -8,6 +8,7 @@ import type { Agency, Breach, Complaint, CpdRecord, Gift, InsurancePolicy, Profi
 import { otherInsuranceTitle } from "@/lib/insurance-read";
 import { formatAuDateTimeShort } from "@/lib/format-date";
 import { PrintButton } from "./PrintButton";
+import { RoofMark } from "@/components/RoofMark";
 
 const LICENCE_TYPE_LABELS: Record<string, string> = {
   class_1: "Class 1 licence",
@@ -103,7 +104,7 @@ export default async function RegistersExportPage() {
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 print:px-0">
       <div className="flex items-center justify-between print:hidden">
         <Link href="/dashboard/registers" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-          ← Back to registers
+          <RoofMark back />Back to registers
         </Link>
         <PrintButton />
       </div>

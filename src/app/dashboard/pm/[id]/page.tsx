@@ -34,6 +34,7 @@ import { PmManagerControl } from "@/components/pm/PmManagerControl";
 import { PmOngoingRecords, PmOpenPetRequests, PmPetApplication, type PmRecordView } from "@/components/pm/PmRecords";
 import { PmOutgoingMoveOut } from "@/components/pm/PmOutgoingMoveOut";
 import { todayInSydney } from "@/components/pm/pm-dates";
+import { RoofMark } from "@/components/RoofMark";
 
 // One PM property (brief A5 to A9, B1 to B8): the pinned header, one oval per
 // stage, the move buttons, any outgoing tenant still finishing, then one
@@ -109,7 +110,7 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
       <div className="flex items-center justify-between gap-3">
         <Link href="/dashboard/pm" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-          ← All properties
+          <RoofMark back />All properties
         </Link>
         <Link
           href={`/dashboard/pm/${property.id}/history`}

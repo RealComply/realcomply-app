@@ -14,6 +14,7 @@ import {
 } from "@/lib/rules/nsw-pm";
 import { PmChoicePills } from "@/components/pm/PmChoicePills";
 import { todayInSydney } from "@/components/pm/pm-dates";
+import { RoofMark } from "@/components/RoofMark";
 
 // The move buttons on a PM property (brief A9, B1 to B3). One main button per
 // group, and in Tenant vacating and Vacant a second, quieter one. Disabled
@@ -61,7 +62,7 @@ export function PmMoveControl({ propertyId, options }: { propertyId: string; opt
                   : "rounded-full border border-rc-green-deep bg-white px-4 py-2 text-sm font-semibold text-rc-green-deep transition hover:bg-rc-green-soft disabled:cursor-not-allowed disabled:opacity-45"
               }
             >
-              {move.label} →
+              {move.label}<RoofMark tone="inherit" />
             </button>
           ))}
         </div>

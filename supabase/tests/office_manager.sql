@@ -154,12 +154,26 @@ begin
   exception when raise_exception then
     if sqlerrm not like 'Only the licensee in charge can change roles%' then raise; end if;
   end;
-  begin
+  -- Since 0095 (Adam, 26 Oct 2026) an office manager may invite the
+  -- licensee in charge named in Office profile, and no one else: whatever
+  -- the form says, the invite goes to the licensee's recorded address.
+  -- (Was 0093: an office manager couldn't invite a licensee in charge.)
+  if to_regprocedure('public.guard_agency_invite_roles()') is null then
+    begin
+      insert into public.agency_invites (agency_id, email, full_name, is_licensee_in_charge, invited_by)
+      values (o1, 'om-new-lic@example.invalid', 'New Licensee', true, f);
+      raise exception 'FAIL 5j: an office manager invited a licensee in charge';
+    exception when insufficient_privilege then null;
+    end;
+  else
     insert into public.agency_invites (agency_id, email, full_name, is_licensee_in_charge, invited_by)
-    values (o1, 'om-new-lic@example.invalid', 'New Licensee', true, f);
-    raise exception 'FAIL 5j: an office manager invited a licensee in charge';
-  exception when insufficient_privilege then null;
-  end;
+    values (o1, 'om-new-lic@example.invalid', 'New Licensee', true, f)
+    returning email into t;
+    if t <> 'om-jordan@example.invalid' then
+      raise exception 'FAIL 5j: an office manager invited a licensee in charge at %', t;
+    end if;
+    update public.agency_invites set status = 'revoked' where email = t and agency_id = o1;
+  end if;
   insert into public.agency_invites (agency_id, email, full_name, is_licensee_in_charge, invited_by)
   values (o1, 'om-new-agent@example.invalid', 'New Agent', false, f);
   begin

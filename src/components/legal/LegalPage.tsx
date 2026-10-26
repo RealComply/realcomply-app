@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LEGAL_DOCUMENTS, type LegalDocument } from "@/lib/legal/documents";
+import { RoofMark } from "@/components/RoofMark";
 
 // Renders a published legal document.
 //
@@ -24,7 +25,7 @@ export function LegalPage({ doc }: { doc: LegalDocument }) {
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-12">
       <Link href="/" className="text-sm text-rc-muted transition hover:text-rc-ink hover:underline">
-        ← RealComply
+        <RoofMark back />RealComply
       </Link>
 
       <h1 className="mt-4 text-2xl font-semibold text-rc-ink">{heading}</h1>

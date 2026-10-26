@@ -33,6 +33,11 @@ export type Profile = {
   // is_agent is false for an assistant: it drives "whose listing is this"
   // throughout the app, and an assistant has none of their own.
   is_assistant: boolean;
+  /**
+   * Works in property management (0095): Property management first in their
+   * menu. Still an agent, and can still list sales. Optional until 0095 is run.
+   */
+  is_property_manager?: boolean;
   licence_type: LicenceType | null;
   licence_number: string | null;
   licence_expiry: string | null;
@@ -602,8 +607,15 @@ export type AgencyInvite = {
   email: string;
   full_name: string | null;
   is_licensee_in_charge: boolean;
-  /** Invited as an assistant (0025). Neither flag set means invited as an agent. */
+  /** Invited as an assistant (0025). No role flag set means invited as an agent. */
   is_assistant: boolean;
+  /** Invited as office manager, approved on the invite by the licensee in charge (0095). */
+  is_office_manager?: boolean;
+  /** The words the licensee ticked, and when (0095). */
+  office_manager_wording?: string | null;
+  office_manager_authorised_at?: string | null;
+  /** Invited as a property manager (0095). */
+  is_property_manager?: boolean;
   token: string;
   status: InviteStatus;
   invited_by: string | null;

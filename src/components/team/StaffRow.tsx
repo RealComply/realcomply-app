@@ -15,6 +15,8 @@ export type StaffPerson = {
   isAgent: boolean;
   isAssistant: boolean;
   isLicensee: boolean;
+  /** Works in property management (0095). */
+  isPropertyManager?: boolean;
   archivedAt: string | null;
 };
 
@@ -39,6 +41,7 @@ export function StaffRow({
   subtitle,
   isOfficeManager = false,
   officeManagerControls = null,
+  offerPropertyManager = false,
 }: {
   person: StaffPerson;
   isSelf: boolean;
@@ -51,6 +54,8 @@ export function StaffRow({
   isOfficeManager?: boolean;
   /** Make office manager / Withdraw, for the licensee in charge (0093). */
   officeManagerControls?: React.ReactNode;
+  /** The plan includes property management, so Property manager is a role (0095). */
+  offerPropertyManager?: boolean;
 }) {
   const [editing, setEditing] = useState<"name" | "role" | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
@@ -70,7 +75,13 @@ export function StaffRow({
     setConfirmingRemove(false);
   }
 
-  const currentRole = person.isAssistant ? "assistant" : person.isLicensee ? "licensee" : "agent";
+  const currentRole = person.isAssistant
+    ? "assistant"
+    : person.isLicensee
+      ? "licensee"
+      : person.isPropertyManager
+        ? "property_manager"
+        : "agent";
   const archived = Boolean(person.archivedAt);
 
   return (
@@ -107,6 +118,11 @@ export function StaffRow({
           {!archived && person.isAssistant && (
             <span className="rounded-full bg-rc-green-soft px-2 py-0.5 text-[11px] font-medium text-rc-green-deep-600">
               Assistant
+            </span>
+          )}
+          {!archived && person.isPropertyManager && (
+            <span className="rounded-full bg-[#eef3ff] px-2 py-0.5 text-[11px] font-medium text-[#2f4a8a]">
+              Property manager
             </span>
           )}
           {!archived && isOfficeManager && (
@@ -199,6 +215,10 @@ export function StaffRow({
                 >
                   <option value="agent">Agent</option>
                   <option value="assistant">Assistant</option>
+                  {/* An agent whose work is property management (0095). */}
+                  {(offerPropertyManager || person.isPropertyManager) && (
+                    <option value="property_manager">Property manager</option>
+                  )}
                   {/* Only to keep what they are. Making someone licensee in
                       charge is "Change licensee in charge" on Office profile
                       (Adam, 16 Oct 2026; 0080), which records it and moves

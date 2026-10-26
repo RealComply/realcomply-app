@@ -6,6 +6,7 @@ import { currentCpdYear } from "@/lib/cpd-year";
 import { CPD_REMINDER_SCHEDULE_WORDS } from "@/lib/cpd-reminders";
 import { agencyPeople } from "@/lib/data/people";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 // CPD — a certificate and a tick.
 //
@@ -98,7 +99,7 @@ export default async function CpdPage() {
           href="/dashboard/training"
           className="shrink-0 text-sm font-medium text-rc-muted transition hover:text-rc-green-deep"
         >
-          ← Training
+          <RoofMark back />Training
         </Link>
       </div>
 

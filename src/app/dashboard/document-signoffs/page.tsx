@@ -17,6 +17,7 @@ import type {
   SignoffDocument,
   SignoffSignature,
 } from "@/lib/types";
+import { RoofMark } from "@/components/RoofMark";
 
 // Document sign-offs — the generic register for "upload a document, the
 // right people sign it in RealComply" (Adam, 9 Aug 2026). Currently feeds
@@ -92,7 +93,7 @@ export default async function DocumentSignoffsPage() {
             </p>
           </div>
           <Link href="/dashboard/registers" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-            ← Registers
+            <RoofMark back />Registers
           </Link>
         </div>
 
