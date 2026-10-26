@@ -9,12 +9,12 @@ import type { AgencyInvite } from "@/lib/types";
 export function PendingInvitesList({
   invites,
   canManage,
-  approvedByName,
+  staffNames = {},
 }: {
   invites: AgencyInvite[];
   canManage: boolean;
-  /** Who sent an office manager invite, by profile id, for the approval line. */
-  approvedByName: (id: string) => string | null;
+  /** Names by profile id, for who approved an office manager invite. */
+  staffNames?: Record<string, string>;
 }) {
   if (invites.length === 0) return null;
 
@@ -55,7 +55,7 @@ export function PendingInvitesList({
             {/* The licensee's approval, made on the invite (0095). */}
             {invite.is_office_manager && invite.office_manager_wording && (
               <p className="mt-1.5 pl-10 text-xs leading-relaxed text-rc-muted">
-                Approved by {(invite.invited_by && approvedByName(invite.invited_by)) || "the licensee in charge"}
+                Approved by {(invite.invited_by && staffNames[invite.invited_by]) || "the licensee in charge"}
                 {invite.office_manager_authorised_at ? ` on ${formatAuTimestamp(invite.office_manager_authorised_at)}` : ""}:{" "}
                 &ldquo;{invite.office_manager_wording}&rdquo; They become office manager when they join.
               </p>

@@ -192,7 +192,7 @@ export default async function TeamPage() {
         <PendingInvitesList
           invites={invites}
           canManage={mayManagePeople}
-          approvedByName={(id) => staff.find((p) => p.id === id)?.full_name?.trim() || null}
+          staffNames={Object.fromEntries(staff.map((p) => [p.id, p.full_name?.trim() || p.email]))}
         />
 
         {mayManagePeople ? (
