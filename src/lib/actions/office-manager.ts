@@ -35,6 +35,30 @@ const trimName = (name: string | null | undefined, email: string | null | undefi
 
 export type AskState = { error: string | null; sent: boolean };
 
+/** Builds and sends the licensee's email. The token is read here, with the service key, and nowhere else. */
+async function emailTheRequest(
+  requestId: string,
+  profile: { agency_id: string; full_name: string | null; email: string | null },
+): Promise<boolean> {
+  const service = createServiceClient();
+  const { data: row } = await service
+    .from("office_manager_requests")
+    .select("token, sent_to, wording, expires_at, agency_id")
+    .eq("id", requestId)
+    .maybeSingle();
+  const request = row as { token: string; sent_to: string; wording: string; expires_at: string; agency_id: string } | null;
+  if (!request || request.agency_id !== profile.agency_id) return false;
+  const { data: agency } = await service.from("agencies").select("name").eq("id", profile.agency_id).maybeSingle();
+  const email = buildOfficeManagerRequestEmail({
+    personName: trimName(profile.full_name, profile.email),
+    officeName: ((agency as { name?: string } | null)?.name ?? "").trim(),
+    wording: request.wording,
+    url: `${appBaseUrl()}/office-manager/${request.token}`,
+    expiresAt: formatAuDate(request.expires_at.slice(0, 10)),
+  });
+  return sendEmail({ to: request.sent_to, ...email, ...(profile.email ? { replyTo: profile.email } : {}) });
+}
+
 /** Asks (or asks again with the same link). Emails the licensee and records whether it went. */
 export async function askLicenseeToApprove(): Promise<AskState> {
   const profile = await requireProfile();
@@ -45,25 +69,13 @@ export async function askLicenseeToApprove(): Promise<AskState> {
     return { error: refusal(error, "We couldn't make the request. Try again in a few minutes."), sent: false };
   }
 
-  const service = createServiceClient();
-  const { data: row } = await service
-    .from("office_manager_requests")
-    .select("token, sent_to, wording, expires_at, agency_id")
-    .eq("id", requestId)
-    .maybeSingle();
-  const request = row as { token: string; sent_to: string; wording: string; expires_at: string; agency_id: string } | null;
-  const { data: agency } = await service.from("agencies").select("name").eq("id", profile.agency_id).maybeSingle();
-
+  // Never throws: a failed send leaves the request standing, recorded as not
+  // sent, so "Send again" can try again (as sign-off links do, 0047).
   let sent = false;
-  if (request && request.agency_id === profile.agency_id) {
-    const email = buildOfficeManagerRequestEmail({
-      personName: trimName(profile.full_name, profile.email),
-      officeName: ((agency as { name?: string } | null)?.name ?? "").trim(),
-      wording: request.wording,
-      url: `${appBaseUrl()}/office-manager/${request.token}`,
-      expiresAt: formatAuDate(request.expires_at.slice(0, 10)),
-    });
-    sent = await sendEmail({ to: request.sent_to, ...email, ...(profile.email ? { replyTo: profile.email } : {}) });
+  try {
+    sent = await emailTheRequest(requestId, profile);
+  } catch (e) {
+    console.error("office manager request email failed", requestId, e);
   }
   await supabase.rpc("record_office_manager_request_email", { p_request_id: requestId, p_sent: sent });
 
@@ -101,7 +113,19 @@ export async function approveOfficeManagerByLink(_prev: ApproveState, formData: 
     };
   }
 
-  // The record, and the email that is the licensee's copy of it.
+  // The licensee's copy of the record, by email. The approval stands whether
+  // or not the email goes.
+  try {
+    const copy = await emailTheApproval(token);
+    if (copy) return { error: null, approved: true, ...copy };
+  } catch (e) {
+    console.error("office manager approval email failed", e);
+  }
+  return { error: null, approved: true, approvedByName: typedName };
+}
+
+/** Emails the licensee their confirmation, with the withdraw link. Returns when and by whom it was approved. */
+async function emailTheApproval(token: string): Promise<{ approvedAt: string; approvedByName: string } | null> {
   const service = createServiceClient();
   const { data: req } = await service
     .from("office_manager_requests")
@@ -109,7 +133,7 @@ export async function approveOfficeManagerByLink(_prev: ApproveState, formData: 
     .eq("token", token)
     .maybeSingle();
   const request = req as { id: string; sent_to: string; agency_id: string; profile_id: string } | null;
-  if (!request) return { error: null, approved: true };
+  if (!request) return null;
   const [{ data: managerRow }, { data: person }, { data: agency }] = await Promise.all([
     service
       .from("office_managers")
@@ -121,19 +145,17 @@ export async function approveOfficeManagerByLink(_prev: ApproveState, formData: 
   ]);
   const manager = managerRow as { wording: string; approved_at: string; approved_by_name: string; withdraw_token: string } | null;
   const who = person as { full_name: string | null; email: string | null } | null;
-  if (manager) {
-    const email = buildOfficeManagerApprovedEmail({
-      personName: trimName(who?.full_name, who?.email),
-      officeName: ((agency as { name?: string } | null)?.name ?? "").trim(),
-      approvedByName: manager.approved_by_name,
-      approvedAt: formatAuTimestamp(manager.approved_at),
-      wording: manager.wording,
-      withdrawUrl: `${appBaseUrl()}/office-manager/withdraw/${manager.withdraw_token}`,
-    });
-    await sendEmail({ to: request.sent_to, ...email, ...(who?.email ? { replyTo: who.email } : {}) });
-    return { error: null, approved: true, approvedAt: manager.approved_at, approvedByName: manager.approved_by_name };
-  }
-  return { error: null, approved: true };
+  if (!manager) return null;
+  const email = buildOfficeManagerApprovedEmail({
+    personName: trimName(who?.full_name, who?.email),
+    officeName: ((agency as { name?: string } | null)?.name ?? "").trim(),
+    approvedByName: manager.approved_by_name,
+    approvedAt: formatAuTimestamp(manager.approved_at),
+    wording: manager.wording,
+    withdrawUrl: `${appBaseUrl()}/office-manager/withdraw/${manager.withdraw_token}`,
+  });
+  await sendEmail({ to: request.sent_to, ...email, ...(who?.email ? { replyTo: who.email } : {}) });
+  return { approvedAt: manager.approved_at, approvedByName: manager.approved_by_name };
 }
 
 export type WithdrawState = { error: string | null; withdrawn: boolean; withdrawnAt?: string };
@@ -164,14 +186,22 @@ export async function withdrawOfficeManagerByLink(_prev: WithdrawState, formData
   if (error || data !== true) {
     return { error: "This link is no longer valid. The approval may already have been withdrawn.", withdrawn: false };
   }
-  const { data: row } = await createServiceClient()
-    .from("office_managers")
-    .select("profile_id, agency_id, withdrawn_at, withdrawn_by_name")
-    .eq("withdraw_token", token)
-    .maybeSingle();
-  const done = row as { profile_id: string; agency_id: string; withdrawn_at: string; withdrawn_by_name: string | null } | null;
-  if (done) await tellOfficeManager(done);
-  return { error: null, withdrawn: true, withdrawnAt: done?.withdrawn_at };
+  // The withdrawal stands whether or not the email to the office manager goes.
+  try {
+    const { data: row } = await createServiceClient()
+      .from("office_managers")
+      .select("profile_id, agency_id, withdrawn_at, withdrawn_by_name")
+      .eq("withdraw_token", token)
+      .maybeSingle();
+    const done = row as { profile_id: string; agency_id: string; withdrawn_at: string; withdrawn_by_name: string | null } | null;
+    if (done) {
+      await tellOfficeManager(done);
+      return { error: null, withdrawn: true, withdrawnAt: done.withdrawn_at };
+    }
+  } catch (e) {
+    console.error("office manager withdrawal email failed", e);
+  }
+  return { error: null, withdrawn: true };
 }
 
 // ── The licensee with a login, in Team ───────────────────────────────────
@@ -206,7 +236,13 @@ export async function withdrawOfficeManager(profileId: string): Promise<TeamOffi
     .order("withdrawn_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (row) await tellOfficeManager(row as { profile_id: string; agency_id: string; withdrawn_at: string; withdrawn_by_name: string | null });
+  if (row) {
+    try {
+      await tellOfficeManager(row as { profile_id: string; agency_id: string; withdrawn_at: string; withdrawn_by_name: string | null });
+    } catch (e) {
+      console.error("office manager withdrawal email failed", e);
+    }
+  }
   revalidatePath("/dashboard/team");
   return { error: null };
 }
