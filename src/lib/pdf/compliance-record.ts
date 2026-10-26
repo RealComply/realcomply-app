@@ -6,6 +6,7 @@ import { pdfText } from "./text";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import type { PriceApproval } from "@/lib/rules/price-statement";
+import { saleRecordLines } from "@/lib/rules/sale-price";
 import { formatAuDate } from "@/lib/format-date";
 import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
 import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
@@ -600,6 +601,12 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
             : `Approved in RealComply by the licensee in charge${when}`,
           { size: 8.5, color: MUTED, indent: 12 },
         );
+      }
+      // The sale price, what it was compared with, and any flag and the
+      // agent's note (f0, 26 Oct 2026). The card no longer stays "flagged",
+      // so this is where the record says it.
+      if (item.key === "f0" && current) {
+        for (const line of saleRecordLines(current.data)) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
       }
       if (item.legalBasis) c.text(item.legalBasis, { size: 8, color: FAINT, indent: 12 });
       // t5 keeps its shoot date and the tenant's permission on the item, not
