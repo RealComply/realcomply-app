@@ -12,16 +12,6 @@
 // an agent on their own plan (REVERSAL, Adam, 9 Oct: "Complaints should go
 // directly to a licensee"). Same as acts_as_licensee() and
 // is_office_licensee() in 0058.
-//
-// AN OFFICE RUN LIKE AN AGENT PLAN (Adam, 26 Oct 2026; 0092). Found live at
-// Raine & Horne Queanbeyan: the person who signed up answered "No, someone
-// else" to "Are you the licensee in charge?", then chose an office plan, and
-// nobody in the office had the licensee's powers. Now an office plan behaves
-// exactly like an agent plan when the person signing up isn't the licensee
-// in charge: they run the account, and the licensee signs by email link. The
-// office carries licensee_not_on_realcomply; worksAsAgentPlan() below is the
-// one test, the same as works_as_agent_plan() in the database, and every rule
-// that asked "is this an agent plan?" asks it instead.
 
 export type Access = {
   /** Licensee in charge, or the agent on an agent plan. Office overview, Team, Trust, deletes, agency details. */
@@ -30,36 +20,23 @@ export type Access = {
   officeLicensee: boolean;
   /** Prepares files for the agents they assist. Cannot sign. */
   isAssistant: boolean;
-  /** On an agent plan, or an office run like one (0092): the paying customer, so gets Billing. */
-  worksAsAgentPlan: boolean;
+  /** On an agent plan: the paying customer, so gets Billing. */
+  isAgentPlan: boolean;
 };
-
-/** What the access rules need from the agency row. */
-export type AgencyFooting = { plan?: string | null; licensee_not_on_realcomply?: boolean | null };
-
-/**
- * An agent plan, or an office whose licensee in charge isn't on RealComply,
- * run by the person who signed up the way an agent on their own plan runs
- * theirs (0092). Same as works_as_agent_plan() in the database.
- */
-export function worksAsAgentPlan(agency: AgencyFooting | null | undefined): boolean {
-  const plan = agency?.plan;
-  return (typeof plan === "string" && plan.startsWith("agent_")) || agency?.licensee_not_on_realcomply === true;
-}
 
 export function accessFrom(
   profile: { is_licensee_in_charge: boolean | null; is_assistant: boolean | null; archived_at?: string | null },
-  agency: AgencyFooting | null | undefined,
+  plan: string | null | undefined,
 ): Access {
   const active = !profile.archived_at;
-  const agentPlan = worksAsAgentPlan(agency);
+  const isAgentPlan = typeof plan === "string" && plan.startsWith("agent_");
   const licensee = active && profile.is_licensee_in_charge === true;
   return {
     // Not an assistant on an agent plan: the agent is the licensee for their
     // own account, the person helping them is not (0059).
-    actsAsLicensee: licensee || (active && agentPlan && profile.is_assistant !== true),
-    officeLicensee: licensee && !agentPlan,
+    actsAsLicensee: licensee || (active && isAgentPlan && profile.is_assistant !== true),
+    officeLicensee: licensee && !isAgentPlan,
     isAssistant: active && profile.is_assistant === true,
-    worksAsAgentPlan: agentPlan,
+    isAgentPlan,
   };
 }

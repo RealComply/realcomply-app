@@ -113,12 +113,6 @@ export type Agency = {
   // round, which is why they are ordinary columns here rather than something
   // looked up live. See lib/billing/entitlement.ts.
   plan: Plan;
-  /**
-   * The office's licensee in charge isn't on RealComply, and the person who
-   * signed up runs the account the way an agent on their own plan does
-   * (0092, Adam 26 Oct 2026). See worksAsAgentPlan() in lib/access.ts.
-   */
-  licensee_not_on_realcomply?: boolean;
   status: BillingStatus;
   trial_ends_at: string | null;
   stripe_customer_id: string | null;

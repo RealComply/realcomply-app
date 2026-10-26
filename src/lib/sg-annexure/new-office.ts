@@ -5,7 +5,6 @@ import { sendEarlyAccessWelcome, type WelcomeOutcome } from "@/lib/early-access/
 import { sendOwnPlanAgentWelcome } from "@/lib/onboarding/agent-welcome";
 import { annexureDate, SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { appBaseUrl } from "@/lib/site-url";
-import { worksAsAgentPlan } from "@/lib/access";
 
 // A new office's trial has started: its welcome, and the request to adopt the
 // SG annexure (brief, 14 Oct 2026; Adam, 14 Oct 2026: "send the licensee's
@@ -92,9 +91,7 @@ export async function annexurePlanFor(
   const [{ data: agency }, { data: people }, { data: adopted }, { data: invites }] = await Promise.all([
     supabase
       .from("agencies")
-      // Every column, so licensee_not_on_realcomply comes through once 0092
-      // has added it and nothing breaks before then.
-      .select("*")
+      .select("name, plan, licensee_name, licensee_email, corporation_licence_number")
       .eq("id", agencyId)
       .maybeSingle(),
     supabase
@@ -107,15 +104,12 @@ export async function annexurePlanFor(
   const a = (agency ?? {}) as {
     name?: string;
     plan?: string | null;
-    licensee_not_on_realcomply?: boolean | null;
     licensee_name?: string | null;
     licensee_email?: string | null;
     corporation_licence_number?: string | null;
   };
-  // Never the licensee of an agent on their own plan (CORRECTION, 14 Oct 2026),
-  // or of an office run like one (0092, 26 Oct 2026): the annexure goes the
-  // single agent way there.
-  if (worksAsAgentPlan(a)) return { plan: null, reason: "agent_plan" };
+  // Never the licensee of an agent on their own plan (CORRECTION, 14 Oct 2026).
+  if (isAgentPlan(a.plan)) return { plan: null, reason: "agent_plan" };
   if (((adopted ?? []) as unknown[]).length > 0) return { plan: null, reason: "already_adopted" };
 
   const present = ((people ?? []) as ProfileRow[])
@@ -173,6 +167,10 @@ async function downloadTokenFor(supabase: Client, agencyId: string): Promise<str
   } catch {
     return null;
   }
+}
+
+export function isAgentPlan(plan: string | null | undefined): boolean {
+  return typeof plan === "string" && plan.startsWith("agent_");
 }
 
 export async function onNewOfficeTrialStarted(

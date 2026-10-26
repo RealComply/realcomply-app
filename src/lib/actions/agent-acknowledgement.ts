@@ -22,7 +22,7 @@ export type AckState = { error: string | null };
  */
 export async function confirmAgentAcknowledgement(_prev: AckState, formData: FormData): Promise<AckState> {
   const { supabase, access } = await requireAuthContext();
-  if (!access.worksAsAgentPlan || !access.actsAsLicensee) {
+  if (!access.isAgentPlan || !access.actsAsLicensee) {
     return { error: "Only the agent on their own plan confirms this." };
   }
 
@@ -66,7 +66,7 @@ export type UploadState = { error: string | null; done?: boolean };
  */
 export async function recordSignedAnnexure(path: string, fileName: string): Promise<UploadState> {
   const { supabase, access } = await requireAuthContext();
-  if (!access.worksAsAgentPlan || !access.actsAsLicensee) {
+  if (!access.isAgentPlan || !access.actsAsLicensee) {
     return { error: "Only the agent on their own plan uploads the signed annexure." };
   }
   // Never an empty annexure on file (19 Oct 2026). Removed like any upload

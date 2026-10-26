@@ -231,14 +231,14 @@ describe("Getting started", () => {
 });
 
 describe("the read-and-tick on Home", () => {
-  const officeAgent = { actsAsLicensee: false, isAssistant: false, worksAsAgentPlan: false };
+  const officeAgent = { actsAsLicensee: false, isAssistant: false, isAgentPlan: false };
   const adoption = { version: "1.4", adoptedByName: "Lee Licensee", adoptedAt: "2026-10-14T01:00:00Z" };
 
   it("is for agents in an office only: not the licensee, an assistant, or an agent on their own plan", () => {
     assert.equal(isOfficeAgent(officeAgent), true);
     assert.equal(isOfficeAgent({ ...officeAgent, actsAsLicensee: true }), false);
     assert.equal(isOfficeAgent({ ...officeAgent, isAssistant: true }), false);
-    assert.equal(isOfficeAgent({ actsAsLicensee: true, isAssistant: false, worksAsAgentPlan: true }), false);
+    assert.equal(isOfficeAgent({ actsAsLicensee: true, isAssistant: false, isAgentPlan: true }), false);
   });
 
   it("shows once the office has adopted, until the agent confirms that version", () => {

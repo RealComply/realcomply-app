@@ -151,12 +151,7 @@ export async function runCpdReminders(now: Date = new Date(), deps: CpdReminderD
       .eq("send_date", due.sendDate);
     const already = new Set(((sentRows ?? []) as CpdReminder[]).map((r) => `${r.kind}:${r.profile_id}`));
 
-    const plan = planCpdReminders({
-      plan: agency.plan,
-      licensee_not_on_realcomply: agency.licensee_not_on_realcomply,
-      profiles,
-      doneIds,
-    });
+    const plan = planCpdReminders({ plan: agency.plan, profiles, doneIds });
     result.checked += profiles.filter((p) => !p.archived_at).length;
     result.done += profiles.filter((p) => !p.archived_at && doneIds.has(p.id)).length;
 

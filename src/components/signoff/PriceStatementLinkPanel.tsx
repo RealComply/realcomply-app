@@ -213,7 +213,7 @@ export function PriceStatementLinkPanel({
   }
 
   const email = licenseeEmail?.trim() || null;
-  const noEmail = noLicenseeEmailMessage({ actsAsLicensee, worksAsAgentPlan: agentPlan });
+  const noEmail = noLicenseeEmailMessage({ actsAsLicensee, isAgentPlan: agentPlan });
   const canSend = gateOpen && email !== null;
 
   return (

@@ -152,9 +152,9 @@ export function approverNameTooLong(name: string): boolean {
  * In an office whose founder answered "No, someone else", nobody signed in
  * can see Team, so support adds it (Adam's default, 12 Oct 2026).
  */
-export function noLicenseeEmailMessage(viewer: { actsAsLicensee: boolean; worksAsAgentPlan: boolean }): string {
+export function noLicenseeEmailMessage(viewer: { actsAsLicensee: boolean; isAgentPlan: boolean }): string {
   if (viewer.actsAsLicensee) return "Add your licensee in charge's email in Team settings first.";
-  if (viewer.worksAsAgentPlan) return "Ask your agent to add your licensee in charge's email in Team settings.";
+  if (viewer.isAgentPlan) return "Ask your agent to add your licensee in charge's email in Team settings.";
   return "There's no email on file for your licensee in charge. Contact RealComply support to add it.";
 }
 

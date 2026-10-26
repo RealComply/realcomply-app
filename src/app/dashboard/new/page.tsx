@@ -26,7 +26,7 @@ export default async function NewPropertyPage() {
   const gate = await listingGate(await createClient());
   if (gate) {
     const supabase = await createClient();
-    const licenseeName = await licenseeNameFor(supabase, profile.agency_id, { agentPlan: access.worksAsAgentPlan });
+    const licenseeName = await licenseeNameFor(supabase, profile.agency_id, { agentPlan: access.isAgentPlan });
     return (
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-10">
         <h1 className="text-2xl font-bold tracking-tight text-rc-ink">New listing</h1>

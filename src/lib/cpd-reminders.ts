@@ -124,8 +124,6 @@ const byName = (a: Person, b: Person) =>
  */
 export function planCpdReminders(input: {
   plan: string | null;
-  /** 0092: an office run like an agent plan. */
-  licensee_not_on_realcomply?: boolean | null;
   profiles: Person[];
   doneIds: ReadonlySet<string>;
 }): CpdReminderPlan {
@@ -136,7 +134,7 @@ export function planCpdReminders(input: {
 
   // An agent on their own plan is their own licensee: no summary. In an
   // office, the licensee in charge (officeLicensee in lib/access.ts).
-  const licensees = current.filter((p) => accessFrom(p, input).officeLicensee && Boolean(p.email));
+  const licensees = current.filter((p) => accessFrom(p, input.plan).officeLicensee && Boolean(p.email));
   const summaries = licensees
     .map((licensee) => ({ licensee, outstanding: people.filter((p) => p.id !== licensee.id) }))
     .filter((s) => s.outstanding.length > 0);

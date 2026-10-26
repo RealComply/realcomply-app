@@ -29,8 +29,8 @@ export async function officeAdoption(supabase: Client): Promise<OfficeAdoption |
 }
 
 /** Who sees the read-and-tick: an agent in an office. Not the licensee, an assistant or an agent on their own plan. */
-export function isOfficeAgent(access: { actsAsLicensee: boolean; isAssistant: boolean; worksAsAgentPlan: boolean }): boolean {
-  return !access.actsAsLicensee && !access.isAssistant && !access.worksAsAgentPlan;
+export function isOfficeAgent(access: { actsAsLicensee: boolean; isAssistant: boolean; isAgentPlan: boolean }): boolean {
+  return !access.actsAsLicensee && !access.isAssistant && !access.isAgentPlan;
 }
 
 /** Whether the Home card shows: the office has adopted, and this agent has not confirmed that version. */

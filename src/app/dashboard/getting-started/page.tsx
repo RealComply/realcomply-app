@@ -60,7 +60,7 @@ export default async function GettingStartedPage() {
   // The office's own annexure link, for an agent on their own plan (as on
   // Home, AgentAnnexureCard).
   let downloadHref = "/annexure/download";
-  if (access.worksAsAgentPlan && access.actsAsLicensee) {
+  if (access.isAgentPlan && access.actsAsLicensee) {
     const supabase = await createClient();
     const { data: tokenRow } = await supabase
       .from("agencies")
@@ -119,7 +119,7 @@ export default async function GettingStartedPage() {
                 </Link>
               </Step>
               <Step n={3} title="Adopt the annexure to your Supervision Guidelines">
-                {access.worksAsAgentPlan ? (
+                {access.isAgentPlan ? (
                   <>
                     <StepText>
                       Give it to your licensee in charge to complete and sign the section headed &ldquo;Adoption by the
@@ -149,7 +149,7 @@ export default async function GettingStartedPage() {
                   </>
                 )}
               </Step>
-              {!access.worksAsAgentPlan && (
+              {!access.isAgentPlan && (
                 <Step n={4} title="Invite your agents">
                   <StepText>Each agent sees their own listings. You see the whole office.</StepText>
                   <Link href="/dashboard/team" className={BUTTON}>

@@ -230,9 +230,7 @@ export const navCountsFor = cache(async function navCountsFor(
     // says whether this viewer acts as the licensee (lib/access.ts).
     supabase
       .from("agencies")
-      // Every column, so licensee_not_on_realcomply comes through once 0092
-      // has added it and nothing breaks before then.
-      .select("*")
+      .select("pi_expiry, cyber_expiry, icare_expiry, corporation_licence_expiry, plan")
       .eq("id", profile.agency_id)
       .maybeSingle(),
     supabase.from("gifts").select("id", { count: "exact", head: true }).eq("status", "flagged"),
@@ -295,9 +293,9 @@ export const navCountsFor = cache(async function navCountsFor(
   // ── The registers rollup ────────────────────────────────────────────────
   const agency = agencyRow as Pick<
     Agency,
-    "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry" | "plan" | "licensee_not_on_realcomply"
+    "pi_expiry" | "cyber_expiry" | "icare_expiry" | "corporation_licence_expiry" | "plan"
   > | null;
-  const licenseeView = accessFrom(profile, agency).actsAsLicensee;
+  const licenseeView = accessFrom(profile, agency?.plan).actsAsLicensee;
 
   // Gifts, breaches and complaints need no such filter: the database returns
   // an agent only the ones they logged (0058), the same rows their page shows.

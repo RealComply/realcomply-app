@@ -113,7 +113,7 @@ export default async function HomeDashboardPage({
   // annexure is uploaded. Offices that existed before the lock never see it
   // unless RealComply switches theirs on.
   let agentAnnexure: { licenseeName: string | null; downloadHref: string } | null = null;
-  if (access.worksAsAgentPlan && (await listingGate(supabase)) === "signed_annexure") {
+  if (access.isAgentPlan && (await listingGate(supabase)) === "signed_annexure") {
     const [licenseeName, { data: tokenRow }] = await Promise.all([
       licenseeNameFor(supabase, profile.agency_id, { agentPlan: true }),
       supabase.from("agencies").select("annexure_download_token").eq("id", profile.agency_id).maybeSingle(),
