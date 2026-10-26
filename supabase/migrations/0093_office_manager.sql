@@ -1190,6 +1190,8 @@ as $function$
 declare
   v_caller_is_licensee boolean;
 begin
+  -- Only direct calls from the app's users are checked. Database functions
+  -- that run with higher rights, and the service role, pass through.
   if current_user not in ('authenticated', 'anon') then
     return new;
   end if;
