@@ -6,6 +6,8 @@ import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import type { Profile } from "@/lib/types";
 import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
 import { saveSignupEntityName } from "@/lib/auth/signup-entity-name";
+import { onFreeOfficeCreated } from "@/lib/sg-annexure/new-office";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // Fetches the logged-in user's profile (agency + role), redirecting to
 // /login if there's no session. If a session exists but the agency
@@ -122,6 +124,9 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
             fullName: meta.full_name ?? "",
             email: user.email ?? "",
           });
+          // A free office (0098) never reaches Stripe: its welcome and
+          // annexure request go now (Adam, 27 Oct 2026). Never throws.
+          if (meta.founder_token) await onFreeOfficeCreated(createServiceClient(), user.id);
         }
         return healedProfile as Profile;
       }

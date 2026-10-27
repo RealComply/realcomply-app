@@ -8,6 +8,8 @@ import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { currentLegalVersions } from "@/lib/legal/documents";
 import { founderInviteFree, founderInviteValid, openSignupsAllowed } from "@/lib/signups";
 import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
+import { onFreeOfficeCreated } from "@/lib/sg-annexure/new-office";
+import { createServiceClient } from "@/lib/supabase/service";
 import { ENTITY_NAME_MAX, tidyName } from "@/lib/agency-names";
 import { saveSignupEntityName } from "@/lib/auth/signup-entity-name";
 import { nextPage } from "@/lib/auth/next-page";
@@ -332,6 +334,13 @@ async function createAccount(formData: FormData): Promise<ActionState> {
   // invite — this is the "new signup" event, accept_invite isn't.
   if (!inviteToken) {
     await notifyNewAgencySignup({ agencyName, fullName, email });
+  }
+
+  // A free office (0098) never reaches Stripe, so its welcome and annexure
+  // request go now, after the licensee details above (Adam, 27 Oct 2026).
+  // Never throws.
+  if (!inviteToken && founderToken && signUpData.user) {
+    await onFreeOfficeCreated(createServiceClient(), signUpData.user.id);
   }
 
   redirect("/dashboard/home");

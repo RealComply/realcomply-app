@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { SendEmailInput } from "@/lib/email/send";
-import { onNewOfficeTrialStarted } from "./new-office";
+import { onFreeOfficeCreated, onNewOfficeTrialStarted } from "./new-office";
 
 // What a new office gets when its trial starts (brief, 14 Oct 2026; Adam,
 // 14 Oct 2026): the welcome with the annexure box for an early access office
@@ -321,5 +321,80 @@ describe("a new office's annexure request", () => {
     assert.equal(out.annexure, "no_licensee_email");
     assert.equal(r.sent.length, 0);
     assert.equal(links(db).length, 0);
+  });
+});
+
+// A free office (0098) has no card, so Stripe never calls. The same emails go
+// when sign-up finishes instead (Adam, 27 Oct 2026).
+describe("a free office's emails at sign-up", () => {
+  /** The office above, set up with a free invite and so a free account. */
+  function freeOffice(opts: Parameters<typeof office>[0]) {
+    const db = office(opts);
+    db.tables.agencies[0].status = "comped";
+    db.tables.agencies[0].stripe_subscription_id = null;
+    for (const invite of db.tables.founder_invites) invite.free_account = true;
+    return db;
+  }
+
+  it("invited personally, signed up by the licensee: the signing email goes to them", async () => {
+    const db = freeOffice({ founderIsLicensee: true, earlyAccess: false, personalInvite: true });
+    const r = recorder();
+    const out = await onFreeOfficeCreated(db, "u1", { send: r.send, env: ON, now: NOW });
+    assert.deepEqual(out, { welcome: "not_early_access", annexure: "emailed" });
+    assert.equal(r.sent.length, 1);
+    assert.equal(r.sent[0].to, "getadamc3+founder@gmail.com");
+    assert.equal(links(db).length, 1);
+  });
+
+  it("early access, signed up by the licensee: the welcome carries the button", async () => {
+    const db = freeOffice({ founderIsLicensee: true, earlyAccess: true });
+    const r = recorder();
+    const out = await onFreeOfficeCreated(db, "u1", { send: r.send, env: ON, now: NOW });
+    assert.deepEqual(out, { welcome: "sent", annexure: "in_welcome" });
+    assert.equal(r.sent.length, 1);
+  });
+
+  it("once, however many times sign-up finishes", async () => {
+    const db = freeOffice({ founderIsLicensee: false, earlyAccess: false, personalInvite: true });
+    const r = recorder();
+    const first = await onFreeOfficeCreated(db, "u1", { send: r.send, env: ON, now: NOW });
+    assert.equal(first?.annexure, "emailed");
+    assert.equal(r.sent[0].to, "getadamc3+licensee@gmail.com");
+    const again = await onFreeOfficeCreated(db, "u1", { send: r.send, env: ON, now: NOW });
+    assert.equal(again?.annexure, "already_requested");
+    assert.equal(r.sent.length, 1);
+  });
+
+  it("nothing for an office from a normal invite: Stripe sends its emails when the trial starts", async () => {
+    const db = office({ founderIsLicensee: true, earlyAccess: false, personalInvite: true });
+    const r = recorder();
+    assert.equal(await onFreeOfficeCreated(db, "u1", { send: r.send, env: ON, now: NOW }), null);
+    assert.equal(r.sent.length, 0);
+    assert.equal(links(db).length, 0);
+  });
+
+  it("nothing once the office is no longer a free account, or has a subscription", async () => {
+    for (const change of [{ status: "trialing" }, { stripe_subscription_id: "sub_1" }]) {
+      const db = freeOffice({ founderIsLicensee: true, earlyAccess: false, personalInvite: true });
+      Object.assign(db.tables.agencies[0], change);
+      const r = recorder();
+      assert.equal(await onFreeOfficeCreated(db, "u1", { send: r.send, env: ON, now: NOW }), null);
+      assert.equal(r.sent.length, 0);
+    }
+  });
+
+  it("nothing for a free account whose invite was not a free one", async () => {
+    const db = freeOffice({ founderIsLicensee: true, earlyAccess: false, personalInvite: true });
+    for (const invite of db.tables.founder_invites) invite.free_account = false;
+    const r = recorder();
+    assert.equal(await onFreeOfficeCreated(db, "u1", { send: r.send, env: ON, now: NOW }), null);
+    assert.equal(r.sent.length, 0);
+  });
+
+  it("nothing for someone else's free invite", async () => {
+    const db = freeOffice({ founderIsLicensee: true, earlyAccess: false, personalInvite: true });
+    const r = recorder();
+    assert.equal(await onFreeOfficeCreated(db, "u2", { send: r.send, env: ON, now: NOW }), null);
+    assert.equal(r.sent.length, 0);
   });
 });
