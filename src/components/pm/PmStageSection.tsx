@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
+import { PM_COPY } from "@/lib/rules/nsw-pm";
 
 // One stage on a PM property page: a title bar with the stage name and its
 // count, and the stage's rows under it (brief A5).
@@ -12,8 +13,12 @@ import { ChevronRight } from "lucide-react";
 // section is open. This is what sets PM apart from sales. Do not use black or
 // near-black for these bars. The main navigation is unchanged.
 //
-// A finished stage folds shut and an arrow reopens it. A locked stage, and a
-// stage that happened before RealComply, is faded and cannot be opened.
+// A finished stage folds shut and an arrow reopens it. A locked stage is faded
+// and cannot be opened.
+//
+// REVERSAL (Adam, 27 Oct 2026): an earlier stage of an existing management is
+// no longer faded as "Before RealComply". It opens and ticks like any other,
+// with one short line under the title saying it is optional.
 
 export function PmStageSection({
   stage,
@@ -23,7 +28,8 @@ export function PmStageSection({
   countLabel,
   finished,
   locked,
-  before,
+  optional = false,
+  optionalLine = PM_COPY.optionalLine,
   startOpen,
   anchorId,
   children,
@@ -36,13 +42,16 @@ export function PmStageSection({
   countLabel: string;
   finished: boolean;
   locked: boolean;
-  before: boolean;
+  /** An earlier stage of an existing management: optional to fill in. */
+  optional?: boolean;
+  /** The line under the title of an optional stage. */
+  optionalLine?: string;
   startOpen: boolean;
   /** Overrides the "stage-N" anchor. */
   anchorId?: string;
   children: ReactNode;
 }) {
-  const shut = locked || before;
+  const shut = locked;
   const [open, setOpen] = useState(startOpen && !shut);
   // Fold the moment a stage finishes, unfold the moment it reopens. Adjusted
   // during render, as the sales cards do, so a finished stage never paints one
@@ -73,7 +82,7 @@ export function PmStageSection({
           </span>
           <span className="hidden text-xs font-medium text-rc-muted sm:inline">{cadence}</span>
           <span className="ml-auto whitespace-nowrap text-[13px] font-semibold tabular-nums text-rc-ink/80">
-            {before ? "Before RealComply" : locked ? "Locked" : countLabel}
+            {locked ? "Locked" : countLabel}
           </span>
           {!shut && (
             <ChevronRight
@@ -85,7 +94,10 @@ export function PmStageSection({
         </button>
       </h2>
       {/* Hidden, not removed, so a row's pending save is never thrown away by a fold. */}
-      <div hidden={!isOpen}>{children}</div>
+      <div hidden={!isOpen}>
+        {optional && <p className="px-4 pt-3 text-[13px] text-rc-muted">{optionalLine}</p>}
+        {children}
+      </div>
     </section>
   );
 }

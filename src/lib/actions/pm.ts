@@ -112,8 +112,9 @@ export async function addPmProperty(_prev: ActionState, formData: FormData): Pro
     };
   }
 
-  // The first tenancy. "Before RealComply" stages are written here, once, so
-  // the property says what it was when it arrived.
+  // The first tenancy. Its earlier stages are written here, once, so the
+  // property says what it was when it arrived. They are optional to fill in
+  // (REVERSAL, 27 Oct 2026; see PM_ORIGINS).
   await supabase.from("pm_tenancies").insert({
     agency_id: profile.agency_id,
     property_id: created.id,
@@ -334,7 +335,7 @@ export async function movePmProperty(propertyId: string, _prev: ActionState, for
 
   // Re-leasing: the next tenant gets a new tenancy, never the old one written
   // over (brief B2). From here on an existing property runs like any other,
-  // so nothing is "Before RealComply".
+  // so nothing is optional.
   let newTenancyId: string | null = null;
   if (move.newTenancy) {
     const nextSeq = Math.max(...loaded.tenancies.map((t) => t.seq), 0) + 1;

@@ -41,6 +41,10 @@ import { RoofMark } from "@/components/RoofMark";
 // section per stage with its ticks and records.
 
 function stageCount(view: PmStageView): string {
+  // An earlier stage of an existing management with nothing ticked yet
+  // (REVERSAL, 27 Oct 2026).
+  if (view.oval.kind === "optional") return PM_COPY.optionalLabel;
+  if (view.oval.kind === "earlier") return "Earlier";
   if (!view.ongoing) return pmStageCountLabel(view);
   if (view.finished) return "Closed";
   if (view.oval.kind === "underWay") return "As it happens";
@@ -180,7 +184,7 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
       {outgoing.map((o) => {
         const row = tenancies.find((t) => t.id === o.tenancyId);
         const ending = endingLine({ ...o.tenancy, vacateDate: row?.vacate_date });
-        const countLabel = o.exit.before ? "" : `${o.exit.done} of ${o.exit.total}${o.exit.na > 0 ? ` (${o.exit.na} N/A)` : ""}`;
+        const countLabel = `${o.exit.done} of ${o.exit.total}${o.exit.na > 0 ? ` (${o.exit.na} N/A)` : ""}`;
         return (
           <PmStageSection
             key={o.tenancyId}
@@ -192,7 +196,6 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
             countLabel={countLabel}
             finished={false}
             locked={false}
-            before={false}
             startOpen
           >
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
@@ -245,10 +248,16 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
               countLabel={stageCount(v)}
               finished={v.finished}
               locked={v.locked}
-              before={v.before}
-              startOpen={!v.finished && !(v.ongoing && v.oval.kind === "notStarted")}
+              optional={v.optional && !v.ongoing}
+              // Earlier stages start folded, so the stage the property is on
+              // is the first open one; they open with one press.
+              startOpen={!v.finished && !v.optional && !(v.ongoing && v.oval.kind === "notStarted")}
             >
-              {v.ongoing ? (
+              {v.ongoing && v.oval.kind === "earlier" ? (
+                // The tenancy before an existing vacant property was added:
+                // nothing to record in it.
+                <p className="px-4 py-3 text-[13px] text-rc-muted">{PM_COPY.ongoingEarlier}</p>
+              ) : v.ongoing ? (
                 <PmOngoingRecords
                   propertyId={property.id}
                   records={currentRecords.filter((r) => r.kind !== "pet_application")}

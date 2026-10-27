@@ -8,9 +8,10 @@ import type { PmCardSummary, PmOval as PmOvalData } from "@/lib/rules/pm-engine"
 // the left by its count, a tick when finished, grey when not started. No noun
 // for what is counted, just "7 of 9", and never the word "compliant".
 //
-// PM adds three words of its own (brief A5): "Earlier" for a stage that
-// happened before RealComply, and "Not started" / "Under way" for Stage 4,
-// which has no count.
+// PM adds words of its own (brief A5): "Not started" / "Under way" for Stage 4,
+// which has no count; "Earlier" for Stage 4 of an existing vacant property
+// (the tenancy before it was added); and "Optional" for an earlier stage of an
+// existing management with nothing ticked yet (REVERSAL, 27 Oct 2026).
 
 const BASE =
   "flex items-center justify-center rounded-full border-2 font-bold tabular-nums whitespace-nowrap transition";
@@ -22,7 +23,9 @@ function fillStyle(fill: number): CSSProperties {
 export function pmOvalSpoken(oval: PmOvalData): string {
   switch (oval.kind) {
     case "earlier":
-      return "before RealComply";
+      return "earlier tenancy";
+    case "optional":
+      return "optional";
     case "tick":
       return "finished";
     case "notStarted":
@@ -46,6 +49,12 @@ export function PmOval({ oval, className = "" }: { oval: PmOvalData; className?:
       return (
         <span className={`${BASE} border-rc-border bg-rc-bg-alt text-rc-muted ${className}`} aria-hidden="true">
           Earlier
+        </span>
+      );
+    case "optional":
+      return (
+        <span className={`${BASE} border-rc-border bg-white text-rc-muted ${className}`} aria-hidden="true">
+          Optional
         </span>
       );
     case "notStarted":

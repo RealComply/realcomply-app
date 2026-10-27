@@ -20,8 +20,9 @@ import {
 } from "@/lib/rules/nsw-pm";
 
 // THE PM ENGINE. Reads the content in nsw-pm.ts and works out, for one
-// property: which stages show, which are "Before RealComply", what each counts,
-// which are locked, and whether the move button works. It knows nothing about
+// property: which stages show, which are optional (the earlier stages of an
+// existing management), what each counts, which are locked, and whether the
+// move button works. It knows nothing about
 // NSW, so another state is a new content file, not a new engine.
 //
 // The server actions (lib/actions/pm.ts) call the same functions before every
@@ -33,6 +34,13 @@ import {
 // a later stage is locked until every earlier stage is complete. A finished
 // stage can be reopened and unticked; later stages then lock again, and
 // nothing ticked in them is lost (the rows are not touched, only locked).
+//
+// ⚠️ REVERSAL 2, 27 Oct 2026 (Adam): EXISTING MANAGEMENTS FILL IN THEIR EARLIER
+// STAGES. Was (6 Oct): an existing property's earlier stages were "Before
+// RealComply", greyed and never tickable, and it had no Management
+// onboarding. Now they show and can be ticked like any other stage, but are
+// optional: whatever is left blank still counts as complete for locking and
+// never holds a move back (see PM_ORIGINS in nsw-pm.ts).
 
 export type PmTickState = "done" | "na" | "open";
 
@@ -80,7 +88,8 @@ export type PmEngineInput = {
 };
 
 export type PmOval =
-  | { kind: "earlier" }
+  | { kind: "earlier" } // Stage 4 of an existing vacant property: the tenancy before it was added
+  | { kind: "optional" } // An earlier stage of an existing management with nothing ticked yet
   | { kind: "count"; progress: StageProgress; fill: number }
   | { kind: "tick" }
   | { kind: "notStarted" } // Stage 4 before move-in
@@ -93,8 +102,12 @@ export type PmStageView = {
   /** Numbered in the order shown, so an existing property starts at 1. */
   displayNumber: number;
   ongoing: boolean;
-  /** Happened before the property came to RealComply. Greyed, never tickable. */
-  before: boolean;
+  /**
+   * An earlier stage of an existing management (REVERSAL, 27 Oct 2026). Ticked
+   * like any other, but optional: it is never locked, and counts as complete
+   * for locking whatever is left blank.
+   */
+  optional: boolean;
   /** The property's group has reached the point where this stage is worked. */
   reached: boolean;
   /** Cannot be opened or ticked: not reached yet, or an earlier stage is incomplete. */
@@ -107,24 +120,28 @@ export type PmStageView = {
   na: number;
   /** Every counted item ticked. For Stage 4: the tenancy has closed. */
   finished: boolean;
-  /** Counts as complete for locking: finished, or before RealComply. */
+  /** Counts as complete for locking: finished, or optional. */
   complete: boolean;
   oval: PmOval;
 };
 
-function stagePresent(stage: PmStage, origin: PmOrigin, seq: number): boolean {
-  // Onboarding is done once. Once a property has had a tenancy it is never
+function stagePresent(stage: PmStage, seq: number): boolean {
+  // Onboarding is done once, for every property, existing ones included
+  // (REVERSAL, 27 Oct 2026). Once a property has had a tenancy it is never
   // shown again; the record stays in History (brief B2).
-  if (stage.stage === 1) return pmOrigin(origin).hasOnboarding && seq === 1;
+  if (stage.stage === 1) return seq === 1;
   return true;
 }
 
-function stageIsBefore(stage: PmStageNumber, beforeStages: number[]): boolean {
+/** An earlier stage of an existing management: optional to fill in (REVERSAL, 27 Oct 2026). */
+function stageIsOptional(stage: PmStageNumber, origin: PmOrigin, beforeStages: number[]): boolean {
+  // An existing management was onboarded before it was added.
+  if (stage === 1) return pmOrigin(origin).key !== "new";
   if (beforeStages.includes(stage)) return true;
-  // An existing vacant property's last tenancy, Exit included, all happened
-  // before RealComply, so the ongoing tenancy between them did too. Shown as
-  // "Earlier" rather than with a tick, because a tick would read as RealComply
-  // having seen that tenancy close.
+  // An existing vacant property's last tenancy, Exit included, ended before it
+  // was added, so the ongoing tenancy between them did too. Nothing to tick in
+  // it; shown as "Earlier" rather than with a tick, because a tick would read
+  // as RealComply having seen that tenancy close.
   if (stage === 4) return beforeStages.includes(5);
   return false;
 }
@@ -163,9 +180,9 @@ export function pmStageViews(input: PmEngineInput): PmStageView[] {
   let earlierIncomplete = false;
   const seq = input.tenancy.seq ?? 1;
   for (const stage of PM_STAGES) {
-    if (!stagePresent(stage, input.origin, seq)) continue;
-    const before = stageIsBefore(stage.stage, input.tenancy.beforeStages);
-    const reached = before || stageReached(stage, input.group);
+    if (!stagePresent(stage, seq)) continue;
+    const optional = stageIsOptional(stage.stage, input.origin, input.tenancy.beforeStages);
+    const reached = optional || stageReached(stage, input.group);
 
     if (stage.ongoing) {
       // Stage 4 has no count and never blocks another stage.
@@ -177,7 +194,7 @@ export function pmStageViews(input: PmEngineInput): PmStageView[] {
         cadence: stage.cadence,
         displayNumber: views.length + 1,
         ongoing: true,
-        before,
+        optional,
         reached,
         locked: false,
         done: 0,
@@ -185,15 +202,17 @@ export function pmStageViews(input: PmEngineInput): PmStageView[] {
         na: 0,
         finished: closed,
         complete: true,
-        oval: before ? { kind: "earlier" } : closed ? { kind: "tick" } : underWay ? { kind: "underWay" } : { kind: "notStarted" },
+        oval: optional ? { kind: "earlier" } : closed ? { kind: "tick" } : underWay ? { kind: "underWay" } : { kind: "notStarted" },
       });
       continue;
     }
 
     const { done, na, total } = tally(pmStageItems(stage, input.tenancy), input.ticks);
-    const finished = !before && done >= total;
-    const complete = before || finished;
-    const locked = !before && (!reached || earlierIncomplete);
+    const finished = done >= total;
+    // An optional stage counts as complete whatever is left blank, and is never
+    // locked: it is behind the property, not ahead of it.
+    const complete = optional || finished;
+    const locked = !optional && (!reached || earlierIncomplete);
     const progress: StageProgress = {
       done,
       total,
@@ -205,15 +224,19 @@ export function pmStageViews(input: PmEngineInput): PmStageView[] {
       cadence: stage.cadence,
       displayNumber: views.length + 1,
       ongoing: false,
-      before,
+      optional,
       reached,
       locked,
-      done: before ? 0 : done,
-      total: before ? 0 : total,
-      na: before ? 0 : na,
+      done,
+      total,
+      na,
       finished,
       complete,
-      oval: before ? { kind: "earlier" } : finished ? { kind: "tick" } : { kind: "count", progress, fill: fillPercent(progress) },
+      oval: finished
+        ? { kind: "tick" }
+        : optional && done === 0 && na === 0
+          ? { kind: "optional" }
+          : { kind: "count", progress, fill: fillPercent(progress) },
     });
     if (!complete) earlierIncomplete = true;
   }
@@ -228,18 +251,20 @@ export function pmStageCountLabel(view: PmStageView): string {
 // ── Earlier tenancies (brief B2) ───────────────────────────────────────────
 
 export type PmExitTally = {
-  /** Every Exit item ticked, N/A, or the Exit happened before RealComply. */
+  /** Every Exit item ticked or N/A, or the Exit is optional (an existing vacant property's last tenancy). */
   complete: boolean;
-  before: boolean;
+  optional: boolean;
   done: number;
   total: number;
   na: number;
 };
 
 export function pmExitTally(tenancy: PmTenancyInput, ticks: PmTicks): PmExitTally {
-  if (stageIsBefore(5, tenancy.beforeStages)) return { complete: true, before: true, done: 0, total: 0, na: 0 };
   const { done, na, total } = tally(pmStageItems(pmStage(5), tenancy), ticks);
-  return { complete: done >= total, before: false, done, total, na };
+  // The origin doesn't matter for Exit: only an existing vacant property's
+  // first tenancy lists it as earlier.
+  const optional = stageIsOptional(5, "new", tenancy.beforeStages);
+  return { complete: optional || done >= total, optional, done, total, na };
 }
 
 /**
@@ -249,7 +274,9 @@ export function pmExitTally(tenancy: PmTenancyInput, ticks: PmTicks): PmExitTall
  */
 export function pmTenancyFiled(tenancy: PmTenancyInput, ticks: PmTicks): boolean {
   const exit = pmExitTally(tenancy, ticks);
-  if (exit.before) return true;
+  // An optional Exit (the tenancy ended before the property was added) is
+  // filed straight away, ticked or not.
+  if (exit.optional) return true;
   return exit.complete && Boolean(tenancy.moveOutDate);
 }
 
@@ -309,7 +336,6 @@ export function pmCanSetItem(
 
   const view = pmStageViews(input).find((v) => v.stage === stage.stage);
   if (!view) return "That stage does not apply to this property.";
-  if (view.before) return "That happened before the property came to RealComply, so it cannot be ticked here.";
   if (view.locked) return "That stage is locked until the stages before it are complete.";
   const resolved = pmStageItems(stage, input.tenancy).find((i) => i.key === itemKey)!;
   if (resolved.auto) return `RealComply has marked that N/A: ${resolved.auto.note.toLowerCase()}.`;
@@ -321,7 +347,6 @@ export function pmCanSetItem(
 export function pmCanAnswerWater(input: PmEngineInput): string | null {
   const view = pmStageViews(input).find((v) => v.stage === 3);
   if (!view) return "That stage does not apply to this property.";
-  if (view.before) return "That happened before the property came to RealComply.";
   if (view.locked) return "That stage is locked until the stages before it are complete.";
   return null;
 }
@@ -335,7 +360,7 @@ export function pmCanRecord(input: PmEngineInput, kind: "pet_application" | "ong
   if (input.group === "archived") return "This management has ended.";
   if (kind === "pet_application") {
     const view = pmStageViews(input).find((v) => v.stage === 2);
-    if (!view || view.before) return "That happened before the property came to RealComply.";
+    if (!view) return "That stage does not apply to this property.";
     if (view.locked) return "Getting a tenant in is locked until the stages before it are complete.";
     return null;
   }
@@ -398,7 +423,8 @@ export type PmCardSummary =
 export function pmCardSummary(input: PmEngineInput): PmCardSummary {
   if (input.group === "archived") return { kind: "archived" };
   const views = pmStageViews(input);
-  const working = views.find((v) => !v.ongoing && !v.before && v.reached && !v.finished);
+  // An optional stage left part-done is not open work: it never shows here.
+  const working = views.find((v) => !v.ongoing && !v.optional && v.reached && !v.finished);
   if (working && working.oval.kind === "count") {
     return { kind: "count", stageTitle: working.title, progress: working.oval.progress, fill: working.oval.fill };
   }

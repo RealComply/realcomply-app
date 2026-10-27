@@ -390,37 +390,45 @@ export function pmItem(itemKey: string): PmItem | null {
 }
 
 // ── How a property comes to RealComply ─────────────────────────────────────
-// "Before RealComply" stages are greyed, cannot be ticked, and count as
-// complete for locking. RealComply never records them as done. From the next
-// tenancy on, an existing property runs like any other: a new tenancy has no
-// "Before RealComply" stages.
+// ⚠️ REVERSAL (Adam, 27 Oct 2026). Was (6 Oct): for "Existing, tenanted" and
+// "Existing, vacant", Management onboarding was hidden and the earlier stages
+// showed as "Before RealComply": greyed, not tickable, never recorded as done.
+// Now every stage shows for an existing management, Management onboarding
+// included, and the earlier stages are optional to fill in: the agent ticks
+// what was done, uses N/A where offered, or leaves them blank. Ticks there are
+// ordinary ticks (who and when recorded, no "recorded later" label). Anything
+// left blank still counts as complete for locking and never holds the
+// property back. Igor (Raine & Horne Queanbeyan) wants all his management
+// compliance in RealComply.
+//
+// `beforeStages` (pm_tenancies.before_stages) still lists the earlier stages
+// of the first tenancy; Management onboarding is earlier for every existing
+// management. Properties already added as existing read the same way, with
+// nothing ticked for them. From the next tenancy on, an existing property runs
+// like any other: a new tenancy has no earlier stages.
 export const PM_ORIGINS = [
   {
     key: "new",
     label: "New management",
     startsIn: "onboarding",
-    hasOnboarding: true,
     beforeStages: [] as PmStageNumber[],
   },
   {
     key: "existing_tenanted",
     label: "Existing, tenanted",
     startsIn: "tenanted",
-    hasOnboarding: false,
     beforeStages: [2, 3] as PmStageNumber[],
   },
   {
     key: "existing_vacant",
     label: "Existing, vacant",
     startsIn: "vacant",
-    hasOnboarding: false,
     beforeStages: [2, 3, 5] as PmStageNumber[],
   },
 ] as const satisfies readonly {
   key: string;
   label: string;
   startsIn: PmGroup;
-  hasOnboarding: boolean;
   beforeStages: PmStageNumber[];
 }[];
 
@@ -840,9 +848,14 @@ export function pmMove(key: string): PmMove | null {
 
 // ── Wording used on screen ─────────────────────────────────────────────────
 export const PM_COPY = {
-  beforeRealComply: "Before RealComply",
-  beforeRealComplyBody:
-    "This happened before the property came to RealComply. RealComply does not record it as done.",
+  /** The short line under an earlier stage's title (REVERSAL, 27 Oct 2026). */
+  optionalLine: "Optional for an existing management. Tick anything already done.",
+  /** On the title bar of an earlier stage with nothing ticked yet. */
+  optionalLabel: "Optional",
+  /** History: under an earlier stage of an existing management. */
+  optionalHistory: "Optional for an existing management. Anything not ticked was left blank.",
+  /** Ongoing tenancy for an existing vacant property: the tenancy before it was added. */
+  ongoingEarlier: "Nothing to tick here. This tenancy ended before the property was added.",
   ongoingBeforeMoveIn: "Starts when the tenant moves in",
   ongoingClosed: "This tenancy has ended. What was recorded is kept below.",
   /** {system} is the office's records system, or a fallback when it is not named yet. */

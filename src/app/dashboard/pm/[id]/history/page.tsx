@@ -77,7 +77,9 @@ export default async function PmHistoryPage({ params }: { params: Promise<{ id: 
   const name = (uid: string | null | undefined) => (uid ? (nameOf.get(uid) ?? "Someone") : "Someone");
 
   const onboardingStates = states.filter((s) => s.tenancy_id === null);
-  const showOnboarding = property.origin === "new";
+  // Every property has an onboarding record, existing ones included, where
+  // it is optional (REVERSAL, 27 Oct 2026).
+  const onboardingOptional = property.origin !== "new";
   const past = tenancies.filter((t) => current && t.seq < current.seq).sort((a, b) => b.seq - a.seq);
 
   return (
@@ -88,12 +90,11 @@ export default async function PmHistoryPage({ params }: { params: Promise<{ id: 
       <h1 className="mt-3 text-xl font-bold tracking-tight text-rc-ink sm:text-2xl">History</h1>
       <p className="mt-1 text-sm text-rc-muted">{property.address}. Read-only.</p>
 
-      {showOnboarding && (
-        <HistoryCard title="Original onboarding record" sub={`Added ${formatAuDateTimeShort(property.created_at)} by ${name(property.created_by)}`}>
-          <ItemList stage={1} ticks={ticksFrom(onboardingStates)} tenancy={null} name={name} states={onboardingStates} />
-          <Changes events={events.filter((e) => e.tenancy_id === null)} name={name} />
-        </HistoryCard>
-      )}
+      <HistoryCard title="Original onboarding record" sub={`Added ${formatAuDateTimeShort(property.created_at)} by ${name(property.created_by)}`}>
+        {onboardingOptional && <p className="px-4 pb-2 pt-3 text-[12.5px] text-rc-muted">{PM_COPY.optionalHistory}</p>}
+        <ItemList stage={1} ticks={ticksFrom(onboardingStates)} tenancy={null} name={name} states={onboardingStates} />
+        <Changes events={events.filter((e) => e.tenancy_id === null)} name={name} />
+      </HistoryCard>
 
       {past.length === 0 && (
         <p className="mt-6 rounded-card border border-dashed border-rc-border bg-white px-6 py-10 text-center text-sm text-rc-muted">
@@ -163,19 +164,15 @@ function TenancyCard({
           {PM_COPY.retentionTenant(formatAuDate(pmRetentionUntil(t.move_out_date)))}
         </p>
       )}
-      {([2, 3, 5] as PmStageNumber[]).map((n) =>
-        t.before_stages.includes(n) ? (
-          <p key={n} className="border-b border-rc-border px-4 py-2.5 text-[13px] text-rc-muted">
-            <b className="font-semibold text-rc-ink">{pmStage(n).title}:</b> {PM_COPY.beforeRealComply}.{" "}
-            {PM_COPY.beforeRealComplyBody}
-          </p>
-        ) : (
-          <div key={n}>
-            <p className="px-4 pb-1 pt-3 text-[12px] font-bold uppercase tracking-[0.08em] text-rc-muted">{pmStage(n).title}</p>
-            <ItemList stage={n} ticks={ticks} tenancy={t} name={name} states={states} />
-          </div>
-        ),
-      )}
+      {/* An existing management's earlier stages are listed like any other,
+          with whatever was ticked (REVERSAL, 27 Oct 2026). */}
+      {([2, 3, 5] as PmStageNumber[]).map((n) => (
+        <div key={n}>
+          <p className="px-4 pb-1 pt-3 text-[12px] font-bold uppercase tracking-[0.08em] text-rc-muted">{pmStage(n).title}</p>
+          {t.before_stages.includes(n) && <p className="px-4 pb-2 text-[12.5px] text-rc-muted">{PM_COPY.optionalHistory}</p>}
+          <ItemList stage={n} ticks={ticks} tenancy={t} name={name} states={states} />
+        </div>
+      ))}
       {records.length > 0 && (
         <div>
           <p className="px-4 pb-1 pt-3 text-[12px] font-bold uppercase tracking-[0.08em] text-rc-muted">Recorded</p>
