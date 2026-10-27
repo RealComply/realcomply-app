@@ -13,6 +13,8 @@ import { SgReadCard } from "@/components/home/SgReadCard";
 import { OfficeManagerHomeCard } from "@/components/office-manager/OfficeManagerHomeCard";
 import { OfficeManagerLines } from "@/components/office-manager/OfficeManagerLine";
 import type { OfficeManagerHome } from "@/lib/data/office-manager";
+import { SetupCard, SetupDoneLine } from "@/components/home/SetupCard";
+import type { SetupView } from "@/lib/data/office-setup";
 import { STAGE_LABELS, type Gift, type Profile, type Property, type TrainingSession } from "@/lib/types";
 
 // An agent's or an assistant's Home: their own work only (Adam, 7 Oct 2026).
@@ -31,6 +33,7 @@ export async function AgentHome({
   profile,
   sgReadShows = false,
   officeManager = null,
+  setup = null,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   profile: Profile;
@@ -38,6 +41,8 @@ export async function AgentHome({
   sgReadShows?: boolean;
   /** Asking to be office manager, or where that is up to (0093). */
   officeManager?: OfficeManagerHome | null;
+  /** "Set up your office" for an office manager, or "Set up your profile" (Adam, 27 Oct 2026). */
+  setup?: SetupView | null;
 }) {
   const cpdYear = currentCpdYear();
 
@@ -91,11 +96,15 @@ export async function AgentHome({
       <div className="relative isolate overflow-hidden rounded-card px-3">
         <div className="rc-mesh-bg" />
         {officeManager?.line && <OfficeManagerLines lines={[officeManager.line]} />}
+        {setup?.mode === "done" && <SetupDoneLine view={setup} />}
         <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Home</h1>
         <p className="mt-1 text-sm text-rc-muted">
           {profile.is_assistant ? "The work of the agents you assist" : "Your own work"} — diligence support only, the
           licensee decides.
         </p>
+
+        {/* Top of Home: what to set up next (Adam, 27 Oct 2026). */}
+        {setup?.mode === "card" && <SetupCard view={setup} />}
 
         {officeManager?.card && <OfficeManagerHomeCard card={officeManager.card} />}
 
