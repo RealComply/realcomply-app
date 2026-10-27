@@ -5,6 +5,7 @@ import { sendEarlyAccessWelcome, type WelcomeOutcome } from "@/lib/early-access/
 import { sendOwnPlanAgentWelcome } from "@/lib/onboarding/agent-welcome";
 import { annexureDate, SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { appBaseUrl } from "@/lib/site-url";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // A new office's trial has started: its welcome, and the request to adopt the
 // SG annexure (brief, 14 Oct 2026; Adam, 14 Oct 2026: "send the licensee's
@@ -44,7 +45,7 @@ import { appBaseUrl } from "@/lib/site-url";
 //
 // FREE OFFICES (Adam, 27 Oct 2026). An office set up with a "Free account (no
 // card)" invite (0098) has no card and no trial, so the webhook never runs for
-// it. It gets the same emails when it is created instead: onFreeOfficeCreated,
+// it. It gets the same emails when it is created instead: sendFreeOfficeEmails,
 // called from the three places sign-up finishes. The same claims keep it to
 // once, should the office ever go through checkout later.
 
@@ -327,5 +328,18 @@ export async function onFreeOfficeCreated(
   } catch (err) {
     console.error("free office emails failed:", userId, err);
     return null;
+  }
+}
+
+/**
+ * onFreeOfficeCreated with the service key, for the three places sign-up
+ * finishes. Never throws, not even without the key: sign-up has succeeded by
+ * the time this runs.
+ */
+export async function sendFreeOfficeEmails(userId: string): Promise<void> {
+  try {
+    await onFreeOfficeCreated(createServiceClient(), userId);
+  } catch (err) {
+    console.error("free office emails failed:", userId, err);
   }
 }

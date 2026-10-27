@@ -2,8 +2,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
 import { saveSignupEntityName } from "@/lib/auth/signup-entity-name";
-import { onFreeOfficeCreated } from "@/lib/sg-annexure/new-office";
-import { createServiceClient } from "@/lib/supabase/service";
+import { sendFreeOfficeEmails } from "@/lib/sg-annexure/new-office";
 
 // Everything that has to happen the first time somebody arrives with a
 // confirmed email: record what they accepted, and give them an agency.
@@ -131,5 +130,5 @@ export async function completeSignup(supabase: SupabaseClient, user: User): Prom
   // A free office (0098) never reaches Stripe, so its welcome and annexure
   // request go now, after the licensee details above (Adam, 27 Oct 2026).
   // Never throws.
-  if (meta.founder_token) await onFreeOfficeCreated(createServiceClient(), user.id);
+  if (meta.founder_token) await sendFreeOfficeEmails(user.id);
 }
