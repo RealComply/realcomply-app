@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useId, useState } from "react";
 import { joinEarlyAccess, type EarlyAccessState } from "@/lib/actions/early-access";
 import { looksAustralianPhone } from "@/lib/early-access/phone";
@@ -219,10 +220,15 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
       )}
 
       {/* Replaced "We will only use this to contact you about RealComply. You
-          can ask us to remove you at any time." (trial brief, 23 Oct 2026). */}
+          can ask us to remove you at any time." (trial brief, 23 Oct 2026).
+          Then (Adam, 27 Oct 2026) "We only contact you about RealComply." was
+          removed, and the Privacy policy link now serves as this form's
+          collection notice. Same tab, same text style as the line. */}
       <p className={`mt-3 text-sm leading-relaxed ${dark ? "text-rc-ink-muted" : "text-rc-muted"}`}>
-        Card needed when you start your trial. Cancel before day 14 and you won&rsquo;t be charged. We only contact
-        you about RealComply.
+        Card needed to start your trial. Cancel before day 14 and you won&rsquo;t be charged.{" "}
+        <Link href="/privacy" className={`whitespace-nowrap underline underline-offset-2 ${dark ? "hover:text-white" : "hover:text-rc-ink"}`}>
+          Privacy policy
+        </Link>
       </p>
     </form>
   );
