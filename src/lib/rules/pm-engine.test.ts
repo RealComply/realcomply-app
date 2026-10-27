@@ -48,32 +48,43 @@ describe("PM stages shown", () => {
     );
   });
 
-  it("an existing tenanted property has no Stage 1, and Stages 2 and 3 are Before RealComply", () => {
+  // REVERSAL, 27 Oct 2026: an existing management shows every stage,
+  // Management onboarding included, and its earlier stages are optional.
+  it("an existing tenanted property shows all five stages; onboarding, 2 and 3 are optional", () => {
     const i = input({ origin: "existing_tenanted", group: "tenanted", tenancy: { beforeStages: [2, 3], moveInDate: null, moveOutDate: null } });
     const views = pmStageViews(i);
-    assert.deepEqual(views.map((v) => v.stage), [2, 3, 4, 5]);
-    assert.equal(views[0].displayNumber, 1);
-    assert.ok(view(i, 2).before && view(i, 3).before);
-    assert.equal(view(i, 2).oval.kind, "earlier");
-    assert.equal(view(i, 4).oval.kind, "underWay");
-    // Exit is not reached until Tenant vacating.
+    assert.deepEqual(views.map((v) => [v.stage, v.displayNumber]), [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]);
+    assert.deepEqual(views.map((v) => v.optional), [true, true, true, false, false]);
+    assert.deepEqual(views.map((v) => v.oval.kind), ["optional", "optional", "optional", "underWay", "count"]);
+    assert.ok(views.slice(0, 3).every((v) => !v.locked && v.complete && v.reached));
+    // Exit is the current tenant's: not reached until Tenant vacating.
     assert.ok(view(i, 5).locked);
   });
 
-  it("an existing vacant property shows Stages 2, 3 and 5 (and the tenancy between) as Earlier", () => {
+  it("an existing vacant property shows all five stages; everything before it was added is optional", () => {
     const i = input({ origin: "existing_vacant", group: "vacant", tenancy: { beforeStages: [2, 3, 5], moveInDate: null, moveOutDate: null } });
-    assert.deepEqual(
-      pmStageViews(i).map((v) => v.oval.kind),
-      ["earlier", "earlier", "earlier", "earlier"],
-    );
+    const views = pmStageViews(i);
+    assert.deepEqual(views.map((v) => v.stage), [1, 2, 3, 4, 5]);
+    assert.ok(views.every((v) => v.optional && !v.locked && v.complete));
+    // The tenancy between has nothing to tick: "Earlier".
+    assert.deepEqual(views.map((v) => v.oval.kind), ["optional", "optional", "optional", "earlier", "optional"]);
   });
 
-  it("Before RealComply is never recorded as done, and counts nothing", () => {
-    const i = input({ origin: "existing_tenanted", group: "tenanted", tenancy: { beforeStages: [2, 3], moveInDate: null, moveOutDate: null } });
-    const v = view(i, 2);
-    assert.equal(v.finished, false);
-    assert.equal(v.done, 0);
-    assert.equal(v.complete, true);
+  it("an optional stage counts its ticks like any other, and blanks still count as complete", () => {
+    const ticks = { mgmt_agreement: tick(), fixed_rent: tick(), holding_fee: tick("na") };
+    const i = input({ origin: "existing_tenanted", group: "tenanted", tenancy: { beforeStages: [2, 3], moveInDate: null, moveOutDate: null }, ticks });
+    assert.deepEqual([view(i, 1).done, view(i, 1).total, view(i, 1).finished, view(i, 1).complete], [1, 4, false, true]);
+    assert.equal(view(i, 1).oval.kind, "count");
+    assert.equal(pmStageCountLabel(view(i, 1)), "1 of 4");
+    assert.equal(view(i, 2).done, 1);
+    assert.equal(view(i, 3).oval.kind, "optional", "nothing ticked yet");
+    const full = input({ origin: "existing_tenanted", group: "tenanted", tenancy: { beforeStages: [2, 3], moveInDate: null, moveOutDate: null }, ticks: allDone(1) });
+    assert.equal(view(full, 1).oval.kind, "tick", "every item ticked: finished like any stage");
+    assert.equal(view(full, 1).finished, true);
+  });
+
+  it("a new management has nothing optional", () => {
+    assert.ok(pmStageViews(input()).every((v) => !v.optional));
   });
 });
 
@@ -138,15 +149,30 @@ describe("PM locking (enforced on the server through pmCanSetItem)", () => {
     assert.equal(view(i, 5).locked, false);
   });
 
-  it("Before RealComply counts as complete for locking", () => {
+  it("blank optional stages count as complete for locking", () => {
     const i = input({ origin: "existing_tenanted", group: "tenant_vacating", tenancy: { beforeStages: [2, 3], moveInDate: null, moveOutDate: null } });
     assert.equal(view(i, 5).locked, false);
+    // Part-ticked is no different.
+    const part = input({
+      origin: "existing_tenanted",
+      group: "tenant_vacating",
+      tenancy: { beforeStages: [2, 3], moveInDate: null, moveOutDate: null },
+      ticks: { mgmt_agreement: tick(), bond_lodged: tick() },
+    });
+    assert.equal(view(part, 5).locked, false);
   });
 
-  it("refuses ticks on Before RealComply stages, unknown items, and N/A where it is not offered", () => {
+  it("allows ticks, N/A and unticks on optional stages; refuses unknown items and N/A where it is not offered", () => {
     const existing = input({ origin: "existing_tenanted", group: "tenanted", tenancy: { beforeStages: [2, 3], moveInDate: null, moveOutDate: null } });
-    assert.match(pmCanSetItem(existing, "fixed_rent", "done")!, /before the property came to RealComply/);
-    assert.match(pmCanSetItem(existing, "mgmt_agreement", "done")!, /does not apply/);
+    assert.equal(pmCanSetItem(existing, "mgmt_agreement", "done"), null, "Management onboarding");
+    assert.equal(pmCanSetItem(existing, "fixed_rent", "done"), null);
+    assert.equal(pmCanSetItem(existing, "fixed_rent", "open"), null);
+    assert.equal(pmCanSetItem(existing, "holding_fee", "na"), null);
+    assert.match(pmCanSetItem(existing, "mgmt_agreement", "na")!, /N\/A is not offered/);
+    assert.equal(pmCanAnswerWater(existing), null);
+    assert.equal(pmCanRecord(existing, "pet_application"), null);
+    const vacant = input({ origin: "existing_vacant", group: "vacant", tenancy: { beforeStages: [2, 3, 5], moveInDate: null, moveOutDate: null } });
+    assert.equal(pmCanSetItem(vacant, "final_inspection", "done"), null, "the earlier tenancy's Exit");
     assert.match(pmCanSetItem(input(), "made_up", "done")!, /not on this checklist/);
     assert.match(pmCanSetItem(input(), "mgmt_agreement", "na")!, /N\/A is not offered/);
   });
@@ -196,6 +222,25 @@ describe("PM moves between groups", () => {
     assert.deepEqual(checks.map((c) => c.move.label), ["Put back up for lease", "Management has ended"]);
     assert.equal(checks[1].move.asks, "managementEnded");
     assert.deepEqual(pmMoveChecks(input({ group: "archived" })), []);
+  });
+
+  it("an existing management moves on with its optional stages blank or part-ticked (27 Oct 2026)", () => {
+    const tenancy = { beforeStages: [2, 3], moveInDate: null, moveOutDate: null };
+    for (const ticks of [{}, { mgmt_agreement: tick(), fixed_rent: tick() }]) {
+      const vacating = pmMoveChecks(input({ origin: "existing_tenanted", group: "tenanted", tenancy, ticks }));
+      assert.ok(vacating.every((c) => c.line === ""), "Tenant is vacating");
+      const out = pmMoveChecks(input({ origin: "existing_tenanted", group: "tenant_vacating", tenancy, ticks }));
+      assert.ok(out.every((c) => c.blockedBy.length === 0), "nothing optional holds back Tenant has moved out");
+    }
+    const vacant = pmMoveChecks(
+      input({
+        origin: "existing_vacant",
+        group: "vacant",
+        tenancy: { beforeStages: [2, 3, 5], moveInDate: null, moveOutDate: null },
+        ticks: { final_inspection: tick() },
+      }),
+    );
+    assert.ok(vacant.every((c) => c.line === ""), "Put back up for lease");
   });
 
   it("pmMoveCheck finds one move by its key, only from the right group", () => {
@@ -307,8 +352,10 @@ describe("PM Part B: re-leasing and the outgoing tenant (brief B2)", () => {
     assert.match(pmCanSetItem(releasing({ moveOutDate: "2026-10-01" }, exitDone), "final_inspection", "open", "t1")!, /filed/);
   });
 
-  it("an existing vacant property's first tenancy is filed straight away (its Exit was before RealComply)", () => {
+  it("an existing vacant property's first tenancy is filed straight away, its Exit ticked or not", () => {
     assert.equal(pmTenancyFiled({ seq: 1, beforeStages: [2, 3, 5], moveInDate: null, moveOutDate: null }, {}), true);
+    const someTicked = { final_inspection: tick(), bond_claim: tick() };
+    assert.equal(pmTenancyFiled({ seq: 1, beforeStages: [2, 3, 5], moveInDate: null, moveOutDate: null }, someTicked), true);
   });
 });
 
@@ -346,9 +393,11 @@ describe("PM dashboard card", () => {
     }
   });
 
-  it("Tenanted shows Under way; Vacant shows a tick and Vacant", () => {
+  it("Tenanted shows Under way; Vacant shows a tick and Vacant, whatever is ticked in optional stages", () => {
     const existingT = input({ origin: "existing_tenanted", group: "tenanted", tenancy: { beforeStages: [2, 3], moveInDate: null, moveOutDate: null } });
     assert.equal(pmCardSummary(existingT).kind, "underWay");
+    const partT = { ...existingT, ticks: { mgmt_agreement: tick(), fixed_rent: tick() } };
+    assert.equal(pmCardSummary(partT).kind, "underWay", "a part-ticked optional stage is not open work");
     const existingV = input({ origin: "existing_vacant", group: "vacant", tenancy: { beforeStages: [2, 3, 5], moveInDate: null, moveOutDate: null } });
     assert.deepEqual(pmCardSummary(existingV), { kind: "tick", label: "Vacant" });
   });
