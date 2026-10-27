@@ -23,6 +23,10 @@ import {
 // is called Personal invites (it was Founder invites). Approved on the
 // preview the same day.
 //
+// FREE ACCOUNT (Adam, 27 Oct 2026; 0098): a tick on a new invite, unticked
+// by default. The office that link sets up is free from the start, with no
+// card step. A "Free" pill marks those invites in the list.
+//
 // COPY LINK STAYS on every working invite, for when he would rather send it
 // himself. A 32-character token half-selected with a mouse is a link that
 // silently does not work, which is why it is a button.
@@ -38,7 +42,18 @@ export type FounderInvite = {
   expiresAt: string;
   agencyName: string | null;
   expired: boolean;
+  /** Sets up a free account, no card (0098). */
+  free: boolean;
 };
+
+/** The "Free" pill beside a free account invite. A pill, never a circle. */
+function FreePill() {
+  return (
+    <span className="ml-1.5 inline-flex rounded-full bg-rc-green-soft px-2 py-0.5 align-middle text-[11px] font-semibold text-rc-green-deep">
+      Free
+    </span>
+  );
+}
 
 const btn =
   "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold transition disabled:opacity-60";
@@ -122,6 +137,7 @@ export function FounderInvites({ invites, siteUrl }: { invites: FounderInvite[];
                     <div className="min-w-0">
                       <p className="text-xs font-semibold text-rc-ink">
                         {invite.label}
+                        {invite.free && <FreePill />}
                         {invite.email && invite.email !== invite.label && (
                           <span className="ml-1.5 font-normal text-rc-muted">{invite.email}</span>
                         )}
@@ -204,7 +220,10 @@ export function FounderInvites({ invites, siteUrl }: { invites: FounderInvite[];
             <ul className="mt-2 space-y-1">
               {used.map((invite) => (
                 <li key={invite.token} className="flex flex-wrap justify-between gap-2 text-xs text-rc-muted">
-                  <span className="font-medium text-rc-ink">{invite.label}</span>
+                  <span className="font-medium text-rc-ink">
+                    {invite.label}
+                    {invite.free && <FreePill />}
+                  </span>
                   <span>{invite.agencyName ?? "agency not found"}</span>
                 </li>
               ))}
@@ -254,6 +273,8 @@ function Composer({
   const [firstName, setFirstName] = useState(initialFirstName);
   const [email, setEmail] = useState(initialEmail);
   const [agency, setAgency] = useState("");
+  // Only on a new invite: a resend keeps whatever the invite already was.
+  const [free, setFree] = useState(false);
   const [preview, setPreview] = useState<PersonalInvitePreview | null>(null);
   const [loading, startLoading] = useTransition();
   const [state, send, sending] = useActionState(sendPersonalInvite, { error: null } as PersonalInviteState);
@@ -309,6 +330,24 @@ function Composer({
           </label>
         )}
       </div>
+      {withAgency && (
+        <p className="mt-2 text-xs text-rc-muted">
+          <label className="mr-2 inline-flex items-center gap-2 font-semibold text-rc-ink" htmlFor={`free-${id}`}>
+            <input
+              id={`free-${id}`}
+              type="checkbox"
+              checked={free}
+              onChange={(e) => {
+                setFree(e.target.checked);
+                setPreview(null);
+              }}
+              className="h-4 w-4 accent-rc-green-deep"
+            />
+            Free account (no card)
+          </label>
+          Their office is free from the start. No trial, no card.
+        </p>
+      )}
 
       {!preview && (
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -352,6 +391,12 @@ function Composer({
               <dd className="text-rc-ink">{preview.from}</dd>
               <dt>Subject</dt>
               <dd className="font-semibold text-rc-ink">{preview.subject}</dd>
+              {free && (
+                <>
+                  <dt>Account</dt>
+                  <dd className="font-semibold text-rc-green-deep">Free, no card</dd>
+                </>
+              )}
             </dl>
             {/* The real HTML, sandboxed: no scripts, and its links go nowhere. */}
             <iframe
@@ -374,6 +419,7 @@ function Composer({
               <input type="hidden" name="firstName" value={firstName} />
               <input type="hidden" name="email" value={email} />
               <input type="hidden" name="label" value={agency} />
+              {free && <input type="hidden" name="freeAccount" value="yes" />}
               <button
                 type="submit"
                 disabled={pressed || sending}

@@ -7,6 +7,7 @@ import {
   signup,
   getInvitePreview,
   checkFounderInvite,
+  checkFounderInviteFree,
   type ActionState,
   type InvitePreview,
 } from "@/lib/actions/auth";
@@ -29,6 +30,8 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
   // in everybody else too.
   const founderToken = searchParams.get("founder");
   const [founderOk, setFounderOk] = useState(false);
+  // A personal invite ticked "Free account" (0098): no trial, no card.
+  const [founderFree, setFounderFree] = useState(false);
   const [checkedFounder, setCheckedFounder] = useState(!founderToken);
   const [invite, setInvite] = useState<InvitePreview>(null);
   const [checkedInvite, setCheckedInvite] = useState(!inviteToken);
@@ -59,9 +62,10 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
   useEffect(() => {
     if (!founderToken) return;
     let cancelled = false;
-    checkFounderInvite(founderToken).then((ok) => {
+    Promise.all([checkFounderInvite(founderToken), checkFounderInviteFree(founderToken)]).then(([ok, free]) => {
       if (!cancelled) {
         setFounderOk(ok);
+        setFounderFree(ok && free);
         setCheckedFounder(true);
       }
     });
@@ -136,7 +140,13 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
     <form action={formAction} className="mt-8 space-y-4">
       {invite && <input type="hidden" name="inviteToken" value={inviteToken ?? ""} />}
       {founderOk && <input type="hidden" name="founderToken" value={founderToken ?? ""} />}
-      {founderOk && (
+      {founderOk && founderFree && (
+        <p className="rounded-2xl border border-rc-green-deep/30 bg-rc-green-soft px-3 py-2 text-sm text-rc-green-deep">
+          You&rsquo;ve been invited to set up your own agency on RealComply, as a{" "}
+          <span className="font-semibold">free account</span>. There&rsquo;s no trial and no card details to enter.
+        </p>
+      )}
+      {founderOk && !founderFree && (
         <p className="rounded-2xl border border-rc-green-deep/30 bg-rc-green-soft px-3 py-2 text-sm text-rc-green-deep">
           You&rsquo;ve been invited to set up your own agency on RealComply. It starts with a{" "}
           <span className="font-semibold">14-day free trial</span>. You&rsquo;ll enter card details on Stripe&rsquo;s

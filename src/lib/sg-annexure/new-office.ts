@@ -5,6 +5,7 @@ import { sendEarlyAccessWelcome, type WelcomeOutcome } from "@/lib/early-access/
 import { sendOwnPlanAgentWelcome } from "@/lib/onboarding/agent-welcome";
 import { annexureDate, SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { appBaseUrl } from "@/lib/site-url";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // A new office's trial has started: its welcome, and the request to adopt the
 // SG annexure (brief, 14 Oct 2026; Adam, 14 Oct 2026: "send the licensee's
@@ -41,6 +42,12 @@ import { appBaseUrl } from "@/lib/site-url";
 // NEVER THROWS, like the welcome: a 500 would make Stripe retry an update that
 // has already succeeded. Server only, with the service key: the webhook has no
 // signed-in person.
+//
+// FREE OFFICES (Adam, 27 Oct 2026). An office set up with a "Free account (no
+// card)" invite (0098) has no card and no trial, so the webhook never runs for
+// it. It gets the same emails when it is created instead: sendFreeOfficeEmails,
+// called from the three places sign-up finishes. The same claims keep it to
+// once, should the office ever go through checkout later.
 
 type Client = {
   from: (table: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -282,4 +289,57 @@ export async function onNewOfficeTrialStarted(
   }
 
   return { welcome, annexure };
+}
+
+/**
+ * A free office's welcome and annexure request, when sign-up finishes (Adam,
+ * 27 Oct 2026). Only for the office a free invite accepted by this person
+ * made, and only while it is still a free account with no subscription; null
+ * otherwise. With the service key. Never throws.
+ */
+export async function onFreeOfficeCreated(
+  supabase: Client,
+  userId: string,
+  deps: Parameters<typeof onNewOfficeTrialStarted>[2] = {},
+): Promise<{ welcome: WelcomeOutcome; annexure: AnnexureRequestOutcome } | null> {
+  try {
+    const { data: invite, error } = await supabase
+      .from("founder_invites")
+      .select("agency_id")
+      .eq("accepted_by", userId)
+      .eq("free_account", true)
+      .not("agency_id", "is", null)
+      .maybeSingle();
+    const agencyId = (invite as { agency_id: string | null } | null)?.agency_id;
+    if (error || !agencyId) return null;
+
+    const { data: agency } = await supabase
+      .from("agencies")
+      .select("status, stripe_subscription_id")
+      .eq("id", agencyId)
+      .maybeSingle();
+    const a = agency as { status: string | null; stripe_subscription_id: string | null } | null;
+    if (a?.status !== "comped" || a.stripe_subscription_id) return null;
+
+    const outcome = await onNewOfficeTrialStarted(supabase, agencyId, deps);
+    if (outcome.welcome !== "not_early_access") console.info("free office welcome:", outcome.welcome, agencyId);
+    console.info("free office annexure request:", outcome.annexure, agencyId);
+    return outcome;
+  } catch (err) {
+    console.error("free office emails failed:", userId, err);
+    return null;
+  }
+}
+
+/**
+ * onFreeOfficeCreated with the service key, for the three places sign-up
+ * finishes. Never throws, not even without the key: sign-up has succeeded by
+ * the time this runs.
+ */
+export async function sendFreeOfficeEmails(userId: string): Promise<void> {
+  try {
+    await onFreeOfficeCreated(createServiceClient(), userId);
+  } catch (err) {
+    console.error("free office emails failed:", userId, err);
+  }
 }

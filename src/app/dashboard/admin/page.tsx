@@ -83,6 +83,8 @@ type InviteRow = {
   accepted_at: string | null;
   expires_at: string;
   agency_id: string | null;
+  /** Absent until 0098 has run. */
+  free_account?: boolean;
 };
 
 export default async function AdminPage() {
@@ -113,9 +115,11 @@ export default async function AdminPage() {
         .from("profiles")
         .select("id, agency_id, full_name, email, is_licensee_in_charge, is_platform_admin, created_at")
         .order("created_at", { ascending: true }),
+      // Every column, so free_account comes through once 0098 has added it
+      // and the list still loads before then.
       supabase
         .from("founder_invites")
-        .select("token, label, email, first_name, sent_at, accepted_at, expires_at, agency_id")
+        .select("*")
         .order("label", { ascending: true }),
       // Activity, not just existence. An agency that signed up and never added
       // a listing has not tested anything, and that is the single most useful
@@ -226,6 +230,7 @@ export default async function AdminPage() {
     expiresAt: invite.expires_at,
     agencyName: agencies.find((a) => a.id === invite.agency_id)?.name ?? null,
     expired: expiredTokens.has(invite.token),
+    free: invite.free_account === true,
   }));
 
   const unusedInvites = inviteList.filter((i) => !i.acceptedAt && !i.expired);

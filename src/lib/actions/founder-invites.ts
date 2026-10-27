@@ -117,7 +117,19 @@ type InviteRecord = {
   first_name: string | null;
   sent_at: string | null;
   accepted_at: string | null;
+  /** 0098. Absent before it is run. */
+  free_account?: boolean;
+  created_by?: string | null;
 };
+
+// "Free account (no card)" (Adam, 27 Oct 2026; 0098). The office the link
+// sets up is free from the start: bootstrap_agency_v3 makes it comped, with
+// the admin who made the invite as comped_by. Written only for a free invite,
+// so a normal invite is the same insert as before and still works before 0098
+// is run. A resend carries the tick over to the fresh link.
+function freeFields(free: boolean, createdBy: string): { free_account?: true; created_by?: string } {
+  return free ? { free_account: true, created_by: createdBy } : {};
+}
 
 function senderLine(): string {
   const configured = process.env.EMAIL_FROM ?? "";
@@ -166,6 +178,7 @@ export async function sendPersonalInvite(
   let firstName = String(formData.get("firstName") ?? "").trim();
   let email = String(formData.get("email") ?? "").trim();
   let label = String(formData.get("label") ?? "").trim();
+  let free = formData.get("freeAccount") === "yes";
   if (firstName.length > 80) return { error: "Keep the first name shorter than 80 characters." };
   if (label.length > 120) return { error: "Keep the agency shorter than 120 characters." };
 
@@ -178,9 +191,11 @@ export async function sendPersonalInvite(
   if (existingToken) {
     // Only a link that still works. Expiry is the database's clock, as on the
     // staff page, because that is the clock that decides at signup.
+    // Every column, so free_account and created_by come through once 0098
+    // has added them and nothing breaks before then.
     const { data } = await supabase
       .from("founder_invites")
-      .select("token, label, email, first_name, sent_at, accepted_at")
+      .select("*")
       .eq("token", existingToken)
       .gt("expires_at", "now()")
       .maybeSingle();
@@ -192,6 +207,9 @@ export async function sendPersonalInvite(
     email = email || row.email || "";
     firstName = firstName || row.first_name || "";
     label = label || row.label;
+    // A free invite stays free, made by whoever made it.
+    free = row.free_account === true;
+    const creator = row.created_by ?? profile.id;
     const blocked = checkRecipient(email);
     if (blocked) return { error: blocked };
 
@@ -215,7 +233,7 @@ export async function sendPersonalInvite(
       token = newToken();
       const { error: mintError } = await supabase
         .from("founder_invites")
-        .insert({ token, label, email, first_name: firstName || null, sent_at: now() });
+        .insert({ token, label, email, first_name: firstName || null, sent_at: now(), ...freeFields(free, creator) });
       if (mintError) {
         console.error("sendPersonalInvite: could not mint resend", mintError.message);
         return { error: "Couldn't create the new link. Try again." };
@@ -241,7 +259,7 @@ export async function sendPersonalInvite(
     token = newToken();
     const { error: mintError } = await supabase
       .from("founder_invites")
-      .insert({ token, label, email, first_name: firstName || null, sent_at: now() });
+      .insert({ token, label, email, first_name: firstName || null, sent_at: now(), ...freeFields(free, profile.id) });
     if (mintError) {
       console.error("sendPersonalInvite: could not mint invite", mintError.message);
       return { error: "Couldn't create the invitation. Try again." };
@@ -276,6 +294,6 @@ export async function sendPersonalInvite(
   const test = isTestAddress(email) ? " (test address)" : "";
   return {
     error: null,
-    notice: `${newlyMade && existingToken ? "New link sent" : "Invitation sent"} to ${name}${test}. Copy BCC'd to ${ADMIN_COPY_ADDRESS}.`,
+    notice: `${newlyMade && existingToken ? "New link sent" : "Invitation sent"} to ${name}${test}${free ? ", free account" : ""}. Copy BCC'd to ${ADMIN_COPY_ADDRESS}.`,
   };
 }
