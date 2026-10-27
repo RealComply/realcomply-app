@@ -331,20 +331,22 @@ function Composer({
         )}
       </div>
       {withAgency && (
-        <label className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-rc-ink" htmlFor={`free-${id}`}>
-          <input
-            id={`free-${id}`}
-            type="checkbox"
-            checked={free}
-            onChange={(e) => {
-              setFree(e.target.checked);
-              setPreview(null);
-            }}
-            className="h-4 w-4 accent-rc-green-deep"
-          />
-          Free account (no card)
-          <span className="font-normal text-rc-muted">Their office is free from the start. No trial, no card.</span>
-        </label>
+        <p className="mt-2 text-xs text-rc-muted">
+          <label className="mr-2 inline-flex items-center gap-2 font-semibold text-rc-ink" htmlFor={`free-${id}`}>
+            <input
+              id={`free-${id}`}
+              type="checkbox"
+              checked={free}
+              onChange={(e) => {
+                setFree(e.target.checked);
+                setPreview(null);
+              }}
+              className="h-4 w-4 accent-rc-green-deep"
+            />
+            Free account (no card)
+          </label>
+          Their office is free from the start. No trial, no card.
+        </p>
       )}
 
       {!preview && (
