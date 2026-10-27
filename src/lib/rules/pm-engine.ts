@@ -22,8 +22,8 @@ import {
 // THE PM ENGINE. Reads the content in nsw-pm.ts and works out, for one
 // property: which stages show, which are optional (the earlier stages of an
 // existing management), what each counts, which are locked, and whether the
-// move button works. It knows nothing about
-// NSW, so another state is a new content file, not a new engine.
+// move button works. It knows nothing about NSW, so another state is a new
+// content file, not a new engine.
 //
 // The server actions (lib/actions/pm.ts) call the same functions before every
 // tick and every move, so the locking is enforced on the server and not only
