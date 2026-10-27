@@ -30,6 +30,8 @@ import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
 import { SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { STAGE_LABELS, type Agency, type Complaint, type Gift, type Profile, type Property, type PropertyItem, type SgManualVersion, type TrainingSession } from "@/lib/types";
 import { isOfficeAgent, myConfirmedVersions, officeAdoption, sgReadDue } from "@/lib/sg-annexure/office-read";
+import { setupViewFor } from "@/lib/data/office-setup";
+import { SetupCard, SetupDoneLine } from "@/components/home/SetupCard";
 
 // Home — the single consolidated landing dashboard a licensee sees after
 // login, replacing "check five different pages" with one page of widgets
@@ -72,8 +74,21 @@ export default async function HomeDashboardPage({
     }
     // Asking to be office manager, and where that is up to (0093); once the
     // approval has been seen, a small line instead (0096).
-    const officeManager = await officeManagerHomeFor(supabase, profile, access);
-    return <AgentHome supabase={supabase} profile={profile} sgReadShows={sgReadShows} officeManager={officeManager} />;
+    const [officeManager, setup] = await Promise.all([
+      officeManagerHomeFor(supabase, profile, access),
+      // "Set up your office" for an office manager; "Set up your profile" for
+      // everyone else here (Adam, 27 Oct 2026).
+      setupViewFor(supabase, profile, access),
+    ]);
+    return (
+      <AgentHome
+        supabase={supabase}
+        profile={profile}
+        sgReadShows={sgReadShows}
+        officeManager={officeManager}
+        setup={setup}
+      />
+    );
   }
 
   const cpdYear = currentCpdYear();
@@ -95,6 +110,9 @@ export default async function HomeDashboardPage({
   const todayIso = sydneyDate(new Date());
   // Someone made office manager: a card once, then a small line (0096).
   const officeManagersPromise = licenseeOfficeManagerHomeFor(supabase, profile, access);
+  // "Set up your office" (Adam, 27 Oct 2026): the licensee in charge, or the
+  // agent on their own plan (the addendum's list).
+  const setupPromise = setupViewFor(supabase, profile, access);
   const [{ data: myLineRows }, changeStatus] = access.officeLicensee
     ? await Promise.all([
         supabase
@@ -259,6 +277,10 @@ export default async function HomeDashboardPage({
   const licenceRisk = licenceExpired + licenceExpiringSoon;
   const piRisk = piStatus === "expired" || piStatus === "urgent" ? 1 : 0;
   const officeManagers = await officeManagersPromise;
+  const setup = await setupPromise;
+  // The set-up card's next step is the annexure's own "Review and sign", so
+  // the annexure card isn't shown twice.
+  const setupAsksForAnnexure = setup?.mode === "card" && setup.next?.key === "annexure";
 
   return (
     <>
@@ -268,6 +290,7 @@ export default async function HomeDashboardPage({
           <div className="flex items-center justify-between">
             <div>
               <OfficeManagerLines lines={officeManagers.lines} />
+              {setup?.mode === "done" && <SetupDoneLine view={setup} />}
               <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Home</h1>
               <p className="mt-1 text-sm text-rc-muted">
                 Everything at a glance — diligence support only, the licensee decides.
@@ -275,7 +298,12 @@ export default async function HomeDashboardPage({
             </div>
           </div>
 
-          {annexureOutstanding && <AnnexureCard unavailable={query.annexure === "unavailable"} />}
+          {/* Top of Home: what to set up next (Adam, 27 Oct 2026). */}
+          {setup?.mode === "card" && <SetupCard view={setup} />}
+
+          {annexureOutstanding && !setupAsksForAnnexure && (
+            <AnnexureCard unavailable={query.annexure === "unavailable"} />
+          )}
           {fairTrading && myLine && (
             <FairTradingCard
               lineId={myLine.id}

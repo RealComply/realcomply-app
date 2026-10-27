@@ -20,7 +20,8 @@ export function SgReadCard() {
   const [state, action, pending] = useActionState(confirmSgRead, initial);
 
   return (
-    <section className="mt-6 rounded-card border-2 border-rc-green-deep bg-white px-4 py-4 shadow-card sm:px-5">
+    // id: "Set up your profile" sends its Read step here (Adam, 27 Oct 2026).
+    <section id="sg-read" className="mt-6 scroll-mt-6 rounded-card border-2 border-rc-green-deep bg-white px-4 py-4 shadow-card sm:px-5">
       <div className="flex min-w-0 items-start gap-3">
         <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rc-green-soft text-rc-green-deep">
           <BookOpenCheck size={16} aria-hidden="true" />
