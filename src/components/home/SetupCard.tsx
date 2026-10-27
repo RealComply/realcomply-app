@@ -206,7 +206,8 @@ function StepItem({ step, isNext }: { step: SetupStep; isNext: boolean }) {
         <p className="text-xs text-rc-muted">
           {na ? (
             <>
-              Doesn&rsquo;t apply · marked by {na.byName}, {formatAuDayMonth(na.at)}
+              {/* In the words they chose, e.g. "My deposits go into the agency's trust account". */}
+              {step.notApplicableLabel ?? "Doesn't apply"} · marked by {na.byName}, {formatAuDayMonth(na.at)}
             </>
           ) : (
             step.waitingOn ?? step.line
