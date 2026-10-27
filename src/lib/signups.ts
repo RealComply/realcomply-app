@@ -58,6 +58,24 @@ export async function founderInviteValid(token: string): Promise<boolean> {
   }
 }
 
+/**
+ * Whether a working personal invite link is a free account (0098): the
+ * sign-up page then says there is no trial and no card. False on any error,
+ * and before 0098 is run, so the page falls back to the trial wording.
+ */
+export async function founderInviteFree(token: string): Promise<boolean> {
+  const trimmed = token.trim();
+  if (!trimmed) return false;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("founder_invite_is_free", { p_token: trimmed });
+    if (error) return false;
+    return data === true;
+  } catch {
+    return false;
+  }
+}
+
 export const openSignupsAllowed = cache(async function openSignupsAllowed(): Promise<boolean> {
   try {
     const supabase = await createClient();

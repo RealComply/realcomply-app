@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { currentLegalVersions } from "@/lib/legal/documents";
-import { founderInviteValid, openSignupsAllowed } from "@/lib/signups";
+import { founderInviteFree, founderInviteValid, openSignupsAllowed } from "@/lib/signups";
 import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
 import { ENTITY_NAME_MAX, tidyName } from "@/lib/agency-names";
 import { saveSignupEntityName } from "@/lib/auth/signup-entity-name";
@@ -551,4 +551,9 @@ export async function getInvitePreview(token: string): Promise<InvitePreview> {
 // benefit.
 export async function checkFounderInvite(token: string): Promise<boolean> {
   return founderInviteValid(token);
+}
+
+/** Whether that link sets up a free account (0098). Yes or no, the same as above. */
+export async function checkFounderInviteFree(token: string): Promise<boolean> {
+  return founderInviteFree(token);
 }
