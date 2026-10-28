@@ -305,6 +305,7 @@ export function renderEmailText(doc: EmailDocument): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// No em dash (Adam, 28 Oct 2026): it read "... your own judgement — you decide."
 export const DILIGENCE_LINE =
   "RealComply provides diligence support to help you stay on top of compliance. " +
-  "It doesn't guarantee compliance and doesn't replace your own judgement — you decide.";
+  "It doesn't guarantee compliance and doesn't replace your own judgement. You decide.";

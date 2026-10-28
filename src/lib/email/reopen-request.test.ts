@@ -29,9 +29,9 @@ describe("the request to reopen email", () => {
     assert.ok(!html.includes("<$1 more>"));
   });
 
-  it("has no em dashes in its own words (the shared footer line is every email's)", () => {
-    const { text } = buildReopenRequestEmail(input);
-    const own = text.split("\n").filter((l) => !l.startsWith("RealComply provides diligence support"));
-    assert.ok(own.every((l) => !l.includes("\u2014")));
+  it("has no em dashes, the shared footer line included", () => {
+    const { text, html } = buildReopenRequestEmail(input);
+    assert.ok(!text.includes("\u2014"));
+    assert.ok(!html.includes("\u2014"));
   });
 });
