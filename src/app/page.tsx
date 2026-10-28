@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import Script from "next/script";
 import { createClient } from "@/lib/supabase/server";
 import { Logo } from "@/components/Logo";
 import { EarlyAccessForm } from "@/components/EarlyAccessForm";
@@ -182,7 +181,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
             <Logo size={19} />
           </Link>
           <div className="flex items-center gap-4">
-            <Link href="/login" className="text-sm font-medium text-rc-muted hover:text-rc-ink" data-cta="nav-login">
+            <Link href="/login" className="text-sm font-medium text-rc-muted hover:text-rc-ink">
               Log in
             </Link>
             {/* Added 23 Oct 2026 (trial brief): jumps to the form in the hero.
@@ -190,7 +189,6 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
             <a
               href="#early-access"
               className="rounded-full bg-rc-ink px-4 py-2 text-sm font-bold text-white transition hover:bg-rc-green-deep"
-              data-cta="nav-trial"
             >
               Start free trial
             </a>
@@ -205,7 +203,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           mockup). On a phone it stacks: intro first, then the form, so the ask
           is still near the top. Wording unchanged from PR #72. The risk
           reversal line joins the ticks on the left, as in the mockup. */}
-      <section className="relative isolate overflow-hidden" data-section="hero">
+      <section className="relative isolate overflow-hidden">
         <div className="rc-mesh-bg" />
         <div className="mx-auto grid max-w-6xl items-center gap-3 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-14">
           <div className="min-w-0 text-center lg:text-left">
@@ -262,7 +260,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
 
       {/* MISSION — the long version, directly under the hero. The middle
           sentence is the one meant to make a principal recognise themselves. */}
-      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20" data-section="mission">
+      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20">
         <div className="mx-auto max-w-2xl px-4 sm:px-6">
           <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Why we built it</h2>
           <p className="mt-4 text-lg leading-relaxed text-rc-muted">
@@ -280,9 +278,8 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
       {/* INFOGRAPHICS, 22 Oct 2026. Three animated bands replace "How it
           works" and "The part that does the work for you" (Adam: "these new
           parts can replace" both). Each plays when it scrolls into view, and
-          hovering or tapping a part replays it. New data-section names, so
-          Plausible counts these separately from the old bands. */}
-      <section className="border-t border-rc-border py-16 sm:py-20" data-section="before-after">
+          hovering or tapping a part replays it. */}
+      <section className="border-t border-rc-border py-16 sm:py-20">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <BeforeAfter />
         </div>
@@ -291,7 +288,6 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
       <section
         className="border-t border-rc-border py-16 sm:py-20"
         style={{ background: "linear-gradient(180deg,#f7fdfa 0%,#ffffff 100%)" }}
-        data-section="product-screen"
       >
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           {/* The "You stay the decision-maker throughout..." line that sat here
@@ -301,16 +297,14 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
         </div>
       </section>
 
-      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20" data-section="time-back">
+      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <TimeBack />
         </div>
       </section>
 
-      {/* WHAT CHANGES DAY TO DAY. data-section kept as "outcomes" on purpose —
-          renaming it would break continuity with the Plausible history from
-          the previous version of this band. */}
-      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20" data-section="outcomes">
+      {/* WHAT CHANGES DAY TO DAY. */}
+      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <h2 className="max-w-2xl text-3xl font-extrabold tracking-tight sm:text-4xl">
             {/* Was "Compliance on track. Your time back to do what you do best."
@@ -356,7 +350,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           2026; the rest is the reform package expected late 2026. Sources in
           RealComply-NSW-underquoting-reforms-late-2026.md. If commencement
           moves, this band moves with it. */}
-      <section className="border-t border-rc-border py-16 sm:py-20" data-section="why">
+      <section className="border-t border-rc-border py-16 sm:py-20">
         <div className="mx-auto max-w-2xl px-4 sm:px-6">
           <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">The job keeps getting bigger</h2>
           <p className="mt-4 text-lg leading-relaxed text-rc-muted">
@@ -384,7 +378,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           (that stays behind login, not on a page a competitor can
           screenshot). Sits right before the final ask, so the price is
           answered before someone is asked for their email. */}
-      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20" data-section="pricing">
+      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20">
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
           <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Straightforward pricing</h2>
           <p className="mx-auto mt-4 max-w-lg text-lg leading-relaxed text-rc-muted">
@@ -434,7 +428,6 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           read before the email box. */}
       <section
         className="relative isolate overflow-hidden bg-rc-ink-bg py-20 text-center text-white"
-        data-section="final"
       >
         <div className="mx-auto max-w-2xl px-4 sm:px-6">
           <p className="mx-auto mb-6 max-w-lg text-[17px] font-bold leading-snug tracking-tight text-white">
@@ -480,40 +473,13 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
         </div>
       </footer>
 
-      {/* Analytics: Plausible, on this public page only, not on authenticated
-          app routes. The Meta Pixel is separate and lives in the root layout,
-          because Meta needs PageView on every page it might send traffic to. */}
+      {/* Plausible removed (Adam, with Vercel Web Analytics, Oct 2026): its
+          script, its set-up and the CTA-click and section-view tracking that
+          fed it. There was never a Plausible account for realcomply.com.au, so
+          it counted nothing for us while every visitor's browser still
+          contacted plausible.io. The Meta pixel stays, public pages only (see
+          MetaPixel.tsx). */}
       <MetaPixel />
-      <Script defer data-domain="realcomply.com.au" src="https://plausible.io/js/script.js" strategy="afterInteractive" />
-      <Script id="plausible-init" strategy="afterInteractive">
-        {`window.plausible = window.plausible || function(){(window.plausible.q = window.plausible.q || []).push(arguments)};`}
-      </Script>
-      <Script id="marketing-tracking" strategy="afterInteractive">
-        {`
-          document.querySelectorAll('[data-cta]').forEach(function(el){
-            el.addEventListener('click', function(){
-              window.plausible('CTA Click', { props: { cta: el.getAttribute('data-cta') } });
-            });
-          });
-          (function(){
-            var seen = new Set();
-            var sections = document.querySelectorAll('[data-section]');
-            if (!('IntersectionObserver' in window) || !sections.length) return;
-            var observer = new IntersectionObserver(function(entries){
-              entries.forEach(function(entry){
-                if (entry.isIntersecting) {
-                  var name = entry.target.getAttribute('data-section');
-                  if (!seen.has(name)) {
-                    seen.add(name);
-                    window.plausible('Section View', { props: { section: name } });
-                  }
-                }
-              });
-            }, { threshold: 0.4 });
-            sections.forEach(function(s){ observer.observe(s); });
-          })();
-        `}
-      </Script>
       {/* Vercel Web Analytics (Adam, 29 Oct 2026): public pages only, records
           the page and the ?src= tag and nothing else. See PublicAnalytics.tsx. */}
       <PublicAnalytics />

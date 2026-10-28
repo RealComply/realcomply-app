@@ -37,7 +37,6 @@ const initial: EarlyAccessState = { ok: false, error: null };
 declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
-    plausible?: (...args: unknown[]) => void;
   }
 }
 
@@ -56,7 +55,6 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
   useEffect(() => {
     if (!state.ok) return;
     window.fbq?.("track", "Lead");
-    window.plausible?.("Early Access Signup");
   }, [state.ok]);
 
   const dark = tone === "dark";
@@ -203,7 +201,6 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
       <button
         type="submit"
         disabled={pending}
-        data-cta="early-access"
         className="mt-6 w-full rounded-full bg-rc-green-deep px-7 py-3.5 text-base font-bold text-white shadow-glow-green transition hover:bg-rc-green-deep-600 disabled:opacity-60"
       >
         {/* "Get early access" until 22 Oct 2026, then "Sign up now", then this
