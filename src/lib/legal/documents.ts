@@ -490,6 +490,10 @@ const TERMS_BODY = `
 // staff", and a new "If you register for early access" for the optional phone
 // number on the early access form). Written in-house at Adam's request, not
 // drafted by a lawyer. See claude/RealComply-privacy-policy-16-Oct.md.
+// 29 Oct 2026: "Our public website" rewritten for Vercel Web Analytics, and
+// Plausible no longer named (it is off the website). Written in-house at
+// Adam's request, not drafted by a lawyer; for Legal to approve before it
+// goes live. See claude/RealComply-privacy-policy-29-Oct.md.
 //
 // Verbatim. Do not edit a word, a clause number or a cross-reference here:
 // documents.test.ts checks this text against the brief, character for
@@ -536,7 +540,11 @@ We collect personal information in the following ways:
 
 ### Our public website
 
-The home page of our public website uses Plausible, a cookieless analytics tool, to count visits, and the Meta pixel, to measure our advertising. Neither is used inside the product.
+Our home page and legal pages use Vercel Web Analytics, which does not use cookies, to count visits and see which of our links brought them. For each visit it records the page, the tag in our link if there is one (for example, that you came from one of our text messages or emails), the website that referred you, your browser, operating system and type of device, and your country. Nothing else from the web address is recorded.
+
+The home page also uses the Meta pixel, to measure our advertising.
+
+Neither is used inside the product.
 
 ## Why we collect it
 
@@ -741,14 +749,16 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentKey, LegalDocument> = {
     key: "privacy",
     path: "/privacy",
     title: "Privacy Policy",
-    version: "2026-10-16",
-    effective: "16 October 2026",
+    version: "2026-10-29",
+    effective: "29 October 2026",
     reviewed: true,
     body: PRIVACY_BODY,
     // Adam's decision, 16 Oct 2026: people who accepted 9 Oct are not asked
     // to accept again for the phone number change. He has spoken to both
     // existing client offices directly and they are happy to be called.
-    stillAccepted: ["2026-10-09"],
+    // 29 Oct 2026 (website analytics): 16 Oct acceptances also still count,
+    // the same way. Adam to confirm before this merges.
+    stillAccepted: ["2026-10-16", "2026-10-09"],
   },
   dpa: {
     key: "dpa",

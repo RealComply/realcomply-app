@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/legal/LegalPage";
+import { PublicAnalytics } from "@/components/PublicAnalytics";
 import { legalDocument } from "@/lib/legal/documents";
 
 const doc = legalDocument("dpa");
@@ -9,6 +10,12 @@ export const metadata: Metadata = {
   description: "How RealComply handles personal information on behalf of the agencies that subscribe to it.",
 };
 
+// Public page, so it is counted by Vercel Web Analytics (PublicAnalytics.tsx).
 export default function DpaPage() {
-  return <LegalPage doc={doc} />;
+  return (
+    <>
+      <LegalPage doc={doc} />
+      <PublicAnalytics />
+    </>
+  );
 }
