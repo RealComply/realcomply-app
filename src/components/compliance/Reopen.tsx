@@ -5,14 +5,13 @@ import { markReopenedCardDone, reopenCard } from "@/lib/actions/compliance";
 import { declineReopen, requestReopen } from "@/lib/actions/reopen-requests";
 import {
   CONFIRM_CANCEL_SIGNOFF,
-  LICENSEE_SIGNOFF_KEYS,
   MARK_DONE_AGAIN_KEYS,
-  ONLY_LICENSEE_SIGNED_FILE,
-  ONLY_LICENSEE_SIGNOFF,
   REOPEN_REASON_MAX,
   cancellationLine,
   fileSignoffCancelledLine,
   priceApprovalReopenedLine,
+  reopenKeyFor,
+  reopenPress,
   reopenedLine,
   requestFor,
   requestLine,
@@ -95,7 +94,11 @@ export function CardReopenArea({
   const history = ctx.cancellations.filter((c) => historyKeys.includes(c.itemKey));
   const request = requestFor(ctx.requests, item.key);
   const waiting = request?.status === "waiting" ? request : null;
-  const showReopen = showsSharedReopen(item, status, ctx.signedOff);
+  // On a signed-off file "Send to licensee" reopens the licensee's signature,
+  // which is done whatever the send card itself says.
+  const reopenKey = reopenKeyFor(item.key, ctx.signedOff);
+  const showReopen =
+    reopenKey === item.key ? showsSharedReopen(item, status, ctx.signedOff) : showsSharedReopen(item, "done", true);
   const showMarkDone = isOpen && Boolean(stamp.reopenedAt) && MARK_DONE_AGAIN_KEYS.has(item.key) && !ctx.signedOff;
 
   // Why it is open again. b4 says what the licensee has to do; the signature
@@ -124,7 +127,7 @@ export function CardReopenArea({
     setError(null);
     setNote(null);
     start(async () => {
-      const result = await reopenCard(ctx!.propertyId, item.key, cancelSignoff);
+      const result = await reopenCard(ctx!.propertyId, reopenKey, cancelSignoff);
       if (result.needsConfirm) {
         setMode("confirm");
         return;
@@ -136,16 +139,13 @@ export function CardReopenArea({
 
   function pressReopen() {
     setError(null);
-    if (ctx!.signedOff && !ctx!.viewer.isLicensee) {
-      setNote(ONLY_LICENSEE_SIGNED_FILE);
-      setMode(waiting ? "idle" : "asking");
+    const press = reopenPress({ key: reopenKey, signedOff: ctx!.signedOff, isLicensee: ctx!.viewer.isLicensee });
+    if (press.kind === "refuse") {
+      setNote(press.note);
+      setMode(press.canAsk && !waiting ? "asking" : "idle");
       return;
     }
-    if (LICENSEE_SIGNOFF_KEYS.has(item.key) && !ctx!.viewer.isLicensee) {
-      setNote(ONLY_LICENSEE_SIGNOFF);
-      return;
-    }
-    if (ctx!.signedOff) {
+    if (press.kind === "confirm") {
       setMode("confirm");
       return;
     }

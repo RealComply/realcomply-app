@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { linkRequestNeedingTime } from "@/lib/rules/listing-signature";
 import type { Cancellation, ReopenRequest, ReopenWhy } from "@/lib/rules/reopen";
 
 // A listing's cancelled approvals and sign-offs, and its requests to reopen
@@ -35,6 +36,28 @@ export async function reopenHistoryFor(
       becauseItemKey: (row.because_item_key as string | null) ?? null,
       because: row.because as ReopenWhy,
     });
+  }
+
+  // A signature given through the emailed link has its time on the link, not
+  // on the card (lib/rules/listing-signature.ts). Only a final sign-off link.
+  const linkIds = cancellations
+    .filter((c) => c.itemKey !== "b4")
+    .map((c) => linkRequestNeedingTime(c.card.data))
+    .filter((id): id is string => Boolean(id));
+  if (linkIds.length > 0) {
+    const { data: links } = await supabase
+      .from("property_signoff_requests")
+      .select("id, signed_at")
+      .eq("property_id", propertyId)
+      .eq("item_key", "sign_licensee")
+      .in("id", linkIds);
+    const signedAt = new Map(
+      ((links ?? []) as Array<{ id: string; signed_at: string | null }>).map((l) => [l.id, l.signed_at]),
+    );
+    for (const c of cancellations) {
+      const id = c.itemKey === "b4" ? null : linkRequestNeedingTime(c.card.data);
+      if (id) c.linkSignedAt = signedAt.get(id) ?? null;
+    }
   }
 
   const requests: ReopenRequest[] = ((asked ?? []) as Array<Record<string, unknown>>).map((row) => ({

@@ -2,10 +2,14 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   CONFIRM_CANCEL_SIGNOFF,
+  ONLY_LICENSEE_SIGNED_FILE,
+  ONLY_LICENSEE_SIGNOFF,
   cancellationLine,
   fileSignoffCancelledLine,
   isReopenable,
   priceApprovalReopenedLine,
+  reopenKeyFor,
+  reopenPress,
   reopenedLine,
   requestFor,
   requestLine,
@@ -52,6 +56,40 @@ describe("which cards show the shared Reopen", () => {
     ]) {
       assert.equal(showsSharedReopen(card, "done", false), true, card.key);
     }
+  });
+});
+
+describe("pressing Reopen", () => {
+  const press = (key: string, signedOff: boolean, isLicensee: boolean) => reopenPress({ key, signedOff, isLicensee });
+
+  it("refuses anyone but the licensee on the licensee's own sign-off cards, signed off or not", () => {
+    for (const key of ["b4", "sign_licensee"]) {
+      for (const signedOff of [false, true]) {
+        assert.deepEqual(press(key, signedOff, false), { kind: "refuse", note: ONLY_LICENSEE_SIGNOFF, canAsk: false });
+      }
+    }
+  });
+
+  it("refuses anyone but the licensee on a signed-off file, and offers to ask the licensee", () => {
+    assert.deepEqual(press("f0", true, false), { kind: "refuse", note: ONLY_LICENSEE_SIGNED_FILE, canAsk: true });
+  });
+
+  it("asks the licensee first on a signed-off file, and goes straight on otherwise", () => {
+    assert.deepEqual(press("f0", true, true), { kind: "confirm" });
+    assert.deepEqual(press("b4", true, true), { kind: "confirm" });
+    assert.deepEqual(press("f0", false, false), { kind: "go" });
+    assert.deepEqual(press("b4", false, true), { kind: "go" });
+  });
+
+  it("on a signed-off file, Send to licensee reopens the licensee's signature", () => {
+    assert.equal(reopenKeyFor("send_licensee", true), "sign_licensee");
+    assert.equal(reopenKeyFor("send_licensee", false), "send_licensee");
+    assert.equal(reopenKeyFor("f0", true), "f0");
+    assert.deepEqual(press(reopenKeyFor("send_licensee", true), true, false), {
+      kind: "refuse",
+      note: ONLY_LICENSEE_SIGNOFF,
+      canAsk: false,
+    });
   });
 });
 
@@ -135,6 +173,22 @@ describe("cancelled approvals and signatures in the history", () => {
     assert.equal(
       cancellationLine(c, names, titles),
       "Signed by Lee Licensee on 25 October 2026. Cancelled 28 October 2026 by Lee Licensee, because “Advertised price guide vs ESP” was reopened.",
+    );
+  });
+
+  it("a signature given through the emailed link takes its time from the link", () => {
+    const c: Cancellation = {
+      ...base,
+      cancelledBy: "l",
+      becauseItemKey: "c1",
+      itemKey: "sign_licensee",
+      because: "file_reopened",
+      card: { status: "done", data: { signedVia: "link", signedName: "Lee Licensee", signoffRequestId: "r1" } },
+      linkSignedAt: "2026-10-26T01:00:00Z",
+    };
+    assert.equal(
+      cancellationLine(c, names, titles),
+      "Signed by Lee Licensee on 26 October 2026. Cancelled 28 October 2026 by Lee Licensee, because “Advertised price guide vs ESP” was reopened.",
     );
   });
 

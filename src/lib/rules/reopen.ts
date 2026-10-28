@@ -75,6 +75,36 @@ export function showsSharedReopen(card: CardShape, status: string | null | undef
   return signedOff || !hasOwnReopen(card);
 }
 
+/**
+ * The card a Reopen acts on. Where the licensee signs by email their
+ * signature card isn't on the page, so once the file is signed off "Send to
+ * licensee" stands in for it: its Reopen is the licensee's signature's.
+ */
+export function reopenKeyFor(itemKey: string, signedOff: boolean): string {
+  return itemKey === "send_licensee" && signedOff ? "sign_licensee" : itemKey;
+}
+
+export type ReopenPress =
+  | { kind: "refuse"; note: string; canAsk: boolean }
+  | { kind: "confirm" }
+  | { kind: "go" };
+
+/**
+ * What pressing Reopen does, before anything is sent, in the order the
+ * database checks (0100): the licensee's own sign-off cards are the
+ * licensee's alone; nothing on a signed-off file reopens for anyone else, who
+ * can ask the licensee instead; the licensee is asked before the sign-off is
+ * cancelled. `key` is the card the Reopen acts on (reopenKeyFor).
+ */
+export function reopenPress(args: { key: string; signedOff: boolean; isLicensee: boolean }): ReopenPress {
+  if (LICENSEE_SIGNOFF_KEYS.has(args.key) && !args.isLicensee) {
+    return { kind: "refuse", note: ONLY_LICENSEE_SIGNOFF, canAsk: false };
+  }
+  if (args.signedOff && !args.isLicensee) return { kind: "refuse", note: ONLY_LICENSEE_SIGNED_FILE, canAsk: true };
+  if (args.signedOff) return { kind: "confirm" };
+  return { kind: "go" };
+}
+
 export type ReopenWhy = "reopened" | "esp_changed" | "withdrawn" | "file_reopened";
 
 function quoted(title: string): string {
@@ -119,6 +149,8 @@ export type Cancellation = {
   cancelledBy: string | null;
   becauseItemKey: string | null;
   because: ReopenWhy;
+  /** A signature given through the emailed link: the link's signed time. */
+  linkSignedAt?: string | null;
 };
 
 /**
@@ -139,7 +171,7 @@ export function cancellationLine(
     const words = approval?.text ? `: ${quoted(approval.text)}` : "";
     given = `Approved by ${by}${when}${how}${words}.`;
   } else {
-    const signature = listingSignature(c.card.data);
+    const signature = listingSignature(c.card.data, c.linkSignedAt);
     const by = signature?.typedName ?? names(c.card.completed_by ?? null);
     const when = signature?.signedAt ? ` on ${formatAuTimestamp(signature.signedAt)}` : "";
     given = `Signed by ${by}${when}.`;
