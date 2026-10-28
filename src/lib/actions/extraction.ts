@@ -2271,10 +2271,17 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
     // auto-marking a compliance item "done" is the one thing in this file
     // that writes a decision rather than offering one, so it gets an explicit
     // guard rather than relying on a property of some other object.
+    //
+    // Nor a card a person reopened (Adam, 28 Oct 2026). Before, the next read
+    // of the agreement ticked a reopened a1 or a2 straight back, so a reopen
+    // didn't stay. The reopen stamp (reopenedAt, 0100) goes when the card is
+    // marked done again.
+    const reopenedByAPerson = Boolean((existing?.data as { reopenedAt?: unknown } | null | undefined)?.reopenedAt);
     const autoComplete =
       !patch.wrongDocument &&
       !!patch.eventDate &&
       (existing?.status ?? "open") === "open" &&
+      !reopenedByAPerson &&
       ((patch.itemKey === "a2" && patch.consumerGuideProvided === true) ||
         (patch.itemKey === "a1" && patch.identityVerified === true));
 

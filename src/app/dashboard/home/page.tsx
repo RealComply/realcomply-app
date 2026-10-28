@@ -32,6 +32,8 @@ import { STAGE_LABELS, type Agency, type Complaint, type Gift, type Profile, typ
 import { isOfficeAgent, myConfirmedVersions, officeAdoption, sgReadDue } from "@/lib/sg-annexure/office-read";
 import { setupViewFor } from "@/lib/data/office-setup";
 import { SetupCard, SetupDoneLine } from "@/components/home/SetupCard";
+import { getItem } from "@/lib/rules/nsw-sales";
+import { formatAuTimestamp } from "@/lib/format-date";
 
 // Home — the single consolidated landing dashboard a licensee sees after
 // login, replacing "check five different pages" with one page of widgets
@@ -208,6 +210,34 @@ export default async function HomeDashboardPage({
   const agentNames = new Map<string, string>();
   for (const p of staff) agentNames.set(p.id, p.full_name ?? p.email);
 
+  // Requests to reopen a card on a signed-off file, waiting on the licensee
+  // in charge (Adam, 28 Oct 2026; 0100). Theirs to answer, so top of Home.
+  const { data: reopenRows } = profile.is_licensee_in_charge
+    ? await supabase
+        .from("listing_reopen_requests")
+        .select("id, property_id, item_key, reason, requested_by, requested_at")
+        .eq("status", "waiting")
+        .order("requested_at", { ascending: true })
+    : { data: [] };
+  const reopenRequests = (
+    (reopenRows ?? []) as Array<{
+      id: string;
+      property_id: string;
+      item_key: string;
+      reason: string;
+      requested_by: string | null;
+      requested_at: string;
+    }>
+  ).map((r) => {
+    const item = getItem(r.item_key);
+    return {
+      ...r,
+      address: propertyList.find((x) => x.id === r.property_id)?.address ?? "A listing",
+      cardTitle: item?.label ?? r.item_key,
+      href: `/dashboard/${r.property_id}${item ? `?stage=${item.stage}` : ""}#card-${r.item_key}`,
+    };
+  });
+
   // ── Properties: needs-you queue + weekly review, same rollup as Portfolio ──
   const itemsByProperty = new Map<string, Map<string, PropertyItem>>();
   for (const row of (itemRows ?? []) as PropertyItem[]) {
@@ -358,6 +388,33 @@ export default async function HomeDashboardPage({
               </ul>
               <p className="mt-2 text-[11px] text-rc-amber-deep/80">
                 Review the file and sign it. Your signature is the attestation — the hand-over isn&rsquo;t one.
+              </p>
+            </section>
+          )}
+
+          {reopenRequests.length > 0 && (
+            <section className="mt-6 rounded-card border border-rc-amber-deep/25 bg-rc-amber/10 px-4 py-3.5">
+              <h2 className="text-sm font-semibold text-rc-amber-deep">
+                Requests to reopen a signed-off file ({reopenRequests.length})
+              </h2>
+              <ul className="mt-2.5 space-y-1.5">
+                {reopenRequests.map((r) => (
+                  <li key={r.id}>
+                    <Link
+                      href={r.href}
+                      className="block rounded-lg bg-white px-3 py-2.5 text-sm shadow-card transition hover:bg-white/70"
+                    >
+                      <span className="font-medium text-rc-ink">{r.address}</span>
+                      <span className="block text-xs text-rc-muted">
+                        {agentNames.get(r.requested_by ?? "") ?? "Someone"} asked you to reopen &ldquo;{r.cardTitle}&rdquo;
+                        on {formatAuTimestamp(r.requested_at)}: &ldquo;{r.reason}&rdquo;
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-rc-amber-deep/80">
+                Reopening the card cancels your sign-off, which is kept on record. You can also decline. Both are on the card.
               </p>
             </section>
           )}

@@ -35,6 +35,7 @@ import { stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
+import { CANCELS_SIGNOFF, MARK_DONE_AGAIN_KEYS, ONLY_LICENSEE_SIGNOFF } from "@/lib/rules/reopen";
 import { cardFileRemovable, finalizeEvidenceRecord, storedFileProblem, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type {
   AuctionOutcomeData,
@@ -256,11 +257,13 @@ export async function setItemStatus(
     return { error: ASSISTANT_BLOCKED_MESSAGE };
   }
 
-  if (rule?.licenseeOnly && !profile.is_licensee_in_charge) {
-    return { error: "Only the licensee in charge can complete this item." };
-  }
-
   const status = String(formData.get("status") ?? "done") as "open" | "done" | "flagged";
+
+  // A Reopen on a licensee sign-off says so in its own words (Adam, 28 Oct
+  // 2026). The database refuses it too (0100).
+  if (rule?.licenseeOnly && !profile.is_licensee_in_charge) {
+    return { error: status === "open" ? ONLY_LICENSEE_SIGNOFF : "Only the licensee in charge can complete this item." };
+  }
   const note = String(formData.get("note") ?? "").trim();
   const eventDate = rule?.requiresDate ? String(formData.get("eventDate") ?? "") || null : null;
 
@@ -2807,3 +2810,91 @@ async function recheckAdvertisedPrice(propertyId: string, espChanged: boolean): 
     // Deliberately silent — see above.
   }
 }
+
+// ── Reopening any card (Adam, 28 Oct 2026) ─────────────────────────────
+// The shared Reopen under a card, for every card that has no Reopen of its
+// own, and for every card on a signed-off file. reopen_listing_card (0100)
+// decides who may and does it: it keeps everything on the card, cancels the
+// price statement approval or the file sign-off where the rules say so, and
+// records who and when. See lib/rules/reopen.ts.
+//
+// cancelSignoff: the licensee has said yes to "Reopening this card cancels
+// the file sign-off. The file will need signing off again. Reopen?". Without
+// it the database refuses on a signed-off file, and the card asks.
+export async function reopenCard(
+  propertyId: string,
+  itemKey: string,
+  cancelSignoff = false,
+): Promise<{ error: string | null; needsConfirm?: boolean }> {
+  const { supabase, user, profile } = await requireAuthContext();
+  const { error } = await supabase.rpc("reopen_listing_card", {
+    p_property_id: propertyId,
+    p_item_key: itemKey,
+    p_cancel_signoff: cancelSignoff,
+  });
+  if (error) {
+    if (error.message === CANCELS_SIGNOFF) return { error: null, needsConfirm: true };
+    // The database's own refusals are written for the person reading them.
+    return { error: error.code === "P0001" ? error.message : "Couldn't reopen this card. Try again." };
+  }
+
+  // What the card's own Reopen does after reopening (setItemStatus): the
+  // advertised price is checked against the ESP again, and the tenant photo
+  // permission against the launch date.
+  if (itemKey === "a4") await recheckAdvertisedPrice(propertyId, false);
+  if (itemKey === "c0") await recheckTenantPhotoPermission(supabase, profile.agency_id, user.id, propertyId, null);
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return { error: null };
+}
+
+// Mark done on a reopened card that works out its own status from what is on
+// it, when nothing needed changing: the offers log, the building, pest or
+// strata reports, and the Power of Attorney copy. The same rule each card
+// uses when its contents change.
+export async function markReopenedCardDone(propertyId: string, itemKey: string): Promise<{ error: string | null }> {
+  if (!MARK_DONE_AGAIN_KEYS.has(itemKey)) return { error: "This card is completed from its own form." };
+  const { supabase, user, profile } = await requireAuthContext();
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("*")
+    .eq("property_id", propertyId)
+    .eq("item_key", itemKey)
+    .maybeSingle();
+  const item = row as PropertyItem | null;
+  if (!item || item.status !== "open") return { error: null };
+
+  const data = { ...((item.data ?? {}) as Record<string, unknown>) };
+  let status: "done" | "flagged" = "done";
+  if (itemKey === "d2") {
+    const entries = (data.entries ?? []) as OfferEntry[];
+    if (entries.length === 0 && data.loggedElsewhere !== true) {
+      return { error: "Log an offer first, or tick that offers are logged somewhere else." };
+    }
+    const unreported = entries.find((e) => !e.vendorInformed && !e.belowFloor);
+    if (unreported) {
+      status = "flagged";
+      data.flagReason = "An offer here has not yet been put to the vendor in writing (Sch 2 r5).";
+    } else {
+      delete data.flagReason;
+    }
+  } else if (itemKey === "f3") {
+    if (((data.entries ?? []) as unknown[]).length === 0 && data.noReports !== true) {
+      return { error: "Log a report, or answer that there are none." };
+    }
+  } else if (itemKey === "poa_doc" && !item.evidence_path) {
+    return { error: "Attach the copy first." };
+  }
+
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey,
+    status,
+    data,
+    completedBy: status === "done" ? user.id : null,
+  });
+  revalidatePath(`/dashboard/${propertyId}`);
+  return { error: error ? error.message : null };
+}
+
