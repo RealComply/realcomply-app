@@ -8,12 +8,14 @@ import { ItemCard, type B4Route } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
 import { TransferListingSection } from "@/components/compliance/TransferListingSection";
 import { HandToAgent } from "@/components/compliance/HandToAgent";
-import { itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
+import { allItemsFor, itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { linksFor, liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
 import { priceApproval, priceRequestStale, priceStatementByEmail } from "@/lib/rules/price-statement";
 import { openFlagsFor, sendBackRoundFor } from "@/lib/data/send-backs";
 import { SendBackBanner, SendBackProvider } from "@/components/compliance/SendBack";
+import { ReopenProvider, type ReopenPage } from "@/components/compliance/Reopen";
+import { reopenHistoryFor } from "@/lib/data/reopen";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
@@ -134,9 +136,11 @@ export default async function PropertyPage({
     (latest, l) => (!latest || l.createdAt > latest ? l.createdAt : latest),
     null,
   );
-  const [openFlags, round] = await Promise.all([
+  const [openFlags, round, reopenHistory] = await Promise.all([
     openFlagsFor(supabase, id),
     sendBackRoundFor(supabase, id, latestLink),
+    // Cancelled approvals and sign-offs, and requests to reopen (0100).
+    reopenHistoryFor(supabase, id),
   ]);
 
   // Held at the first earlier stage with a required card not complete (Adam,
@@ -240,7 +244,21 @@ export default async function PropertyPage({
   // The solicitor's covering letter (b1a) is read too, for its date (20 Oct 2026).
   const hasSourceDocs = ["a3", "b1", "a4", "b1a"].some((key) => allItems[key]?.evidence_path);
 
+  // Reopening cards (Adam, 28 Oct 2026; lib/rules/reopen.ts). Whether the
+  // file is signed off, who is looking, and the names and titles the cards'
+  // lines need, read once for every card.
+  const reopenPage: ReopenPage = {
+    propertyId: p.id,
+    signedOff: allItems["sign_licensee"]?.status === "done",
+    viewer: { id: profile.id, isLicensee: profile.is_licensee_in_charge === true && !profile.archived_at },
+    names: Object.fromEntries(people.filter((x) => x.full_name).map((x) => [x.id, x.full_name as string])),
+    titles: Object.fromEntries(allItemsFor(p, allItems, ruleCtx).map((i) => [i.key, i.label])),
+    requests: reopenHistory.requests,
+    cancellations: reopenHistory.cancellations,
+  };
+
   return (
+    <ReopenProvider value={reopenPage}>
     <SendBackProvider
       value={{
         propertyId: p.id,
@@ -466,5 +484,6 @@ export default async function PropertyPage({
 
       </main>
     </SendBackProvider>
+    </ReopenProvider>
   );
 }

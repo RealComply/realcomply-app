@@ -24,6 +24,12 @@
 // On a file the licensee has signed off the letter is read but the date is
 // left as signed.
 //
+// That used to be the only thing keeping a signed-off file as signed: every
+// other card on it could still be changed under the signature. Since 28 Oct
+// 2026 (Adam) nothing on a signed-off file changes until the licensee in
+// charge reopens a card, which cancels the sign-off (0100; see
+// lib/rules/reopen.ts). This rule stands as it was.
+//
 // The rules and the words are here, so they are tested without the AI.
 
 /** The card the covering letter is uploaded to. */

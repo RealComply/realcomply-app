@@ -272,8 +272,6 @@ begin
   select count(*) into n from public.breaches;
   if n <> 2 then raise exception 'FAIL 13: licensee sees % breaches, expected 2', n; end if;
   if not exists (select 1 from public.profiles where id = ag2) then raise exception 'FAIL 13: licensee cannot read the team'; end if;
-  insert into public.property_items (agency_id, property_id, item_key, status, data)
-    values (office, p2, 'sign_licensee', 'done', '{"typedName":"Test Licensee"}');
   blocked := false;
   begin
     insert into public.property_items (agency_id, property_id, item_key, status) values (office, p2, 'sign_agent', 'done');
@@ -291,6 +289,10 @@ begin
   select count(*) into n from public.deletion_log
    where agency_id = office and deleted_by = lic and what in ('property_comparables', 'file');
   if n <> 2 then raise exception 'FAIL 14: % of 2 deletes were recorded', n; end if;
+  -- The licensee signs p2 off. After the deletes above: since 0100 nothing
+  -- on a signed-off file changes until the licensee reopens a card.
+  insert into public.property_items (agency_id, property_id, item_key, status, data)
+    values (office, p2, 'sign_licensee', 'done', '{"typedName":"Test Licensee"}');
 
   -- 15. Replacing a signed document keeps the old signature on record.
   update public.signoff_signatures set signed_at = now() where document_id = doc and signer_id = lic;

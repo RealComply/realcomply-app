@@ -883,14 +883,17 @@ begin
 
   -- 17. The ESP changes, the ESP reasoning reopens, or a revision notice is
   --     read in full after the link went out: it no longer opens or approves.
-  perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
-  set local role authenticated;
-  insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement, item_key, price_statement)
-  values (office, p5, 'x', 'x', 'b4', 'Guide $750,000 to $790,000') returning id into b5;
-  reset role;
-  perform set_config('request.jwt.claims', '', true);
-  select token into b5tok from public.property_signoff_requests where id = b5;
+  --     Since 0100 (Adam, 28 Oct 2026) the link is revoked for good, so
+  --     putting the file back as it was does not bring it back: the licensee
+  --     approves from a new request. Was: the link opened again.
   for n in 1..3 loop
+    perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+    insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement, item_key, price_statement)
+    values (office, p5, 'x', 'x', 'b4', 'Guide $750,000 to $790,000') returning id into b5;
+    reset role;
+    perform set_config('request.jwt.claims', '', true);
+    select token into b5tok from public.property_signoff_requests where id = b5;
     if n = 1 then
       update public.property_items set data = '{"espLow": 700000, "espHigh": 790000}' where property_id = p5 and item_key = 'a4';
     elsif n = 2 then
@@ -913,12 +916,27 @@ begin
     update public.property_items set data = '{"revisedEspLow": 700000}' where property_id = p5 and item_key = 'd3';
     perform set_config('request.jwt.claims', '{"role":"anon"}', true);
     set local role anon;
-    if not exists (select 1 from public.get_signoff_request_v3(b5tok)) then
-      raise exception 'FAIL 17: the link did not open again once the file was back as it was sent';
+    if exists (select 1 from public.get_signoff_request_v3(b5tok)) then
+      raise exception 'FAIL 17: the link opened again after % changed (0100 revokes it)', (array['the ESP', 'the ESP reasoning', 'the revised ESP'])[n];
     end if;
     reset role;
     perform set_config('request.jwt.claims', '', true);
   end loop;
+  -- A new request on the file as it was sent opens, for check 25.
+  perform set_config('request.jwt.claims', json_build_object('sub', nf, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  insert into public.property_signoff_requests (agency_id, property_id, sent_to, statement, item_key, price_statement)
+  values (office, p5, 'x', 'x', 'b4', 'Guide $750,000 to $790,000') returning id into b5;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select token into b5tok from public.property_signoff_requests where id = b5;
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  if not exists (select 1 from public.get_signoff_request_v3(b5tok)) then
+    raise exception 'FAIL 17: a new request on the file as it was sent did not open';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
 
   -- 18. A final sign-off link still writes only the final sign-off.
   select data into d from public.property_items where property_id = p1 and item_key = 'b4';

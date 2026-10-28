@@ -104,6 +104,7 @@ import {
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 import { RoofMark } from "@/components/RoofMark";
+import { CardReopenArea, useReopen, useWaitingRequest } from "@/components/compliance/Reopen";
 
 const initialState: ActionState = { error: null };
 
@@ -270,7 +271,13 @@ function ItemShell({
   const [evidenceUnsaved, setEvidenceUnsaved] = useState(false);
   // A card the licensee sent back stays open until it is marked done (0063).
   const flag = useFlagFor(item.key);
-  const canFold = isDone && foldable && !evidenceUnsaved && !flag;
+  // So does one someone has asked the licensee to reopen, so the licensee
+  // sees the request (Adam, 28 Oct 2026).
+  const waitingRequest = useWaitingRequest(item.key);
+  // A signed-off file: every card's own controls are locked, and only the
+  // shared Reopen below works (0100). The finalised file is still generated.
+  const locked = Boolean(useReopen()?.signedOff) && item.key !== "f2";
+  const canFold = isDone && foldable && !evidenceUnsaved && !flag && !waitingRequest;
   const [folded, setFolded] = useState(isDone && !autoCompleted);
   const [foldedFor, setFoldedFor] = useState(status);
   if (status !== foldedFor) {
@@ -366,6 +373,9 @@ function ItemShell({
       <div id={bodyId} hidden={collapsed}>
       <DictationSuspended.Provider value={collapsed}>
       {flag && <FlagNote flag={flag} />}
+      {/* Disabled, not hidden, on a signed-off file: what is on the card
+          stays readable and its files still open (they are links). */}
+      <fieldset disabled={locked} className="m-0 min-w-0 border-0 p-0">
       <div className="mt-3">{children}</div>
       {/* An attached file always keeps its control, whatever the rule says.
           Hiding one would strand a document nobody can see or remove — and
@@ -398,6 +408,8 @@ function ItemShell({
           onUnsavedChange={setEvidenceUnsaved}
         />
       )}
+      </fieldset>
+      <CardReopenArea item={item} status={status} current={current} />
       </DictationSuspended.Provider>
       </div>
     </div>
@@ -775,6 +787,9 @@ function ChecklistItem({
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const status = current?.status;
   const isDone = status === "done";
+  // On a signed-off file the shared Reopen under the card stands in for this
+  // card's own (it asks the licensee first, or asks them to). See Reopen.tsx.
+  const reopenLocked = useReopen()?.signedOff ?? false;
   // e1, "Who exchanged contracts?": "Our agency" opens the card as it always
   // was. Nothing to record, so it lives here; a date left from before a
   // Reopen means it was answered that way.
@@ -1594,7 +1609,7 @@ function ChecklistItem({
           >
             Mark done
           </button>
-          {(isDone || status === "flagged") && (
+          {(isDone || status === "flagged") && !reopenLocked && (
             <button
               type="submit"
               name="status"
@@ -2733,7 +2748,10 @@ function QuestionItem({ item, propertyId, current }: { item: ComplianceItem; pro
                 aria-checked={chosen}
                 disabled={pending}
                 onClick={() => {
-                  if (!chosen) save({ answer: a.value }, () => answerQuestion(propertyId, item.key, a.value));
+                  // The chosen answer again closes a reopened card (Adam, 28 Oct 2026).
+                  if (!chosen || current?.status === "open") {
+                    save({ answer: a.value }, () => answerQuestion(propertyId, item.key, a.value));
+                  }
                 }}
                 className={
                   chosen
