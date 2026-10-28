@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Logo } from "@/components/Logo";
 import { EarlyAccessForm } from "@/components/EarlyAccessForm";
 import { MetaPixel } from "@/components/MetaPixel";
+import { PublicAnalytics } from "@/components/PublicAnalytics";
 import { BeforeAfter } from "@/components/landing/BeforeAfter";
 import { ProductScreen } from "@/components/landing/ProductScreen";
 import { TimeBack } from "@/components/landing/TimeBack";
@@ -513,6 +514,9 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           })();
         `}
       </Script>
+      {/* Vercel Web Analytics (Adam, 29 Oct 2026): public pages only, records
+          the page and the ?src= tag and nothing else. See PublicAnalytics.tsx. */}
+      <PublicAnalytics />
     </main>
   );
 }
