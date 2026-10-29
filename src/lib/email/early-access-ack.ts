@@ -1,22 +1,26 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { renderEmailHtml, renderEmailText, type EmailDocument, type FooterLine } from "./layout";
 
-// The acknowledgement a registrant receives after joining the early-access
-// list, and the unsubscribe machinery that has to travel with it.
+// The email someone gets when they join RealComply on the website, and the
+// unsubscribe machinery that has to travel with it.
 //
-// WHY THIS EXISTS. Until now the early-access path emailed Adam and sent the
-// registrant nothing. Adam, 3 Sep 2026: "All i want right now is an
-// acknowledgment email in reply to the early access request so we look
-// professional." The copy below is his, approved verbatim — do not rewrite it
-// to sound more like marketing.
+// WHY THIS EXISTS. Until 3 Sep 2026 the website form emailed Adam and sent
+// the person nothing. Adam: "All i want right now is an acknowledgment email
+// ... so we look professional."
 //
-// "Hi there" rather than a first name is a decision, not a gap. The form asks
-// for an email address and nothing else, and Adam chose to keep it that way
-// rather than add a field that costs conversions on a paid ad click.
+// WAS (3 Sep 2026): "Thank you for registering for early access to
+// RealComply. You're on the list!", then that one of the team would be in
+// touch to get them set up.
+// NOW (Adam, 29 Oct 2026): RealComply no longer runs early access. Customers
+// hear about joining RealComply and the 14-day free trial, kept short and
+// friendly. The copy below is Adam's, verbatim, including his edits the same
+// day (the "!", "will be on its way" and the quick chat): do not rewrite it
+// to sound more like marketing. Replies reach admin@realcomply.com.au,
+// because it says "just reply here".
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
 
-export const EARLY_ACCESS_SUBJECT = "Thank you for registering for early access to RealComply";
+export const EARLY_ACCESS_SUBJECT = "Welcome to RealComply";
 
 /**
  * Unsubscribe token: an HMAC of the address under a server-only secret.
@@ -90,28 +94,21 @@ function acknowledgementDocument(email: string, firstName?: string | null): Emai
   const link = unsubscribeUrl(email);
 
   const optOut: FooterLine[] = link
-    ? ["You are receiving this because you registered for early access at realcomply.com.au.", { text: "Unsubscribe", href: link }]
-    : ["You are receiving this because you registered for early access at realcomply.com.au. To stop receiving these, reply to this email with UNSUBSCRIBE and we will remove you."];
+    ? ["You're receiving this because you joined RealComply at realcomply.com.au.", { text: "Unsubscribe", href: link }]
+    : ["You're receiving this because you joined RealComply at realcomply.com.au. To stop receiving these, reply to this email with UNSUBSCRIBE and we will remove you."];
 
   return {
     // Written, not inherited. Left alone, the client fills this line with the
     // first words of the body, which here would just repeat the subject.
-    preheader: "You're on the list. One of our team members will be in touch shortly.",
+    preheader: "Your set-up link will be on its way shortly",
     sections: [
       { kind: "paragraph", lead: true, text: `Hi ${greetingName(firstName)},` },
       {
         kind: "paragraph",
-        text: "Thank you for registering for early access to RealComply. You're on the list!",
+        text: "Thanks for joining RealComply! Your set-up link will be on its way shortly, and then your 14-day free trial begins. A member of our team will be in touch for a quick chat to get you started.",
       },
-      {
-        kind: "paragraph",
-        text: "One of our team members will be in touch with you shortly to get you set up.",
-      },
-      {
-        kind: "paragraph",
-        text: "We look forward to assisting you with your real estate compliance.",
-      },
-      { kind: "paragraph", lead: true, text: "The RealComply Team" },
+      { kind: "paragraph", text: "Any questions, just reply here." },
+      { kind: "paragraph", lead: true, text: "The RealComply team" },
     ],
     footer: [
       "RealComply provides diligence support. It is not legal advice, and the licensee remains responsible for decisions and sign-off.",

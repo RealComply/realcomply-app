@@ -154,7 +154,9 @@ async function createAccount(formData: FormData): Promise<ActionState> {
   if (!inviteToken && !founderToken && !(await openSignupsAllowed())) {
     return {
       error:
-        "RealComply is invite-only at the moment. If your licensee has sent you a link, open that link to join their office.",
+        // Was "RealComply is invite-only at the moment. ..." (Adam, 29 Oct
+        // 2026: no early access). The same words as the sign-up page.
+        "Joining your office? Open the link your licensee sent you. Want RealComply for your agency? Start your 14-day free trial at realcomply.com.au.",
     };
   }
 

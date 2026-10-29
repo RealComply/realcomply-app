@@ -187,7 +187,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
             {/* Added 23 Oct 2026 (trial brief): jumps to the form in the hero.
                 Not a sign-up page; there is still no self-serve sign-up. */}
             <a
-              href="#early-access"
+              href="#free-trial"
               className="rounded-full bg-rc-ink px-4 py-2 text-sm font-bold text-white transition hover:bg-rc-green-deep"
             >
               Start free trial
@@ -250,8 +250,12 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               the intro it sits flush in its column. */}
           <div className="min-w-0 lg:[&>div>*]:mt-0">
             {/* Anchored so the closed-signup page can send someone straight to
-                the form rather than to the top of the page (24 Aug 2026). */}
-            <div id="early-access" className="scroll-mt-24">
+                the form rather than to the top of the page (24 Aug 2026).
+                #free-trial since 29 Oct 2026 (Adam: no early access); the old
+                #early-access anchor stays only so links already sent or
+                advertised still land on the form. */}
+            <span id="early-access" aria-hidden="true" className="block scroll-mt-24" />
+            <div id="free-trial" className="scroll-mt-24">
               <EarlyAccessForm source={src} />
             </div>
           </div>

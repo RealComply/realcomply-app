@@ -76,9 +76,12 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
         }`}
       >
         {/* Was "You are on the list. We will be in touch before we open the
-            next round." (Adam, 23 Oct 2026: it should be about the trial.) */}
-        Thanks, your free trial application is in. We&rsquo;ll email you shortly with your invite to start your 14
-        days.
+            next round." (Adam, 23 Oct 2026: it should be about the trial.)
+            Then "Thanks, your free trial application is in. We'll email you
+            shortly with your invite to start your 14 days." Now Adam's words
+            of 29 Oct 2026 (no early access), close to the welcome email's. */}
+        Thanks for joining RealComply. Your set-up link is on its way shortly, and then your 14-day free trial
+        begins. A member of our team will be in touch for a quick chat to get you started.
       </div>
     );
   }
@@ -203,11 +206,12 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
         disabled={pending}
         className="mt-6 w-full rounded-full bg-rc-green-deep px-7 py-3.5 text-base font-bold text-white shadow-glow-green transition hover:bg-rc-green-deep-600 disabled:opacity-60"
       >
-        {/* "Get early access" until 22 Oct 2026, then "Sign up now", then this
-            from 23 Oct (trial brief). Still joins the early access list: Adam
-            approves and invites each person from the staff page. There is no
+        {/* "Get early access" until 22 Oct 2026, then "Sign up now", then
+            "Apply for my free trial" from 23 Oct (trial brief), then this from
+            29 Oct (Adam: no early access). Adam still approves each person on
+            the staff page and RealComply sends their set-up link. There is no
             self-serve sign-up. */}
-        {pending ? "Sending…" : "Apply for my free trial"}
+        {pending ? "Sending…" : "Start my free trial"}
       </button>
 
       {state.error && (

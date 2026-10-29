@@ -513,7 +513,7 @@ RealComply is operated by RealComply Pty Ltd ACN 700 934 792 from New South Wale
 
 Names, email addresses, phone numbers, agency details, licence and certificate of registration numbers, training and CPD records, and the actions taken in the product, including who signed off what, and when.
 
-### If you register for early access
+### If you sign up on our website
 
 Your name, agency name and email address, and your phone number if you choose to give it. By giving us your phone number, you agree to us calling you about setting up RealComply.
 
@@ -749,7 +749,11 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentKey, LegalDocument> = {
     key: "privacy",
     path: "/privacy",
     title: "Privacy Policy",
-    version: "2026-10-29",
+    // 2026-10-29.2: the second version published on 29 Oct 2026. The
+    // heading "If you register for early access" became "If you sign up on
+    // our website" (Adam: "Nothing should say early access anymore"). Brief:
+    // claude/RealComply-privacy-policy-29-Oct-2.md.
+    version: "2026-10-29.2",
     effective: "29 October 2026",
     reviewed: true,
     body: PRIVACY_BODY,
@@ -757,8 +761,9 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentKey, LegalDocument> = {
     // to accept again for the phone number change. He has spoken to both
     // existing client offices directly and they are happy to be called.
     // 29 Oct 2026 (website analytics): 16 Oct acceptances also still count,
-    // the same way. Adam to confirm before this merges.
-    stillAccepted: ["2026-10-16", "2026-10-09"],
+    // the same way (Adam: no re-acceptance). 29 Oct 2026, the heading
+    // change: 29 Oct acceptances still count too.
+    stillAccepted: ["2026-10-29", "2026-10-16", "2026-10-09"],
   },
   dpa: {
     key: "dpa",

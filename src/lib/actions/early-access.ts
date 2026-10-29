@@ -8,6 +8,7 @@ import {
   earlyAccessAcknowledgementText,
   earlyAccessAcknowledgementHtml,
 } from "@/lib/email/early-access-ack";
+import { ADMIN_COPY_ADDRESS, SENDER_NAME } from "@/lib/email/early-access-invite";
 
 // Early-access signup from the public landing page. Runs unauthenticated —
 // this is the one action in the app reachable by a stranger — so it stays
@@ -149,6 +150,10 @@ export async function joinEarlyAccess(
 async function sendEarlyAccessAcknowledgement(email: string, firstName: string): Promise<void> {
   const sent = await sendEmail({
     to: email,
+    // "Any questions, just reply here" (Adam, 29 Oct 2026): replies reach
+    // Adam, as they do for the set-up link email.
+    replyTo: ADMIN_COPY_ADDRESS,
+    fromName: SENDER_NAME,
     subject: EARLY_ACCESS_SUBJECT,
     text: earlyAccessAcknowledgementText(email, firstName),
     html: earlyAccessAcknowledgementHtml(email, firstName),
@@ -190,9 +195,11 @@ async function notifyEarlyAccessSignup(
     // Office name in the subject, not just the body. A run of these in an
     // inbox then reads as a list of agencies rather than a list of addresses,
     // which is the whole reason the field was added.
+    // No "early access" (Adam, 29 Oct 2026): it was "RealComply early
+    // access — [office]".
     subject: trapped
-      ? `RealComply early access (caught by spam trap, check it) — ${agencyName}`
-      : `RealComply early access — ${agencyName}`,
+      ? `New RealComply sign-up (caught by spam trap, check it): ${agencyName}`
+      : `New RealComply sign-up: ${agencyName}`,
     text: [
       ...(trapped
         ? [
@@ -201,7 +208,7 @@ async function notifyEarlyAccessSignup(
             "",
           ]
         : []),
-      "Someone registered for early access on the landing page.",
+      "Someone joined RealComply on the website.",
       "",
       `Name: ${firstName}`,
       `Office: ${agencyName}`,
@@ -212,7 +219,7 @@ async function notifyEarlyAccessSignup(
       `Came from: ${source ?? "no source recorded (typed the address in, or an ad with no ?src= tag)"}`,
       `When: ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney" })} (Sydney)`,
       "",
-      trapped ? "Not in the early_access table." : "The full list is in the Supabase dashboard, table early_access.",
+      trapped ? "Not saved, so not on your staff page." : "The full list is on your staff page, under Sign-ups.",
     ].join("\n"),
   });
 

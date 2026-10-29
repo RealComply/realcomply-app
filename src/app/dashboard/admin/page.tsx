@@ -360,7 +360,7 @@ export default async function AdminPage() {
           { href: "#backup", label: "Document backup" },
           { href: "#agencies", label: "Agencies" },
           { href: "#ended", label: "Ended subscriptions" },
-          { href: "#early-access", label: "Early access", count: waitingOnDecision },
+          { href: "#sign-ups", label: "Sign-ups", count: waitingOnDecision },
           { href: "#personal-invites", label: "Personal invites" },
           { href: "#announcements", label: "Announcements" },
         ].map((link) => (
@@ -559,9 +559,10 @@ export default async function AdminPage() {
           with work in it, and the invites below are mostly its output. Adam,
           18 Sep 2026 — "so I can either deny or accept anyone that's registered
           for early access." */}
-      <h2 id="early-access" className={sectionHeading}>Early access</h2>
+      {/* "Sign-ups" since 29 Oct 2026 (Adam: nothing says early access). */}
+      <h2 id="sign-ups" className={sectionHeading}>Sign-ups</h2>
       <p className="mt-1 text-xs text-rc-muted">
-        Everyone who registered at realcomply.com.au. Send each person their invitation when you&rsquo;re ready.
+        Everyone who joined at realcomply.com.au. Send each person their set-up link when you&rsquo;re ready.
         Each email is BCC&rsquo;d to admin@realcomply.com.au.
       </p>
 
@@ -585,8 +586,8 @@ export default async function AdminPage() {
           INSIDE this agency — see the note in lib/actions/founder-invites.ts. */}
       <h2 id="personal-invites" className={sectionHeading}>Personal invites</h2>
       <p className="mt-1 text-xs text-rc-muted">
-        People you invite yourself. RealComply emails them their own link, the same way early access invitations
-        go, BCC&rsquo;d to admin@realcomply.com.au. Each link works once and creates one new agency. Not the same
+        People you invite yourself. RealComply emails them their own link, the same way sign-ups get their set-up
+        link, BCC&rsquo;d to admin@realcomply.com.au. Each link works once and creates one new agency. Not the same
         as a Team invite, which adds someone to <em>this</em> agency.
       </p>
 
