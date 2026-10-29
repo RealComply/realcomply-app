@@ -17,7 +17,7 @@ describe("the welcome email on joining", () => {
         [
           "Hi Sam,",
           "",
-          "Thanks for joining RealComply. Your set-up link is on its way shortly, and then your 14-day free trial begins.",
+          "Thanks for joining RealComply! Your set-up link will be on its way shortly, and then your 14-day free trial begins. A member of our team will be in touch for a quick chat to get you started.",
           "",
           "Any questions, just reply here.",
           "",

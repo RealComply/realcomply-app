@@ -13,9 +13,10 @@ import { renderEmailHtml, renderEmailText, type EmailDocument, type FooterLine }
 // touch to get them set up.
 // NOW (Adam, 29 Oct 2026): RealComply no longer runs early access. Customers
 // hear about joining RealComply and the 14-day free trial, kept short and
-// friendly. The copy below is Adam's, verbatim: do not rewrite it to sound
-// more like marketing. Replies reach admin@realcomply.com.au, because it
-// says "just reply here".
+// friendly. The copy below is Adam's, verbatim, including his edits the same
+// day (the "!", "will be on its way" and the quick chat): do not rewrite it
+// to sound more like marketing. Replies reach admin@realcomply.com.au,
+// because it says "just reply here".
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
 
@@ -99,12 +100,12 @@ function acknowledgementDocument(email: string, firstName?: string | null): Emai
   return {
     // Written, not inherited. Left alone, the client fills this line with the
     // first words of the body, which here would just repeat the subject.
-    preheader: "Your set-up link is on its way shortly.",
+    preheader: "Your set-up link will be on its way shortly",
     sections: [
       { kind: "paragraph", lead: true, text: `Hi ${greetingName(firstName)},` },
       {
         kind: "paragraph",
-        text: "Thanks for joining RealComply. Your set-up link is on its way shortly, and then your 14-day free trial begins.",
+        text: "Thanks for joining RealComply! Your set-up link will be on its way shortly, and then your 14-day free trial begins. A member of our team will be in touch for a quick chat to get you started.",
       },
       { kind: "paragraph", text: "Any questions, just reply here." },
       { kind: "paragraph", lead: true, text: "The RealComply team" },

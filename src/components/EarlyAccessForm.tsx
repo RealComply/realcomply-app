@@ -78,10 +78,10 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
         {/* Was "You are on the list. We will be in touch before we open the
             next round." (Adam, 23 Oct 2026: it should be about the trial.)
             Then "Thanks, your free trial application is in. We'll email you
-            shortly with your invite to start your 14 days." Now the same
-            words as the welcome email (Adam, 29 Oct 2026: no early access). */}
+            shortly with your invite to start your 14 days." Now Adam's words
+            of 29 Oct 2026 (no early access), close to the welcome email's. */}
         Thanks for joining RealComply. Your set-up link is on its way shortly, and then your 14-day free trial
-        begins.
+        begins. A member of our team will be in touch for a quick chat to get you started.
       </div>
     );
   }
