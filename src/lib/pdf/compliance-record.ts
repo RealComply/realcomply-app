@@ -338,6 +338,13 @@ export type ComplianceRecordInput = {
    * callers keep working; null prints nothing.
    */
   priceApproval?: PriceApproval | null;
+  /**
+   * Complaints the office linked to this listing, with their files (0101,
+   * Adam 30 Oct 2026). Only ever given where the caller may see complaints:
+   * the licensee in charge (the database returns none to anyone else).
+   * Optional so older callers keep working; an empty list prints nothing.
+   */
+  complaints?: ComplaintForRecord[];
   /** Typed-name attestations, reproduced with the date each was given. */
   signatures: {
     agent: { typedName: string; signedAt: string | null } | null;
@@ -355,6 +362,19 @@ export type ComplianceRecordInput = {
   rulesetVersion: string;
   preparedFor: string;
   generatedAt: Date;
+};
+
+export type ComplaintForRecord = {
+  /** "12 October 2026" */
+  received: string;
+  complainant: string;
+  nature: string;
+  /** "Open", "Under review", "Resolved 28 October 2026" */
+  status: string;
+  /** "complaint-email.eml · Added 30 Oct 2026, 2:14 pm by Jordan Ellis" */
+  files: string[];
+  /** "photo.jpg · Removed 30 Oct 2026, 2:20 pm by Jordan Ellis" */
+  removed: string[];
 };
 
 export type ComparableForRecord = {
@@ -401,6 +421,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     noneOnMarket = false,
     agreementDate = null,
     priceApproval = null,
+    complaints = [],
     signatures,
     attachments,
     rulesetVersion,
@@ -798,6 +819,30 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
 
     c.text(
       "Typed names adopted as signatures in RealComply, recorded against this file and not editable once given.",
+      { size: 8, color: FAINT },
+    );
+  }
+
+  // Complaints linked to this listing, and their files (0101). After the
+  // signatures: a complaint is not part of what was signed, and often arrives
+  // after it. Each file is named, with who added it and when, and every file
+  // removed from a complaint is listed with who removed it and when.
+  if (complaints.length > 0) {
+    c.rule(10, 12);
+    c.text("Complaints about this listing", { size: 11, bold: true, gap: 4 });
+    for (const k of complaints) {
+      c.need(9.5 * 1.45 * 3);
+      c.text(`Received ${k.received} · ${k.complainant} · ${k.status}`, { size: 9.5, bold: true, indent: 4 });
+      c.text(k.nature, { size: 9, color: MUTED, indent: 14, gap: 1 });
+      for (const f of k.files) c.text(`File: ${f}`, { size: 8.5, color: MUTED, indent: 14 });
+      for (const f of k.removed) c.text(`Removed file: ${f}`, { size: 8.5, color: FAINT, indent: 14 });
+      if (k.files.length === 0 && k.removed.length === 0) {
+        c.text("No files.", { size: 8.5, color: FAINT, indent: 14 });
+      }
+      c.y -= 6;
+    }
+    c.text(
+      "From the complaints register, kept by the licensee in charge. Files that are PDFs or photos are attached at the back; others are held on file in RealComply.",
       { size: 8, color: FAINT },
     );
   }

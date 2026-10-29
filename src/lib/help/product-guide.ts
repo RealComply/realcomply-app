@@ -98,6 +98,15 @@ upload next year's certificate: the expiry moves on, and the previous
 certificate stays in the card's History. Other insurance the office holds
 (public liability, or any other policy you name) goes in with "+ Add other
 insurance" under the three, and works the same way. Add as many as you hold.
+
+On the Complaints register, which only the licensee in charge sees, a
+complaint can have files: the complaint email, letters, photos, the outcome
+letter. Open Files on the complaint's row and attach them one at a time, as
+many as needed, while it is open or after it is resolved. Removing a file
+deletes it, and the register keeps who removed it and when. A complaint with
+files on it can't be removed until its files are. The files go in the
+registers export, the listing's audit pack when the complaint is linked to
+one, and the records download. Breaches are notes only.
 Only professional indemnity is required by law (s22); the others are there
 because the office chooses to track them.
 

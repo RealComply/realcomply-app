@@ -226,6 +226,25 @@ export type Complaint = {
   created_at: string;
 };
 
+/**
+ * A file on a complaint (0101, Adam 30 Oct 2026): the complaint email, a
+ * letter, a photo, the outcome letter. Never deleted: "Remove" stamps
+ * removed_at and removed_by and the stored file goes. complaint_id is null
+ * once the complaint itself has been deleted.
+ */
+export type ComplaintFile = {
+  id: string;
+  agency_id: string;
+  complaint_id: string | null;
+  file_path: string;
+  file_name: string;
+  size_bytes: number | null;
+  added_by: string | null;
+  added_at: string;
+  removed_at: string | null;
+  removed_by: string | null;
+};
+
 export type SgManualVersion = {
   id: string;
   agency_id: string;

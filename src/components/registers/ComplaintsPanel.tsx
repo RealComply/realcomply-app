@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { Fragment, useActionState, useState } from "react";
 import Link from "next/link";
 import { addComplaint, updateComplaintStatus, deleteComplaint, type ActionState } from "@/lib/actions/registers";
 import { useOnSaved } from "@/lib/use-on-saved";
-import type { Complaint, Profile, Property } from "@/lib/types";
+import { complaintFilesFor } from "@/lib/complaint-files";
+import { ComplaintFiles } from "@/components/registers/ComplaintFiles";
+import type { Complaint, ComplaintFile, Profile, Property } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
 
@@ -33,6 +35,9 @@ export function ComplaintsPanel({
   viewerProfile,
   nameOf = {},
   resolutionTargetDays,
+  files = [],
+  filesReady = false,
+  fileUrlByPath = {},
 }: {
   complaints: Complaint[];
   staff: Profile[];
@@ -41,8 +46,26 @@ export function ComplaintsPanel({
   /** Everyone's display name, people who have left included (the picker isn't). */
   nameOf?: Record<string, string>;
   resolutionTargetDays: number;
+  /**
+   * Files on the office's complaints (0101), removed ones included. The
+   * REVERSAL of 16 Oct 2026 is in lib/complaint-files.ts.
+   */
+  files?: ComplaintFile[];
+  /** False until 0101 has run: no Files column, and nothing to add one with. */
+  filesReady?: boolean;
+  /** Links to open each file, made on the server with the licensee's own access. */
+  fileUrlByPath?: Record<string, string>;
 }) {
   const [adding, setAdding] = useState(false);
+  // Which complaints have their files open.
+  const [openFiles, setOpenFiles] = useState<Set<string>>(new Set());
+  const toggleFiles = (id: string) =>
+    setOpenFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [state, formAction, pending] = useActionState(addComplaint, initialState);
   useOnSaved(pending, state.error, () => setAdding(false));
 
@@ -145,61 +168,113 @@ export function ComplaintsPanel({
                   <th className="pb-2 pr-3">Nature</th>
                   <th className="pb-2 pr-3">Days</th>
                   <th className="pb-2 pr-3">Status</th>
+                  {filesReady && <th className="pb-2 pr-3">Files</th>}
                   <th className="pb-2"></th>
                 </tr>
               </thead>
               <tbody>
-                {complaints.map((c) => (
-                  <tr key={c.id} className="border-b border-neutral-100 align-top">
-                    {/* nowrap: at 1280px the date broke over two lines. */}
-                    <td className="whitespace-nowrap py-2 pr-3">{c.received_date}</td>
-                    <td className="py-2 pr-3">{c.complainant}</td>
-                    <td className="py-2 pr-3">
-                      {addressFor(c.property_id) ? (
-                        <Link href={`/dashboard/${c.property_id}`} className="text-rc-green-deep hover:underline">
-                          {addressFor(c.property_id)}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="py-2 pr-3">{nameFor(c.agent_id)}</td>
-                    <td className="py-2 pr-3 max-w-xs">{c.nature}</td>
-                    <td className="py-2 pr-3">{daysSince(c.received_date)}</td>
-                    <td className="py-2 pr-3">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[c.status]}`}>
-                        {STATUS_LABELS[c.status]}
-                      </span>
-                    </td>
-                    <td className="py-2 text-right">
-                      <div className="flex justify-end gap-2">
-                        {c.status !== "resolved" && (
-                          <>
-                            {c.status === "open" && (
-                              <form action={updateComplaintStatus.bind(null, c.id, "under_review")}>
-                                <button type="submit" className="text-xs text-rc-green-deep hover:underline">
-                                  Review
-                                </button>
-                              </form>
-                            )}
-                            <form action={updateComplaintStatus.bind(null, c.id, "resolved")}>
-                              <button type="submit" className="text-xs text-rc-green-deep hover:underline">
-                                Resolve
-                              </button>
-                            </form>
-                          </>
-                        )}
-                        {viewerProfile.is_licensee_in_charge && (
-                          <form action={deleteComplaint.bind(null, c.id)}>
-                            <button type="submit" className="text-xs text-rc-faint hover:text-rc-amber-deep">
-                              Remove
+                {complaints.map((c) => {
+                  const { current, removed } = complaintFilesFor(c.id, files);
+                  const filesOpen = openFiles.has(c.id);
+                  return (
+                    <Fragment key={c.id}>
+                      <tr className={`align-top ${filesOpen ? "" : "border-b border-neutral-100"}`}>
+                        {/* nowrap: at 1280px the date broke over two lines. */}
+                        <td className="whitespace-nowrap py-2 pr-3">{c.received_date}</td>
+                        <td className="py-2 pr-3">{c.complainant}</td>
+                        <td className="py-2 pr-3">
+                          {addressFor(c.property_id) ? (
+                            <Link href={`/dashboard/${c.property_id}`} className="text-rc-green-deep hover:underline">
+                              {addressFor(c.property_id)}
+                            </Link>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="py-2 pr-3">{nameFor(c.agent_id)}</td>
+                        <td className="py-2 pr-3 max-w-xs">{c.nature}</td>
+                        <td className="py-2 pr-3">{daysSince(c.received_date)}</td>
+                        <td className="py-2 pr-3">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[c.status]}`}>
+                            {STATUS_LABELS[c.status]}
+                          </span>
+                        </td>
+                        {filesReady && (
+                          <td className="py-2 pr-3">
+                            <button
+                              type="button"
+                              onClick={() => toggleFiles(c.id)}
+                              aria-expanded={filesOpen}
+                              className="whitespace-nowrap text-xs font-medium text-rc-green-deep hover:underline"
+                            >
+                              {current.length === 0
+                                ? filesOpen
+                                  ? "Close"
+                                  : "Add files"
+                                : `${current.length} ${current.length === 1 ? "file" : "files"}${filesOpen ? " ▴" : " ▾"}`}
                             </button>
-                          </form>
+                          </td>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        <td className="py-2 text-right">
+                          <div className="flex justify-end gap-2">
+                            {c.status !== "resolved" && (
+                              <>
+                                {c.status === "open" && (
+                                  <form action={updateComplaintStatus.bind(null, c.id, "under_review")}>
+                                    <button type="submit" className="text-xs text-rc-green-deep hover:underline">
+                                      Review
+                                    </button>
+                                  </form>
+                                )}
+                                <form action={updateComplaintStatus.bind(null, c.id, "resolved")}>
+                                  <button type="submit" className="text-xs text-rc-green-deep hover:underline">
+                                    Resolve
+                                  </button>
+                                </form>
+                              </>
+                            )}
+                            {/* A complaint with files on it keeps them until each is
+                                removed, and each removal is recorded (0101): the
+                                database refuses deleting it before then. */}
+                            {viewerProfile.is_licensee_in_charge &&
+                              (current.length > 0 ? (
+                                <span
+                                  title="Remove its files first. Each removal is recorded."
+                                  className="cursor-default text-xs text-neutral-300"
+                                >
+                                  Remove
+                                </span>
+                              ) : (
+                                <form action={deleteComplaint.bind(null, c.id)}>
+                                  <button type="submit" className="text-xs text-rc-faint hover:text-rc-amber-deep">
+                                    Remove
+                                  </button>
+                                </form>
+                              ))}
+                          </div>
+                        </td>
+                      </tr>
+                      {filesReady && filesOpen && (
+                        <tr className="border-b border-neutral-100">
+                          <td colSpan={9} className="pb-3">
+                            {/* Held to the visible width on a phone, where the
+                                register scrolls sideways under it. */}
+                            <div className="sticky left-0 max-w-[calc(100vw-4rem)] rounded-lg bg-rc-bg-alt p-3 sm:max-w-none">
+                              <ComplaintFiles
+                                agencyId={viewerProfile.agency_id}
+                                complaintId={c.id}
+                                current={current}
+                                removed={removed}
+                                urlByPath={fileUrlByPath}
+                                nameOf={nameOf}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
