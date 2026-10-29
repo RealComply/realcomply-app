@@ -23,6 +23,13 @@ import { appBaseUrl } from "@/lib/site-url";
 export const ADMIN_COPY_ADDRESS = "admin@realcomply.com.au";
 export const SENDER_NAME = "RealComply";
 export const INVITATION_SUBJECT = "Your invitation to RealComply";
+/**
+ * The set-up link for someone who joined on the website, once Adam approves
+ * them. Was "Your invitation to RealComply" and "Thank you for registering
+ * for early access" (Adam, 29 Oct 2026: no more early access). A personal
+ * invite keeps INVITATION_SUBJECT: Adam did invite that person.
+ */
+export const SETUP_LINK_SUBJECT = "Your RealComply set-up link";
 
 /**
  * The private Facebook group for RealComply members, offered in the welcome
@@ -388,17 +395,13 @@ export function buildInvitationEmail(input: InvitationInput): { subject: string;
   const name = greetingName(input.firstName);
   const email: Email = {
     base: input.base ?? emailBaseUrl(),
-    preheader: "Thank you for registering for early access to RealComply. Your invitation is ready.",
+    preheader: "Here's your set-up link. Your 14-day free trial starts when you set up your office.",
     blocks: [
       { kind: "p", text: name ? `Hi ${name},` : "Hi there," },
-      { kind: "p", text: "Thank you for registering for early access to RealComply. Your invitation is ready." },
-      {
-        kind: "p",
-        text: "RealComply follows a NSW sales file from listing set-up to settled. It reads your documents, tracks each stage, and flags what needs a look.",
-      },
+      { kind: "p", text: "Here's your set-up link. Your 14-day free trial starts when you set up your office." },
       { kind: "button", label: "Set up your office", href: input.inviteUrl },
       { kind: "p", small: true, text: "This link is just for you and works once. It expires in 60 days." },
-      { kind: "p", text: "Questions? Reply to this email." },
+      { kind: "p", text: "Any questions, just reply here." },
       { kind: "p", text: "The RealComply team" },
     ],
     footer: [
@@ -406,11 +409,11 @@ export function buildInvitationEmail(input: InvitationInput): { subject: string;
       // Without the secret there is no signed link to give, so the footer
       // stops at the reply instruction rather than offering a dead link.
       input.unsubscribeUrl
-        ? `RealComply Pty Ltd, ABN 61 700 934 792. You registered at realcomply.com.au. To stop these emails, reply "unsubscribe" or [unsubscribe here](${input.unsubscribeUrl}).`
-        : `RealComply Pty Ltd, ABN 61 700 934 792. You registered at realcomply.com.au. To stop these emails, reply "unsubscribe".`,
+        ? `RealComply Pty Ltd, ABN 61 700 934 792. You joined RealComply at realcomply.com.au. To stop these emails, reply "unsubscribe" or [unsubscribe here](${input.unsubscribeUrl}).`
+        : `RealComply Pty Ltd, ABN 61 700 934 792. You joined RealComply at realcomply.com.au. To stop these emails, reply "unsubscribe".`,
     ],
   };
-  return { subject: INVITATION_SUBJECT, text: renderText(email), html: renderHtml(email, INVITATION_SUBJECT) };
+  return { subject: SETUP_LINK_SUBJECT, text: renderText(email), html: renderHtml(email, SETUP_LINK_SUBJECT) };
 }
 
 // ── Email 1b: a personal invitation ───────────────────────────────────────

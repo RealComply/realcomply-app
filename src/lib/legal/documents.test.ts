@@ -9,11 +9,12 @@ import { acceptsCurrentVersions } from "@/lib/legal/acceptance";
 // grammar, not spelling, not clause numbers." This holds the code to that, by
 // comparing each published body with the brief character for character. If
 // it fails, the text in documents.ts has drifted from what Adam approved.
-// The privacy policy has its own briefs: 16 Oct 2026 (phone numbers added) and
-// 29 Oct 2026 (website analytics).
+// The privacy policy has its own briefs: 16 Oct 2026 (phone numbers added),
+// 29 Oct 2026 (website analytics) and 29 Oct 2026 again (no "early access").
 const BRIEF = readFileSync(join(process.cwd(), "claude/RealComply-legal-documents-publish-brief-9-Oct.md"), "utf8");
 const PRIVACY_BRIEF_16_OCT = readFileSync(join(process.cwd(), "claude/RealComply-privacy-policy-16-Oct.md"), "utf8");
-const PRIVACY_BRIEF = readFileSync(join(process.cwd(), "claude/RealComply-privacy-policy-29-Oct.md"), "utf8");
+const PRIVACY_BRIEF_29_OCT = readFileSync(join(process.cwd(), "claude/RealComply-privacy-policy-29-Oct.md"), "utf8");
+const PRIVACY_BRIEF = readFileSync(join(process.cwd(), "claude/RealComply-privacy-policy-29-Oct-2.md"), "utf8");
 
 function part(startHeading: string, nextHeading: string | null, brief = BRIEF): string {
   const start = brief.indexOf(startHeading);
@@ -46,17 +47,29 @@ describe("published legal documents", () => {
     assert.equal(LEGAL_DOCUMENTS.terms.body, part("## PART B: Terms and Conditions (final text)", "## PART C:"));
   });
 
-  it("privacy policy is Part C of the 29 Oct brief, verbatim", () => {
+  it("privacy policy is Part C of the latest brief (29 Oct, no early access), verbatim", () => {
     assert.equal(LEGAL_DOCUMENTS.privacy.body, part("## PART C: Privacy Policy (final text)", null, PRIVACY_BRIEF));
+  });
+
+  it("the latest privacy policy is the 29 Oct one with only the sign-up heading changed, and never says early access", () => {
+    const twentyNinthOct = part("## PART C: Privacy Policy (final text)", null, PRIVACY_BRIEF_29_OCT);
+    const body = LEGAL_DOCUMENTS.privacy.body;
+    assert.ok(twentyNinthOct.includes("### If you register for early access\n"));
+    assert.ok(body.includes("### If you sign up on our website\n"));
+    assert.ok(!/early access/i.test(body));
+    assert.equal(
+      body.replace("### If you sign up on our website\n", "### If you register for early access\n"),
+      twentyNinthOct,
+    );
   });
 
   it("the 29 Oct privacy policy is the 16 Oct one with only the public website section rewritten", () => {
     const sixteenOct = part("## PART C: Privacy Policy (final text)", null, PRIVACY_BRIEF_16_OCT);
-    const body = LEGAL_DOCUMENTS.privacy.body;
+    const twentyNinthOct = part("## PART C: Privacy Policy (final text)", null, PRIVACY_BRIEF_29_OCT);
     assert.ok(sixteenOct.includes(PUBLIC_WEBSITE_16_OCT));
-    assert.ok(body.includes(PUBLIC_WEBSITE_29_OCT));
-    assert.ok(!body.includes("Plausible"));
-    assert.equal(body.replace(PUBLIC_WEBSITE_29_OCT, PUBLIC_WEBSITE_16_OCT), sixteenOct);
+    assert.ok(twentyNinthOct.includes(PUBLIC_WEBSITE_29_OCT));
+    assert.ok(!twentyNinthOct.includes("Plausible"));
+    assert.equal(twentyNinthOct.replace(PUBLIC_WEBSITE_29_OCT, PUBLIC_WEBSITE_16_OCT), sixteenOct);
   });
 
   it("the 16 Oct privacy policy is the 9 Oct one plus the phone number words, nothing else", () => {
@@ -117,9 +130,16 @@ describe("acceptsCurrentVersions", () => {
     );
   });
 
-  it("new acceptances record the 29 Oct privacy policy", () => {
-    assert.equal(current.privacy, "2026-10-29");
+  it("new acceptances record the latest privacy policy", () => {
+    assert.equal(current.privacy, "2026-10-29.2");
     assert.equal(current.terms, "2026-10-09");
+  });
+
+  it("someone who accepted the 29 Oct policy is not asked again for the heading change", () => {
+    assert.equal(
+      acceptsCurrentVersions([{ terms_version: "2026-10-09", privacy_version: "2026-10-29" }], acceptable),
+      true,
+    );
   });
 
   it("someone who accepted on 16 Oct is not asked again for the 29 Oct privacy change", () => {

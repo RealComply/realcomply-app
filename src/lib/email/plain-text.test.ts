@@ -102,7 +102,7 @@ describe("RealComply's own footer links", () => {
     assert.ok(renderEmailText(doc).includes("See the register any time: https://www.realcomply.com.au/dashboard/registers"));
   });
 
-  describe("the early access acknowledgement's unsubscribe link", () => {
+  describe("the welcome email's unsubscribe link", () => {
     const before = process.env.EMAIL_UNSUBSCRIBE_SECRET;
     afterEach(() => {
       if (before === undefined) delete process.env.EMAIL_UNSUBSCRIBE_SECRET;
@@ -115,7 +115,7 @@ describe("RealComply's own footer links", () => {
       const text = earlyAccessAcknowledgementText("sam@example.test", "Sam");
 
       assert.match(html, /<a href="https:\/\/[^"]*\/unsubscribe\?e=sam%40example\.test&amp;t=[0-9a-f]{64}"[^>]*>Unsubscribe<\/a>/);
-      assert.match(text, /registered for early access at realcomply\.com\.au\.\nUnsubscribe: https:\/\/\S+\/unsubscribe\?e=sam%40example\.test&t=[0-9a-f]{64}$/);
+      assert.match(text, /joined RealComply at realcomply\.com\.au\.\nUnsubscribe: https:\/\/\S+\/unsubscribe\?e=sam%40example\.test&t=[0-9a-f]{64}$/);
     });
 
     it("without the secret: the reply instruction, and no link", () => {

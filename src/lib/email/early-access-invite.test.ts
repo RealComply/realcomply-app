@@ -20,16 +20,18 @@ const invite = (over: Partial<Parameters<typeof buildInvitationEmail>[0]> = {}) 
   });
 
 describe("invitation email", () => {
-  it("uses the approved subject and wording, with their first name", () => {
+  it("uses the approved subject and wording, with their first name, and never says early access", () => {
     const m = invite();
-    assert.equal(m.subject, "Your invitation to RealComply");
+    assert.equal(m.subject, "Your RealComply set-up link");
     for (const part of [m.text, m.html]) {
       assert.match(part, /Hi Sam,/);
-      assert.match(part, /Thank you for registering for early access to RealComply\. Your invitation is ready\./);
-      assert.match(part, /RealComply follows a NSW sales file from listing set-up to settled\./);
+      assert.match(part, /Here's your set-up link\. Your 14-day free trial starts when you set up your office\./);
       assert.match(part, /This link is just for you and works once\. It expires in 60 days\./);
-      assert.match(part, /Questions\? Reply to this email\./);
+      assert.match(part, /Any questions, just reply here\./);
+      assert.match(part, /You joined RealComply at realcomply\.com\.au\./);
       assert.match(part, /ABN 61 700 934 792/);
+      assert.doesNotMatch(part, /early access|registered|invitation/i);
+      assert.ok(!part.includes("\u2014"));
     }
     assert.match(m.text, /Set up your office: https:\/\/www\.realcomply\.com\.au\/signup\?founder=abc123/);
     assert.match(m.html, /href="https:\/\/www\.realcomply\.com\.au\/signup\?founder=abc123"/);

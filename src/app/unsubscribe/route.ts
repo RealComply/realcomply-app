@@ -106,7 +106,9 @@ export async function POST(request: NextRequest) {
       // confirm button before this stays, by Adam's decision the same day:
       // mail scanners open every link, and a one-click GET would unsubscribe
       // people who never touched it.
-      "<p>You're unsubscribed. You won't get more emails about early access.</p>",
+      // Was "... You won't get more emails about early access." (Adam,
+      // 29 Oct 2026: no early access.)
+      "<p>You're unsubscribed. We won't email you about joining RealComply again.</p>",
       null,
     ),
   );

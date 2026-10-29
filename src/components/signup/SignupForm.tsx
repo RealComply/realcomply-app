@@ -118,16 +118,18 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
   if (!invite && !founderOk && !signupsOpen) {
     return (
       <div className="mt-8 space-y-4">
+        {/* Was "RealComply is invite-only at the moment ..." and "Want an
+            account for your agency? Register your interest and we'll be in
+            touch." (Adam, 29 Oct 2026: no early access.) */}
         <p className="rounded-2xl border border-rc-border bg-rc-bg-alt px-4 py-3 text-sm leading-relaxed text-rc-muted">
-          RealComply is invite-only at the moment. If your licensee has sent you a link, open that link and
-          you&rsquo;ll come straight in.
+          Joining your office? Open the link your licensee sent you.
         </p>
         <p className="text-sm text-rc-muted">
-          Want an account for your agency?{" "}
-          <Link href="/#early-access" className="font-medium text-rc-green-deep hover:underline">
-            Register your interest
-          </Link>{" "}
-          and we&rsquo;ll be in touch.
+          Want RealComply for your agency?{" "}
+          <Link href="/#free-trial" className="font-medium text-rc-green-deep hover:underline">
+            Start your 14-day free trial
+          </Link>
+          .
         </p>
         {/* No "Already set up? Sign in" here — the card this sits inside
             carries that line on every state, and duplicating it showed the
