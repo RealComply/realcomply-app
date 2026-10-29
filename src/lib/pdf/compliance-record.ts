@@ -855,9 +855,12 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       bold: true,
       gap: 4,
     });
-    attachments.forEach((a, i) => {
-      const n = i + 1;
+    // Numbered as the Attachment pages below are, attached ones only: a
+    // complaint email (.eml) is listed here but never attached (0101).
+    let n = 0;
+    attachments.forEach((a) => {
       if (a.bytes) {
+        n += 1;
         c.text(`${n}. ${a.title}`, { size: 9.5, bold: true, indent: 4 });
         c.text(a.fileName, { size: 8.5, color: MUTED, indent: 14 });
       } else {

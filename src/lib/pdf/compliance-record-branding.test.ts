@@ -119,3 +119,30 @@ describe("an attached document that came through empty", () => {
     assert.ok(text.includes("Contract (made up).xlsx - not a PDF or image. Held on file."), "other omissions unchanged");
   });
 });
+
+// A complaint email (.eml) is listed but not attached (0101, 30 Oct 2026), so
+// the list numbers only what is attached: the number beside a document is the
+// "Attachment N" page it is on.
+describe("the list of documents attached", () => {
+  it("numbers only what is attached, the same as its Attachment page", async () => {
+    const text = pdfText(
+      await pack({
+        attachments: [
+          {
+            title: "Complaint received 26 October 2026",
+            fileName: "complaint-email.eml",
+            bytes: null,
+            kind: "other",
+            omittedBecause: "not a PDF or image",
+          },
+          { title: "Complaint received 26 October 2026", fileName: "outcome-letter.pdf", bytes: await onePagePdf(), kind: "pdf" },
+        ],
+      }),
+    ).replace(/\s+/g, " ");
+    assert.ok(text.includes("complaint-email.eml - not a PDF or image. Held on file."));
+    assert.ok(text.includes("1. Complaint received 26 October 2026"), text);
+    assert.ok(!text.includes("2. Complaint received"), text);
+    assert.ok(text.includes("Attachment 1"));
+    assert.ok(!text.includes("Attachment 2"));
+  });
+});
