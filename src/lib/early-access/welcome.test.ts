@@ -68,7 +68,7 @@ describe("early access welcome", () => {
     assert.equal(r.sent.length, 1);
     assert.equal(r.sent[0].to, "getadamc3+signup@gmail.com");
     assert.equal(r.sent[0].bcc, "admin@realcomply.com.au");
-    assert.equal(r.sent[0].subject, "Welcome to RealComply, Sam");
+    assert.equal(r.sent[0].subject, "Getting started with RealComply, Sam");
     assert.notEqual(db.tables.early_access[0].welcome_sent_at, null);
   });
 
@@ -105,7 +105,7 @@ describe("a test copy of the welcome, from the staff page", () => {
     assert.equal(out.error, null);
     assert.equal(r.sent.length, 1);
     assert.equal(r.sent[0].to, "getadamc3+test1@gmail.com");
-    assert.equal(r.sent[0].subject, "[Test] Welcome to RealComply, Adam");
+    assert.equal(r.sent[0].subject, "[Test] Getting started with RealComply, Adam");
     assert.equal(r.sent[0].bcc, undefined);
     assert.equal(r.sent[0].replyTo, "admin@realcomply.com.au");
   });

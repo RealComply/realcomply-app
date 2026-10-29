@@ -93,7 +93,7 @@ describe("personal invitation email", () => {
 describe("welcome email", () => {
   it("uses the approved subject and wording, and links the picture to Getting started", () => {
     const m = buildWelcomeEmail({ firstName: "Priya", base });
-    assert.equal(m.subject, "Welcome to RealComply, Priya");
+    assert.equal(m.subject, "Getting started with RealComply, Priya");
     for (const part of [m.text, m.html]) {
       assert.match(
         part,
@@ -149,7 +149,7 @@ describe("welcome email", () => {
   });
 
   it("works without a first name", () => {
-    assert.equal(welcomeSubject(null), "Welcome to RealComply");
+    assert.equal(welcomeSubject(null), "Getting started with RealComply");
     assert.match(buildWelcomeEmail({ firstName: null, base }).text, /^Hi there,/);
   });
 });

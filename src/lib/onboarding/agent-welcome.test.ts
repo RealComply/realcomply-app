@@ -33,7 +33,7 @@ describe("the agent welcome email", () => {
   const email = buildAgentWelcomeEmail({ firstName: "sam", base: BASE, box: null });
 
   it("has the brief's wording, word for word", () => {
-    assert.equal(email.subject, "Welcome to RealComply, Sam");
+    assert.equal(email.subject, "Getting started with RealComply, Sam");
     assert.ok(email.text.includes("Hi Sam,"));
     assert.ok(
       email.text.includes(
@@ -149,7 +149,7 @@ describe("an agent invited by their office", () => {
     assert.equal(r.sent.length, 1);
     const [m] = r.sent;
     assert.equal(m.to, "getadamc3+agent@gmail.com");
-    assert.equal(m.subject, "Welcome to RealComply, Alex");
+    assert.equal(m.subject, "Getting started with RealComply, Alex");
     assert.equal(m.bcc, "admin@realcomply.com.au");
     assert.equal(m.replyTo, "admin@realcomply.com.au");
     assert.equal(m.fromName, "RealComply");
@@ -209,7 +209,7 @@ describe("the staff page's test copy", () => {
       const out = await sendTestAgentWelcome({ to: "getadamc3+agent@gmail.com", firstName: "Adam", kind }, { send: r.send, env: ON, picture });
       assert.equal(out.error, null);
       const [m] = r.sent;
-      assert.equal(m.subject, "[Test] Welcome to RealComply, Adam");
+      assert.equal(m.subject, "[Test] Getting started with RealComply, Adam");
       assert.equal(m.bcc, undefined, "no copy to admin@ for a test");
       assert.ok(m.html?.includes('src="cid:agent-video"'));
       assert.equal(m.attachments?.[0]?.cid, "agent-video");

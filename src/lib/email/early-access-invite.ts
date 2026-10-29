@@ -468,9 +468,15 @@ export type WelcomeInput = {
   annexure?: AnnexureBox | null;
 };
 
+/**
+ * The subject of both welcomes (licensee and agent). Was "Welcome to
+ * RealComply, [name]". Adam, 29 Oct 2026: someone who joins on the website
+ * already gets "Welcome to RealComply", so this one is "Getting started with
+ * RealComply, [name]", to match the video and first-listing steps inside.
+ */
 export function welcomeSubject(firstName: string | null): string {
   const name = greetingName(firstName);
-  return name ? `Welcome to RealComply, ${name}` : "Welcome to RealComply";
+  return name ? `Getting started with RealComply, ${name}` : "Getting started with RealComply";
 }
 
 export function buildWelcomeEmail(input: WelcomeInput): { subject: string; text: string; html: string } {

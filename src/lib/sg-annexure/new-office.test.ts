@@ -194,7 +194,7 @@ describe("a new office's annexure request", () => {
       assert.equal(r.sent.length, 1, "the welcome only");
       const [welcome] = r.sent;
       assert.equal(welcome.to, "getadamc3+founder@gmail.com");
-      assert.equal(welcome.subject, "Welcome to RealComply, Sam");
+      assert.equal(welcome.subject, "Getting started with RealComply, Sam");
       assert.equal(welcome.bcc, "admin@realcomply.com.au");
       assert.equal(welcome.replyTo, "admin@realcomply.com.au");
       // The agent welcome (brief, 14 Oct 2026), INSTEAD of the licensee welcome.
