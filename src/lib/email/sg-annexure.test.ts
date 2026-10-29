@@ -13,8 +13,11 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 // Taken from the welcome email as it was on main before the annexure, for
 // "Sam" on the live site. If the welcome is changed on purpose, these change
 // with it; until then they prove the box added nothing else.
+// 29 Oct 2026: the subject, which the html carries as its title, became
+// "Getting started with RealComply, Sam" (Adam). With the old subject put
+// back the html is still the original, checked below.
 const BEFORE = {
-  html: "103c12a0db6b3de42e79dcedc5c3ff1c05e2454113c79bb67b540b3f2d680f2c",
+  html: "df04e98f24e8aa45c9e5b6a3f54f6295bf714605ea22e2e5a62911dfe7423f22",
   text: "eb00010b489e1524a06a31cc3e9d1b4ca44e8c0088bfc7fa9860c7e30f7f8aae",
   video: "b58ec67cfd9217914649b6d5f281aa3623bc5b7617b6d44bcf4d37b445406337",
 };
@@ -38,6 +41,12 @@ describe("the welcome email's annexure box", () => {
     const { html, text } = buildWelcomeEmail({ firstName: "Sam", base });
     assert.equal(sha(html), BEFORE.html);
     assert.equal(sha(text), BEFORE.text);
+  });
+
+  it("the 29 Oct subject change touched only the subject", () => {
+    const { html } = buildWelcomeEmail({ firstName: "Sam", base });
+    const back = html.replaceAll("Getting started with RealComply, Sam", "Welcome to RealComply, Sam");
+    assert.equal(sha(back), "103c12a0db6b3de42e79dcedc5c3ff1c05e2454113c79bb67b540b3f2d680f2c");
   });
 
   it("with the box, the video preview is untouched and the box sits under it", () => {
