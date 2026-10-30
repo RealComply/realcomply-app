@@ -28,7 +28,8 @@ import type { NotApplicableSpec } from "@/lib/rules/not-applicable";
 // item AND the evidence attached to them — precisely the wrong behaviour for a
 // compliance record. So the test is "is an auction, OR has ever recorded
 // anything against an auction item". The campaign WAS an auction; that is a
-// fact about the file and it does not stop being true.
+// fact about the file and it does not stop being true. x2 is retired (30 Oct
+// 2026) but stays here: an answer on it still says the campaign was an auction.
 export const AUCTION_ITEM_KEYS = ["x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10"] as const;
 
 // The subset that belongs to the day itself, in the order they happen. The
@@ -257,6 +258,19 @@ export function retiredCardShows(key: string, retiredAt: string, allItems: Recor
 // and 5 for all agents on the Did you know page (lib/rules/nsw-did-you-know.ts).
 // From midnight at the start of 16 Oct 2026, Sydney time.
 export const C2_C3_RETIRED_AT = "2026-10-15T13:00:00.000Z";
+
+// REVERSAL 30 Oct 2026 (Adam): "remove Conditions of sale prepared for display card".
+//
+// x2 sat on the Pre-market stage of an auction file from 18 Aug 2026 (Auction
+// campaigns). The conditions are still checked on the day: "Conditions of
+// sale on display" (x5) stays, and still takes a file.
+//
+// From midnight at the start of 30 Oct 2026, Sydney time, the day Adam asked.
+// Earlier than the change can reach the live site, on purpose: a file signed
+// off in between had to answer it to finish Pre-market, and an answer keeps it
+// on its file anyway, while a later time would put it back, unticked, on a
+// file signed off after it had already gone from the screen.
+export const X2_RETIRED_AT = "2026-10-29T13:00:00.000Z";
 
 
 // ── Power of Attorney (Adam, 15 Oct 2026) ───────────────────────────────────
@@ -740,6 +754,11 @@ const items: ComplianceItem[] = [
     hideEvidence: true,
     showIf: isAuctionFile,
   },
+  // REVERSAL 30 Oct 2026 (Adam): "remove Conditions of sale prepared for display card".
+  //
+  // Retired, not deleted: see "Retired cards" above. No open listing shows it
+  // or waits on it; an auction file signed off before it retired still shows
+  // it as it was, and a saved answer stays with its file.
   {
     key: "x2",
     stage: 1,
@@ -750,7 +769,8 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
     hideNote: true,
-    showIf: isAuctionFile,
+    retiredAt: X2_RETIRED_AT,
+    showIf: (p, allItems) => isAuctionFile(p, allItems) && retiredCardShows("x2", X2_RETIRED_AT, allItems),
   },
   {
     key: "b2",
