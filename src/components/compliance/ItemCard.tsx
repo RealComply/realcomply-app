@@ -103,6 +103,7 @@ import {
 } from "@/lib/documents/covering-letter";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
+import { reportReadFinished, reportReadNote, reportReadOf, type ReportRead } from "@/lib/documents/report-read";
 import { RoofMark } from "@/components/RoofMark";
 import { CardReopenArea, useReopen, useWaitingRequest } from "@/components/compliance/Reopen";
 
@@ -183,12 +184,15 @@ function ItemShell({
   foldable = true,
   evidenceReadOnly = false,
   optional = false,
+  evidenceReadNote = null,
   children,
 }: {
   item: ComplianceItem;
   status?: PropertyItem["status"];
   propertyId: string;
   current?: PropertyItem;
+  /** What the last read of the attached file came to, said beside it (a4). */
+  evidenceReadNote?: ReadNote | null;
   /** Passed through to the pill — see StatusPill. */
   optional?: boolean;
   /** Passed through to the pill — see StatusPill. */
@@ -406,6 +410,7 @@ function ItemShell({
           warning={item.evidenceWarning}
           replaceOnly={item.evidenceReplaceOnly}
           onUnsavedChange={setEvidenceUnsaved}
+          readNote={evidenceReadNote}
         />
       )}
       </fieldset>
@@ -481,6 +486,28 @@ function RereadButton({ propertyId, itemKey }: { propertyId: string; itemKey: st
   );
 }
 
+// What the last read of an attached file came to, in plain words (30 Oct
+// 2026; see lib/documents/report-read). Amber when the agent has something to
+// do about it, quiet when the read went well.
+type ReadNote = { tone: "ok" | "warn"; text: string };
+
+function ReadNoteLine({ note }: { note: ReadNote }) {
+  return (
+    <p
+      className={`flex w-full items-start gap-1.5 text-xs ${
+        note.tone === "warn" ? "text-rc-amber-deep" : "text-rc-muted"
+      }`}
+    >
+      {note.tone === "warn" ? (
+        <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+      ) : (
+        <Sparkles size={12} className="mt-0.5 shrink-0" />
+      )}
+      <span>{note.text}</span>
+    </p>
+  );
+}
+
 function EvidenceUploader({
   propertyId,
   itemKey,
@@ -491,6 +518,7 @@ function EvidenceUploader({
   warning,
   replaceOnly = false,
   onUnsavedChange,
+  readNote = null,
 }: {
   propertyId: string;
   itemKey: string;
@@ -499,6 +527,8 @@ function EvidenceUploader({
   label?: string;
   required?: boolean;
   warning?: string;
+  /** What the last read of this file came to, under it. */
+  readNote?: ReadNote | null;
   /**
    * Swap Remove for Replace. For the documents collected at listing setup,
    * which are mandatory there: a file the listing could not have been created
@@ -664,6 +694,7 @@ function EvidenceUploader({
               </button>
             </form>
           )}
+          {readNote && <ReadNoteLine note={readNote} />}
         </div>
       ) : (
         // Choosing a file and attaching it are two steps, and missing the
@@ -756,10 +787,13 @@ function ChecklistItem({
   agreementDate = null,
   allEsp,
   comparablesReportRead = false,
+  reportRead = null,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
+  /** a4 and a4c: what the last read of the comparable-sales report on a4 came to. */
+  reportRead?: ReportRead | null;
   // The listing's own attributes and its comparable sales. Read once by the
   // page and passed down, like amlPreCommencementEnabled — only a4 and a4c
   // use them, and neither should be asking the database on its own.
@@ -1009,6 +1043,15 @@ function ChecklistItem({
     );
   }
 
+  // a4c: said only while no sales or listings from the report are on the
+  // card. Once some are, they speak for the report.
+  const reasoningReadNote =
+    item.key === "a4c" &&
+    !comparables.some((c) => c.source === "report") &&
+    !marketListings.some((l) => l.source === "report")
+      ? reportReadNote(reportRead, "reasoning")
+      : null;
+
   return (
     <ItemShell
       item={item}
@@ -1016,6 +1059,7 @@ function ChecklistItem({
       propertyId={propertyId}
       current={current}
       awaitingReview={showsDraft}
+      evidenceReadNote={item.key === "a4" ? reportReadNote(reportRead, "report") : null}
     >
       {/* Offered on an open card only, so nothing already answered changes. */}
       {item.notApplicable &&
@@ -1042,6 +1086,11 @@ function ChecklistItem({
           comes before them on a4c, so the card reads the same. */}
       {item.key === "a4c" && subject && !espElsewhere && !item.showFindings && !item.hideNote && (
         <div className="mb-3">
+          {reasoningReadNote && (
+            <div className="mb-2">
+              <ReadNoteLine note={reasoningReadNote} />
+            </div>
+          )}
           <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
           {/* The competition, under the sales (Stephen Borg, 28 Sep
               2026; mockup v2 approved by Adam). */}
@@ -4382,7 +4431,9 @@ function ItemCardBody({
         />
       );
     case "checklist":
-    default:
+    default: {
+      // What the last read of the comparable-sales report on a4 came to.
+      const a4ReportRead = reportReadOf(allItems["a4"]?.data, allItems["a4"]?.evidence_path);
       return (
         <ChecklistItem
           // REMOUNT WHEN THE AI FINISHES READING THE DOCUMENTS. This key is
@@ -4455,14 +4506,20 @@ function ItemCardBody({
           // read: attached to a4, and a read of it has produced something —
           // sales, listings, or the read stamp on a4c (a report with no sales
           // in it has still been read, and the draft says so).
+          // Since 30 Oct 2026 also the read's own record on a4: a report read
+          // to the end with no sales in it left no stamp on a4c, so the draft
+          // never came.
           comparablesReportRead={
             item.key === "a4c" &&
             Boolean(allItems["a4"]?.evidence_path) &&
             ((comparables ?? []).some((c) => c.source === "report") ||
               (marketListings ?? []).some((l) => l.source === "report") ||
-              Boolean((current?.data as { aiDraft?: { generatedAt?: string } } | undefined)?.aiDraft?.generatedAt))
+              Boolean((current?.data as { aiDraft?: { generatedAt?: string } } | undefined)?.aiDraft?.generatedAt) ||
+              reportReadFinished(a4ReportRead))
           }
+          reportRead={item.key === "a4" || item.key === "a4c" ? a4ReportRead : null}
         />
       );
+    }
   }
 }
