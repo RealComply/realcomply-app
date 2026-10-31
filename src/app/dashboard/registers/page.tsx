@@ -14,6 +14,7 @@ import { nextReminderDate } from "@/lib/licence-reminders";
 import { describeHistory, type HistoryEntry } from "@/lib/insurance-read";
 import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { complaintsRegisterShown } from "@/lib/data/complaints-register";
 import type { ReminderInfo } from "@/components/registers/ReminderLine";
 import type {
   Agency, Breach, Complaint, ComplaintFile, CpdRecord, Gift, InsuranceHistoryRow, InsurancePolicy, InsurancePolicyType,
@@ -43,8 +44,12 @@ export default async function RegistersPage({
   // REVERSAL (Adam, 7 and 9 Oct 2026). Was: every member saw every register.
   // Now an agent or assistant sees the gifts and breaches they logged
   // themselves, and nothing else here; complaints are the licensee in
-  // charge's only, even for an agent on their own plan. The database rules
+  // charge's, even for an agent on their own plan. The database rules
   // (0058) return only those rows; this decides which tabs show.
+  //
+  // DECISION (Adam, 31 Oct 2026; 0102): an office manager reads the
+  // complaints register and adds to it, "adding and read only". Review,
+  // Resolve and removing stay with the licensee in charge.
   //
   // Plus their OWN licence or certificate (10 Oct 2026). Hiding the whole
   // Licences tab took away the only place a person can upload their renewed
@@ -69,6 +74,7 @@ export default async function RegistersPage({
     { data: reminderRows },
     people,
     { data: cpdSignoffRows },
+    complaintsShown,
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
@@ -85,6 +91,7 @@ export default async function RegistersPage({
     agencyPeople(supabase),
     // Who has ticked the year's CPD as done (14 Oct 2026: that tick is the CPD).
     supabase.from("cpd_year_signoffs").select("profile_id").eq("cpd_year_start", cpdYear.start),
+    complaintsRegisterShown(supabase, access),
   ]);
 
   // An agent logs a gift or breach against themselves, so their pickers show
@@ -226,13 +233,14 @@ export default async function RegistersPage({
     }
   }
 
-  // Files on complaints (0101): the licensee in charge only, like the register
-  // itself, and links to open them signed with the licensee's own access.
-  // Before 0101 has run there is no table: no Files column.
+  // Files on complaints (0101): for whoever has the register (the licensee in
+  // charge, and an office manager since 0102), and links to open them signed
+  // with their own access. Before 0101 has run there is no table: no Files
+  // column.
   let complaintFiles: ComplaintFile[] = [];
   let complaintFilesReady = false;
   const complaintFileUrlByPath: Record<string, string> = {};
-  if (access.officeLicensee && agency) {
+  if (complaintsShown && agency) {
     const { data: fileRows, error: filesError } = await supabase
       .from("complaint_files")
       .select("*")
@@ -347,11 +355,12 @@ export default async function RegistersPage({
                 />
               }
               complaints={
-                !access.officeLicensee ? null : <ComplaintsPanel
+                !complaintsShown ? null : <ComplaintsPanel
                   complaints={complaints}
                   staff={staff}
                   properties={properties}
                   viewerProfile={profile}
+                  canChange={access.officeLicensee}
                   nameOf={nameOf}
                   resolutionTargetDays={agency.complaint_resolution_target_days}
                   files={complaintFiles}

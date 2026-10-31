@@ -18,14 +18,27 @@
 // training, trust records, the SG Manual and billing ("runs the office",
 // runs_office() in the database). Price statement approvals, file sign-offs,
 // annexure adoption, changing the licensee in charge and deleting compliance
-// records stay with the licensee (actsAsLicensee). Office overview and the
-// complaints register are not decided yet, so they stay with the licensee.
+// records stay with the licensee (actsAsLicensee). Office overview is not
+// decided yet, so it stays with the licensee.
+//
+// DECISION (Adam, 31 Oct 2026; 0102): the complaints register, "adding and
+// read only" for an office manager. Was (0093): not decided yet, so the
+// licensee's only. Now an office manager reads the whole register and its
+// files, logs complaints and adds files (seesComplaints). Review, Resolve,
+// removing a file and deleting a complaint stay with the licensee in charge
+// (officeLicensee), as does the resolution target.
 
 export type Access = {
   /** Licensee in charge, or the agent on an agent plan. Office overview, Team, Trust, deletes, agency details. */
   actsAsLicensee: boolean;
-  /** Licensee in charge of an office (not an agent plan). The complaints register. */
+  /** Licensee in charge of an office (not an agent plan). Changes, resolves and removes on the complaints register. */
   officeLicensee: boolean;
+  /**
+   * Reads the complaints register and adds to it (complaints and their files):
+   * the licensee in charge of an office, or an office manager (Adam, 31 Oct
+   * 2026: "adding and read only"). The database's half is 0101 and 0102.
+   */
+  seesComplaints: boolean;
   /** Prepares files for the agents they assist. Cannot sign. */
   isAssistant: boolean;
   /** On an agent plan: the paying customer, so gets Billing. */
@@ -49,9 +62,11 @@ export function accessFrom(
   const actsAsLicensee = licensee || (active && isAgentPlan && profile.is_assistant !== true);
   // Same as is_office_manager(): approved, still in the office, an office plan.
   const isOfficeManager = active && !isAgentPlan && officeManager;
+  const officeLicensee = licensee && !isAgentPlan;
   return {
     actsAsLicensee,
-    officeLicensee: licensee && !isAgentPlan,
+    officeLicensee,
+    seesComplaints: officeLicensee || isOfficeManager,
     isAssistant: active && profile.is_assistant === true,
     isAgentPlan,
     runsOffice: actsAsLicensee || isOfficeManager,

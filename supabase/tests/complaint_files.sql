@@ -1,8 +1,11 @@
 -- ===== READ ONLY. Files on a complaint, 30 October 2026 =====
 --
--- Proves supabase/migrations/0101_complaint_files.sql. Run after it. Safe on
--- the live database: everything happens inside one transaction that is rolled
--- back at the end, so the made-up offices and people never exist outside it.
+-- Proves supabase/migrations/0101_complaint_files.sql. Run after it, and
+-- after 0102: since 31 Oct 2026 an office manager reads the register and adds
+-- to it (supabase/tests/office_manager_complaints.sql proves that part), so
+-- here they are only checked for what stays the licensee's. Safe on the live
+-- database: everything happens inside one transaction that is rolled back at
+-- the end, so the made-up offices and people never exist outside it.
 --
 -- Pass: the last line says "Complaint files: all checks passed".
 -- Fail: it stops with an error naming the check that failed.
@@ -119,9 +122,10 @@ begin
   end;
   reset role;
 
-  -- 4. An agent, an office manager, another office's licensee and the agent
-  --    on their own plan see none of them and can add none.
-  foreach who in array array[a, m, x, g] loop
+  -- 4. An agent, another office's licensee and the agent on their own plan
+  --    see none of them and can add none. (The office manager reads and adds
+  --    since 0102; they can't remove one, 4d below.)
+  foreach who in array array[a, x, g] loop
     perform set_config('request.jwt.claims', json_build_object('sub', who, 'role', 'authenticated')::text, true);
     set local role authenticated;
     select count(*) into n from public.complaint_files;
@@ -138,10 +142,16 @@ begin
     if n <> 0 then raise exception 'FAIL 4c: % removed a complaint file', who; end if;
     reset role;
   end loop;
+  perform set_config('request.jwt.claims', json_build_object('sub', m, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  update public.complaint_files set removed_at = now() where id = f2;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL 4d: the office manager removed a complaint file'; end if;
+  reset role;
 
-  -- 5. The complaints folder in Storage: the licensee in charge only. Not the
-  --    agent, the office manager (who can read the rest of the office's
-  --    records), another office, or an agent plan's own complaints folder.
+  -- 5. The complaints folder in Storage: the licensee in charge's. Not the
+  --    agent, another office, or an agent plan's own complaints folder. The
+  --    office manager opens the files there since 0102, and can't replace one.
   perform set_config('request.jwt.claims', json_build_object('sub', l, 'role', 'authenticated')::text, true);
   set local role authenticated;
   if not public.evidence_path_readable(o1 || '/_complaints/' || c1 || '/2-photo.jpg')
@@ -149,7 +159,7 @@ begin
     raise exception 'FAIL 5: the licensee can''t use the complaints folder';
   end if;
   reset role;
-  foreach who in array array[a, m, x] loop
+  foreach who in array array[a, x] loop
     perform set_config('request.jwt.claims', json_build_object('sub', who, 'role', 'authenticated')::text, true);
     set local role authenticated;
     if public.evidence_path_readable(o1 || '/_complaints/' || c1 || '/2-photo.jpg')
@@ -162,6 +172,9 @@ begin
   set local role authenticated;
   if not public.evidence_path_readable(o1 || '/_sg-manual/1-manual.pdf') then
     raise exception 'FAIL 5c: the office manager lost the rest of the office''s records';
+  end if;
+  if public.evidence_path_writable(o1 || '/_complaints/' || c1 || '/2-photo.jpg') then
+    raise exception 'FAIL 5f: the office manager can replace a complaint''s file';
   end if;
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', g, 'role', 'authenticated')::text, true);

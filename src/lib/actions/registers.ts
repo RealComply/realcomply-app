@@ -829,9 +829,12 @@ export async function updateGiftThreshold(_prev: ActionState, formData: FormData
 // a property file. ─────────────────────────────────────────────────────────
 export async function addComplaint(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const { supabase, profile, access } = await requireAuthContext();
-  // REVERSAL (Adam, 9 Oct 2026): complaints are the licensee in charge's
-  // only, for everyone. "Complaints should go directly to a licensee."
-  if (!access.officeLicensee) return { error: "Complaints go to the licensee in charge." };
+  // REVERSAL (Adam, 9 Oct 2026): complaints are the licensee in charge's,
+  // for everyone. "Complaints should go directly to a licensee."
+  // DECISION (Adam, 31 Oct 2026; 0102): an office manager logs them too
+  // ("adding and read only"). A new complaint always starts open; changing
+  // it stays with the licensee (below).
+  if (!access.seesComplaints) return { error: "Complaints go to the licensee in charge." };
 
   const receivedDate = str(formData, "receivedDate");
   const complainant = str(formData, "complainant");
@@ -866,6 +869,8 @@ export async function updateComplaintStatus(
   status: "open" | "under_review" | "resolved",
 ): Promise<void> {
   const { supabase, access } = await requireAuthContext();
+  // Review and Resolve: the licensee in charge only, never an office manager
+  // (Adam, 31 Oct 2026: "adding and read only").
   if (!access.officeLicensee) return;
   await supabase
     .from("complaints")
@@ -879,6 +884,7 @@ export async function updateComplaintStatus(
 
 export async function deleteComplaint(complaintId: string): Promise<void> {
   const { supabase, access } = await requireAuthContext();
+  // The licensee in charge only, never an office manager (31 Oct 2026).
   if (!access.officeLicensee) return;
   await supabase.from("complaints").delete().eq("id", complaintId);
   revalidatePath("/dashboard/registers");

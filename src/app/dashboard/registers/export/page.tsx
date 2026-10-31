@@ -8,6 +8,7 @@ import type { Agency, Breach, Complaint, ComplaintFile, CpdRecord, Gift, Insuran
 import { addedLine, complaintFilesFor, filesOfDeletedComplaints, removedLine } from "@/lib/complaint-files";
 import { otherInsuranceTitle } from "@/lib/insurance-read";
 import { formatAuDateTimeShort } from "@/lib/format-date";
+import { complaintsRegisterShown } from "@/lib/data/complaints-register";
 import { PrintButton } from "./PrintButton";
 import { RoofMark } from "@/components/RoofMark";
 
@@ -30,11 +31,13 @@ export default async function RegistersExportPage() {
   const cpdYear = currentCpdYear();
 
   // The complaints register is kept by the licensee in charge of an office
-  // only (Adam, 9 Oct 2026), and the database returns no complaints to
-  // anyone else, the agent on their own plan included. So for them the
-  // section is left out, the same as the Complaints tab: printing "No
-  // complaints logged." stated something about a register this account
-  // doesn't keep (check of 10 Oct 2026).
+  // (Adam, 9 Oct 2026), and read and added to by an office manager (31 Oct
+  // 2026; 0102). The database returns no complaints to anyone else, the
+  // agent on their own plan included. So for them the section is left out,
+  // the same as the Complaints tab: printing "No complaints logged." stated
+  // something about a register this account doesn't keep (check of 10 Oct
+  // 2026).
+  const complaintsShown = await complaintsRegisterShown(supabase, access);
   const [
     { data: staffRows },
     { data: agencyRow },
@@ -51,7 +54,7 @@ export default async function RegistersExportPage() {
       supabase.from("agencies").select("*").eq("id", profile.agency_id).maybeSingle(),
       supabase.from("cpd_records").select("*").gte("completed_date", cpdYear.start).lte("completed_date", cpdYear.end),
       supabase.from("gifts").select("*").order("gift_date", { ascending: false }),
-      access.officeLicensee
+      complaintsShown
         ? supabase.from("complaints").select("*").order("received_date", { ascending: false })
         : Promise.resolve({ data: [] as Complaint[] }),
       supabase.from("breaches").select("*").order("identified_date", { ascending: false }),
@@ -66,7 +69,7 @@ export default async function RegistersExportPage() {
         .order("created_at", { ascending: true }),
       // Files on complaints, removed ones included, for the same people as the
       // complaints (0101). None before 0101 runs.
-      access.officeLicensee
+      complaintsShown
         ? supabase.from("complaint_files").select("*").eq("agency_id", profile.agency_id).order("added_at", { ascending: true })
         : Promise.resolve({ data: [] as ComplaintFile[] }),
     ]);
@@ -196,7 +199,7 @@ export default async function RegistersExportPage() {
         </ul>
       </section>
 
-      {access.officeLicensee && (
+      {complaintsShown && (
         <section className="mt-8">
           <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Complaints register</h2>
           <ul className="mt-2 space-y-1">

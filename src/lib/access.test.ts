@@ -16,6 +16,7 @@ describe("accessFrom", () => {
     assert.deepEqual(accessFrom(licensee, "office_1"), {
       actsAsLicensee: true,
       officeLicensee: true,
+      seesComplaints: true,
       isAssistant: false,
       isAgentPlan: false,
       runsOffice: true,
@@ -27,23 +28,31 @@ describe("accessFrom", () => {
     const a = accessFrom(agent, "office_2");
     assert.equal(a.actsAsLicensee, false);
     assert.equal(a.officeLicensee, false);
+    assert.equal(a.seesComplaints, false);
   });
 
   it("an agent on their own plan counts as the licensee, except for complaints", () => {
     const a = accessFrom(agent, "agent_1");
     assert.equal(a.actsAsLicensee, true);
     assert.equal(a.officeLicensee, false);
+    assert.equal(a.seesComplaints, false);
     assert.equal(a.isAgentPlan, true);
   });
 
   it("even a licensee in charge on an agent plan has no complaints register", () => {
     assert.equal(accessFrom(licensee, "agent_2").officeLicensee, false);
+    assert.equal(accessFrom(licensee, "agent_2").seesComplaints, false);
   });
 
   it("an archived person is nobody", () => {
     const a = accessFrom({ ...licensee, archived_at: "2026-10-01T00:00:00Z" }, "office_1");
     assert.equal(a.actsAsLicensee, false);
     assert.equal(a.officeLicensee, false);
+    assert.equal(a.seesComplaints, false);
+  });
+
+  it("an assistant has no complaints register", () => {
+    assert.equal(accessFrom(assistant, "office_1").seesComplaints, false);
   });
 
   it("an assistant to an agent on their own plan is not the licensee", () => {
@@ -73,6 +82,19 @@ describe("an office manager (0093)", () => {
     const a = accessFrom(agent, "office_1");
     assert.equal(a.runsOffice, false);
     assert.equal(a.isOfficeManager, false);
+    assert.equal(a.seesComplaints, false);
+  });
+
+  // DECISION (Adam, 31 Oct 2026; 0102): "adding and read only".
+  it("reads the complaints register and adds to it, but doesn't change, resolve or remove", () => {
+    const a = accessFrom(agent, "office_1", true);
+    assert.equal(a.seesComplaints, true);
+    assert.equal(a.officeLicensee, false);
+  });
+
+  it("has no complaints register once removed from the office, or on an agent plan", () => {
+    assert.equal(accessFrom({ ...agent, archived_at: "2026-10-31T00:00:00Z" }, "office_1", true).seesComplaints, false);
+    assert.equal(accessFrom(agent, "agent_1", true).seesComplaints, false);
   });
 
   it("is never one on an agent plan, or once removed from the office", () => {

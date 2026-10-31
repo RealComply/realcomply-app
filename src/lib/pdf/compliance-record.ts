@@ -341,7 +341,8 @@ export type ComplianceRecordInput = {
   /**
    * Complaints the office linked to this listing, with their files (0101,
    * Adam 30 Oct 2026). Only ever given where the caller may see complaints:
-   * the licensee in charge (the database returns none to anyone else).
+   * the licensee in charge, or an office manager since 0102 (the database
+   * returns none to anyone else).
    * Optional so older callers keep working; an empty list prints nothing.
    */
   complaints?: ComplaintForRecord[];

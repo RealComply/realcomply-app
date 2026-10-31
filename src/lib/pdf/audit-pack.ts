@@ -178,7 +178,8 @@ export async function buildAuditPack(
 
   // Complaints the office linked to this listing, and their files (0101).
   // Read with the client passed in, so with a signed-in user's own access
-  // only the licensee in charge's pack has them, as on the register. The
+  // only the licensee in charge's pack has them, or an office manager's
+  // since 0102, as on the register. The
   // full-rights callers (above) are kept to this one office by its id. Their
   // PDFs and photos are attached after the listing's own documents.
   const linked = await complaintsFor(supabase, agencyId, id);
