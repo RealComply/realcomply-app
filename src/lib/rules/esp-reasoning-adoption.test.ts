@@ -14,6 +14,7 @@ import {
   type PendingReasoning,
   type ReasoningAdoptionRecord,
 } from "./esp-reasoning-adoption";
+import { getItem } from "./nsw-sales";
 
 // The ESP reasoning is the agent's own opinion (a4c). Since 14 Oct 2026: one
 // tick under the box, needed before the card is done whatever put the words
@@ -217,26 +218,39 @@ describe("the disclaimer", () => {
 });
 
 describe("where the draft is offered", () => {
-  const base = { savedNote: "", documentNote: "", boxText: "", isDone: false, recordedElsewhere: false, reportRead: true };
+  // REVERSAL 31 Oct 2026 (Adam): the button no longer waits for an empty box.
+  const base = { boxText: "", draftInBox: null, isDone: false, reportRead: true };
 
-  it("empty box, report read: offered in the box", () => {
+  it("empty box, report read: the draft goes straight in", () => {
     assert.equal(draftOffer(base), "in_box");
+    assert.equal(draftOffer({ ...base, boxText: "  \n " }), "in_box");
   });
 
-  it("agent's own text not overwritten: saved reasoning, or text they have typed, means no offer", () => {
-    assert.equal(draftOffer({ ...base, savedNote: "Relied on 14 Smith St.", boxText: "Relied on 14 Smith St." }), "none");
-    assert.equal(draftOffer({ ...base, boxText: "I started writing this myself" }), "none");
+  it("the agent's own words in the box: the button asks first, never just replaces them", () => {
+    // Typed, saved on an open card, or read from their document: all theirs.
+    assert.equal(draftOffer({ ...base, boxText: "I started writing this myself" }), "ask_first");
+    assert.equal(draftOffer({ ...base, boxText: "Agent's notes from the appraisal: priced off the two Jones Ave sales." }), "ask_first");
   });
 
-  it("reasoning read from the uploaded document stays first; the draft is the second option", () => {
-    const doc = "Agent's notes from the appraisal: priced off the two Jones Ave sales.";
-    assert.equal(draftOffer({ ...base, documentNote: doc, boxText: doc }), "second_option");
-    assert.equal(draftOffer({ ...base, documentNote: doc, boxText: `${doc} And I added this.` }), "none");
+  it("RealComply's own draft, unchanged, is replaced without asking; once edited, it asks", () => {
+    const draft = "The sales I relied on are 1 Example St and 2 Sample Rd.";
+    assert.equal(draftOffer({ ...base, boxText: draft, draftInBox: draft }), "in_box");
+    assert.equal(draftOffer({ ...base, boxText: `${draft}\n`, draftInBox: draft }), "in_box");
+    assert.equal(draftOffer({ ...base, boxText: `${draft} I also looked at 3 Mock Close.`, draftInBox: draft }), "ask_first");
   });
 
-  it("no offer before the report is read, once done, or when recorded elsewhere", () => {
+  it("no button before the report is read, or once the card is done", () => {
     assert.equal(draftOffer({ ...base, reportRead: false }), "none");
     assert.equal(draftOffer({ ...base, isDone: true }), "none");
-    assert.equal(draftOffer({ ...base, recordedElsewhere: true }), "none");
+    assert.equal(draftOffer({ ...base, isDone: true, boxText: "My reasoning" }), "none");
+  });
+});
+
+describe("the example in the empty box", () => {
+  it("is a placeholder on the card, plainly an example, in plain words", () => {
+    const example = getItem("a4c")?.notePlaceholder ?? "";
+    assert.ok(example.startsWith("For example:"), example);
+    assert.ok(!/[—–]/.test(example), example);
+    assert.ok(!/compliant/i.test(example), example);
   });
 });

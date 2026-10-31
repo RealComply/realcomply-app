@@ -1,5 +1,6 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { register } from "node:module";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -55,15 +56,19 @@ describe("the disclaimer", () => {
   });
 
   it("is shown directly above every draft, whatever the evidence says", () => {
-    const drafts = draftsOfEveryKind();
-    assert.equal(drafts.length, 4);
-    for (const d of drafts) {
-      const html = renderToStaticMarkup(createElement(ui.DraftPreview, { draft: d }));
-      const at = html.indexOf(DISCLAIMER);
-      const firstWords = d.text.slice(0, 30).replace(/'/g, "&#x27;");
-      assert.ok(at >= 0, `no disclaimer on the ${d.evidence} draft`);
-      assert.ok(at < html.indexOf(firstWords), `the disclaimer is not above the ${d.evidence} draft`);
-    }
+    // Every draft, of every kind, is written into the box: since 31 Oct 2026
+    // there is no preview beside a document's reasoning ("Replace your text
+    // with a new draft?" took its place). The card puts the disclaimer
+    // directly above the box whenever one is in it; the browser test checks
+    // the same on screen.
+    assert.equal(draftsOfEveryKind().length, 4);
+    const card = readFileSync(new URL("../compliance/ItemCard.tsx", import.meta.url), "utf8");
+    const guard = card.indexOf('item.key === "a4c" && draftInBox');
+    const box = card.indexOf("<DictatableTextarea", guard);
+    assert.ok(guard > 0 && box > guard, "the disclaimer's place is above the a4c box");
+    assert.ok(card.slice(guard, box).includes("<Disclaimer />"), "and it is the disclaimer");
+    const assist = readFileSync(new URL("./ReasoningAssist.tsx", import.meta.url), "utf8");
+    assert.ok(assist.includes("onDraftInBox(draftShown)"), "the card is told whenever a draft is in the box");
   });
 
   it("is never part of the draft text, so it cannot travel with it", () => {

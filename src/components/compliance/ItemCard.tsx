@@ -906,8 +906,8 @@ function ChecklistItem({
   //
   // Everything "Draft my reasoning" is written from, gathered once. The draft
   // itself is only written when the agent asks for it (ReasoningAssist), and
-  // never over text that is already in the box — see draftOffer in
-  // lib/rules/esp-reasoning-adoption.ts. Until 2 Oct 2026 an older draft was
+  // never over their own words without asking first (31 Oct 2026) — see
+  // draftOffer in lib/rules/esp-reasoning-adoption.ts. Until 2 Oct 2026 an older draft was
   // poured into the box as its starting value; that went with the reversal
   // recorded in lib/data/esp-draft.ts, because "Mark done" then saved
   // generated text as the agent's reasoning without them ever confirming it.

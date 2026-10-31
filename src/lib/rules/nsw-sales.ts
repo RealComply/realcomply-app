@@ -518,6 +518,12 @@ const items: ComplianceItem[] = [
     hideEvidenceWhen: (current) =>
       (current?.data as { loggedElsewhere?: boolean } | undefined)?.loggedElsewhere !== true,
     evidenceLabel: "Your reasoning, if you have it as a file",
+    // Grey example in the empty box (Adam, 31 Oct 2026): a placeholder only,
+    // so it is never the box's value, never counts as the agent's text, is
+    // never saved, and goes the moment they type. "Draft my reasoning" works
+    // with it showing. Made-up sales, plainly an example.
+    notePlaceholder:
+      "For example: The sales I relied on are 12 Smith Street ($1,210,000) and 4 Jones Avenue ($1,265,000). This home is on a bigger block than both but has one fewer bathroom, so I put it between them.",
     requiresDate: false,
     requiredForStageCompletion: true,
   },

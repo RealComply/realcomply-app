@@ -265,25 +265,34 @@ export function pendingFromForm(formData: FormData): PendingReasoning | null {
 
 // ── Where the "Draft my reasoning" offer appears ────────────────────────
 //
-// NEVER OVER THE AGENT'S OWN TEXT. Saved reasoning means no offer at all.
-// Reasoning read from their uploaded document (step 3) goes in the box first,
-// and the draft is offered beside it as a second option they can choose. Text
-// they have typed into the box suppresses the offer until the box is empty.
+// ⚠️ REVERSAL, 31 Oct 2026 (Adam): "Today the agent has to delete the example
+// text in the reasoning box before the button that drafts the reasoning will
+// work. Remove that hurdle." Was (2 Oct 2026): never over the agent's own
+// text. Saved reasoning meant no offer at all, anything in the box hid the
+// button until the box was emptied, and reasoning read from their uploaded
+// document had the draft only as a second option beside it. Now the button is
+// there whenever a draft can be written and the card is not done:
+//   "in_box"     the box is empty, or holds RealComply's draft exactly as it
+//                went in: the new draft goes straight in.
+//   "ask_first"  the box holds the agent's own words (typed, dictated, read
+//                from their document, or saved): the button asks once,
+//                "Replace your text with a new draft?", and Cancel leaves
+//                their words exactly as they were.
+// The example in the empty box is a placeholder (a4c's notePlaceholder), never
+// the box's value, so it is never their text and never saved.
 
-export type DraftOffer = "in_box" | "second_option" | "none";
+export type DraftOffer = "in_box" | "ask_first" | "none";
 
 export function draftOffer(args: {
-  savedNote: string;
-  documentNote: string;
   boxText: string;
+  /** RealComply's draft as it went into the box, while it is still there. */
+  draftInBox: string | null;
   isDone: boolean;
-  recordedElsewhere: boolean;
   reportRead: boolean;
 }): DraftOffer {
-  if (args.isDone || args.recordedElsewhere || !args.reportRead) return "none";
-  if (args.savedNote.trim()) return "none";
+  if (args.isDone || !args.reportRead) return "none";
   const box = args.boxText.replace(/\s+/g, " ").trim();
   if (!box) return "in_box";
-  if (args.documentNote.trim() && box === args.documentNote.replace(/\s+/g, " ").trim()) return "second_option";
-  return "none";
+  if (args.draftInBox && box === args.draftInBox.replace(/\s+/g, " ").trim()) return "in_box";
+  return "ask_first";
 }

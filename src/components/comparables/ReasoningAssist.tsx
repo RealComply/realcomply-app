@@ -26,9 +26,13 @@ import {
 // lib/rules/esp-reasoning-adoption.ts). What the draft says, and the limits
 // on it, are in lib/data/esp-draft.ts.
 //
-// NEVER OVER THE AGENT'S OWN TEXT. Saved reasoning: no offer. Reasoning read
-// from their document: stays in the box, the draft is a second option beside
-// it. Anything they have typed: no offer until the box is empty.
+// NEVER OVER THE AGENT'S OWN WORDS WITHOUT ASKING (REVERSAL, 31 Oct 2026,
+// recorded at draftOffer in lib/rules/esp-reasoning-adoption.ts). The button
+// is there whenever a draft can be written. Into an empty box it goes straight
+// in; over anything of theirs (typed, read from their document, or saved) only
+// after "Replace your text with a new draft?" and Yes, and discarding that
+// draft puts their words back. The example in the empty box is a placeholder,
+// so it never counts as theirs.
 //
 // Writing into the box uses the same mechanism as EspPrompts and the dictate
 // button: set the textarea's value, dispatch an input event, move the caret.
@@ -71,7 +75,10 @@ export function ReasoningAssist({
 }) {
   const [boxText, setBoxText] = useState(initialText);
   const [chosen, setChosen] = useState<Chosen | null>(null);
-  const [preview, setPreview] = useState<EspDraft | null>(null);
+  // "Replace your text with a new draft?" is showing.
+  const [asking, setAsking] = useState(false);
+  // The agent's own words a draft replaced, so discarding it puts them back.
+  const [replaced, setReplaced] = useState("");
   // Set once the agent empties a box that held their document's reasoning:
   // whatever they type next is typed here, not read from the document.
   const [documentSetAside, setDocumentSetAside] = useState(false);
@@ -87,7 +94,8 @@ export function ReasoningAssist({
   if (recordSeen !== tickKey) {
     setRecordSeen(tickKey);
     setChosen(null);
-    setPreview(null);
+    setAsking(false);
+    setReplaced("");
   }
 
   // Follow the box. Uncontrolled textarea, so listen rather than own its value.
@@ -99,6 +107,8 @@ export function ReasoningAssist({
       setBoxText(el.value);
       if (!el.value.trim()) {
         setChosen(null);
+        setAsking(false);
+        setReplaced("");
         setDocumentSetAside(true);
       }
     };
@@ -121,22 +131,19 @@ export function ReasoningAssist({
     !documentSetAside &&
     Boolean(boxText.trim());
 
-  const offer = active
-    ? "none"
-    : draftOffer({
-        savedNote: savedReasoning,
-        documentNote: documentReasoning,
-        boxText,
-        isDone,
-        recordedElsewhere: false,
-        reportRead,
-      });
+  const offer = draftOffer({ boxText, draftInBox: active?.text ?? null, isDone, reportRead });
   const nudge = active || fromDocument ? null : reasoningNudge(savedReasoning, comparables);
   // Worked out up front, so "the agency agreement is needed first" sits where
   // the button would be rather than appearing only after a click.
   const result = offer === "none" || !draftInput ? null : draftEspReasoning(draftInput);
   const ready = result?.kind === "draft" ? result : null;
-  const unavailable = result?.kind === "unavailable" ? result.message : null;
+  // Said where it always was: under an empty box, or the document's reasoning.
+  const unavailable =
+    result?.kind === "unavailable" && (offer === "in_box" || fromDocument) ? result.message : null;
+  // Back to the reasoning from their document, as before 31 Oct, unless the
+  // draft replaced words of their own.
+  const toDocument = Boolean(documentReasoning.trim()) && !savedReasoning.trim();
+  const backToTheirs = Boolean(replaced.trim()) && replaced !== documentReasoning;
 
   // The tick. Not needed while the box holds exactly what the last tick
   // covered (the server applies the same test: tickCovers).
@@ -158,18 +165,28 @@ export function ReasoningAssist({
   }
 
   function applyDraft(d: EspDraft) {
+    // Their words, kept for "Back to your text". A redraft over RealComply's
+    // own unchanged draft keeps what that draft first replaced.
+    if (offer === "ask_first") setReplaced(boxText);
+    else if (!active) setReplaced("");
     writeInto(d.text);
     setChosen({ ...d, generatedAt: new Date().toISOString() });
-    setPreview(null);
+    setAsking(false);
     setTickedAgainst(null);
   }
 
+  function pressDraft(d: EspDraft) {
+    if (offer === "ask_first") setAsking(true);
+    else applyDraft(d);
+  }
+
   function leaveDraft() {
-    const backToDocument = Boolean(documentReasoning.trim()) && !savedReasoning.trim();
-    writeInto(backToDocument ? documentReasoning : "");
+    const back = backToTheirs ? replaced : toDocument ? documentReasoning : "";
+    writeInto(back);
     setChosen(null);
+    setReplaced("");
     setTickedAgainst(null);
-    if (backToDocument) setDocumentSetAside(false);
+    if (toDocument && back === documentReasoning) setDocumentSetAside(false);
   }
 
   const source = active ? "realcomply_draft" : fromDocument ? "document" : "";
@@ -193,9 +210,11 @@ export function ReasoningAssist({
             className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-[11px] font-semibold text-rc-muted transition hover:border-rc-ink/20 hover:text-rc-ink"
           >
             <X size={11} aria-hidden="true" />
-            {documentReasoning.trim() && !savedReasoning.trim()
-              ? "Back to the reasoning from your document"
-              : "Discard the draft"}
+            {backToTheirs
+              ? "Back to your text"
+              : toDocument
+                ? "Back to the reasoning from your document"
+                : "Discard the draft"}
           </button>
         </div>
       )}
@@ -211,10 +230,10 @@ export function ReasoningAssist({
         </p>
       )}
 
-      {offer === "in_box" && ready && (
+      {ready && (
         <button
           type="button"
-          onClick={() => applyDraft(ready)}
+          onClick={() => pressDraft(ready)}
           className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20"
         >
           <Sparkles size={12} aria-hidden="true" />
@@ -222,33 +241,27 @@ export function ReasoningAssist({
         </button>
       )}
 
-      {/* The draft as a second option beside the document's reasoning. */}
-      {offer === "second_option" && ready && !preview && (
-        <button
-          type="button"
-          onClick={() => setPreview(ready)}
-          className="text-[11px] font-semibold text-rc-ink underline decoration-rc-border underline-offset-2 hover:decoration-rc-ink"
-        >
-          Or see a draft written by RealComply
-        </button>
-      )}
-      {offer === "second_option" && preview && (
-        <DraftPreview draft={preview}>
+      {/* Asked once, only over the agent's own words. Cancel leaves them exactly as they are. */}
+      {asking && offer === "ask_first" && ready && (
+        <div role="alertdialog" className="rounded-lg border border-rc-border bg-neutral-50 px-3 py-2 text-sm">
+          <p className="text-rc-ink">Replace your text with a new draft?</p>
+          <div className="mt-2 flex gap-2">
             <button
               type="button"
-              onClick={() => applyDraft(preview)}
-              className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-[11px] font-semibold text-rc-ink transition hover:border-rc-ink/20"
+              onClick={() => applyDraft(ready)}
+              className="rounded-full bg-rc-green-deep px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600"
             >
-              Use this draft instead
+              Yes
             </button>
             <button
               type="button"
-              onClick={() => setPreview(null)}
-              className="rounded-full px-3 py-1.5 text-[11px] font-semibold text-rc-muted transition hover:text-rc-ink"
+              onClick={() => setAsking(false)}
+              className="rounded-full border border-rc-border px-4 py-1.5 text-xs font-medium text-rc-muted hover:bg-neutral-100"
             >
-              Keep the reasoning from my document
+              Cancel
             </button>
-        </DraftPreview>
+          </div>
+        </div>
       )}
 
       {unavailable && (
@@ -297,22 +310,6 @@ export function OwnOpinionTick({ checked, onChange }: { checked: boolean; onChan
       />
       <span>{OWN_OPINION}</span>
     </label>
-  );
-}
-
-/**
- * A draft shown outside the box (the second option beside the document's
- * reasoning): the disclaimer directly above it, then the draft, then the note
- * to the agent if the evidence needs one.
- */
-export function DraftPreview({ draft, children }: { draft: EspDraft; children?: React.ReactNode }) {
-  return (
-    <div className="space-y-2 rounded-lg border border-rc-border bg-rc-bg-alt px-3 py-2">
-      <Disclaimer />
-      <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-rc-ink">{draft.text}</p>
-      {draft.warning && <EvidenceWarning text={draft.warning} />}
-      {children && <div className="flex flex-wrap gap-2">{children}</div>}
-    </div>
   );
 }
 
