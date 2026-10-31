@@ -143,7 +143,7 @@ export function ReasoningAssist({
   // Back to the reasoning from their document, as before 31 Oct, unless the
   // draft replaced words of their own.
   const toDocument = Boolean(documentReasoning.trim()) && !savedReasoning.trim();
-  const backToTheirs = Boolean(replaced.trim()) && replaced !== documentReasoning;
+  const backToTheirs = Boolean(replaced.trim()) && !(toDocument && replaced === documentReasoning);
 
   // The tick. Not needed while the box holds exactly what the last tick
   // covered (the server applies the same test: tickCovers).
