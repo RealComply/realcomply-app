@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { C2_C3_RETIRED_AT, allItemsFor, allItemsInRuleset, getItem, itemsForStage } from "./nsw-sales";
+import { C2_C3_RETIRED_AT, X2_RETIRED_AT, allItemsFor, allItemsInRuleset, getItem, itemsForStage } from "./nsw-sales";
 import { scheduleOne } from "@/lib/legal/sg-annexure";
 import type { Property, PropertyItem } from "@/lib/types";
 
@@ -81,5 +81,74 @@ describe("the two retired On market cards", () => {
     const items = allItemsFor(listing(5), { sign_licensee: signedOff("2026-10-01T02:00:00.000Z") }).map((i) => i.key);
     const c1 = items.indexOf("c1");
     assert.deepEqual(items.slice(c1, c1 + 3), ["c1", "c2", "c3"]);
+  });
+});
+
+// REVERSAL 30 Oct 2026 (Adam): x2, "Conditions of sale prepared for display",
+// left the Pre-market stage of an auction file, on the same terms as c2 and c3.
+const auction = (stage: Property["stage"]) => ({ ...listing(stage), sale_method: "auction" }) as Property;
+const preMarket = (property: Property, items: Record<string, PropertyItem>) =>
+  itemsForStage(1, property, items).map((i) => i.key);
+const signedBefore = () => ({ sign_licensee: signedOff("2026-10-28T02:00:00.000Z") });
+const signedAfter = () => ({ sign_licensee: signedOff("2026-11-02T02:00:00.000Z") });
+
+describe("the retired Pre-market auction card", () => {
+  it("is not on an auction listing's Pre-market stage, so nothing waits on it", () => {
+    const keys = preMarket(auction(1), {});
+    assert.ok(keys.includes("x1") && !keys.includes("x2"), keys.join(","));
+    const required = itemsForStage(1, auction(1), {}).filter((i) => i.requiredForStageCompletion).map((i) => i.key);
+    assert.ok(required.includes("x1") && !required.includes("x2"), required.join(","));
+  });
+
+  it("is not on an open listing that already ticked it, and the answer stays put", () => {
+    const items = { x2: row("x2") };
+    assert.ok(!preMarket(auction(5), items).includes("x2"));
+    assert.equal(items.x2.status, "done");
+  });
+
+  it("stays on an auction file signed off before it retired, ticked or not, as it was", () => {
+    assert.ok(preMarket(auction(5), signedBefore()).includes("x2"));
+    assert.ok(preMarket(auction(5), { ...signedBefore(), x2: row("x2") }).includes("x2"));
+  });
+
+  it("is left off a file signed off after it retired, unless the file holds an answer for it", () => {
+    assert.ok(!preMarket(auction(5), signedAfter()).includes("x2"));
+    assert.ok(preMarket(auction(5), { ...signedAfter(), x2: row("x2") }).includes("x2"));
+  });
+
+  it("is never on a file that was not an auction, signed off or not", () => {
+    assert.ok(!preMarket(listing(5), signedBefore()).includes("x2"));
+  });
+
+  it("still marks the campaign as an auction where it was answered: a pass-in keeps its auction cards", () => {
+    const keys = preMarket(listing(2), { x2: row("x2") });
+    assert.ok(keys.includes("x1") && !keys.includes("x2"), keys.join(","));
+  });
+
+  it("is out of the SG annexure's Schedule 1 and the platform's list, but still known by key", () => {
+    assert.ok(!allItemsInRuleset().some((i) => i.key === "x2"));
+    const records = scheduleOne().flatMap((g) => g.rows.map((r) => r.record));
+    assert.ok(!records.includes("Conditions of sale prepared for display"));
+    // The day's own card stays.
+    assert.ok(records.includes("Conditions of sale on display"));
+    assert.equal(getItem("x2")?.label, "Conditions of sale prepared for display");
+  });
+
+  it("prints on a whole signed file in its place, after the auctioneer", () => {
+    const items = allItemsFor(auction(5), signedBefore()).map((i) => i.key);
+    assert.equal(items[items.indexOf("x1") + 1], "x2");
+  });
+
+  it("retires from midnight at the start of 30 Oct 2026, Sydney time, the day Adam asked", () => {
+    const sydney = new Intl.DateTimeFormat("en-AU", {
+      timeZone: "Australia/Sydney",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(X2_RETIRED_AT));
+    assert.equal(sydney, "30/10/2026, 00:00");
   });
 });
