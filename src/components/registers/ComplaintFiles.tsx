@@ -10,8 +10,10 @@ import { addedLine, fileSizeLabel, removedLine } from "@/lib/complaint-files";
 import type { ComplaintFile } from "@/lib/types";
 
 // The files on one complaint, inside its entry on the Complaints register
-// (0101; the REVERSAL of 16 Oct 2026 is in lib/complaint-files.ts). The
-// licensee in charge's only, like the register.
+// (0101; the REVERSAL of 16 Oct 2026 is in lib/complaint-files.ts). For
+// whoever has the register: the licensee in charge, and an office manager to
+// open and add files (Adam, 31 Oct 2026: "adding and read only"; 0102).
+// Removing a file is the licensee's only.
 //
 // One file at a time, chosen then attached, as everywhere else (FileDropZone
 // on why the two steps stay apart). Same types, 150 MB limit and empty or
@@ -24,14 +26,17 @@ export function ComplaintFiles({
   removed,
   urlByPath,
   nameOf,
+  canRemove = false,
 }: {
   agencyId: string;
   complaintId: string;
   current: ComplaintFile[];
   removed: ComplaintFile[];
-  /** Short-lived links to open each file, made on the server with the licensee's own access. */
+  /** Short-lived links to open each file, made on the server with the viewer's own access. */
   urlByPath: Record<string, string>;
   nameOf: Record<string, string>;
+  /** The licensee in charge only. An office manager opens and adds, never removes. */
+  canRemove?: boolean;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [attaching, setAttaching] = useState(false);
@@ -109,17 +114,19 @@ export function ComplaintFiles({
                       ) : (
                         <span className="text-rc-faint">Can&apos;t open just now</span>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => setConfirming(f.id)}
-                        disabled={removing !== null}
-                        className="text-rc-faint transition hover:text-rc-amber-deep disabled:opacity-60"
-                      >
-                        {removing === f.id ? "Removing…" : "Remove"}
-                      </button>
+                      {canRemove && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirming(f.id)}
+                          disabled={removing !== null}
+                          className="text-rc-faint transition hover:text-rc-amber-deep disabled:opacity-60"
+                        >
+                          {removing === f.id ? "Removing…" : "Remove"}
+                        </button>
+                      )}
                     </div>
                   </div>
-                  {confirming === f.id && (
+                  {canRemove && confirming === f.id && (
                     <div role="alertdialog" className="mt-2 rounded-lg border border-rc-border bg-neutral-50 px-3 py-2 text-sm">
                       <p className="text-rc-ink">
                         Remove {f.file_name} from this complaint? The file is deleted, and the register keeps a record

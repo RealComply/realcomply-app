@@ -8,9 +8,10 @@ import { formatAuDateTimeShort } from "@/lib/format-date";
 // complaints can have files (the complaint email, letters, photos, the outcome
 // letter), as many as needed, added at any time while the complaint is open or
 // after. Breaches stay notes only. The same people who see complaints see and
-// add them: the licensee in charge (decided 9 Oct 2026). Removing one is the
-// licensee's too, and every removal is recorded: who, when and the file's
-// name. Nothing is deleted silently. No AI reading of these files.
+// add them: the licensee in charge (decided 9 Oct 2026), and an office manager
+// (Adam, 31 Oct 2026: "adding and read only"; 0102). Removing one is the
+// licensee in charge's only, and every removal is recorded: who, when and the
+// file's name. Nothing is deleted silently. No AI reading of these files.
 //
 // What is said about them, in one place, so the register, its export and the
 // audit pack say the same thing.

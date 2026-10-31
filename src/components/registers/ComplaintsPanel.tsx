@@ -33,6 +33,7 @@ export function ComplaintsPanel({
   staff,
   properties,
   viewerProfile,
+  canChange = false,
   nameOf = {},
   resolutionTargetDays,
   files = [],
@@ -43,6 +44,12 @@ export function ComplaintsPanel({
   staff: Profile[];
   properties: Property[];
   viewerProfile: Profile;
+  /**
+   * Review, Resolve, removing a file and deleting a complaint: the licensee in
+   * charge only. An office manager reads the register and adds to it, nothing
+   * more (Adam, 31 Oct 2026: "adding and read only"; 0102).
+   */
+  canChange?: boolean;
   /** Everyone's display name, people who have left included (the picker isn't). */
   nameOf?: Record<string, string>;
   resolutionTargetDays: number;
@@ -53,7 +60,7 @@ export function ComplaintsPanel({
   files?: ComplaintFile[];
   /** False until 0101 has run: no Files column, and nothing to add one with. */
   filesReady?: boolean;
-  /** Links to open each file, made on the server with the licensee's own access. */
+  /** Links to open each file, made on the server with the viewer's own access. */
   fileUrlByPath?: Record<string, string>;
 }) {
   const [adding, setAdding] = useState(false);
@@ -77,6 +84,10 @@ export function ComplaintsPanel({
   const nameFor = (id: string | null) =>
     id ? nameOf[id] ?? staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "—" : "—";
   const addressFor = (id: string | null) => (id ? properties.find((p) => p.id === id)?.address ?? null : null);
+  // An office manager sees only the listings they can open (every listing in
+  // the office is still the licensee's, 0093). A complaint linked to another
+  // listing says so, without its address.
+  const linkedElsewhere = (id: string | null) => Boolean(id) && !addressFor(id);
 
   return (
     <div>
@@ -95,6 +106,11 @@ export function ComplaintsPanel({
             <p className="mt-0.5 text-xs text-rc-muted">
               Every complaint logged and tracked to resolution. A complaint touching a property is cross-linked to that file.
             </p>
+            {!canChange && (
+              <p className="mt-1 text-xs text-rc-muted">
+                You can log complaints and add files. Review, Resolve and removing are for the licensee in charge.
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -187,6 +203,8 @@ export function ComplaintsPanel({
                             <Link href={`/dashboard/${c.property_id}`} className="text-rc-green-deep hover:underline">
                               {addressFor(c.property_id)}
                             </Link>
+                          ) : linkedElsewhere(c.property_id) ? (
+                            <span className="text-xs text-rc-muted">A listing you can&apos;t open</span>
                           ) : (
                             "—"
                           )}
@@ -217,7 +235,7 @@ export function ComplaintsPanel({
                         )}
                         <td className="py-2 text-right">
                           <div className="flex justify-end gap-2">
-                            {c.status !== "resolved" && (
+                            {canChange && c.status !== "resolved" && (
                               <>
                                 {c.status === "open" && (
                                   <form action={updateComplaintStatus.bind(null, c.id, "under_review")}>
@@ -236,7 +254,7 @@ export function ComplaintsPanel({
                             {/* A complaint with files on it keeps them until each is
                                 removed, and each removal is recorded (0101): the
                                 database refuses deleting it before then. */}
-                            {viewerProfile.is_licensee_in_charge &&
+                            {canChange &&
                               (current.length > 0 ? (
                                 <span
                                   title="Remove its files first. Each removal is recorded."
@@ -267,6 +285,7 @@ export function ComplaintsPanel({
                                 removed={removed}
                                 urlByPath={fileUrlByPath}
                                 nameOf={nameOf}
+                                canRemove={canChange}
                               />
                             </div>
                           </td>

@@ -9,20 +9,21 @@ import { complaintFileDisplayName } from "@/lib/complaint-files";
 // lib/complaint-files.ts). The browser uploads the file straight to Storage,
 // into the complaint's own folder ({office}/_complaints/{complaint}/), as every
 // upload in the app does (lib/storage/evidence.ts on why); these record it.
-// The licensee in charge only, like complaints themselves (Adam, 9 Oct 2026):
-// checked here, and enforced by the database and Storage whatever calls them.
-// No AI reading of these files.
+// Adding: whoever has the register, the licensee in charge and an office
+// manager (Adam, 31 Oct 2026: "adding and read only"; 0102). Removing: the
+// licensee in charge only. Checked here, and enforced by the database and
+// Storage whatever calls them. No AI reading of these files.
 
 export type ComplaintFileResult = { error: string | null };
 
-/** Records a file the licensee has just uploaded to one of their complaints. */
+/** Records a file just uploaded to one of the office's complaints. */
 export async function addComplaintFile(
   complaintId: string,
   path: string,
   fileName: string,
 ): Promise<ComplaintFileResult> {
   const { supabase, profile, access } = await requireAuthContext();
-  if (!access.officeLicensee) return { error: "Complaints go to the licensee in charge." };
+  if (!access.seesComplaints) return { error: "Complaints go to the licensee in charge." };
 
   const { data: complaint } = await supabase
     .from("complaints")
@@ -40,7 +41,9 @@ export async function addComplaintFile(
 
   const bucket = supabase.storage.from(EVIDENCE_BUCKET);
   // Empty, or won't open (19 Oct 2026): refused, and what landed is taken
-  // away again, so nothing sits in the folder unrecorded.
+  // away again, so nothing sits in the folder unrecorded. An office manager
+  // may take back only their own upload, and only while it is on no record
+  // (0102).
   const problem = await storedFileProblem(supabase, path);
   if (problem) {
     await bucket.remove([path]);
