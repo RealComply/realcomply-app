@@ -77,11 +77,15 @@ function assistantBlocked(itemKey: string, profile: { is_assistant?: boolean }):
 //      both. Not every card's: on most cards aiDraft is an offer the save
 //      answers (a1/a2's auto-tick, which Reopen has to undo; a4c's reasoning,
 //      see esp-reasoning-adoption.ts).
+//   a4 reportRead — what the last read of the comparable-sales report came
+//      to (lib/documents/report-read). Mark done would otherwise erase the
+//      card's only word that a read failed or found nothing (30 Oct 2026).
 const CARRIED_BY_ITEM: Record<string, string[]> = {
   f4: ["entries", "loggedElsewhere", "loggedElsewhereWhere"],
   c1: ["websiteScan"],
   a3: ["aiDraft"],
   b1: ["aiDraft"],
+  a4: ["reportRead"],
 };
 
 // Kept on every card: the attached file's name. The file itself (evidence_path)

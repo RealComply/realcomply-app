@@ -6,6 +6,8 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { downloadedFileProblem } from "@/lib/storage/file-check";
 import { readableBytes } from "@/lib/documents/readable-bytes";
+import { UnfinishedAnswer, toolAnswer, unfinishedMessage } from "@/lib/documents/reader-answer";
+import { reportReadFailed, reportReadFrom, type ReportRead } from "@/lib/documents/report-read";
 import {
   READER_IMAGE_MAX_BYTES,
   READER_PART_MAX_BYTES,
@@ -1504,6 +1506,12 @@ type PartQuestion = {
   text: string | ((partIndex: number) => string);
   tool: Anthropic.Messages.Tool;
   maxTokens: number;
+  /**
+   * An answer cut off at maxTokens, refused, or with no tool call is a failed
+   * read, not an empty one (lib/documents/reader-answer). The three listing
+   * documents ask for this; the other readers keep what they had.
+   */
+  failIfUnfinished?: boolean;
 };
 
 /**
@@ -1527,10 +1535,7 @@ async function askParts(
       tools: [question.tool],
       tool_choice: { type: "tool", name: question.tool.name },
     });
-    const toolUse = response.content.find(
-      (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
-    );
-    return (toolUse?.input ?? null) as Record<string, unknown> | null;
+    return toolAnswer(response, question.failIfUnfinished ?? false);
   });
   return answers.filter((a): a is Record<string, unknown> => a !== null);
 }
@@ -1546,6 +1551,10 @@ class TooLargeToRead extends Error {}
 function readFailure(err: unknown): string {
   if (err instanceof TooLargeToRead || isTooLargeError(err)) {
     return "too large to read automatically, so enter its details yourself";
+  }
+  if (err instanceof UnfinishedAnswer) {
+    console.error("document read unfinished:", err.why);
+    return unfinishedMessage(err.why);
   }
   if (err instanceof Anthropic.APIError) {
     console.error("document read failed:", err.status, err.message);
@@ -1598,7 +1607,15 @@ async function extractOneDocument(
   const expected = EXPECTED_KIND[source];
 
   const question: PartQuestion = {
-    maxTokens: 1536,
+    // Room for a whole comparable-sales report (30 Oct 2026). The answer
+    // lists every sale and every on-market listing the report holds, field by
+    // field, and at 1,536 a report of about six sales already filled it: the
+    // answer was cut off, read as "nothing found", and the comparables and
+    // the reasoning draft never appeared. 16,000 keeps one answer inside
+    // the time a request that isn't streamed is given; most answers use a
+    // few hundred, and a long report a few thousand.
+    maxTokens: 16000,
+    failIfUnfinished: true,
     system:
       "You are extracting facts from a real-estate compliance document for a NSW licensed agent's compliance " +
       "file (RealComply). This is diligence support only — the licensee reviews everything and decides, you do " +
@@ -2056,11 +2073,6 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
     .filter((i) => !onlyItemKey || i.item_key === onlyItemKey)
     .sort((x, y) => READ_ORDER.indexOf(x.item_key as SourceKey) - READ_ORDER.indexOf(y.item_key as SourceKey));
 
-  // Whether the agency agreement itself was among the documents read. Only if
-  // it was can we conclude anything about the consumer-guide acknowledgement:
-  // a run scoped to the contract or the comparables says nothing either way.
-  const readAgencyAgreement = withEvidence.some((i) => i.item_key === "a3");
-
   if (withEvidence.length === 0) {
     return {
       error: "No documents attached yet — attach the agency agreement, contract, or comparable-sales report first.",
@@ -2071,13 +2083,31 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
   const patches: DraftPatch[] = [];
   const failures: string[] = [];
 
+  // The documents read to the end this run. One that failed was not read, so
+  // nothing below may conclude anything from its silence.
+  const readToEnd = new Set<string>();
+  // The comparable-sales report's outcome, kept on its card (lib/documents/report-read).
+  let reportRead: ReportRead | null = null;
   for (const item of withEvidence) {
+    const readAt = new Date().toISOString();
     try {
-      patches.push(...(await extractOneDocument(supabase, anthropic, item, prescribedDocs)));
+      const found = await extractOneDocument(supabase, anthropic, item, prescribedDocs);
+      patches.push(...found);
+      readToEnd.add(item.item_key);
+      if (item.item_key === "a4") reportRead = reportReadFrom(found, item.evidence_path!, readAt);
     } catch (err) {
-      failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${readFailure(err)}`);
+      const why = readFailure(err);
+      failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${why}`);
+      if (item.item_key === "a4") reportRead = reportReadFailed(why, item.evidence_path!, readAt);
     }
   }
+
+  // Whether the agency agreement itself was read, to the end. Only if it was
+  // can we conclude anything about the consumer-guide acknowledgement: a run
+  // scoped to the contract or the comparables says nothing either way, and
+  // nor does a read of the agreement that failed (30 Oct 2026: before, a
+  // failed read still let the cards say the guide and VOI weren't in it).
+  const readAgencyAgreement = readToEnd.has("a3");
 
   // Method of sale and the auction date, lifted off the agency agreement.
   //
@@ -2372,7 +2402,7 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
   // Only items whose source document was actually read this run are cleared.
   // A run scoped to one attachment (onlyItemKey) says nothing about the items
   // belonging to the other two documents, so it must not wipe them.
-  const readSources = withEvidence.map((i) => i.item_key as SourceKey);
+  const readSources = withEvidence.filter((i) => readToEnd.has(i.item_key)).map((i) => i.item_key as SourceKey);
   const covered = new Set(readSources.flatMap((s) => Array.from(SOURCE_TARGETS[s])));
   const spokenFor = new Set(patches.map((p) => p.itemKey));
   const staleFindings = Array.from(covered).filter(
@@ -2486,6 +2516,27 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
         { onConflict: "property_id,item_key" },
       );
     }
+  }
+
+  // What the comparable-sales report's read came to, on its card: read with
+  // what it found, read with nothing in it, couldn't be read, or the wrong
+  // document. Written last, over the latest copy of the card, because the
+  // agreement's ESP figures may have just been written to the same card.
+  // Never touches the ESP the agent typed, or anything else on the card.
+  if (reportRead) {
+    const { data: a4Row } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", propertyId)
+      .eq("item_key", "a4")
+      .maybeSingle();
+    const a4Data = ((a4Row as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<string, unknown>;
+    const { error: reportReadError } = await supabase
+      .from("property_items")
+      .update({ data: { ...a4Data, reportRead } })
+      .eq("property_id", propertyId)
+      .eq("item_key", "a4");
+    if (reportReadError) console.error("report read not recorded:", propertyId, reportReadError.message);
   }
 
   revalidatePath(`/dashboard/${propertyId}`);
