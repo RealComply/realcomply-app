@@ -76,6 +76,8 @@ const FOLDERS: Record<string, string> = {
   "_sg-manual": "Statement of generic matters",
   _signoffs: "Signed-off documents",
   _pending: "Unsaved uploads",
+  // Files on complaints (0101), a folder per complaint (see zipPathFor).
+  _complaints: "Complaints",
 };
 
 /**
@@ -100,6 +102,16 @@ export async function buildManifest(service: SupabaseClient, agencyId: string, a
     ((pmRows ?? []) as Array<{ id: string; address: string }>).map((p) => [p.id, `Property management/${safeZipName(p.address)}`]),
   );
 
+  // A complaint's files under its date received and who it was from, rather
+  // than its id (0101).
+  const { data: complaintRows } = await service
+    .from("complaints")
+    .select("id, received_date, complainant")
+    .eq("agency_id", agencyId);
+  const complaintFolders = complaintFolderNames(
+    (complaintRows ?? []) as Array<{ id: string; received_date: string; complainant: string }>,
+  );
+
   // Files.
   const objects = await listAllObjects(service, agencyId);
   const paths = objects.map((o) => o.path);
@@ -111,7 +123,7 @@ export async function buildManifest(service: SupabaseClient, agencyId: string, a
     if (error) throw new Error(`could not sign file links: ${error.message}`);
     for (const signed of data ?? []) {
       if (!signed.signedUrl || !signed.path) continue;
-      const base = zipPathFor(signed.path, folderFor, pmFolder);
+      const base = zipPathFor(signed.path, folderFor, pmFolder, complaintFolders);
       let zipPath = base;
       for (let n = 2; zipNames.has(zipPath); n++) zipPath = base.replace(/(\.[^./]*)?$/, ` (${n})$1`);
       zipNames.add(zipPath);
@@ -127,12 +139,37 @@ export async function buildManifest(service: SupabaseClient, agencyId: string, a
   };
 }
 
-function zipPathFor(path: string, listings: Map<string, string>, pm: Map<string, string>): string {
+/** One folder name per complaint: "2026-10-12 K. Adams, buyer", numbered where two would match. */
+export function complaintFolderNames(
+  complaints: Array<{ id: string; received_date: string; complainant: string }>,
+): Map<string, string> {
+  const used = new Set<string>();
+  const out = new Map<string, string>();
+  for (const c of [...complaints].sort((a, b) => a.received_date.localeCompare(b.received_date))) {
+    const base = safeZipName(`${c.received_date} ${c.complainant}`);
+    let name = base;
+    for (let n = 2; used.has(name); n++) name = `${base} (${n})`;
+    used.add(name);
+    out.set(c.id, name);
+  }
+  return out;
+}
+
+export function zipPathFor(
+  path: string,
+  listings: Map<string, string>,
+  pm: Map<string, string>,
+  complaints: Map<string, string> = new Map(),
+): string {
   const [, first, ...rest] = path.split("/");
   const tail = rest.map(safeZipName).join("/");
   const file = tail || safeZipName(first ?? "file");
   if (first && listings.has(first)) return `${listings.get(first)}/Documents/${tail}`;
   if (first && pm.has(first)) return `${pm.get(first)}/${tail}`;
+  // A complaint's own folder by its name; one whose complaint has gone keeps its id.
+  if (first === "_complaints" && rest.length > 1 && complaints.has(rest[0])) {
+    return `Documents/Complaints/${complaints.get(rest[0])}/${rest.slice(1).map(safeZipName).join("/")}`;
+  }
   if (first && FOLDERS[first]) return `Documents/${FOLDERS[first]}/${tail}`;
   return `Documents/Other/${first ? `${safeZipName(first)}/` : ""}${file}`;
 }
@@ -154,6 +191,8 @@ const TABLES: Array<{ table: string; file: string; order?: string }> = [
   { table: "property_signoff_requests", file: "Licensee sign-off and price approval links", order: "created_at" },
   { table: "gifts", file: "Gift register", order: "gift_date" },
   { table: "complaints", file: "Complaint register", order: "received_date" },
+  // Files on complaints, removed ones included with who removed them and when (0101).
+  { table: "complaint_files", file: "Complaint files", order: "added_at" },
   { table: "breaches", file: "Breach register", order: "identified_date" },
   { table: "cpd_records", file: "CPD records", order: "completed_date" },
   { table: "cpd_year_signoffs", file: "CPD year sign-offs", order: "created_at" },
@@ -201,6 +240,7 @@ const PERSON_COLUMNS = new Set([
   "moved_by", "from_agent", "to_agent", "changed_by", "manager_id", "recorded_by", "response_given_by",
   "assistant_id", "review_requested_by", "attributes_confirmed_by", "invited_by", "archived_by",
   "voided_by", "deleted_by", "removed_by", "ended_by", "started_on_recorded_by", "fair_trading_recorded_by",
+  "added_by",
 ]);
 
 async function registersAsCsv(service: SupabaseClient, agencyId: string): Promise<Manifest["csv"]> {

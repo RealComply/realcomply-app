@@ -271,6 +271,17 @@ export function buildOtherInsuranceDocPath(agencyId: string, policyId: string, f
   return `${otherInsuranceFolder(agencyId, policyId)}${Date.now()}-${sanitizeFileName(fileName)}`;
 }
 
+// A complaint's files (0101, 30 Oct 2026): one folder per complaint, by its id.
+// The licensee in charge's only, in Storage and in the database, which refuses
+// a file anywhere else.
+export function complaintFolder(agencyId: string, complaintId: string): string {
+  return `${agencyId}/_complaints/${complaintId}/`;
+}
+
+export function buildComplaintFilePath(agencyId: string, complaintId: string, fileName: string): string {
+  return `${complaintFolder(agencyId, complaintId)}${Date.now()}-${sanitizeFileName(fileName)}`;
+}
+
 // The provider's record of completion for one CPD activity. Kept per person
 // rather than per agency folder, because retention is the individual's
 // obligation (3 years; 4 for an assistant agent's statement of attainment)

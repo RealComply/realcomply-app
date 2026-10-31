@@ -16,8 +16,8 @@ import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type { ReminderInfo } from "@/components/registers/ReminderLine";
 import type {
-  Agency, Breach, Complaint, CpdRecord, Gift, InsuranceHistoryRow, InsurancePolicy, InsurancePolicyType, LicenceReminder,
-  Profile, Property,
+  Agency, Breach, Complaint, ComplaintFile, CpdRecord, Gift, InsuranceHistoryRow, InsurancePolicy, InsurancePolicyType,
+  LicenceReminder, Profile, Property,
 } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
 
@@ -226,6 +226,28 @@ export default async function RegistersPage({
     }
   }
 
+  // Files on complaints (0101): the licensee in charge only, like the register
+  // itself, and links to open them signed with the licensee's own access.
+  // Before 0101 has run there is no table: no Files column.
+  let complaintFiles: ComplaintFile[] = [];
+  let complaintFilesReady = false;
+  const complaintFileUrlByPath: Record<string, string> = {};
+  if (access.officeLicensee && agency) {
+    const { data: fileRows, error: filesError } = await supabase
+      .from("complaint_files")
+      .select("*")
+      .eq("agency_id", agency.id)
+      .order("added_at", { ascending: true });
+    if (filesError) console.error("complaint_files not read:", filesError.message);
+    complaintFilesReady = !filesError;
+    complaintFiles = (fileRows ?? []) as ComplaintFile[];
+    const paths = complaintFiles.filter((f) => !f.removed_at).map((f) => f.file_path);
+    if (paths.length > 0) {
+      const { data: signed } = await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrls(paths, 3600);
+      for (const s of signed ?? []) if (s.path && s.signedUrl) complaintFileUrlByPath[s.path] = s.signedUrl;
+    }
+  }
+
   const insuranceStatuses = agency
     ? [agency.pi_expiry, agency.cyber_expiry, agency.icare_expiry, ...otherPolicies.map((p) => p.expiry)].map((d) =>
         expiryStatus(d),
@@ -332,6 +354,9 @@ export default async function RegistersPage({
                   viewerProfile={profile}
                   nameOf={nameOf}
                   resolutionTargetDays={agency.complaint_resolution_target_days}
+                  files={complaintFiles}
+                  filesReady={complaintFilesReady}
+                  fileUrlByPath={complaintFileUrlByPath}
                 />
               }
               breaches={

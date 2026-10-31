@@ -4,7 +4,8 @@ import { requireOfficePage } from "@/lib/data/current-profile";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { LICENCE_CATEGORY_LABELS, cleanLicenceCategories } from "@/lib/rules/nsw-cpd";
 import { BREACH_CATEGORY_LABELS } from "@/lib/types";
-import type { Agency, Breach, Complaint, CpdRecord, Gift, InsurancePolicy, Profile } from "@/lib/types";
+import type { Agency, Breach, Complaint, ComplaintFile, CpdRecord, Gift, InsurancePolicy, Profile } from "@/lib/types";
+import { addedLine, complaintFilesFor, filesOfDeletedComplaints, removedLine } from "@/lib/complaint-files";
 import { otherInsuranceTitle } from "@/lib/insurance-read";
 import { formatAuDateTimeShort } from "@/lib/format-date";
 import { PrintButton } from "./PrintButton";
@@ -43,6 +44,7 @@ export default async function RegistersExportPage() {
     { data: breachRows },
     { data: cpdSignoffRows },
     { data: otherInsuranceRows },
+    { data: complaintFileRows },
   ] =
     await Promise.all([
       supabase.from("profiles").select("*").order("full_name", { ascending: true }),
@@ -62,6 +64,11 @@ export default async function RegistersExportPage() {
         .eq("agency_id", profile.agency_id)
         .is("removed_at", null)
         .order("created_at", { ascending: true }),
+      // Files on complaints, removed ones included, for the same people as the
+      // complaints (0101). None before 0101 runs.
+      access.officeLicensee
+        ? supabase.from("complaint_files").select("*").eq("agency_id", profile.agency_id).order("added_at", { ascending: true })
+        : Promise.resolve({ data: [] as ComplaintFile[] }),
     ]);
   const otherInsurance = (otherInsuranceRows ?? []) as InsurancePolicy[];
   const cpdDone = new Set(((cpdSignoffRows ?? []) as Array<{ profile_id: string }>).map((r) => r.profile_id));
@@ -76,6 +83,9 @@ export default async function RegistersExportPage() {
     (cpdByProfile[row.profile_id] ??= []).push(row);
   }
   const nameFor = (id: string) => staff.find((s) => s.id === id)?.full_name ?? staff.find((s) => s.id === id)?.email ?? "Unknown";
+  const complaintFiles = (complaintFileRows ?? []) as ComplaintFile[];
+  const nameOf: Record<string, string> = {};
+  for (const s of staff) nameOf[s.id] = s.full_name ?? s.email;
 
   // The people in the office today, then anyone who has left under "Former
   // staff": the same split as the Licences tab (10 Oct 2026), so the page and
@@ -191,16 +201,42 @@ export default async function RegistersExportPage() {
           <h2 className="border-b border-rc-border pb-1 text-sm font-semibold text-rc-ink">Complaints register</h2>
           <ul className="mt-2 space-y-1">
             {complaints.length === 0 && <li className="text-sm text-rc-muted">No complaints logged.</li>}
-            {complaints.map((c) => (
-              <li key={c.id} className="text-sm">
-                <span className="font-medium text-rc-ink">{c.received_date}</span>{" "}
-                <span className="text-rc-muted">
-                  — {c.complainant} · {c.nature} · {c.status}
-                  {c.resolved_date ? ` (resolved ${c.resolved_date})` : ""}
-                </span>
-              </li>
-            ))}
+            {complaints.map((c) => {
+              const { current, removed } = complaintFilesFor(c.id, complaintFiles);
+              return (
+                <li key={c.id} className="text-sm">
+                  <span className="font-medium text-rc-ink">{c.received_date}</span>{" "}
+                  <span className="text-rc-muted">
+                    — {c.complainant} · {c.nature} · {c.status}
+                    {c.resolved_date ? ` (resolved ${c.resolved_date})` : ""}
+                  </span>
+                  {/* Each file by name, and every removal with who and when (0101). */}
+                  {current.map((f) => (
+                    <div key={f.id} className="ml-4 text-xs text-rc-muted">
+                      File: {f.file_name} · {addedLine(f, nameOf)}
+                    </div>
+                  ))}
+                  {removed.map((f) => (
+                    <div key={f.id} className="ml-4 text-xs text-rc-faint">
+                      Removed file: {f.file_name} · {addedLine(f, nameOf)} · {removedLine(f, nameOf)}
+                    </div>
+                  ))}
+                </li>
+              );
+            })}
           </ul>
+          {filesOfDeletedComplaints(complaintFiles).length > 0 && (
+            <>
+              <h3 className="mt-4 text-xs font-semibold text-rc-muted">Files removed from complaints since deleted</h3>
+              <ul className="mt-1 space-y-1">
+                {filesOfDeletedComplaints(complaintFiles).map((f) => (
+                  <li key={f.id} className="text-xs text-rc-faint">
+                    {f.file_name} · {addedLine(f, nameOf)} · {removedLine(f, nameOf)}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
       )}
 
