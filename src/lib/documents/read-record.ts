@@ -69,8 +69,11 @@ export type ReaderAlert = {
   reader: ReaderName;
   card: string;
   fileName: string;
-  office: string;
+  /** Null only when sent without the record and the name couldn't be looked up. */
+  office: string | null;
   listing: string | null;
+  /** The listing the read was on, if any: named by id when its address couldn't be looked up. */
+  propertyId?: string | null;
   outcome: ReadOutcome;
   why: ReadFailureWhy | null;
   sales: number | null;
@@ -222,8 +225,9 @@ export async function noteRead(supabase: RpcClient, note: ReadNote, options: Opt
         reader: note.reader,
         card: note.card,
         fileName: note.fileName,
-        office: names.office ?? "Not known (it couldn't be looked up)",
-        listing: names.listing ?? (note.propertyId ? `Not known (it couldn't be looked up; listing id ${note.propertyId})` : null),
+        office: names.office,
+        listing: names.listing,
+        propertyId: note.propertyId ?? null,
         outcome: note.outcome,
         why,
         sales: note.reader === "comparable_sales" ? (note.sales ?? 0) : null,

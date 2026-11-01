@@ -220,8 +220,12 @@ describe("a read the database can't record", () => {
       await noteRead(down(lookup).client, { reader: "contract", card: "Contract (b1)", fileName: "c.pdf", propertyId: listing(n), outcome: "failed", why: "service" }, box.options);
       await settle();
       assert.equal(box.sent.length, 1, lookup);
-      assert.equal(box.sent[0].office, "Not known (it couldn't be looked up)");
-      assert.equal(box.sent[0].listing, `Not known (it couldn't be looked up; listing id ${listing(n)})`);
+      assert.equal(box.sent[0].office, null);
+      assert.equal(box.sent[0].listing, null);
+      const email = readerAlertEmail(box.sent[0]);
+      assert.equal(email.subject, "RealComply alert: a contract for sale couldn't be read (listing not known)");
+      assert.ok(email.text.includes("Office: Not known (it couldn't be looked up)"));
+      assert.ok(email.text.includes(`Listing: Not known (it couldn't be looked up; listing id ${listing(n)})`));
     }
   });
 

@@ -25,7 +25,12 @@ const WHAT_HAPPENED: Record<ReadFailureWhy, string> = {
 
 export function readerAlertEmail(a: ReaderAlert): { subject: string; text: string } {
   const what = READERS[a.reader];
-  const where = a.listing ?? a.office;
+  // Office and listing are known unless the alert went without the record and
+  // they couldn't be looked up (2 Nov 2026); then the listing is named by id.
+  const where = a.listing ?? (a.propertyId ? "listing not known" : (a.office ?? "office not known"));
+  const office = a.office ?? "Not known (it couldn't be looked up)";
+  const listing =
+    a.listing ?? (a.propertyId ? `Not known (it couldn't be looked up; listing id ${a.propertyId})` : "none (not a listing document)");
   const zeroComparables = a.outcome !== "failed";
   const subject = zeroComparables
     ? `RealComply alert: a comparable-sales report gave 0 comparables (${where})`
@@ -42,15 +47,15 @@ export function readerAlertEmail(a: ReaderAlert): { subject: string; text: strin
   const once = a.unrecorded
     ? `Not recorded: the record of reads couldn't be written (${a.unrecorded}), so this email was sent anyway. ` +
       "It won't be in Monday's count, and another email about this today is possible."
-    : a.listing
+    : a.listing || a.propertyId
       ? "This is the only email about this listing today. Any more failed reads on it today are recorded, not emailed."
       : `This is the only email about ${what} reads in this office today. Any more today are recorded, not emailed.`;
 
   const text = [
     zeroComparables ? "A comparable-sales report was read and gave 0 comparables." : `A ${what} couldn't be read.`,
     "",
-    `Office: ${a.office}`,
-    `Listing: ${a.listing ?? "none (not a listing document)"}`,
+    `Office: ${office}`,
+    `Listing: ${listing}`,
     `Card: ${a.card}`,
     `File: ${a.fileName}`,
     `When: ${formatAuDateTimeShort(a.at.toISOString())} (Sydney)`,
