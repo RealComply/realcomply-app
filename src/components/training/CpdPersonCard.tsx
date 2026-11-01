@@ -106,8 +106,9 @@ export function CpdPersonCard({
         setError(uploadError);
         return;
       }
-      const { error: saveError, question: asked } = await addCpdFromCertificate(subject.id, path, stored.name);
-      if (saveError) setError(saveError);
+      const { error: saveError, question: asked, readProblem } = await addCpdFromCertificate(subject.id, path, stored.name);
+      // Saved, but the read failed: the card says why (1 Nov 2026).
+      if (saveError || readProblem) setError(saveError ?? readProblem ?? null);
       if (asked) setQuestion(asked);
     } catch {
       setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");
@@ -170,6 +171,7 @@ export function CpdPersonCard({
       {records.map((r) => (
         <CertificateRow
           key={r.id}
+          onReadProblem={setError}
           record={r}
           source={cpdRowSource(r, planIds)}
           canEdit={canEdit}
@@ -263,12 +265,15 @@ function CertificateRow({
   canEdit,
   personName,
   nameOf,
+  onReadProblem,
 }: {
   record: CpdRecord;
   source: CpdRowSource;
   canEdit: boolean;
   personName: string;
   nameOf: Record<string, string>;
+  /** Said on the person's card: a certificate attached here whose read failed. */
+  onReadProblem?: (message: string) => void;
 }) {
   const { actsAsLicensee } = useViewerAccess();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -456,7 +461,7 @@ function CertificateRow({
         )}
       </div>
       </div>
-      {canEdit && !record.evidence_path && <AttachToRow record={record} />}
+      {canEdit && !record.evidence_path && <AttachToRow record={record} onReadProblem={onReadProblem} />}
     </div>
   );
 }
@@ -466,7 +471,7 @@ function CertificateRow({
  * training plan), taken in this same place. Read the same way as a new one,
  * with the same name question; it fills only what the row is missing.
  */
-function AttachToRow({ record }: { record: CpdRecord }) {
+function AttachToRow({ record, onReadProblem }: { record: CpdRecord; onReadProblem?: (message: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState<CpdNameQuestion | null>(null);
@@ -491,8 +496,11 @@ function AttachToRow({ record }: { record: CpdRecord }) {
         setError(uploadError);
         return;
       }
-      const { error: saveError, question: asked } = await attachCpdCertificate(record.id, path, stored.name);
+      const { error: saveError, question: asked, readProblem } = await attachCpdCertificate(record.id, path, stored.name);
       if (saveError) setError(saveError);
+      // Saved, but the read failed. Said on the person's card, since this
+      // control goes once the certificate is on the row (1 Nov 2026).
+      else if (readProblem) onReadProblem?.(readProblem);
       if (asked) setQuestion(asked);
     } catch {
       setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");

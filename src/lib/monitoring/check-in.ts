@@ -32,7 +32,8 @@ export type JobCheck =
   | "cpd-reminders"
   | "pm-retention"
   | "backup-storage"
-  | "subscription-end";
+  | "subscription-end"
+  | "reader-check";
 
 export type Check = JobCheck | "email";
 
@@ -81,6 +82,7 @@ const LABELS: Record<JobCheck, string> = {
   "pm-retention": "property management retention reminders",
   "backup-storage": "hourly document backup",
   "subscription-end": "subscription end and day-14 deletion",
+  "reader-check": "daily reader check",
 };
 
 /**
@@ -122,14 +124,18 @@ async function alertAdmin(check: JobCheck, problems: string[]): Promise<void> {
   // Imported here, not at the top: send.ts reports each send through
   // checkIn, so a static import would close a cycle between the two files.
   const { sendEmail } = await import("@/lib/email/send");
-  await sendEmail({
-    to,
+  await sendEmail({ to, ...jobProblemEmail(check, problems, new Date()) });
+}
+
+/** The email Adam gets when a job has a problem. Also what the staff page's test of a job sends. */
+export function jobProblemEmail(check: JobCheck, problems: string[], at: Date): { subject: string; text: string } {
+  return {
     subject: `RealComply: the ${LABELS[check]} had a problem`,
     text:
-      `The ${LABELS[check]} ran at ${new Date().toISOString()} (UTC) and had a problem:\n\n` +
+      `The ${LABELS[check]} ran at ${at.toISOString()} (UTC) and had a problem:\n\n` +
       problems.map((p) => `- ${p}`).join("\n") +
       "\n\nVercel's logs for this run have the detail. This email is sent each time the job has a problem.",
-  });
+  };
 }
 
 // ── What counts as a problem, job by job ───────────────────────────────────
@@ -139,6 +145,18 @@ const failedSends = (n: number) => (n > 0 ? [`${n} email${n === 1 ? "" : "s"} co
 /** Licence, trust and PM retention reminders, and the weekly digest. */
 export function reminderProblems(result: { failed: number }): string[] {
   return failedSends(result.failed);
+}
+
+/**
+ * The 7am listing check: a live ad the reader itself failed on (its answer
+ * cut off or unusable, or the service failed) is a problem (1 Nov 2026). The
+ * card says so; this tells Adam the same morning, once for the whole run.
+ */
+export function listingScanProblems(result: { readFailed?: number }): string[] {
+  const n = result.readFailed ?? 0;
+  return n > 0
+    ? [`${n} live ad${n === 1 ? "" : "s"} couldn't be read by the reader (the answer was cut off or unusable, or the AI service failed). The cards say so; Vercel's logs say why (search "document read failed: live_ad").`]
+    : [];
 }
 
 export function backupProblems(result: { ok: boolean; failed: number; error?: string }): string[] {

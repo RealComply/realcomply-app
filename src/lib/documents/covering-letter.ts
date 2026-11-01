@@ -81,6 +81,8 @@ export type ReceivedDateRecord = {
   source?: "ai" | "agent";
   /** When the letter was last read and had no clear date. */
   noDateAt?: string;
+  /** What the card says when the letter couldn't be read (1 Nov 2026). */
+  readFailed?: string;
 };
 
 /** Reads the record kept on the card's data, defensively. */
@@ -89,7 +91,8 @@ export function readReceivedDate(raw: unknown): ReceivedDateRecord {
   const history = Array.isArray(d.receivedDateHistory) ? (d.receivedDateHistory as ReceivedDateChange[]) : [];
   const source = d.receivedDateSource === "ai" || d.receivedDateSource === "agent" ? d.receivedDateSource : undefined;
   const noDateAt = typeof d.coveringLetterNoDateAt === "string" ? d.coveringLetterNoDateAt : undefined;
-  return { history, source, noDateAt };
+  const readFailed = typeof d.coveringLetterReadFailed === "string" ? d.coveringLetterReadFailed : undefined;
+  return { history, source, noDateAt, readFailed };
 }
 
 type Card = { event_date: string | null; status: string; data: unknown };
@@ -108,6 +111,9 @@ export function afterLetterRead(
   const data: Record<string, unknown> = card.data && typeof card.data === "object" ? { ...(card.data as object) } : {};
   // The offer PR #66 left in the AI draft is superseded by this record.
   delete data.aiDraft;
+  // A read that finished replaces a failed one.
+  delete data.coveringLetterReadFailed;
+  delete data.coveringLetterReadFailedAt;
   if (!date) {
     data.coveringLetterNoDateAt = at;
     return { changed: false, eventDate: card.event_date, status: card.status, data };
@@ -124,6 +130,19 @@ export function afterLetterRead(
 }
 
 /**
+ * The card after a read of the letter that didn't finish (1 Nov 2026): cut
+ * off at the reader's limit, refused, or a file that won't open. Nothing else
+ * changes; the card says why until a read finishes or the agent saves a date.
+ * Before, a cut-off read looked like a letter with no date.
+ */
+export function afterLetterReadFailed(card: Card, reason: string, at: string): Record<string, unknown> {
+  const data: Record<string, unknown> = card.data && typeof card.data === "object" ? { ...(card.data as object) } : {};
+  data.coveringLetterReadFailed = reason;
+  data.coveringLetterReadFailedAt = at;
+  return data;
+}
+
+/**
  * What an agent's save of the card adds to the record: a history line when the
  * date changes, and the date becomes theirs when they change it or mark the
  * card done (that is them checking it). Merged into the data the save writes.
@@ -134,7 +153,12 @@ export function afterAgentSave(
   status: string,
   actor: { id: string; name: string },
   at: string,
-): { receivedDateHistory?: ReceivedDateChange[]; receivedDateSource?: "ai" | "agent" } {
+): {
+  receivedDateHistory?: ReceivedDateChange[];
+  receivedDateSource?: "ai" | "agent";
+  coveringLetterReadFailed?: undefined;
+  coveringLetterReadFailedAt?: undefined;
+} {
   const record = readReceivedDate(existing.data);
   const changed = (date ?? null) !== (existing.event_date ?? null);
   const history = changed
@@ -144,6 +168,8 @@ export function afterAgentSave(
   return {
     ...(history.length > 0 ? { receivedDateHistory: history } : {}),
     ...(source ? { receivedDateSource: source } : {}),
+    // A date the agent saves answers a letter that couldn't be read.
+    ...(date ? { coveringLetterReadFailed: undefined, coveringLetterReadFailedAt: undefined } : {}),
   };
 }
 
@@ -152,7 +178,7 @@ export function receivedDateLines(
   raw: unknown,
   date: (d: string) => string,
   when: (iso: string) => string,
-): { readByAi: boolean; changedFrom: string | null; noDate: boolean; history: string[] } {
+): { readByAi: boolean; changedFrom: string | null; noDate: boolean; readFailed: string | null; history: string[] } {
   const record = readReceivedDate(raw);
   const readByAi = record.source === "ai";
   const last = record.history[record.history.length - 1];
@@ -165,5 +191,5 @@ export function receivedDateLines(
     const what = c.from ? `${date(c.from)} to ${c.to ? date(c.to) : "blank"}` : `set to ${c.to ? date(c.to) : "blank"}`;
     return `${when(c.at)}. ${who}: ${what}.`;
   });
-  return { readByAi, changedFrom, noDate: Boolean(record.noDateAt), history };
+  return { readByAi, changedFrom, noDate: Boolean(record.noDateAt), readFailed: record.readFailed ?? null, history };
 }

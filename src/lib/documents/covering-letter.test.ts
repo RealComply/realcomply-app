@@ -8,6 +8,7 @@ import {
   COVERING_LETTER_UNREADABLE,
   afterAgentSave,
   afterLetterRead,
+  afterLetterReadFailed,
   coveringLetterDate,
   readReceivedDate,
   receivedDateLines,
@@ -133,4 +134,28 @@ test("the words: no em dash, never 'compliant'", () => {
     assert.ok(!text.includes("—"), text);
     assert.ok(!/compliant/i.test(text), text);
   }
+});
+
+// A letter that couldn't be read (Adam, 1 Nov 2026: "never drop it silently").
+// Before, a read cut off at the reader's limit looked like a letter with no
+// date, and the read on attach said nothing at all.
+test("a letter that couldn't be read says why on the card, and changes nothing else", () => {
+  const card = { event_date: "2026-10-12", status: "done", data: { evidenceFileName: "letter.pdf" } };
+  const why = "The covering letter couldn't be read to the end, so nothing was taken from it. Try Read again.";
+  const data = afterLetterReadFailed(card, why, T1);
+  assert.equal(data.coveringLetterReadFailed, why);
+  assert.equal(data.evidenceFileName, "letter.pdf");
+  assert.equal(lines(data).readFailed, why);
+  assert.equal(lines(data).noDate, false, "a failed read is not a letter with no date");
+});
+
+test("a read that finishes, or a date the agent saves, replaces the failure", () => {
+  const failed = afterLetterReadFailed({ event_date: null, status: "open", data: {} }, "couldn't be read", T1);
+  const read = afterLetterRead({ event_date: null, status: "open", data: failed }, "2026-10-15", T2);
+  assert.equal(lines(read.data).readFailed, null);
+  const noDate = afterLetterRead({ event_date: null, status: "open", data: failed }, null, T2);
+  assert.equal(lines(noDate.data).readFailed, null);
+  assert.equal(lines(noDate.data).noDate, true);
+  const saved = { ...failed, ...afterAgentSave({ event_date: null, data: failed }, "2026-10-14", "done", jo, T3) };
+  assert.equal(JSON.parse(JSON.stringify(saved)).coveringLetterReadFailed, undefined, "gone once saved");
 });

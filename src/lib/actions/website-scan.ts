@@ -11,6 +11,8 @@ import { reopenStaleNoRevision } from "@/lib/data/no-revision-reask";
 import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import { PRICE_CHECK_FROM, scanModeAt } from "@/lib/listing-scan-schedule";
 import { fetchPublicPage } from "@/lib/net/public-page";
+import { READER_MODEL, logReadFailure, readFailureWhy, type ReadFailureWhy } from "@/lib/documents/read-core";
+import { UnfinishedAnswer, toolAnswer, unfinishedMessage } from "@/lib/documents/reader-answer";
 import type { PropertyItem } from "@/lib/types";
 
 // The advertised-price check.
@@ -88,6 +90,12 @@ export type ScanFinding = {
    * when there are none, so a recurrence is emailed again.
    */
   alertedKey?: string;
+  /**
+   * Set when the reader's own read of the page failed (1 Nov 2026): its answer
+   * was cut off or couldn't be used, or the service failed. The morning's
+   * check counts these and emails Adam (lib/monitoring listingScanProblems).
+   */
+  readFailed?: ReadFailureWhy;
 };
 
 /** Identifies a set of red flags: the same price below the same ESP is the same alert. */
@@ -264,11 +272,20 @@ export async function scanOneProperty(
       finding = await assess(supabase, property.id, base, read, record);
     }
   } catch (err) {
+    // The reader's own failure is said in plain words and logged as an error
+    // (1 Nov 2026). Before, an answer cut off at the limit read as a page
+    // showing no price; a failed service put its raw error on the card.
+    const why = readFailureWhy(err);
+    const readersOwn = err instanceof UnfinishedAnswer || why === "service";
+    if (readersOwn) logReadFailure("live_ad", err, why);
     finding = {
       ...base,
       ok: false,
       issues: [],
-      summary: `Couldn't check the live ad: ${err instanceof Error ? err.message : "the page couldn't be reached"}`,
+      summary: readersOwn
+        ? `Couldn't check the live ad: the page ${unfinishedMessage(err instanceof UnfinishedAnswer ? err.why : "no_answer")}. Try Check now again.`
+        : `Couldn't check the live ad: ${err instanceof Error ? err.message : "the page couldn't be reached"}`,
+      ...(readersOwn ? { readFailed: why } : {}),
     };
   }
 
@@ -294,8 +311,10 @@ async function readWithModel(
   text: string,
 ): Promise<{ read: PageRead; usage: { inputTokens: number; outputTokens: number } }> {
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-5",
-    max_tokens: 400,
+    model: READER_MODEL,
+    // Room for the whole answer (1 Nov 2026; was 400). Most answers use under
+    // 150; a page listing many "offers over" phrasings used to come close.
+    max_tokens: 1024,
     system:
       "You read a real estate listing page and report the advertised price exactly as a member of the public " +
       "would see it. Report only what is on the page. Never infer a price from anything other than a price " +
@@ -310,10 +329,9 @@ async function readWithModel(
     tool_choice: { type: "tool", name: "record_advertised_price" },
   });
 
-  const toolUse = response.content.find(
-    (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
-  );
-  const read = (toolUse?.input ?? {}) as {
+  // An unfinished answer is a failed check, never a page with no price on it
+  // (1 Nov 2026; see lib/documents/reader-answer).
+  const read = toolAnswer(response, EXTRACTION_TOOL.input_schema as Parameters<typeof toolAnswer>[1]) as {
     priceShown?: boolean;
     priceText?: string;
     priceLow?: number;
@@ -638,10 +656,12 @@ export async function runDailyListingScan(): Promise<{
   read: number;
   skipped: number;
   withIssues: number;
+  /** Pages the reader itself failed on (1 Nov 2026): emailed to Adam by the job. */
+  readFailed: number;
   inputTokens: number;
   outputTokens: number;
 }> {
-  const none = { discovered: 0, checked: 0, read: 0, skipped: 0, withIssues: 0, inputTokens: 0, outputTokens: 0 };
+  const none = { discovered: 0, checked: 0, read: 0, skipped: 0, withIssues: 0, readFailed: 0, inputTokens: 0, outputTokens: 0 };
   if (!process.env.ANTHROPIC_API_KEY) return none;
 
   const supabase = createServiceClient();
@@ -678,6 +698,7 @@ export async function runDailyListingScan(): Promise<{
   let read = 0;
   let skipped = 0;
   let withIssues = 0;
+  let readFailed = 0;
   let inputTokens = 0;
   let outputTokens = 0;
 
@@ -710,10 +731,11 @@ export async function runDailyListingScan(): Promise<{
         outputTokens += finding.usage.outputTokens;
       }
       if (!finding.ok) withIssues += 1;
+      if (finding.readFailed) readFailed += 1;
     }
   }
 
-  return { discovered, checked, read, skipped, withIssues, inputTokens, outputTokens };
+  return { discovered, checked, read, skipped, withIssues, readFailed, inputTokens, outputTokens };
 }
 
 // ── Finding the listing page ───────────────────────────────────────────────
@@ -833,7 +855,7 @@ async function discoverListingUrl(
       if (links.length === 0) return null;
 
       const response = await anthropic.messages.create({
-        model: "claude-sonnet-5",
+        model: READER_MODEL,
         max_tokens: 300,
         system:
           "You match a property address to the correct link on a real estate agency's own website. Choose only " +
@@ -851,10 +873,9 @@ async function discoverListingUrl(
         tool_choice: { type: "tool", name: "choose_listing_page" },
       });
 
-      const toolUse = response.content.find(
-        (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
-      );
-      const choice = (toolUse?.input ?? {}) as { listingUrl?: string; indexUrl?: string };
+      // Strict like every read (1 Nov 2026): an answer cut off before its
+      // link is no match, logged as an error below, not a quiet "no match".
+      const choice = toolAnswer(response) as { listingUrl?: string; indexUrl?: string };
 
       // Only ever accept a link that was actually in the list we supplied.
       const known = new Set(links.map((l) => l.href));
@@ -870,9 +891,11 @@ async function discoverListingUrl(
       return null;
     }
     return null;
-  } catch {
+  } catch (err) {
     // A website that cannot be read is the next run's problem, not an error the
-    // agent needs to see — they did not ask for this to run.
+    // agent needs to see — they did not ask for this to run. The reader's own
+    // failure is logged as one (1 Nov 2026), so it isn't silent either.
+    if (err instanceof UnfinishedAnswer || err instanceof Anthropic.APIError) logReadFailure("listing_page_finder", err);
     return null;
   }
 }

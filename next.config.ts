@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The made-up comparable-sales report the daily reader check reads (Adam,
+  // 1 Nov 2026; lib/documents/reader-check), bundled with the job and with the
+  // staff page, whose test runs the same check. Made-up data only.
+  outputFileTracingIncludes: {
+    "/api/cron/reader-check": ["./samples/cma/long-report.pdf", "./samples/cma/long-report.json"],
+    "/dashboard/admin": ["./samples/cma/long-report.pdf", "./samples/cma/long-report.json"],
+  },
   async redirects() {
     return [
       {

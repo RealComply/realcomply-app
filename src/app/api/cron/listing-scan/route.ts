@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { runDailyListingScan } from "@/lib/actions/website-scan";
 import { scanModeAt, sydneyHour } from "@/lib/listing-scan-schedule";
-import { monitoredJob } from "@/lib/monitoring/check-in";
+import { listingScanProblems, monitoredJob } from "@/lib/monitoring/check-in";
 
 // The advertised-price check, at 7am Sydney time: weekly on Mondays until 31
 // October 2026, then every live listing every morning from 1 November (see
@@ -38,7 +38,10 @@ export async function GET(request: Request) {
 
   // Checked in only for the run that scans: the other hour's skip must not
   // count as the job having run.
-  const result = { mode: scanModeAt(now), ...(await monitoredJob("listing-scan", () => runDailyListingScan())) };
+  const result = {
+    mode: scanModeAt(now),
+    ...(await monitoredJob("listing-scan", () => runDailyListingScan(), listingScanProblems)),
+  };
   // One line per run in the Vercel logs. Each finding keeps only its latest
   // check, so this is the record of how many pages were read vs skipped, and
   // what the reads cost, from day to day. Excludes page discovery.
