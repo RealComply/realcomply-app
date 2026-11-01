@@ -221,7 +221,13 @@ export function exampleReaderWeek(now: Date): ReaderWeek {
       { why: "cut_off", n: 1 },
       { why: "service", n: 1 },
     ],
-    zeroComparables: [{ office: "Sample Realty (made up)", listing: "12 Sample Street, Testville NSW 2999", at: now.toISOString() }],
+    zeroComparables: [
+      {
+        office: "Sample Realty (made up)",
+        listing: "12 Sample Street, Testville NSW 2999",
+        at: new Date(now.getTime() - 3 * 24 * 3600_000).toISOString(),
+      },
+    ],
   };
 }
 
