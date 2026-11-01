@@ -1,0 +1,128 @@
+{
+  "made_up": "MADE-UP SAMPLE FOR TESTING. Not a real report: every name, address and figure is invented.",
+  "sales": 9,
+  "listings": 0,
+  "answer": {
+    "documentIs": "comparable_sales",
+    "patches": [
+      {
+        "itemKey": "a4",
+        "espLow": 1250000,
+        "espHigh": 1350000
+      },
+      {
+        "itemKey": "a4c",
+        "comparableSales": [
+          {
+            "address": "84 Testing Lane, Testville NSW 2999",
+            "salePrice": 1380000,
+            "saleDate": "2026-10-21",
+            "bedrooms": 4,
+            "bathrooms": 2,
+            "carSpaces": 1,
+            "landSizeSqm": 744,
+            "internalAreaSqm": 141,
+            "distanceM": 1690,
+            "propertyType": "townhouse"
+          },
+          {
+            "address": "32 Draft Avenue, Exampleton NSW 2997",
+            "salePrice": 1450000,
+            "saleDate": "2026-09-17",
+            "bedrooms": 4,
+            "bathrooms": 1,
+            "carSpaces": 2,
+            "landSizeSqm": 730,
+            "internalAreaSqm": 150,
+            "distanceM": 980,
+            "propertyType": "house"
+          },
+          {
+            "address": "7 Notreal Street, Testville NSW 2999",
+            "salePrice": 1400000,
+            "saleDate": "2026-09-01",
+            "bedrooms": 5,
+            "bathrooms": 1,
+            "carSpaces": 1,
+            "landSizeSqm": 447,
+            "distanceM": 1120,
+            "propertyType": "house"
+          },
+          {
+            "address": "54 Madeup Drive, Testville NSW 2999",
+            "salePrice": 1235000,
+            "saleDate": "2026-08-08",
+            "bedrooms": 3,
+            "bathrooms": 2,
+            "carSpaces": 1,
+            "landSizeSqm": 431,
+            "distanceM": 1240,
+            "propertyType": "house"
+          },
+          {
+            "address": "24 Trialrun Court, Testville NSW 2999",
+            "salePrice": 1435000,
+            "saleDate": "2026-06-26",
+            "bedrooms": 4,
+            "bathrooms": 2,
+            "carSpaces": 2,
+            "landSizeSqm": 681,
+            "distanceM": 220,
+            "propertyType": "house"
+          },
+          {
+            "address": "78 Dummy Close, Testville NSW 2999",
+            "salePrice": 1390000,
+            "saleDate": "2026-05-29",
+            "bedrooms": 5,
+            "bathrooms": 2,
+            "carSpaces": 2,
+            "landSizeSqm": 587,
+            "distanceM": 1520,
+            "propertyType": "house"
+          },
+          {
+            "address": "29 Draft Avenue, Testville NSW 2999",
+            "salePrice": 1470000,
+            "saleDate": "2026-05-12",
+            "bedrooms": 5,
+            "bathrooms": 3,
+            "carSpaces": 1,
+            "landSizeSqm": 744,
+            "distanceM": 1470,
+            "propertyType": "house"
+          },
+          {
+            "address": "96 Template Street, Testville NSW 2999",
+            "salePrice": 1415000,
+            "saleDate": "2026-05-06",
+            "bedrooms": 5,
+            "bathrooms": 3,
+            "carSpaces": 2,
+            "landSizeSqm": 554,
+            "distanceM": 650,
+            "propertyType": "house"
+          },
+          {
+            "address": "97 Mockup Crescent, Testville NSW 2999",
+            "salePrice": 1240000,
+            "saleDate": "2026-04-21",
+            "bedrooms": 3,
+            "bathrooms": 2,
+            "carSpaces": 1,
+            "landSizeSqm": 504,
+            "internalAreaSqm": 237,
+            "distanceM": 1560,
+            "propertyType": "house"
+          }
+        ],
+        "subjectProperty": {
+          "bedrooms": 4,
+          "bathrooms": 2,
+          "carSpaces": 2,
+          "landSizeSqm": 556
+        }
+      }
+    ]
+  }
+}

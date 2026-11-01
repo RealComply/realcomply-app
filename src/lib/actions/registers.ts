@@ -135,10 +135,18 @@ function cpdSummary(row: CpdRowRead): string {
     .join(" · ");
 }
 
-/** Reads a CPD certificate into the row it makes. Never guesses (0051). */
-async function readCpdCertificate(path: string, fileName: string): Promise<{ row: CpdRowRead; nameOnDocument: string }> {
+/**
+ * Reads a CPD certificate into the row it makes. Never guesses (0051).
+ * `readProblem` is what the card says when the read failed (1 Nov 2026): the
+ * row is still made from the file, but the card no longer stays quiet about
+ * why nothing was filled in.
+ */
+async function readCpdCertificate(
+  path: string,
+  fileName: string,
+): Promise<{ row: CpdRowRead; nameOnDocument: string; readProblem: string | null }> {
   const { extractCpdCertificate } = await import("@/lib/actions/extraction");
-  const { fields } = await extractCpdCertificate(path, fileName);
+  const { error: readProblem, fields } = await extractCpdCertificate(path, fileName);
   const f = fields ?? {};
 
   // Units and hours are stored in the same column (the convention set in
@@ -162,6 +170,7 @@ async function readCpdCertificate(path: string, fileName: string): Promise<{ row
       notes: f.deliveryMode ? `Delivery: ${f.deliveryMode}` : null,
     },
     nameOnDocument: typeof f.participantName === "string" ? f.participantName.replace(/\s+/g, " ").trim() : "",
+    readProblem,
   };
 }
 
@@ -236,7 +245,7 @@ export async function attachCpdCertificate(
   recordId: string,
   path: string,
   fileName: string,
-): Promise<{ error: string | null; question?: CpdNameQuestion }> {
+): Promise<{ error: string | null; question?: CpdNameQuestion; readProblem?: string }> {
   const { supabase, profile, access } = await requireAuthContext();
   const found = await rowForCertificate(supabase, profile, recordId, access.isOfficeManager);
   if ("problem" in found) return { error: found.problem ?? "Couldn't attach that certificate." };
@@ -249,7 +258,7 @@ export async function attachCpdCertificate(
   const empty = await storedFileProblem(supabase, path);
   if (empty) return { error: empty };
 
-  const { row: read, nameOnDocument } = await readCpdCertificate(path, fileName);
+  const { row: read, nameOnDocument, readProblem } = await readCpdCertificate(path, fileName);
   const question = await nameQuestionFor(supabase, {
     profileId: row.profile_id, askedBy: profile.id, path, fileName, nameOnDocument, row: read, recordId,
   });
@@ -266,14 +275,14 @@ export async function attachCpdCertificate(
 
   revalidatePath("/dashboard/cpd");
   revalidatePath("/dashboard/training");
-  return { error: null };
+  return { error: null, ...(readProblem ? { readProblem } : {}) };
 }
 
 export async function addCpdFromCertificate(
   profileId: string,
   path: string,
   fileName: string,
-): Promise<{ error: string | null; question?: CpdNameQuestion }> {
+): Promise<{ error: string | null; question?: CpdNameQuestion; readProblem?: string }> {
   const { supabase, profile, access } = await requireAuthContext();
 
   if (profile.id !== profileId && !(profile.is_licensee_in_charge || access.isOfficeManager)) {
@@ -289,7 +298,7 @@ export async function addCpdFromCertificate(
   const empty = await storedFileProblem(supabase, path);
   if (empty) return { error: empty };
 
-  const { row, nameOnDocument } = await readCpdCertificate(path, fileName);
+  const { row, nameOnDocument, readProblem } = await readCpdCertificate(path, fileName);
 
   // The name on the certificate, against the person (Adam, 15 Oct 2026). Any
   // difference asks before anything is saved, the same as a licence.
@@ -310,7 +319,7 @@ export async function addCpdFromCertificate(
   if (error) return { error: "Couldn't save that certificate — try again." };
 
   revalidatePath("/dashboard/cpd");
-  return { error: null };
+  return { error: null, ...(readProblem ? { readProblem } : {}) };
 }
 
 /** The name answer goes with the certificate it was about (0074). */

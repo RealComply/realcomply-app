@@ -2444,9 +2444,14 @@ export async function uploadEvidence(
   // touches storage for a few seconds rather than being kept. Removing that
   // window entirely would mean routing uploads through the server, which the
   // 4.5MB cap rules out — noted rather than hidden.
+  // Whether the screen couldn't look at the file, and why: the file still goes
+  // on (it fails open), and the card says it went on without the check.
+  let unscreened: string | null = null;
   if (getItem(itemKey)?.rejectIdDocuments) {
     const { screenForIdDocument } = await import("@/lib/actions/extraction");
-    const looksLike = await screenForIdDocument(supabase, path, fileName);
+    const screen = await screenForIdDocument(supabase, path, fileName, propertyId, itemKey);
+    unscreened = screen.failed;
+    const looksLike = screen.looksLike;
     if (looksLike) {
       // Deleted on the uploader's own access: since 0058 only the licensee
       // deletes files, and 0060 lets the person who uploaded a
@@ -2484,6 +2489,29 @@ export async function uploadEvidence(
   if (error) {
     revalidatePath(`/dashboard/${propertyId}`);
     return { error };
+  }
+
+  // The screen couldn't look at the file (1 Nov 2026), so it went on without
+  // the check. Kept on the card beside the file, which says so, until another
+  // file replaces it (lib/documents/id-screen-note). The reason is already
+  // logged, recorded and sent to Adam.
+  if (unscreened) {
+    const { data: row } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+    await supabase
+      .from("property_items")
+      .update({
+        data: {
+          ...((row as { data?: Record<string, unknown> | null } | null)?.data ?? {}),
+          idScreenSkipped: { path, at: new Date().toISOString() },
+        },
+      })
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey);
   }
 
   // A "document" card (the Power of Attorney copy, 15 Oct 2026) has nothing

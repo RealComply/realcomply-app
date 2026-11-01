@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { runWeeklyDigest } from "@/lib/email/weekly-digest";
+import { sendReaderWeek } from "@/lib/email/reader-week";
 import { monitoredJob, reminderProblems } from "@/lib/monitoring/check-in";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // Vercel Cron calls this every Monday (see vercel.json — fixed at 21:00
 // UTC Sunday) with an "Authorization: Bearer <CRON_SECRET>" header it adds
@@ -26,6 +28,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await monitoredJob("weekly-digest", () => runWeeklyDigest(), reminderProblems);
+  // Then Adam's weekly staff email: the week's document reads (1 Nov 2026;
+  // lib/email/reader-week). Part of the same job, so one that can't be sent
+  // is a failed email in the job's check-in and Adam's alert like any other.
+  const result = await monitoredJob(
+    "weekly-digest",
+    async () => {
+      const digest = await runWeeklyDigest();
+      let staffEmailSent = false;
+      try {
+        staffEmailSent = await sendReaderWeek(createServiceClient() as unknown as Parameters<typeof sendReaderWeek>[0], new Date());
+      } catch (e) {
+        console.error("weekly staff email failed:", e instanceof Error ? e.message : String(e));
+      }
+      return { ...digest, failed: digest.failed + (staffEmailSent ? 0 : 1), staffEmail: staffEmailSent ? "sent" : "failed" };
+    },
+    reminderProblems,
+  );
   return NextResponse.json(result);
 }

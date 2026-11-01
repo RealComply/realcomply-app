@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { backupProblems, checkIn, emailCheckIn, monitoredJob, reminderProblems, subscriptionEndProblems } from "./check-in";
+import {
+  backupProblems,
+  checkIn,
+  emailCheckIn,
+  listingScanProblems,
+  monitoredJob,
+  reminderProblems,
+  subscriptionEndProblems,
+} from "./check-in";
 import { sendEmail } from "@/lib/email/send";
 
 // Code review fixes, part F2 (12 Oct 2026): scheduled jobs and email sends
@@ -159,6 +167,14 @@ describe("what counts as a problem", () => {
   it("reminders and the digest: any email that could not be sent", () => {
     assert.deepEqual(reminderProblems({ failed: 0 }), []);
     assert.deepEqual(reminderProblems({ failed: 1 }), ["1 email could not be sent."]);
+  });
+
+  it("the 7am listing check: a live ad the reader failed on (1 Nov 2026)", () => {
+    assert.deepEqual(listingScanProblems({ readFailed: 0 }), []);
+    assert.deepEqual(listingScanProblems({}), []);
+    const [problem] = listingScanProblems({ readFailed: 2 });
+    assert.match(problem, /^2 live ads couldn't be read by the reader/);
+    assert.match(listingScanProblems({ readFailed: 1 })[0], /^1 live ad couldn't/);
   });
 
   it("the backup: not run, or any document not copied", () => {

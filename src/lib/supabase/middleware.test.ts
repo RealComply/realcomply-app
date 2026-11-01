@@ -62,6 +62,7 @@ const SIGNED_OUT_OK = [
   "/api/cron/licence-reminders",
   "/api/cron/listing-scan",
   "/api/cron/pm-retention",
+  "/api/cron/reader-check", // the daily reader check: CRON_SECRET, like every job
   "/api/cron/subscription-end",
   "/api/cron/trust-reminders",
   "/api/cron/weekly-digest",

@@ -79,6 +79,7 @@ import {
   type ReportExtractionFields,
 } from "@/lib/actions/extraction";
 import { isAiReadItem } from "@/lib/documents/ai-read-items";
+import { idScreenNote } from "@/lib/documents/id-screen-note";
 import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
@@ -1059,7 +1060,12 @@ function ChecklistItem({
       propertyId={propertyId}
       current={current}
       awaitingReview={showsDraft}
-      evidenceReadNote={item.key === "a4" ? reportReadNote(reportRead, "report") : null}
+      evidenceReadNote={
+        item.key === "a4"
+          ? reportReadNote(reportRead, "report")
+          : // A file that went on without the ID check (1 Nov 2026).
+            idScreenNote(current?.data, current?.evidence_path)
+      }
     >
       {/* Offered on an open card only, so nothing already answered changes. */}
       {item.notApplicable &&
@@ -1153,10 +1159,11 @@ function ChecklistItem({
               email, a signed receipt.
             </span>
           </p>
-        ) : received && (received.readByAi || received.noDate) ? (
+        ) : received && (received.readByAi || received.noDate || received.readFailed) ? (
           // b1a: the date on the card came from the covering letter, for the
           // agent to check, and what it replaced; or the letter had no clear
-          // date, so nothing changed (20 Oct 2026).
+          // date, so nothing changed (20 Oct 2026); or it couldn't be read,
+          // and why (1 Nov 2026).
           <div className="space-y-1.5">
             {received.readByAi && (
               <p className="flex items-start gap-1.5 rounded-lg bg-rc-green-soft px-2.5 py-1.5 text-xs text-rc-green-deep">
@@ -1171,6 +1178,12 @@ function ChecklistItem({
               <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                 <span>{COVERING_LETTER_NO_DATE}</span>
+              </p>
+            )}
+            {received.readFailed && (
+              <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                <span>{received.readFailed}</span>
               </p>
             )}
           </div>
@@ -2394,7 +2407,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
     // point, and the read below is told which file it is looking at.
     setEvidence({ path, fileName: stored.name });
     setExtracting(true);
-    const { error: extractError, fields } = await extractReportDetails(path, stored.name);
+    const { error: extractError, fields } = await extractReportDetails(path, stored.name, propertyId);
     setExtracting(false);
     if (extractError) {
       setClientError(extractError);

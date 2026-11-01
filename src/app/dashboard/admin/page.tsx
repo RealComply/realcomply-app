@@ -7,6 +7,7 @@ import { FounderInvites, type FounderInvite } from "@/components/admin/FounderIn
 import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyAccessQueue";
 import { WelcomeTest } from "@/components/admin/WelcomeTest";
 import { CpdReminderTest } from "@/components/admin/CpdReminderTest";
+import { ReaderCheckTest } from "@/components/admin/ReaderCheckTest";
 import { PmAnnouncement, type PmAnnouncementListRow } from "@/components/admin/PmAnnouncement";
 import { PM_ANNOUNCEMENT_TEST_ADDRESS, pmAnnouncementList } from "@/lib/email/pm-announcement";
 import { cpdSendDatesThisYear } from "@/lib/actions/cpd-reminders-admin";
@@ -446,6 +447,19 @@ export default async function AdminPage() {
         )}
       </div>
 
+      {/* THE DOCUMENT READER (Adam, 1 Nov 2026): the daily reader check run
+          now, and Monday's staff email about the week's reads. Test
+          addresses only. */}
+      <h2 id="reader" className={sectionHeading}>Document reader</h2>
+      <p className="mt-1 text-xs text-rc-muted">
+        Every read is recorded. A failed read, or a comparable-sales report with 0 comparables, emails you the same
+        day (once a listing a day). The daily check reads a made-up report at 6:15am (5:15am in winter) and emails you
+        if it goes wrong. The week&rsquo;s reads come to you on Monday mornings.
+      </p>
+      <div className="mt-3">
+        <ReaderCheckTest />
+      </div>
+
       {/* AGENCIES, oldest first — so Cass stays at the top and each new tester
           appears underneath in the order they arrived, which is the order the
           question is usually asked in. */}
@@ -580,6 +594,7 @@ export default async function AdminPage() {
       <div className="mt-3">
         <CpdReminderTest offices={madeUpOffices} dates={await cpdSendDatesThisYear()} />
       </div>
+
 
       {/* PERSONAL INVITES (Founder invites until 12 Oct 2026). Making one lives here rather than in Team settings, which is
           where Adam went looking and where the only invite button puts somebody
