@@ -37,9 +37,14 @@ export function readerAlertEmail(a: ReaderAlert): { subject: string; text: strin
       : "The read finished, but no comparable sales were taken from the report. Either it has none, or the reader missed them: worth opening the file to see."
     : WHAT_HAPPENED[a.why ?? "other"];
 
-  const once = a.listing
-    ? "This is the only email about this listing today. Any more failed reads on it today are recorded, not emailed."
-    : `This is the only email about ${what} reads in this office today. Any more today are recorded, not emailed.`;
+  // Sent without the record (2 Nov 2026): say so, and don't promise it's the
+  // only one, since the database's once-a-day claim wasn't there to keep.
+  const once = a.unrecorded
+    ? `Not recorded: the record of reads couldn't be written (${a.unrecorded}), so this email was sent anyway. ` +
+      "It won't be in Monday's count, and another email about this today is possible."
+    : a.listing
+      ? "This is the only email about this listing today. Any more failed reads on it today are recorded, not emailed."
+      : `This is the only email about ${what} reads in this office today. Any more today are recorded, not emailed.`;
 
   const text = [
     zeroComparables ? "A comparable-sales report was read and gave 0 comparables." : `A ${what} couldn't be read.`,
@@ -54,10 +59,11 @@ export function readerAlertEmail(a: ReaderAlert): { subject: string; text: strin
     zeroComparables ? "" : "The card says so, and nothing from the file was put on it.",
     "",
     once,
-    "Monday's staff email counts the week's reads.",
+    a.unrecorded ? "" : "Monday's staff email counts the week's reads.",
   ]
     .filter((line, i, all) => !(line === "" && all[i - 1] === ""))
-    .join("\n");
+    .join("\n")
+    .trimEnd();
 
   return { subject, text };
 }
