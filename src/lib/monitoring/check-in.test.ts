@@ -72,6 +72,20 @@ describe("check-ins", () => {
     assert.equal(emails.length, 0, "nobody is emailed");
   });
 
+  it("each run says which region its code is running in (2 Nov 2026)", async () => {
+    const logged: unknown[][] = [];
+    mock.method(console, "log", (...args: unknown[]) => logged.push(args));
+    process.env.VERCEL_REGION = "syd1";
+    try {
+      await monitoredJob("reader-check", async () => ({ problems: [] }));
+      delete process.env.VERCEL_REGION;
+      await monitoredJob("listing-scan", async () => ({ checked: 0 }));
+    } finally {
+      delete process.env.VERCEL_REGION;
+    }
+    assert.deepEqual(logged, [["job reader-check running in syd1"], ["job listing-scan running in an unknown region"]]);
+  });
+
   it("each check is created the first time it reports, and carries nothing but its name", async () => {
     await monitoredJob("weekly-digest", async () => ({ sent: 1, skipped: 0, failed: 0 }), reminderProblems);
 
