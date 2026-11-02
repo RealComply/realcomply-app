@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { SaveAuditPack } from "@/components/compliance/SaveAuditPack";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
@@ -68,20 +69,15 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         <Link href={`/dashboard/${p.id}`} className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
           <RoofMark back />Back to file
         </Link>
-        {/* A link, not a button, and it points at a route that returns the
-            file with Content-Disposition: attachment. One click, one file in
-            Downloads, no dialog and no decision.
-
-            It used to read "Use your browser's Print → Save as PDF" and had no
-            click handler at all: a label telling the agent to go and find a
-            browser menu. Adam, 23 Aug 2026: plenty of agents will not know how,
-            and this is the document Fair Trading asks for. */}
-        <a
-          href={`/dashboard/${p.id}/summary/pdf`}
-          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600"
-        >
-          Save as PDF
-        </a>
+        {/* One button (Adam, 2 Nov 2026): the pack now holds every document on
+            the listing, so it takes a moment to build. It says "Preparing your
+            audit pack" meanwhile, then the file lands in Downloads. Was a link
+            straight to the PDF (23 Aug 2026: one click, one file, no dialog,
+            and still no dialog). */}
+        <SaveAuditPack
+          propertyId={p.id}
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+        />
       </div>
 
       <h1 className="mt-6 text-2xl font-bold text-rc-ink">

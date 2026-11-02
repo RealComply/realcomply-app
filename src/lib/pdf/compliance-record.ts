@@ -1,5 +1,5 @@
 import { photoNoticeRecordLines, type TenantPhotoData } from "@/lib/rules/tenant-photo-notice";
-import { LineCapStyle, PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { LineCapStyle, PDFDocument, PDFName, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { formatSignedAt } from "./sign-stamp";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { pdfText } from "./text";
@@ -11,6 +11,8 @@ import { formatAuDate } from "@/lib/format-date";
 import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
 import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
 import { checkedPdf } from "@/lib/pdf/checked-pdf";
+import { fileTypeLabel, type PackDocument } from "@/lib/pdf/pack-documents";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 
 /** The answer, tick or upload under a question or document card, with who and when (Sydney). */
 const questionAndDocumentLines = (item: ComplianceItem, current: PropertyItem | undefined): string[] =>
@@ -247,22 +249,15 @@ class Cursor {
   }
 }
 
-export type Attachment = {
-  /** What this document is, in the words the card uses. */
-  title: string;
-  fileName: string;
-  /** Absent where the file could not be read, or is a kind we cannot append. */
-  bytes: Uint8Array | null;
-  kind: "pdf" | "png" | "jpg" | "other";
-  /** Why it is not attached, where it is not. Shown in the index. */
-  omittedBecause?: string;
-  /**
-   * The stored file itself is empty or will not open (19 Oct 2026), so
-   * "held on file" would not be true: the index says it needs uploading
-   * again instead.
-   */
-  needsUploadingAgain?: boolean;
-};
+/** A document's bytes, or why it can't be added ("it came through empty"). */
+export type LoadedDocument = { bytes: Uint8Array } | { problem: string };
+
+/**
+ * Every document on the listing, in the record's order (lib/pdf/pack-documents.ts),
+ * with how to fetch each one's bytes. Fetched one at a time while the pack is
+ * built, so a pack of large files doesn't hold them all at once.
+ */
+export type { PackDocument } from "@/lib/pdf/pack-documents";
 
 export type ComplianceRecordInput = {
   property: Property;
@@ -359,7 +354,11 @@ export type ComplianceRecordInput = {
    * silently omitted — a document missing from a pack with no explanation is
    * worse than one the pack tells you to go and ask for.
    */
-  attachments: Attachment[];
+  /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
+  documents?: PackDocument[];
+  loadDocument?: (doc: PackDocument) => Promise<LoadedDocument>;
+  /** Told, for each document, whether it went inside the PDF (the records zip leaves those out). */
+  report?: (path: string, included: boolean) => void;
   rulesetVersion: string;
   preparedFor: string;
   generatedAt: Date;
@@ -424,7 +423,9 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     priceApproval = null,
     complaints = [],
     signatures,
-    attachments,
+    documents = [],
+    loadDocument,
+    report,
     rulesetVersion,
     preparedFor,
     generatedAt,
@@ -841,37 +842,9 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       c.y -= 6;
     }
     c.text(
-      "From the complaints register, kept by the licensee in charge. Files that are PDFs or photos are attached at the back; others are held on file in RealComply.",
+      "From the complaints register, kept by the licensee in charge. Every file on these complaints is listed in the contents after this record, and follows it.",
       { size: 8, color: FAINT },
     );
-  }
-
-  // What is appended, listed before it appears.
-  if (attachments.length > 0) {
-    c.rule(10, 12);
-    c.text(`Documents attached (${attachments.filter((a) => a.bytes).length})`, {
-      size: 11,
-      bold: true,
-      gap: 4,
-    });
-    // Numbered as the Attachment pages below are, attached ones only: a
-    // complaint email (.eml) is listed here but never attached (0101).
-    let n = 0;
-    attachments.forEach((a) => {
-      if (a.bytes) {
-        n += 1;
-        c.text(`${n}. ${a.title}`, { size: 9.5, bold: true, indent: 4 });
-        c.text(a.fileName, { size: 8.5, color: MUTED, indent: 14 });
-      } else {
-        c.text(`${a.title}`, { size: 9.5, bold: true, color: AMBER, indent: 4 });
-        c.text(
-          a.needsUploadingAgain
-            ? `${a.fileName} - ${a.omittedBecause ?? "can't be opened"}. It needs uploading again.`
-            : `${a.fileName} - ${a.omittedBecause ?? "not attached"}. Held on file.`,
-          { size: 8.5, color: AMBER, indent: 14 },
-        );
-      }
-    });
   }
 
   c.rule(8, 10);
@@ -882,79 +855,214 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
 
   c.stampFooters();
 
-  // ── Appended source documents ────────────────────────────────────────────
+  // ── Every document on the listing (Adam, 2 Nov 2026) ─────────────────────
   //
-  // Each gets a separator page naming it, so a thirty-page pack can be
-  // navigated by someone who did not assemble it.
+  // CHANGE (Adam, 2 Nov 2026).
+  // WAS (bundle 122, 24 Aug 2026): the pack added only the comparable sales
+  //   report and the ESP revision notice (and, from 30 Oct, files on linked
+  //   complaints), behind separator pages. Every other card showed as a tick.
+  // NOW: every document on the listing goes inside the one PDF. A contents
+  //   page follows the record: one line per document (stage, card title, file
+  //   name, who uploaded it, date, page number), each a link to the document.
+  //   Each document sits behind a separator page naming the same, with "Back
+  //   to contents". The current version of each file only. PDFs go in as they
+  //   are; JPG, PNG and iPhone (HEIC) photos become pages. Anything that can't
+  //   go into a PDF (Word, Excel, a saved email) still gets its line and its
+  //   separator page: "Not included in this PDF: [file type]. Kept in
+  //   RealComply." A damaged, empty or password-protected PDF gets a separator
+  //   page saying it couldn't be added, and why; the rest of the pack builds.
+  //   Nothing is ever left out silently. The full ESP reasoning stays in the
+  //   record above.
+  // WHY: the office must keep these records for 3 years and hand them to Fair
+  //   Trading on request. Links to stored files would expire, need a login,
+  //   stop working 14 days after an office cancels, and expose private
+  //   documents if the pack is forwarded. The pack has to stand on its own,
+  //   offline.
   //
-  // A document that fails to open does NOT fail the export. An encrypted or
-  // malformed PDF is entirely possible in a pile of files from solicitors and
-  // valuers, and losing the whole record over one of them would be the worst
-  // possible trade.
-  let attachmentNo = 0;
-  for (const a of attachments) {
-    if (!a.bytes) continue;
-    attachmentNo += 1;
-
-    const sep = doc.addPage([PAGE_W, PAGE_H]);
-    sep.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: GREEN });
-    sep.drawText(`Attachment ${attachmentNo}`, {
-      x: MARGIN,
-      y: PAGE_H - 120,
-      size: 9,
-      font: fonts.regular,
-      color: FAINT,
+  // No internal ids anywhere in it: names, titles, dates and page numbers
+  // only (the file's storage path is used to fetch it, never printed).
+  if (documents.length > 0) {
+    await appendDocuments(doc, fonts, {
+      documents,
+      loadDocument: loadDocument ?? (async () => ({ problem: "it couldn't be read" })),
+      report,
+      address: property.address,
+      draftMark: isDraft ? "DRAFT - not yet signed off" : null,
     });
-    sep.drawText(pdfText(a.title, fonts.bold), {
-      x: MARGIN,
-      y: PAGE_H - 146,
-      size: 18,
-      font: fonts.bold,
-      color: INK,
-    });
-    sep.drawText(pdfText(a.fileName, fonts.regular), {
-      x: MARGIN,
-      y: PAGE_H - 168,
-      size: 9.5,
-      font: fonts.regular,
-      color: MUTED,
-    });
-    sep.drawText(pdfText(property.address, fonts.regular), {
-      x: MARGIN,
-      y: PAGE_H - 190,
-      size: 9.5,
-      font: fonts.regular,
-      color: FAINT,
-    });
-
-    try {
-      if (a.kind === "pdf") {
-        const src = await PDFDocument.load(a.bytes);
-        const copied = await doc.copyPages(src, src.getPageIndices());
-        copied.forEach((pg) => doc.addPage(pg));
-      } else if (a.kind === "png" || a.kind === "jpg") {
-        const img = a.kind === "png" ? await doc.embedPng(a.bytes) : await doc.embedJpg(a.bytes);
-        const page = doc.addPage([PAGE_W, PAGE_H]);
-        const scale = Math.min((PAGE_W - MARGIN * 2) / img.width, (PAGE_H - MARGIN * 2) / img.height, 1);
-        page.drawImage(img, {
-          x: (PAGE_W - img.width * scale) / 2,
-          y: (PAGE_H - img.height * scale) / 2,
-          width: img.width * scale,
-          height: img.height * scale,
-        });
-      }
-    } catch {
-      sep.drawText("This document could not be opened and is held on file in RealComply.", {
-        x: MARGIN,
-        y: PAGE_H - 220,
-        size: 9.5,
-        font: fonts.regular,
-        color: AMBER,
-      });
-    }
   }
 
   return checkedPdf(await doc.save(), "compliance record");
+}
+
+// ── The documents, the contents page and the separator pages ──────────────
+
+const LINK = rgb(0.0, 0.42, 0.29); // the brand's deep green, for links
+const CONTENTS_LINES_PER_PAGE = 14;
+
+/** A clickable area on `page` that goes to the top of `target`, the way every PDF reader follows it. */
+function linkTo(doc: PDFDocument, page: PDFPage, rect: { x: number; y: number; w: number; h: number }, target: PDFPage) {
+  const annot = doc.context.obj({
+    Type: "Annot",
+    Subtype: "Link",
+    Rect: [rect.x, rect.y, rect.x + rect.w, rect.y + rect.h],
+    Border: [0, 0, 0],
+    Dest: [target.ref, PDFName.of("XYZ"), null, null, null],
+  });
+  page.node.addAnnot(doc.context.register(annot));
+}
+
+/** The text cut to fit `width`, with an ellipsis. */
+function fit(text: string, font: PDFFont, size: number, width: number): string {
+  let t = pdfText(text, font);
+  if (font.widthOfTextAtSize(t, size) <= width) return t;
+  while (t.length > 1 && font.widthOfTextAtSize(`${t}...`, size) > width) t = t.slice(0, -1);
+  return `${t.trimEnd()}...`;
+}
+
+const dayOf = (iso: string | null) => (iso && !Number.isNaN(Date.parse(iso)) ? formatAuDate(sydneyDate(new Date(iso))) : null);
+const uploadLine = (d: PackDocument) => {
+  const day = dayOf(d.uploadedAt);
+  if (d.uploadedBy && day) return `Uploaded by ${d.uploadedBy}, ${day}`;
+  if (d.uploadedBy) return `Uploaded by ${d.uploadedBy}`;
+  return day ? `Uploaded ${day}` : "Upload not recorded";
+};
+
+/** Why a PDF that came through whole still couldn't go in. */
+function whyNotAdded(err: unknown): string {
+  const message = err instanceof Error ? `${err.name} ${err.message}` : String(err);
+  if (/encrypt/i.test(message)) return "it's password-protected";
+  if (/no pages/i.test(message)) return "it has no pages";
+  return "it's damaged or incomplete";
+}
+
+async function appendDocuments(
+  doc: PDFDocument,
+  fonts: Fonts,
+  opts: {
+    documents: PackDocument[];
+    loadDocument: (d: PackDocument) => Promise<LoadedDocument>;
+    report?: (path: string, included: boolean) => void;
+    address: string;
+    draftMark: string | null;
+  },
+): Promise<void> {
+  const { documents, loadDocument, report, address, draftMark } = opts;
+  const recordPages = doc.getPageCount();
+
+  // The contents comes straight after the record, so its pages are kept
+  // first and filled in once every document's page number is known.
+  const contentsPages = Array.from({ length: Math.ceil(documents.length / CONTENTS_LINES_PER_PAGE) }, () =>
+    doc.addPage([PAGE_W, PAGE_H]),
+  );
+  const placed: Array<{ d: PackDocument; separator: PDFPage; pageNo: number; note: string | null }> = [];
+
+  for (const [n, d] of documents.entries()) {
+    const separator = doc.addPage([PAGE_W, PAGE_H]);
+    const pageNo = doc.getPageCount();
+    let note: string | null = null;
+    if (d.kind === "other") {
+      note = `Not included in this PDF: ${fileTypeLabel(d.fileName)}. Kept in RealComply.`;
+    } else {
+      const loaded = await loadDocument(d).catch(() => ({ problem: "it couldn't be read" }) as LoadedDocument);
+      if ("problem" in loaded) {
+        note = `This document couldn't be added: ${loaded.problem}. Kept in RealComply.`;
+      } else {
+        try {
+          if (d.kind === "pdf") {
+            // Not ignoring encryption: a password-protected PDF copied as it
+            // is would come out as unreadable pages, so it is named instead.
+            const src = await PDFDocument.load(loaded.bytes, { updateMetadata: false });
+            if (src.getPageCount() === 0) throw new Error("no pages");
+            const copied = await doc.copyPages(src, src.getPageIndices());
+            copied.forEach((pg) => doc.addPage(pg));
+          } else {
+            // A photo, one to a page, as large as fits. A HEIC was converted
+            // to a JPEG by the loader (lib/documents/readable-bytes.ts).
+            const isPng = loaded.bytes[0] === 0x89 && loaded.bytes[1] === 0x50;
+            const img = isPng ? await doc.embedPng(loaded.bytes) : await doc.embedJpg(loaded.bytes);
+            const page = doc.addPage([PAGE_W, PAGE_H]);
+            const scale = Math.min((PAGE_W - MARGIN * 2) / img.width, (PAGE_H - MARGIN * 2) / img.height, 1);
+            page.drawImage(img, {
+              x: (PAGE_W - img.width * scale) / 2,
+              y: (PAGE_H - img.height * scale) / 2,
+              width: img.width * scale,
+              height: img.height * scale,
+            });
+          }
+        } catch (err) {
+          note = `This document couldn't be added: ${whyNotAdded(err)}. Kept in RealComply.`;
+        }
+      }
+    }
+    report?.(d.path, note === null);
+
+    // The separator page.
+    separator.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: GREEN });
+    const width = PAGE_W - MARGIN * 2;
+    separator.drawText(`Document ${n + 1} of ${documents.length}`, { x: MARGIN, y: PAGE_H - 110, size: 9, font: fonts.regular, color: FAINT });
+    separator.drawText(fit(d.stage, fonts.regular, 10, width), { x: MARGIN, y: PAGE_H - 132, size: 10, font: fonts.regular, color: MUTED });
+    separator.drawText(fit(d.cardTitle, fonts.bold, 16, width), { x: MARGIN, y: PAGE_H - 156, size: 16, font: fonts.bold, color: INK });
+    separator.drawText(fit(d.fileName, fonts.regular, 10, width), { x: MARGIN, y: PAGE_H - 180, size: 10, font: fonts.regular, color: INK });
+    separator.drawText(fit(uploadLine(d), fonts.regular, 9.5, width), { x: MARGIN, y: PAGE_H - 198, size: 9.5, font: fonts.regular, color: MUTED });
+    separator.drawText(fit(address, fonts.regular, 9.5, width), { x: MARGIN, y: PAGE_H - 216, size: 9.5, font: fonts.regular, color: FAINT });
+    if (note) {
+      // Wrapped by hand: a page with nothing else on it.
+      const words = pdfText(note, fonts.bold).split(" ");
+      let line = "";
+      let y = PAGE_H - 252;
+      for (const word of words) {
+        const next = line ? `${line} ${word}` : word;
+        if (fonts.bold.widthOfTextAtSize(next, 11) > width && line) {
+          separator.drawText(line, { x: MARGIN, y, size: 11, font: fonts.bold, color: AMBER });
+          y -= 16;
+          line = word;
+        } else line = next;
+      }
+      if (line) separator.drawText(line, { x: MARGIN, y, size: 11, font: fonts.bold, color: AMBER });
+    }
+    const back = "Back to contents";
+    separator.drawText(back, { x: MARGIN, y: 72, size: 10, font: fonts.bold, color: LINK });
+    linkTo(doc, separator, { x: MARGIN - 2, y: 68, w: fonts.bold.widthOfTextAtSize(back, 10) + 4, h: 16 }, contentsPages[0]);
+    placed.push({ d, separator, pageNo, note });
+  }
+
+  // The contents: one line per document, each a link to its separator page.
+  const total = doc.getPageCount();
+  const width = PAGE_W - MARGIN * 2;
+  contentsPages.forEach((page, p) => {
+    page.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: GREEN });
+    let y = PAGE_H - 80;
+    if (p === 0) {
+      page.drawText("Contents", { x: MARGIN, y, size: 18, font: fonts.bold, color: INK });
+      y -= 20;
+      page.drawText(
+        fit(`Every document on this listing, in the order of the record (pages 1 to ${recordPages}). Select a line to go to it.`, fonts.regular, 9, width),
+        { x: MARGIN, y, size: 9, font: fonts.regular, color: MUTED },
+      );
+      y -= 26;
+    } else {
+      page.drawText("Contents, continued", { x: MARGIN, y, size: 12, font: fonts.bold, color: INK });
+      y -= 26;
+    }
+    for (const { d, separator, pageNo, note } of placed.slice(p * CONTENTS_LINES_PER_PAGE, (p + 1) * CONTENTS_LINES_PER_PAGE)) {
+      const pageLabel = `page ${pageNo}`;
+      const labelW = fonts.regular.widthOfTextAtSize(pageLabel, 9);
+      page.drawText(fit(`${d.stage} · ${d.cardTitle}`, fonts.bold, 9.5, width - labelW - 16), { x: MARGIN, y, size: 9.5, font: fonts.bold, color: INK });
+      page.drawText(pageLabel, { x: PAGE_W - MARGIN - labelW, y, size: 9, font: fonts.regular, color: LINK });
+      const detail = `${d.fileName} · ${uploadLine(d)}${note ? (note.startsWith("Not included") ? " · not included in this PDF" : " · couldn't be added") : ""}`;
+      page.drawText(fit(detail, fonts.regular, 8.5, width - labelW - 16), { x: MARGIN, y: y - 13, size: 8.5, font: fonts.regular, color: note ? AMBER : MUTED });
+      linkTo(doc, page, { x: MARGIN - 2, y: y - 17, w: width + 4, h: 30 }, separator);
+      y -= 44;
+    }
+  });
+
+  // Footers on the pages this adds; the documents' own pages are left as they are.
+  const footer = (page: PDFPage, i: number) => {
+    const text = fit(`${draftMark ? `${draftMark} · ` : ""}${address} · Audit pack page ${i} of ${total}`, fonts.regular, 7.5, width);
+    page.drawText(text, { x: MARGIN, y: 30, size: 7.5, font: fonts.regular, color: draftMark ? AMBER : FAINT });
+  };
+  contentsPages.forEach((page, i) => footer(page, recordPages + i + 1));
+  for (const { separator, pageNo } of placed) footer(separator, pageNo);
 }
 
 /** A filename that survives Windows, macOS and email. */

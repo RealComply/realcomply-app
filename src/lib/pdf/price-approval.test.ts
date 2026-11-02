@@ -26,7 +26,6 @@ const pack = (row: Partial<PropertyItem>, people?: Map<string, { full_name: stri
     comparables: [],
     priceApproval: priceApproval(b4Row, people),
     signatures: { agent: null, licensee: null },
-    attachments: [],
     rulesetVersion: "test",
     preparedFor: "test",
     generatedAt: new Date("2026-10-12T00:00:00Z"),

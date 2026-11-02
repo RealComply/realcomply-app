@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/service";
-import { auditPackResponse, buildAuditPack } from "@/lib/pdf/audit-pack";
+import { NextResponse } from "next/server";
+import { buildAuditPack } from "@/lib/pdf/audit-pack";
+import { storeAuditPack } from "@/lib/pdf/audit-pack-store";
 import { signoffReviewFor } from "@/lib/data/signoff-review";
 
 // The file the licensee is asked to sign, from the emailed sign-off page
@@ -16,6 +18,7 @@ import { signoffReviewFor } from "@/lib/data/signoff-review";
 // ?download=1 saves it; otherwise it opens in the browser's PDF viewer.
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export async function GET(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -30,9 +33,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   );
   if (!pack) notFound();
 
+  // Saved in the private holding area and opened from there (2 Nov 2026):
+  // with every document inside, the pack is too big to send back from here.
+  // The link lasts minutes; the copy is deleted the next day.
   const download = new URL(request.url).searchParams.get("download") === "1";
-  const response = auditPackResponse(pack, !download);
+  const url = await storeAuditPack(createServiceClient(), pack, { agencyId: review.agencyId, propertyId: review.propertyId }, { inline: !download });
+  const response = NextResponse.redirect(url, 303);
   // Never cached or indexed: the token is the only thing protecting it.
+  response.headers.set("Cache-Control", "no-store");
   response.headers.set("X-Robots-Tag", "noindex, nofollow");
   response.headers.set("Referrer-Policy", "no-referrer");
   return response;

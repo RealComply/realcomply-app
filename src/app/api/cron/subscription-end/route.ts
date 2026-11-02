@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { runEndedNotices } from "@/lib/subscription-end/notices";
 import { expireActivityStore, runDeletionJob } from "@/lib/subscription-end/deletion";
 import { monitoredJob, subscriptionEndProblems } from "@/lib/monitoring/check-in";
+import { clearOldAuditPacks } from "@/lib/pdf/audit-pack-store";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // When a subscription ends: the day 0 and day 7 emails, the day-14 deletion,
 // and the end of RealComply's own 7-year activity record. See
@@ -40,7 +42,9 @@ export async function GET(request: Request) {
     const notices = dryRun ? null : await runEndedNotices();
     const deletion = await runDeletionJob({ dryRun, agencyId, force });
     const expired = dryRun ? null : await expireActivityStore();
-    return { notices, deletion, expired };
+    // Finished audit packs are kept a day, for their download link (2 Nov 2026).
+    const auditPacks = dryRun ? null : await clearOldAuditPacks(createServiceClient());
+    return { notices, deletion, expired, auditPacks };
   };
 
   // Only the daily run checks in. A dry run or a run for one office, by hand,

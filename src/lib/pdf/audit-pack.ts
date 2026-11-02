@@ -4,7 +4,7 @@ import { ruleContextFor } from "@/lib/data/rule-context";
 import {
   buildComplianceRecordPdf,
   complianceRecordFilename,
-  type Attachment,
+  type LoadedDocument,
   type ComplaintForRecord,
 } from "@/lib/pdf/compliance-record";
 import { comparablesFor } from "@/lib/data/comparables";
@@ -13,7 +13,9 @@ import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import { priceApprovalFor } from "@/lib/data/price-approval";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
-import { EVIDENCE_BUCKET, complaintFolder, isInFolder } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, complaintFolder, isInFolder, listingFolder } from "@/lib/storage/evidence";
+import { packDocKind, packDocumentsFor, type PackDocument } from "@/lib/pdf/pack-documents";
+import { readableBytes } from "@/lib/documents/readable-bytes";
 import { EMPTY_FILE_MESSAGE, downloadedFileProblem } from "@/lib/storage/file-check";
 import { addedLine, complaintFilesFor, removedLine } from "@/lib/complaint-files";
 import { formatAuDate } from "@/lib/format-date";
@@ -36,7 +38,7 @@ export async function buildAuditPack(
   propertyId: string,
   agencyId: string,
   preparedFor: string,
-): Promise<{ pdf: Uint8Array; filename: string } | null> {
+): Promise<{ pdf: Uint8Array; filename: string; included: string[] } | null> {
   const id = propertyId;
   const { data: property } = await supabase
     .from("properties")
@@ -157,33 +159,52 @@ export async function buildAuditPack(
     : await namesWhenFinished(supabase, agencyId, currentNames, [agentSignature.signedAt, licenseeSignature.signedAt]);
   const agencyName = names.tradingName;
 
-  // Deliberately NOT the contract for sale. Adam named the DATE it was
-  // received, not the document, and appending a contract would routinely add a
-  // hundred pages to a record that has to stay emailable.
-  const ATTACH: Array<{ key: string; title: string }> = [
-    { key: "a4", title: "Comparable sales report" },
-    { key: "d3", title: "Notice of revised estimated selling price" },
-  ];
-
-  const attachments: Attachment[] = [];
-  for (const { key, title } of ATTACH) {
-    const row = byKey[key];
-    if (!row?.evidence_path) continue;
-    const fileName =
-      (row.data as { evidenceFileName?: string } | undefined)?.evidenceFileName ??
-      row.evidence_path.split("/").pop() ??
-      "document";
-    attachments.push(await attachmentFrom(supabase, row.evidence_path, title, fileName));
-  }
+  // EVERY DOCUMENT ON THE LISTING (Adam, 2 Nov 2026). Was: the comparable
+  // sales report (a4) and the ESP revision notice (d3) only, "deliberately not
+  // the contract for sale" to keep the record emailable (24 Aug 2026). Now:
+  // every current file on every card, in the record's order, with who
+  // uploaded it and when; then the files on complaints linked to the listing.
+  // See the CHANGE note in lib/pdf/compliance-record.ts.
+  //
+  // Who uploaded each file and when is Storage's own record (0106). Before
+  // 0106 runs this reads nothing, and the time comes from the file's stored
+  // name instead.
+  const { data: uploadRows } = await supabase.rpc("listing_file_uploads", { p_property_id: id });
+  const uploads = new Map(
+    ((uploadRows ?? []) as Array<{ path: string; uploaded_by_name: string | null; uploaded_at: string | null }>).map((r) => [
+      r.path,
+      { by: r.uploaded_by_name, at: r.uploaded_at },
+    ]),
+  );
+  const documents = packDocumentsFor(items, byKey, listingFolder(agencyId, id), uploads);
 
   // Complaints the office linked to this listing, and their files (0101).
   // Read with the client passed in, so with a signed-in user's own access
   // only the licensee in charge's pack has them, or an office manager's
-  // since 0102, as on the register. The
-  // full-rights callers (above) are kept to this one office by its id. Their
-  // PDFs and photos are attached after the listing's own documents.
+  // since 0102, as on the register. The full-rights callers (above) are kept
+  // to this one office by its id. Their files follow the listing's own.
   const linked = await complaintsFor(supabase, agencyId, id);
-  attachments.push(...linked.attachments);
+  documents.push(...linked.documents);
+
+  // Each file fetched as the pack reaches it, never all at once. A file that
+  // can't be used says why on its separator page; the pack still builds.
+  const loadDocument = async (d: PackDocument): Promise<LoadedDocument> => {
+    try {
+      const { data: blob } = await supabase.storage.from(EVIDENCE_BUCKET).download(d.path);
+      if (!blob) return { problem: "it couldn't be read" };
+      const unreadable = await downloadedFileProblem(blob, d.fileName);
+      if (unreadable) return { problem: unreadable === EMPTY_FILE_MESSAGE ? "it came through empty" : "it didn't come through whole" };
+      if (d.kind === "heic") {
+        // An iPhone photo from before photos were converted on upload (26 Aug 2026).
+        const readable = await readableBytes(blob, d.fileName);
+        return readable.convertedFromHeic ? { bytes: readable.bytes } : { problem: "this iPhone photo couldn't be converted" };
+      }
+      return { bytes: new Uint8Array(await blob.arrayBuffer()) };
+    } catch {
+      return { problem: "it couldn't be read" };
+    }
+  };
+  const included: string[] = [];
 
   const generatedAt = new Date();
   const pdf = await buildComplianceRecordPdf({
@@ -231,81 +252,18 @@ export async function buildAuditPack(
     priceApproval: await priceApprovalFor(supabase, byKey["b4"]),
     complaints: linked.complaints,
     signatures: { agent: agentSignature, licensee: licenseeSignature },
-    attachments,
+    documents,
+    loadDocument,
+    report: (path, inPdf) => {
+      if (inPdf) included.push(path);
+    },
     rulesetVersion: RULESET_VERSION,
     preparedFor,
     generatedAt,
   });
 
   const filename = complianceRecordFilename(p, agencyName, generatedAt, isDraft);
-  return { pdf, filename };
-}
-
-/**
- * The download itself: one file in the Downloads folder, no dialog. Or, with
- * inline, opened in the browser's own PDF viewer (the licensee reading the
- * file on the sign-off page, 12 Oct 2026).
- */
-export function auditPackResponse(pack: { pdf: Uint8Array; filename: string }, inline = false): Response {
-  const { pdf, filename } = pack;
-  return new Response(pdf as BodyInit, {
-    headers: {
-      "Content-Type": "application/pdf",
-      // Both forms: the plain one for older browsers, the UTF-8 one for
-      // everything current. An address with an apostrophe in it should not
-      // produce a file called "download".
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${filename.replace(/"/g, "")}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      "Cache-Control": "no-store",
-    },
-  });
-}
-
-/**
- * One stored document, ready to append: a PDF or photo with its bytes, or
- * anything else named in the index as held on file. Never throws: a document
- * that can't be read is listed as one, and never costs the whole pack.
- */
-async function attachmentFrom(
-  supabase: SupabaseClient,
-  path: string,
-  title: string,
-  fileName: string,
-): Promise<Attachment> {
-  const lower = fileName.toLowerCase();
-  const kind: Attachment["kind"] = lower.endsWith(".pdf")
-    ? "pdf"
-    : lower.endsWith(".png")
-      ? "png"
-      : /\.jpe?g$/.test(lower)
-        ? "jpg"
-        : "other";
-
-  if (kind === "other") {
-    // Listed, not silently dropped. A document missing from a pack with no
-    // explanation is worse than one the pack tells you to ask for.
-    return { title, fileName, bytes: null, kind, omittedBecause: "not a PDF or image" };
-  }
-
-  try {
-    const { data: blob } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
-    // An empty or damaged file (19 Oct 2026) is named as one, not passed off
-    // as "could not be opened, held on file": nothing usable is held.
-    const unreadable = blob ? await downloadedFileProblem(blob, fileName) : null;
-    return !blob
-      ? { title, fileName, bytes: null, kind, omittedBecause: "could not be read" }
-      : unreadable
-        ? {
-            title,
-            fileName,
-            bytes: null,
-            kind,
-            omittedBecause: unreadable === EMPTY_FILE_MESSAGE ? "came through empty" : "didn't come through whole",
-            needsUploadingAgain: true,
-          }
-        : { title, fileName, bytes: new Uint8Array(await blob.arrayBuffer()), kind };
-  } catch {
-    return { title, fileName, bytes: null, kind, omittedBecause: "could not be read" };
-  }
+  return { pdf, filename, included };
 }
 
 const COMPLAINT_STATUS: Record<string, string> = { open: "Open", under_review: "Under review", resolved: "Resolved" };
@@ -319,7 +277,7 @@ async function complaintsFor(
   supabase: SupabaseClient,
   agencyId: string,
   propertyId: string,
-): Promise<{ complaints: ComplaintForRecord[]; attachments: Attachment[] }> {
+): Promise<{ complaints: ComplaintForRecord[]; documents: PackDocument[] }> {
   const { data: rows } = await supabase
     .from("complaints")
     .select("*")
@@ -327,7 +285,7 @@ async function complaintsFor(
     .eq("property_id", propertyId)
     .order("received_date", { ascending: true });
   const complaints = (rows ?? []) as Complaint[];
-  if (complaints.length === 0) return { complaints: [], attachments: [] };
+  if (complaints.length === 0) return { complaints: [], documents: [] };
 
   const { data: fileRows } = await supabase
     .from("complaint_files")
@@ -349,7 +307,7 @@ async function complaintsFor(
   }
 
   const forRecord: ComplaintForRecord[] = [];
-  const attachments: Attachment[] = [];
+  const documents: PackDocument[] = [];
   for (const c of complaints) {
     const { current, removed } = complaintFilesFor(c.id, files);
     const received = formatAuDate(c.received_date);
@@ -366,10 +324,18 @@ async function complaintsFor(
     });
     for (const f of current) {
       if (!isInFolder(f.file_path, complaintFolder(agencyId, c.id))) continue;
-      attachments.push(await attachmentFrom(supabase, f.file_path, `Complaint received ${received}`, f.file_name));
+      documents.push({
+        stage: "Complaints",
+        cardTitle: `Complaint received ${received}`,
+        fileName: f.file_name,
+        uploadedBy: f.added_by ? (nameOf[f.added_by] ?? null) : null,
+        uploadedAt: f.added_at,
+        path: f.file_path,
+        kind: packDocKind(f.file_name),
+      });
     }
   }
-  return { complaints: forRecord, attachments };
+  return { complaints: forRecord, documents };
 }
 
 /**

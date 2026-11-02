@@ -6,7 +6,8 @@ import type { Manifest } from "@/lib/subscription-end/records";
 
 // "Download all records": one zip with the audit pack for every listing, the
 // registers, training, CPD, licence and trust records as spreadsheets, and
-// every uploaded document.
+// every uploaded document, each once: a document inside its listing's audit
+// pack isn't also in the listing's Documents folder (2 Nov 2026).
 //
 // Built in the browser. The server hands over a manifest (what to fetch, by
 // short-lived signed link) and the browser fetches each piece and zips it.
@@ -36,34 +37,66 @@ export function DownloadAll({ agencyName }: { agencyName: string }) {
 
       const encoder = new TextEncoder();
       const entries: ZipEntry[] = manifest.csv.map((c) => ({ path: c.zipPath, bytes: encoder.encode(c.content) }));
-      const jobs: Array<{ path: string; url: string }> = [
-        ...manifest.listings.map((l) => ({
-          path: `${l.folder}/Compliance record (audit pack).pdf`,
-          url: `/dashboard/records/listing/${l.id}`,
-        })),
-        ...manifest.files.map((f) => ({ path: f.zipPath, url: f.url })),
-      ];
+      // EACH DOCUMENT ONCE (Adam, 2 Nov 2026). A listing's audit pack holds
+      // every document on it, so the packs come first, and a stored file
+      // already inside its pack isn't zipped again. The listing's Documents
+      // folder keeps only what a pack can't hold: Word, Excel and email
+      // files, a file that couldn't be added, and earlier versions.
+      const packs = manifest.listings.map((l) => ({
+        path: `${l.folder}/Compliance record (audit pack).pdf`,
+        url: `/dashboard/records/listing/${l.id}`,
+      }));
+      const inPacks = new Set<string>();
+      const total = packs.length + manifest.files.length;
 
       const missing: string[] = [];
       let done = 0;
-      setPhase({ kind: "working", done, total: jobs.length });
+      setPhase({ kind: "working", done, total });
 
       // A few at a time: fast enough, and gentle on a phone connection.
-      const queue = [...jobs];
-      async function worker() {
-        for (let job = queue.shift(); job; job = queue.shift()) {
-          try {
-            const r = await fetch(job.url, { cache: "no-store" });
-            if (!r.ok) throw new Error(String(r.status));
-            entries.push({ path: job.path, bytes: new Uint8Array(await r.arrayBuffer()) });
-          } catch {
-            missing.push(job.path);
+      async function run(jobs: Array<{ path: string; get: () => Promise<Uint8Array | null> }>) {
+        const queue = [...jobs];
+        async function worker() {
+          for (let job = queue.shift(); job; job = queue.shift()) {
+            try {
+              const bytes = await job.get();
+              if (bytes) entries.push({ path: job.path, bytes });
+            } catch {
+              missing.push(job.path);
+            }
+            done += 1;
+            setPhase({ kind: "working", done, total });
           }
-          done += 1;
-          setPhase({ kind: "working", done, total: jobs.length });
         }
+        await Promise.all([worker(), worker(), worker(), worker()]);
       }
-      await Promise.all([worker(), worker(), worker(), worker()]);
+      const fetchBytes = async (url: string) => {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error(String(r.status));
+        return new Uint8Array(await r.arrayBuffer());
+      };
+
+      // The packs: built on the server, then fetched from the holding area.
+      await run(
+        packs.map((p) => ({
+          path: p.path,
+          get: async () => {
+            const r = await fetch(p.url, { cache: "no-store" });
+            if (!r.ok) throw new Error(String(r.status));
+            const { url, included } = (await r.json()) as { url: string; included: string[] };
+            const bytes = await fetchBytes(url);
+            for (const path of included) inPacks.add(path);
+            return bytes;
+          },
+        })),
+      );
+      // Then every file not already inside a pack.
+      await run(
+        manifest.files.map((f) => ({
+          path: f.zipPath,
+          get: async () => (inPacks.has(f.path) ? null : fetchBytes(f.url)),
+        })),
+      );
 
       if (missing.length > 0) {
         entries.push({
