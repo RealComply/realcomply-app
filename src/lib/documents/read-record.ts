@@ -159,6 +159,72 @@ async function namesFor(supabase: RpcClient, note: ReadNote): Promise<{ office: 
   return none;
 }
 
+/** The tables a staff read is written to, with the service key. */
+type StaffTables = {
+  from: (table: string) => {
+    insert: (row: Record<string, unknown>) => PromiseLike<{ error: { message: string } | null }>;
+    upsert: (
+      row: Record<string, unknown>,
+      options: { onConflict: string; ignoreDuplicates: boolean },
+    ) => { select: (columns: string) => PromiseLike<{ data: unknown; error: { message: string } | null }> };
+  };
+};
+
+/**
+ * The record of a read done by RealComply staff on an office's listing (2 Nov
+ * 2026: Adam's re-reads of three comparable-sales reports, lib/documents/
+ * cma-reread). note_document_read() (0103) only records a read for someone
+ * signed in to the listing's own office, so a staff read is written with the
+ * service key instead: the same row in document_reads, recorded against the
+ * listing's office, and the same claim on the day's alert in reader_alerts, so
+ * one email a listing a day holds across both. Hands noteRead what the
+ * database function would have returned.
+ */
+export function staffReadRecord(service: unknown, agencyId: string, now: () => Date = () => new Date()): RpcClient {
+  const db = service as StaffTables;
+  const from = (table: string) => (service as { from: (t: string) => unknown }).from(table);
+  return {
+    from,
+    rpc: async (_fn, args) => {
+      const reader = args.p_reader as ReaderName;
+      const outcome = args.p_outcome as ReadOutcome;
+      const propertyId = (args.p_property_id as string | null | undefined) ?? null;
+      const sales = (args.p_sales as number | null | undefined) ?? null;
+      const { error } = await db.from("document_reads").insert({
+        agency_id: agencyId,
+        property_id: propertyId,
+        reader,
+        outcome,
+        why: outcome === "failed" ? ((args.p_why as string | null | undefined) ?? "other") : null,
+        sales: sales === null ? null : Math.max(sales, 0),
+      });
+      if (error) return { data: null, error: { message: error.message } };
+      if (!alertDue({ reader, outcome, sales })) return { data: { alert: false }, error: null };
+
+      // The database function's key, so a listing's one email a day holds
+      // whoever read it.
+      const day = sydneyDate(now());
+      const key = propertyId ? `listing:${propertyId}:${day}` : `office:${agencyId}:${reader}:${day}`;
+      const { data: claimed, error: claimError } = await db
+        .from("reader_alerts")
+        .upsert({ alert_key: key, agency_id: agencyId, property_id: propertyId }, { onConflict: "alert_key", ignoreDuplicates: true })
+        .select("alert_key");
+      // Already claimed today: recorded, not emailed. A claim that couldn't be
+      // made sends the email anyway: never none.
+      if (!claimError && (!Array.isArray(claimed) || claimed.length === 0)) return { data: { alert: false }, error: null };
+      const names = await namesFor({ rpc: async () => ({ data: null, error: null }), from }, {
+        reader,
+        card: "",
+        fileName: "",
+        outcome,
+        propertyId,
+        agencyId,
+      });
+      return { data: { alert: true, office: names.office, listing: names.listing }, error: null };
+    },
+  };
+}
+
 type Options = {
   /** Sends the alert. The real one emails Adam (lib/email/reader-alert). */
   send?: (alert: ReaderAlert) => Promise<unknown>;
