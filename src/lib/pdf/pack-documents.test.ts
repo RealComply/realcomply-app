@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { allItemsInRuleset } from "@/lib/rules/nsw-sales";
 import { fileTypeLabel, packDocKind, packDocumentsFor, uploadedAtFromPath } from "@/lib/pdf/pack-documents";
 import { readFileSync } from "node:fs";
-import { AUDIT_PACK_MAX_BYTES, PACK_DOCUMENTS_MAX_BYTES, clearOldAuditPacks, storeAuditPack } from "@/lib/pdf/audit-pack-store";
+import { AUDIT_PACK_MAX_BYTES, KEEP_PACK_MS, PACK_DOCUMENTS_MAX_BYTES, clearOldAuditPacks, removeAuditPacks, storeAuditPack } from "@/lib/pdf/audit-pack-store";
 import type { PropertyItem } from "@/lib/types";
 
 // Every document on the listing, in the pack's order (Adam, 2 Nov 2026).
@@ -66,27 +66,67 @@ test("kinds and file type words", () => {
   assert.equal(uploadedAtFromPath("a/b/c/x.pdf"), null);
 });
 
-test("the holding area keeps a pack for a day, then it goes", async () => {
-  const now = Date.parse("2026-11-03T00:00:00Z");
-  const stored: Record<string, Array<{ name: string; id: string | null; created_at?: string }>> = {
-    "": [{ name: "agency-1", id: null }],
-    "agency-1": [{ name: "listing-1", id: null }],
-    "agency-1/listing-1": [
-      { name: `${now - 2 * 60 * 60 * 1000}-a.pdf`, id: "1" },
-      { name: `${now - 30 * 60 * 60 * 1000}-b.pdf`, id: "2" },
-    ],
-  };
+/** A stand-in for the holding area: folders of entries, and what was removed. */
+function holdingArea(files: string[]) {
+  const stored = new Set(files);
   const removed: string[] = [];
   const bucket = {
-    list: async (prefix: string) => ({ data: stored[prefix] ?? [], error: null }),
+    list: async (prefix: string) => {
+      const children = new Map<string, boolean>();
+      for (const f of stored) {
+        if (prefix && !f.startsWith(`${prefix}/`)) continue;
+        const rest = (prefix ? f.slice(prefix.length + 1) : f).split("/");
+        children.set(rest[0], rest.length === 1);
+      }
+      return { data: [...children].map(([name, isFile]) => ({ name, id: isFile ? `id-${name}` : null })), error: null };
+    },
     remove: async (paths: string[]) => {
+      for (const p of paths) stored.delete(p);
       removed.push(...paths);
       return { error: null };
     },
+    upload: async (path: string) => {
+      stored.add(path);
+      return { error: null };
+    },
+    createSignedUrl: async () => ({ data: { signedUrl: "https://link" }, error: null }),
   };
-  const service = { storage: { from: () => bucket } } as unknown as SupabaseClient;
-  assert.deepEqual(await clearOldAuditPacks(service, now), { removed: 1, problem: null });
-  assert.deepEqual(removed, [`agency-1/listing-1/${now - 30 * 60 * 60 * 1000}-b.pdf`]);
+  return { service: { storage: { from: () => bucket } } as unknown as SupabaseClient, stored, removed };
+}
+
+test("a copy lasts only as long as its download link, then the clean-up deletes it", async () => {
+  const now = Date.parse("2026-11-03T00:00:00Z");
+  assert.equal(KEEP_PACK_MS, 15 * 60 * 1000, "the 10-minute link and 5 minutes for a download under way");
+  const fresh = `agency-1/listing-1/${now - 5 * 60 * 1000}-a.pdf`;
+  const expired = `agency-1/listing-1/${now - 16 * 60 * 1000}-b.pdf`;
+  const otherOffice = `agency-2/listing-9/${now - 2 * 60 * 60 * 1000}-c.pdf`;
+  const { service, stored } = holdingArea([fresh, expired, otherOffice]);
+  assert.deepEqual(await clearOldAuditPacks(service, now), { removed: 2, problem: null });
+  assert.deepEqual([...stored], [fresh]);
+});
+
+test("making a new pack clears that listing's packs whose links have run out, and no other listing's", async () => {
+  const old = `agency-1/listing-1/${Date.now() - 60 * 60 * 1000}-old.pdf`;
+  const otherListing = `agency-1/listing-2/${Date.now() - 60 * 60 * 1000}-other.pdf`;
+  const { service, stored } = holdingArea([old, otherListing]);
+  const pdf = new Uint8Array(10);
+  assert.equal(await storeAuditPack(service, { pdf, filename: "x.pdf" }, { agencyId: "agency-1", propertyId: "listing-1" }), "https://link");
+  assert.ok(!stored.has(old), "the expired pack for this listing is gone");
+  assert.ok(stored.has(otherListing), "another listing's waits for the hourly clean-up");
+  assert.equal([...stored].filter((p) => p.startsWith("agency-1/listing-1/")).length, 1, "the new one is there");
+});
+
+test("an office's or a listing's packs are all removed, whatever their age, and it looks again", async () => {
+  const now = Date.now();
+  const { service, stored } = holdingArea([
+    `agency-1/listing-1/${now}-a.pdf`,
+    `agency-1/listing-2/${now}-b.pdf`,
+    `agency-2/listing-9/${now}-c.pdf`,
+  ]);
+  assert.deepEqual(await removeAuditPacks(service, "agency-1/listing-1"), { removed: 1, left: 0, problem: null });
+  assert.deepEqual(await removeAuditPacks(service, "agency-1"), { removed: 1, left: 0, problem: null });
+  assert.deepEqual([...stored], [`agency-2/listing-9/${now}-c.pdf`], "another office's are untouched");
+  assert.equal((await removeAuditPacks(service, "")).problem, "no folder given", "never the whole holding area by mistake");
 });
 
 test("the holding area takes a 500 MB pack, the same limit 0106 sets on the bucket; a pack holds 450 MB of documents", () => {

@@ -35,7 +35,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
 
   // Saved in the private holding area and opened from there (2 Nov 2026):
   // with every document inside, the pack is too big to send back from here.
-  // The link lasts minutes; the copy is deleted the next day.
+  // The link lasts 10 minutes; the copy goes once it has run out (lib/pdf/audit-pack-store.ts).
   const download = new URL(request.url).searchParams.get("download") === "1";
   const url = await storeAuditPack(createServiceClient(), pack, { agencyId: review.agencyId, propertyId: review.propertyId }, { inline: !download });
   const response = NextResponse.redirect(url, 303);

@@ -62,6 +62,7 @@ describe("stopReason: whether a run may go on deleting", () => {
 type Row = Record<string, unknown>;
 let tables: Record<string, Row[]>;
 let files: Set<string>;
+let packs: Set<string>;
 let deletedUsers: string[];
 let emails: Array<{ to: string[] | string; subject: string; text: string }>;
 // Runs after each read of the agency's row, with how many reads so far.
@@ -123,12 +124,12 @@ function stub() {
 
     if (url.host !== "db.test") throw new Error(`unexpected fetch in test: ${method} ${url}`);
 
-    // Storage: list a folder, or remove files.
-    const list = url.pathname.match(/^\/storage\/v1\/object\/list\/compliance-evidence$/);
+    // Storage: list a folder, or remove files, in the documents bucket or the audit-pack holding area.
+    const list = url.pathname.match(/^\/storage\/v1\/object\/list\/(compliance-evidence|audit-packs)$/);
     if (list) {
       const prefix = String(body.prefix ?? "");
       const children = new Map<string, boolean>();
-      for (const f of files) {
+      for (const f of list[1] === "audit-packs" ? packs : files) {
         if (!f.startsWith(`${prefix}/`)) continue;
         const rest = f.slice(prefix.length + 1).split("/");
         children.set(rest[0], rest.length === 1);
@@ -136,8 +137,9 @@ function stub() {
       const page = [...children].slice(body.offset ?? 0, (body.offset ?? 0) + (body.limit ?? 100));
       return json(page.map(([name, isFile]) => ({ name, id: isFile ? `id-${name}` : null, metadata: isFile ? { size: 10 } : null })));
     }
-    if (url.pathname === "/storage/v1/object/compliance-evidence" && method === "DELETE") {
-      for (const p of body.prefixes as string[]) files.delete(p);
+    const remove = url.pathname.match(/^\/storage\/v1\/object\/(compliance-evidence|audit-packs)$/);
+    if (remove && method === "DELETE") {
+      for (const p of body.prefixes as string[]) (remove[1] === "audit-packs" ? packs : files).delete(p);
       return json([]);
     }
 
@@ -213,9 +215,12 @@ function unfinishedRun(step = "files"): Row {
 }
 
 const FILE = `${AGENCY}/listing-1/a3/1-agreement.pdf`;
+// A finished audit pack, made from the office's records during its 14 days.
+const PACK = `${AGENCY}/listing-1/1762000000000-pack.pdf`;
 
 function nothingDeleted() {
   assert.ok(files.has(FILE), "the office's files are still there");
+  assert.ok(packs.has(PACK), "its finished audit pack too");
   assert.equal(tables.agencies.length, 1, "the office's rows are still there");
   assert.deepEqual(deletedUsers, [], "no sign-in account was deleted");
   assert.equal((tables.deletion_certificates ?? []).length, 0, "no certificate");
@@ -231,6 +236,7 @@ beforeEach(() => {
     storage_backups: [],
   };
   files = new Set([FILE]);
+  packs = new Set([PACK]);
   deletedUsers = [];
   emails = [];
   onAgencyRead = null;
@@ -276,6 +282,7 @@ describe("the deletion job: a run belongs to one end", () => {
 
     assert.equal(report.outcomes[0].status, "completed");
     assert.equal(files.size, 0);
+    assert.equal(packs.size, 0, "finished audit packs never outlive the documents");
     assert.equal(tables.agencies.length, 0);
     assert.deepEqual(deletedUsers, ["0d000000-0000-4000-8000-0000000000a1"]);
   });
@@ -316,6 +323,7 @@ describe("the deletion job: a run belongs to one end", () => {
 
       assert.equal(report.outcomes[0].status, "skipped");
       assert.ok(files.has(FILE) || step === "rows", "files are untouched when it stops before files");
+      assert.ok(packs.has(PACK) || step === "rows", "and so are the audit packs");
       assert.equal(tables.agencies.length, 1, "the office's rows are still there");
       assert.deepEqual(deletedUsers, []);
       assert.equal(tables.deletion_runs[0].status, "skipped");
@@ -331,6 +339,7 @@ describe("the deletion job: a run belongs to one end", () => {
 
     assert.equal(report.outcomes[0].status, "completed");
     assert.equal(files.size, 0);
+    assert.equal(packs.size, 0, "finished audit packs never outlive the documents");
     assert.equal(tables.agencies.length, 0);
     assert.deepEqual(deletedUsers, ["0d000000-0000-4000-8000-0000000000a1"]);
     assert.equal(tables.deletion_certificates.length, 1);
