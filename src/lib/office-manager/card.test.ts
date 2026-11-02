@@ -62,9 +62,38 @@ describe("the office manager card on Home", () => {
       sentTo: "jordan@example.invalid",
       sentAt: "2026-10-26T22:41:00Z",
       emailFailed: false,
+      openedLine: "Not opened yet",
+      nudge: null,
     });
     const failed = officeManagerCard({ ...base, openRequest: { ...openRequest, email_sent_at: null } });
     assert.equal(failed?.kind === "waiting" && failed.emailFailed, true);
+  });
+
+  it("says when the licensee opened the link, and nudges after 2 business days unopened (0107)", () => {
+    const openRequest = {
+      id: "r1",
+      sent_to: "jordan@example.invalid",
+      // Tuesday 27 Oct 2026, 9:41am in Sydney.
+      email_sent_at: "2026-10-26T22:41:00Z",
+      email_attempts: 1,
+      expires_at: "2026-11-25T22:41:00Z",
+    };
+    const at = (iso: string) => officeManagerCard({ ...base, openRequest, now: new Date(iso) });
+    // Wednesday and Thursday pass; from Friday 30 Oct, the nudge. No Copy link (option 2).
+    const thursday = at("2026-10-29T12:00:00Z");
+    assert.equal(thursday?.kind === "waiting" && thursday.nudge, null);
+    const friday = at("2026-10-29T14:00:00Z");
+    assert.equal(
+      friday?.kind === "waiting" && friday.nudge,
+      "Jordan Blake hasn't opened the approval link yet. Ask them to check their quarantine.",
+    );
+    const opened = officeManagerCard({
+      ...base,
+      openRequest: { ...openRequest, opened_at: "2026-10-27T21:05:00Z" },
+      now: new Date("2026-11-02T00:00:00Z"),
+    });
+    assert.equal(opened?.kind === "waiting" && opened.openedLine, "Opened 28 October 2026, 8:05am");
+    assert.equal(opened?.kind === "waiting" && opened.nudge, null);
   });
 
   it("asks again once a request is out of date", () => {

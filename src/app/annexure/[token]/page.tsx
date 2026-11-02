@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OpenedBeacon } from "@/components/links/OpenedBeacon";
 import type { Metadata } from "next";
 import { Logo } from "@/components/Logo";
 import { AnnexureText } from "@/components/annexure/AnnexureText";
@@ -173,6 +174,8 @@ export default async function AnnexurePage({ params }: { params: Promise<{ token
           preview={preview}
         />
       </div>
+      {/* "Opened" for whoever set the office up, once a person interacts with this page (0107). */}
+      {!preview && <OpenedBeacon kind="annexure" token={token} />}
     </main>
   );
 }

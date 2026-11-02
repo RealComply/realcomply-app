@@ -21,7 +21,7 @@ import { submitSignoff } from "@/lib/actions/signoff-links";
 
 const initial = { error: null as string | null, signed: false };
 
-export function SignoffForm({ token }: { token: string }) {
+export function SignoffForm({ token, agencyName }: { token: string; agencyName: string }) {
   const [state, action, pending] = useActionState(submitSignoff, initial);
 
   if (state.signed) {
@@ -55,6 +55,14 @@ export function SignoffForm({ token }: { token: string }) {
       <p className="mt-1.5 text-xs leading-relaxed text-rc-muted">
         Typing your name here acts as your signature, and the date and time are recorded with it.
       </p>
+
+      {/* The signer says it is them (Adam, 3 Nov 2026, option 2). An agent
+          can copy this link to send it by hand, so the page asks who is
+          signing; a signature after a copy also says so on the record. */}
+      <label className="mt-4 flex max-w-xl items-start gap-2 text-sm leading-relaxed text-rc-ink">
+        <input type="checkbox" name="confirmSelf" value="yes" required className="mt-1 h-4 w-4 shrink-0 accent-rc-green-deep" />
+        <span>I am the licensee in charge of {agencyName}, and I am signing for myself.</span>
+      </label>
 
       {state.error && (
         <p className="mt-3 text-sm font-medium text-rc-red" role="alert">

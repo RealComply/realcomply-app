@@ -4,6 +4,7 @@ import { getSignoffRequest } from "@/lib/actions/signoff-links";
 import { SignoffForm } from "@/components/signoff/SignoffForm";
 import { ReviewAndSign } from "@/components/signoff/ReviewAndSign";
 import { signoffReviewFor } from "@/lib/data/signoff-review";
+import { OpenedBeacon } from "@/components/links/OpenedBeacon";
 
 // The public licensee sign-off page.
 //
@@ -99,10 +100,14 @@ export default async function SignoffPage({ params }: { params: Promise<{ token:
           propertyAddress={request.property_address}
           cards={review.cards}
           agentName={review.agentName}
+          agencyName={request.agency_name}
         />
       ) : (
-        <SignoffForm token={token} />
+        <SignoffForm token={token} agencyName={request.agency_name} />
       )}
+
+      {/* "Opened" on the agent's card, once a person interacts with this page (0107). */}
+      <OpenedBeacon kind="signoff" token={token} />
 
       <p className="mt-8 border-t border-rc-border pt-5 text-xs leading-relaxed text-rc-muted">
         This request was sent through RealComply, the compliance system {request.agency_name} uses. RealComply

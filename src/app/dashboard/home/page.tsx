@@ -32,6 +32,8 @@ import { STAGE_LABELS, type Agency, type Complaint, type Gift, type Profile, typ
 import { isOfficeAgent, myConfirmedVersions, officeAdoption, sgReadDue } from "@/lib/sg-annexure/office-read";
 import { setupViewFor } from "@/lib/data/office-setup";
 import { SetupCard, SetupDoneLine } from "@/components/home/SetupCard";
+import { UnopenedSignoffLinks } from "@/components/home/LinkNudges";
+import { unopenedSignoffLinksFor } from "@/lib/data/link-nudges";
 import { getItem } from "@/lib/rules/nsw-sales";
 import { formatAuTimestamp } from "@/lib/format-date";
 
@@ -115,6 +117,10 @@ export default async function HomeDashboardPage({
   // "Set up your office" (Adam, 27 Oct 2026): the licensee in charge, or the
   // agent on their own plan (the addendum's list).
   const setupPromise = setupViewFor(supabase, profile, access);
+  // Sign-off links they sent that nobody has opened in 2 business days (Adam,
+  // 2 Nov 2026; 0107): an agent on their own plan sends theirs to a licensee
+  // who isn't on RealComply.
+  const signoffNudgesPromise = unopenedSignoffLinksFor(supabase, profile);
   const [{ data: myLineRows }, changeStatus] = access.officeLicensee
     ? await Promise.all([
         supabase
@@ -308,6 +314,7 @@ export default async function HomeDashboardPage({
   const piRisk = piStatus === "expired" || piStatus === "urgent" ? 1 : 0;
   const officeManagers = await officeManagersPromise;
   const setup = await setupPromise;
+  const signoffNudges = await signoffNudgesPromise;
   // The set-up card's next step is the annexure's own "Review and sign", so
   // the annexure card isn't shown twice.
   const setupAsksForAnnexure = setup?.mode === "card" && setup.next?.key === "annexure";
@@ -358,6 +365,7 @@ export default async function HomeDashboardPage({
           {officeManagers.cards.map((news) => (
             <OfficeManagerNewsCard key={news.noticeKey} news={news} />
           ))}
+          <UnopenedSignoffLinks nudges={signoffNudges} />
 
           {/* Files an assistant has handed over and prepared for this agent.
               Top of Home, above the tiles, because it is the one thing on the

@@ -60,7 +60,7 @@ export async function officeManagerHomeFor(
         .limit(5),
       supabase
         .from("office_manager_requests")
-        .select("id, sent_to, email_sent_at, email_attempts, expires_at")
+        .select("id, sent_to, email_sent_at, email_attempts, expires_at, created_at, opened_at")
         .eq("profile_id", profile.id)
         .is("approved_at", null)
         .is("cancelled_at", null)

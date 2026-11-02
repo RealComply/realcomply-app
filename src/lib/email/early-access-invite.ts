@@ -101,6 +101,11 @@ export type Block =
   | { kind: "signoff"; lines: string[] };
 
 export type Email = {
+  /**
+   * What the inbox preview was written to say. Not rendered since 2 Nov 2026
+   * (queue item 2): hidden text counts against an email with office email
+   * security. See lib/email/layout.ts.
+   */
   preheader: string;
   blocks: Block[];
   /** Footer lines. A link inside one is given as [text](href). */
@@ -320,15 +325,11 @@ function renderHtml(e: Email, title: string): string {
 <title>${esc(title)}</title>
 </head>
 <body style="margin:0;padding:0;background:${C.ground}">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0">${esc(e.preheader)}${"&#847;&zwnj;&nbsp;".repeat(
-    60,
-  )}</div>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:${C.ground}">
 <tr><td align="center" style="padding:20px 12px">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#ffffff;border-radius:10px">
 <tr><td style="padding:22px 28px;border-bottom:1px solid ${C.line}">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-<td style="padding-right:10px;vertical-align:middle"><img src="${esc(e.base)}/email-logo.png" width="30" height="30" alt="" style="display:block;width:30px;height:30px"></td>
 <td style="vertical-align:middle;font-family:${FONT};font-size:20px;font-weight:800;letter-spacing:-0.4px;color:${C.ink}">Real<span style="color:${C.tick}">Comply</span></td>
 </tr></table></td></tr>
 <tr><td style="height:26px;line-height:26px">&nbsp;</td></tr>

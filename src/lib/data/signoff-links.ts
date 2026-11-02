@@ -54,6 +54,12 @@ export type SignoffLink = {
   /** b4 only: the estimated selling price shown with it, fixed by the database when it was sent. */
   espLow: number | null;
   espHigh: number | null;
+  /** When a person first opened it in a browser (0107). Null before 0107 is run. */
+  openedAt: string | null;
+  /** Each time someone copied it to send it themselves (0107, option 2), oldest first. */
+  copies: Array<{ by: string; at: string }>;
+  /** The licensee in charge it went to, by name where the office has one (for the nudge). */
+  licenseeName: string;
 };
 
 const numberOrNull = (v: unknown): number | null => {
@@ -67,17 +73,39 @@ export async function signoffLinksFor(
   supabase: SupabaseClient,
   propertyId: string,
 ): Promise<SignoffLink[]> {
-  const { data } = await supabase
-    .from("property_signoff_requests")
-    .select(
-      "id, item_key, sent_to, created_at, expires_at, signed_at, signed_name, email_sent_at, email_attempts, email_error, price_statement, esp_low, esp_high",
-    )
-    .eq("property_id", propertyId)
-    .is("revoked_at", null)
-    .order("created_at", { ascending: false });
+  const COLUMNS =
+    "id, agency_id, item_key, sent_to, created_at, expires_at, signed_at, signed_name, email_sent_at, email_attempts, email_error, price_statement, esp_low, esp_high";
+  // opened_at arrives with 0107; until then the read without it still works.
+  const read = (columns: string) =>
+    supabase
+      .from("property_signoff_requests")
+      .select(columns)
+      .eq("property_id", propertyId)
+      .is("revoked_at", null)
+      .order("created_at", { ascending: false });
+  let result: { data: unknown; error: unknown } = await read(`${COLUMNS}, opened_at`);
+  if (result.error) result = await read(COLUMNS);
+  const rows = (result.data ?? []) as Array<Record<string, string | number | null>>;
+
+  // Who copied which link, and the licensee's name for the nudge.
+  const ids = rows.map((r) => String(r.id));
+  const agencyId = rows[0]?.agency_id ? String(rows[0].agency_id) : null;
+  const [{ data: copyRows }, { data: agency }] = await Promise.all([
+    ids.length > 0
+      ? supabase.from("signoff_link_copies").select("request_id, copied_by_name, copied_at").in("request_id", ids).order("copied_at")
+      : Promise.resolve({ data: [] as unknown[] }),
+    agencyId
+      ? supabase.from("agencies").select("licensee_name").eq("id", agencyId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const copiesOf = new Map<string, Array<{ by: string; at: string }>>();
+  for (const c of (copyRows ?? []) as Array<{ request_id: string; copied_by_name: string; copied_at: string }>) {
+    copiesOf.set(c.request_id, [...(copiesOf.get(c.request_id) ?? []), { by: c.copied_by_name, at: c.copied_at }]);
+  }
+  const licenseeName = ((agency as { licensee_name?: string | null } | null)?.licensee_name ?? "").trim();
 
   const links: SignoffLink[] = [];
-  for (const row of (data ?? []) as Array<Record<string, string | number | null>>) {
+  for (const row of rows) {
     // A kind this app does not know is left out rather than guessed at: read
     // as the final sign-off, it could close the file.
     const itemKey = row.item_key === "b4" ? "b4" : row.item_key === "sign_licensee" ? "sign_licensee" : null;
@@ -96,6 +124,9 @@ export async function signoffLinksFor(
       priceStatement: (row.price_statement as string | null) ?? null,
       espLow: numberOrNull(row.esp_low),
       espHigh: numberOrNull(row.esp_high),
+      openedAt: (row.opened_at as string | null | undefined) ?? null,
+      copies: copiesOf.get(String(row.id)) ?? [],
+      licenseeName: licenseeName || String(row.sent_to ?? ""),
     });
   }
   return links;

@@ -180,11 +180,28 @@ async function sendViaResend(from: string, input: SendEmailInput): Promise<void>
   }
 }
 
+/**
+ * Where a reply goes when the email doesn't say (Adam, 2 Nov 2026, queue item
+ * 2: "reply-to admin@realcomply.com.au"). The sending address is a
+ * notifications address nobody reads, and a reply that bounces or vanishes
+ * makes a real email look like a fake one. An email sent on someone's behalf
+ * (a sign-off link, an office manager request, a staff reminder, a send-back)
+ * still names its own replyTo, so "is this real?" reaches the person they
+ * know.
+ */
+export const DEFAULT_REPLY_TO = "admin@realcomply.com.au";
+
+/** The email as it goes to the provider: every one has a reply-to. */
+export function withReplyTo(input: SendEmailInput): SendEmailInput {
+  return { ...input, replyTo: input.replyTo?.trim() || DEFAULT_REPLY_TO };
+}
+
 // Fire-and-log rather than fire-and-throw: notification and digest emails are
 // a courtesy layer on top of the app, not something that should take down a
 // signup or a cron run because a provider had a bad moment. Callers that
 // genuinely need to know whether the send succeeded get the boolean back.
-export async function sendEmail(input: SendEmailInput): Promise<boolean> {
+export async function sendEmail(original: SendEmailInput): Promise<boolean> {
+  const input = withReplyTo(original);
   const configuredFrom = process.env.EMAIL_FROM;
   const from = configuredFrom && input.fromName ? withSenderName(configuredFrom, input.fromName) : configuredFrom;
   if (!from) {

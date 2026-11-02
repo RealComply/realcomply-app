@@ -128,7 +128,18 @@ export function OfficeManagerHomeCard({ card }: { card: OfficeManagerCard }) {
             <dd className="min-w-0 break-words text-rc-ink">
               {card.sentAt ? `${formatAuTimestamp(card.sentAt)}, to ${card.sentTo}` : `Not sent yet, to ${card.sentTo}`}
             </dd>
+            {card.openedLine && (
+              <>
+                <dt className="text-rc-muted">Opened</dt>
+                <dd className="min-w-0 break-words text-rc-ink">{card.openedLine.replace(/^Opened /, "")}</dd>
+              </>
+            )}
           </dl>
+          {card.nudge && (
+            <p role="status" className="text-sm font-semibold leading-relaxed text-rc-amber-deep">
+              {card.nudge}
+            </p>
+          )}
           {card.emailFailed && (
             <p role="alert" className="text-sm text-rc-amber-deep">
               The email could not be sent. Try sending it again.

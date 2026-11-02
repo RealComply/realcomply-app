@@ -22,6 +22,19 @@ const BEFORE = {
   video: "b58ec67cfd9217914649b6d5f281aa3623bc5b7617b6d44bcf4d37b445406337",
 };
 
+// 2 Nov 2026 (Adam, queue item 2, "email that gets through"): the shell lost
+// its logo picture and its hidden preview line, which office email security
+// scores against a message. Putting those two back gives the original html,
+// so the hashes above still prove nothing else changed.
+const WELCOME_PREHEADER = "Welcome aboard. Your office is all set up, and we're really glad to have you with us.";
+function withOldShell(html: string): string {
+  const hidden = `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0">${WELCOME_PREHEADER}${"&#847;&zwnj;&nbsp;".repeat(60)}</div>\n`;
+  const logo = `<td style="padding-right:10px;vertical-align:middle"><img src="${base}/email-logo.png" width="30" height="30" alt="" style="display:block;width:30px;height:30px"></td>\n`;
+  return html
+    .replace(/(<body[^>]*>\n)/, `$1${hidden}`)
+    .replace('<td style="vertical-align:middle;font-family:', `${logo}<td style="vertical-align:middle;font-family:`);
+}
+
 function videoBlock(html: string): string {
   const start = html.indexOf('<tr><td style="padding:4px 28px 22px">');
   const end = html.indexOf("</a></td></tr>", start) + "</a></td></tr>".length;
@@ -39,13 +52,14 @@ const sign: AnnexureBox = {
 describe("the welcome email's annexure box", () => {
   it("without a box, the welcome is exactly as it was", () => {
     const { html, text } = buildWelcomeEmail({ firstName: "Sam", base });
-    assert.equal(sha(html), BEFORE.html);
-    assert.equal(sha(text), BEFORE.text);
+    assert.equal(sha(withOldShell(html)), BEFORE.html);
+    assert.equal(sha(text), BEFORE.text, "the plain text is untouched");
+    assert.ok(!html.includes("email-logo.png") && !html.includes("display:none"));
   });
 
   it("the 29 Oct subject change touched only the subject", () => {
     const { html } = buildWelcomeEmail({ firstName: "Sam", base });
-    const back = html.replaceAll("Getting started with RealComply, Sam", "Welcome to RealComply, Sam");
+    const back = withOldShell(html).replaceAll("Getting started with RealComply, Sam", "Welcome to RealComply, Sam");
     assert.equal(sha(back), "103c12a0db6b3de42e79dcedc5c3ff1c05e2454113c79bb67b540b3f2d680f2c");
   });
 
@@ -62,7 +76,7 @@ describe("the welcome email's annexure box", () => {
     const withBox = buildWelcomeEmail({ firstName: "Sam", base, annexure: sign }).html;
     const start = withBox.indexOf("<tr><td style=\"padding:0 28px 22px\">");
     const end = withBox.indexOf("</td></tr></table></td></tr>", start) + "</td></tr></table></td></tr>".length;
-    assert.equal(sha(withBox.slice(0, start) + withBox.slice(end + 1)), BEFORE.html);
+    assert.equal(sha(withOldShell(withBox.slice(0, start) + withBox.slice(end + 1))), BEFORE.html);
   });
 
   it("shows the brief's words, the office's details and a green Review and sign button", () => {
