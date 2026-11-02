@@ -205,7 +205,7 @@ export async function extractCpdCertificate(
   path: string,
   fileName: string,
 ): Promise<{ error: string | null; fields?: CpdCertificateFields }> {
-  const { supabase } = await requireAuthContext();
+  const { supabase, profile } = await requireAuthContext();
 
   // Said on the CPD card since 1 Nov 2026 (it was never shown before), so in
   // the card's plain words.
@@ -214,7 +214,7 @@ export async function extractCpdCertificate(
   }
 
   // Every read recorded, and a failed one alerted (1 Nov 2026; lib/documents/read-record).
-  const where = { reader: "cpd_certificate", card: "CPD register", fileName } as const;
+  const where = { reader: "cpd_certificate", card: "CPD register", fileName, agencyId: profile.agency_id } as const;
   const failed = (why: ReadFailureWhy, error?: unknown) => noteRead(supabase, { ...where, outcome: "failed", why, error });
 
   const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
@@ -347,14 +347,14 @@ export async function extractLicenceDocument(
   path: string,
   fileName: string,
 ): Promise<{ error: string | null; raw?: unknown }> {
-  const { supabase } = await requireAuthContext();
+  const { supabase, profile } = await requireAuthContext();
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return { error: "Reading documents isn't set up yet, so the details need typing in for now." };
   }
 
   // Every read recorded, and a failed one alerted (1 Nov 2026; lib/documents/read-record).
-  const where = { reader: "licence", card: "Licence register", fileName } as const;
+  const where = { reader: "licence", card: "Licence register", fileName, agencyId: profile.agency_id } as const;
   const failed = (why: ReadFailureWhy, error?: unknown) => noteRead(supabase, { ...where, outcome: "failed", why, error });
 
   const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
@@ -494,14 +494,14 @@ export async function extractInsuranceCertificate(
   path: string,
   fileName: string,
 ): Promise<{ error: string | null; raw?: unknown }> {
-  const { supabase } = await requireAuthContext();
+  const { supabase, profile } = await requireAuthContext();
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return { error: "Reading documents isn't set up yet, so the details need typing in for now." };
   }
 
   // Every read recorded, and a failed one alerted (1 Nov 2026; lib/documents/read-record).
-  const where = { reader: "insurance_certificate", card: "Insurance register", fileName } as const;
+  const where = { reader: "insurance_certificate", card: "Insurance register", fileName, agencyId: profile.agency_id } as const;
   const failed = (why: ReadFailureWhy, error?: unknown) => noteRead(supabase, { ...where, outcome: "failed", why, error });
 
   const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);

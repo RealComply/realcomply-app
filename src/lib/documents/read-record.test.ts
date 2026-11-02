@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { noteRead, type ReaderAlert } from "@/lib/documents/read-record";
+import { alertDue, noteRead, type ReaderAlert } from "@/lib/documents/read-record";
 import { UnfinishedAnswer } from "@/lib/documents/reader-answer";
 import { readerAlertEmail } from "@/lib/email/reader-alert";
 
@@ -156,5 +156,148 @@ describe("a record that can't be written", () => {
     );
     await settle();
     assert.ok(logged.some((l) => l[0] === "reader alert not sent: cpd_certificate"));
+  });
+});
+
+// Closing the gap (Adam, 2 Nov 2026: "yes close the gap"). A read the database
+// couldn't record used to send no alert at all, since the database decided.
+
+/** A database that can't record anything, with the names it can (or can't) look up. */
+function down(lookup: "works" | "fails" | "hangs" | "none") {
+  const looked: string[] = [];
+  const row = (table: string) =>
+    table === "properties"
+      ? { address: "12 Sample Street, Testville NSW 2999", agencies: { name: "Sample Realty (made up)" } }
+      : { name: "Sample Realty (made up)" };
+  const from = (table: string) => ({
+    select: () => ({
+      eq: (_column: string, value: string) => ({
+        maybeSingle: () => {
+          looked.push(`${table}:${value}`);
+          if (lookup === "fails") return Promise.reject(new Error("fetch failed"));
+          if (lookup === "hangs") return new Promise<never>(() => {});
+          return Promise.resolve({ data: row(table) });
+        },
+      }),
+    }),
+  });
+  return {
+    looked,
+    client: {
+      rpc: () => Promise.resolve({ data: null, error: { message: "function public.note_document_read does not exist" } }),
+      ...(lookup === "none" ? {} : { from }),
+    },
+  };
+}
+
+const listing = (n: number) => `00000000-0000-4000-8000-0000000001${String(n).padStart(2, "0")}`;
+const quiet = (t: { mock: { method: (o: object, m: string, f: () => void) => unknown } }) => t.mock.method(console, "error", () => {});
+
+describe("a read the database can't record", () => {
+  it("still sends the alert, naming the office and listing it could look up, and says it wasn't recorded", async (t) => {
+    quiet(t);
+    const db = down("works");
+    const box = inbox();
+    await noteRead(
+      db.client,
+      { reader: "comparable_sales", card: "Comparable sales (a4)", fileName: "cma.pdf", propertyId: listing(1), outcome: "failed", why: "cut_off" },
+      box.options,
+    );
+    await settle();
+    assert.equal(box.sent.length, 1);
+    assert.equal(box.sent[0].office, "Sample Realty (made up)");
+    assert.equal(box.sent[0].listing, "12 Sample Street, Testville NSW 2999");
+    assert.equal(box.sent[0].unrecorded, "function public.note_document_read does not exist");
+    const email = readerAlertEmail(box.sent[0]);
+    assert.match(email.text, /Not recorded: the record of reads couldn't be written \(function public\.note_document_read does not exist\), so this email was sent anyway\./);
+    assert.ok(!email.text.includes("This is the only email"), "no promise it's the only one");
+  });
+
+  it("still sends it when the names can't be looked up either", async (t) => {
+    quiet(t);
+    for (const [n, lookup] of [[2, "fails"], [3, "none"]] as const) {
+      const box = inbox();
+      await noteRead(down(lookup).client, { reader: "contract", card: "Contract (b1)", fileName: "c.pdf", propertyId: listing(n), outcome: "failed", why: "service" }, box.options);
+      await settle();
+      assert.equal(box.sent.length, 1, lookup);
+      assert.equal(box.sent[0].office, null);
+      assert.equal(box.sent[0].listing, null);
+      const email = readerAlertEmail(box.sent[0]);
+      assert.equal(email.subject, "RealComply alert: a contract for sale couldn't be read (listing not known)");
+      assert.ok(email.text.includes("Office: Not known (it couldn't be looked up)"));
+      assert.ok(email.text.includes(`Listing: Not known (it couldn't be looked up; listing id ${listing(n)})`));
+    }
+  });
+
+  it("never waits on a database that isn't answering: the names are given up after 3 seconds", async (t) => {
+    quiet(t);
+    const box = inbox();
+    const started = Date.now();
+    let done!: () => void;
+    const finished = new Promise<void>((r) => (done = r));
+    await noteRead(
+      down("hangs").client,
+      { reader: "contract", card: "Contract (b1)", fileName: "c.pdf", propertyId: listing(4), outcome: "failed", why: "service" },
+      { ...box.options, later: (task) => void task().then(done) },
+    );
+    await finished;
+    assert.equal(box.sent.length, 1);
+    assert.ok(Date.now() - started < 4500, "sent within about 3 seconds");
+  });
+
+  it("sends nothing for a good read, and alerts for a comparable-sales report with 0 comparables", async (t) => {
+    quiet(t);
+    const box = inbox();
+    await noteRead(down("works").client, { reader: "contract", card: "Contract (b1)", fileName: "c.pdf", propertyId: listing(5), outcome: "read" }, box.options);
+    await noteRead(down("works").client, { reader: "comparable_sales", card: "Comparable sales (a4)", fileName: "cma.pdf", propertyId: listing(6), outcome: "read", sales: 27 }, box.options);
+    await settle();
+    assert.equal(box.sent.length, 0);
+    await noteRead(down("works").client, { reader: "comparable_sales", card: "Comparable sales (a4)", fileName: "cma.pdf", propertyId: listing(7), outcome: "nothing_found", sales: 0 }, box.options);
+    await settle();
+    assert.equal(box.sent.length, 1);
+    assert.match(readerAlertEmail(box.sent[0]).subject, /gave 0 comparables/);
+  });
+
+  it("is emailed once a day per listing from each server, and again the next day", async (t) => {
+    quiet(t);
+    const box = inbox();
+    const failure = (n: number) => ({ reader: "contract" as const, card: "Contract (b1)", fileName: "c.pdf", propertyId: listing(n), outcome: "failed" as const, why: "service" as const });
+    await noteRead(down("works").client, failure(8), box.options);
+    await noteRead(down("works").client, failure(8), box.options);
+    await noteRead(down("works").client, failure(9), box.options);
+    await settle();
+    assert.equal(box.sent.length, 2, "one for each listing");
+    const nextDay = { ...box.options, now: () => new Date("2026-11-02T22:14:00Z") };
+    await noteRead(down("works").client, failure(8), nextDay);
+    await settle();
+    assert.equal(box.sent.length, 3, "a new day, a new email");
+  });
+
+  it("names the office for a read that isn't on a listing, once a day per office and kind of document", async (t) => {
+    quiet(t);
+    const db = down("works");
+    const box = inbox();
+    const cpd = { reader: "cpd_certificate" as const, card: "CPD register", fileName: "cpd.pdf", agencyId: "office-a", outcome: "failed" as const, why: "cut_off" as const };
+    await noteRead(db.client, cpd, box.options);
+    await noteRead(db.client, cpd, box.options);
+    await noteRead(db.client, { ...cpd, reader: "licence", card: "Licence register" }, box.options);
+    await settle();
+    assert.equal(box.sent.length, 2);
+    assert.equal(box.sent[0].office, "Sample Realty (made up)");
+    assert.equal(box.sent[0].listing, null);
+    assert.deepEqual(db.looked, ["agencies:office-a", "agencies:office-a"]);
+  });
+});
+
+describe("whether a read needs an alert", () => {
+  it("is the same rule as the database's: a failed read, or a comparable-sales report with no sales", () => {
+    assert.equal(alertDue({ reader: "contract", outcome: "failed" }), true);
+    assert.equal(alertDue({ reader: "cpd_certificate", outcome: "failed" }), true);
+    assert.equal(alertDue({ reader: "comparable_sales", outcome: "read", sales: 0 }), true);
+    assert.equal(alertDue({ reader: "comparable_sales", outcome: "nothing_found" }), true);
+    assert.equal(alertDue({ reader: "comparable_sales", outcome: "wrong_document", sales: 0 }), true);
+    assert.equal(alertDue({ reader: "comparable_sales", outcome: "read", sales: 27 }), false);
+    assert.equal(alertDue({ reader: "contract", outcome: "nothing_found" }), false);
+    assert.equal(alertDue({ reader: "id_screen", outcome: "read" }), false);
   });
 });

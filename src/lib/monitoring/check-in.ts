@@ -96,6 +96,11 @@ export async function monitoredJob<T>(
   run: () => Promise<T>,
   problemsOf: (result: T) => string[] = () => [],
 ): Promise<T> {
+  // Where the job's code actually runs (2 Nov 2026). Vercel's log lines for
+  // each run say region iad1 (Washington), most likely where its scheduler
+  // calls from; RealComply's functions are set to run in Sydney (vercel.json
+  // "regions": ["syd1"]). VERCEL_REGION is the region running this code.
+  console.log(`job ${check} running in ${process.env.VERCEL_REGION ?? "an unknown region"}`);
   await checkIn(check, "start");
   let result: T;
   try {
