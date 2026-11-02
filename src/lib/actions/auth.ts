@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
+import { signupListingsPage, saveSignupListingsPage } from "@/lib/auth/signup-listings-page";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { currentLegalVersions } from "@/lib/legal/documents";
 import { founderInviteFree, founderInviteValid, openSignupsAllowed } from "@/lib/signups";
@@ -42,6 +43,7 @@ export type SignupValues = {
   licenseeName: string;
   licenseeEmail: string;
   websiteUrl: string;
+  listingsPage: string;
   fullName: string;
   email: string;
   acceptLegal: boolean;
@@ -55,6 +57,7 @@ function signupValues(formData: FormData): SignupValues {
     licenseeName: text("licenseeName"),
     licenseeEmail: text("licenseeEmail"),
     websiteUrl: text("websiteUrl"),
+    listingsPage: text("listingsPage"),
     fullName: text("fullName"),
     email: text("email"),
     acceptLegal: formData.get("acceptLegal") === "yes",
@@ -123,6 +126,8 @@ async function createAccount(formData: FormData): Promise<ActionState> {
     return { error: website.error };
   }
   const websiteUrl = website.url;
+  // Their own listings page (2 Nov 2026): optional, never a reason to stop.
+  const listingsPageUrl = signupListingsPage(formData.get("listingsPage"));
   // REQUIRED for a new office from 23 Oct 2026 (Adam: "that's when we need the
   // URL to the page that they keep their listings on", so the site can be
   // scanned). Was optional. Someone joining an existing office by invite is
@@ -227,6 +232,8 @@ async function createAccount(formData: FormData): Promise<ActionState> {
         licensee_name: licenseeName || null,
         is_licensee: isLicensee,
         website_url: websiteUrl || null,
+        // Saved once their profile exists, here or at /auth/callback.
+        listings_page_url: listingsPageUrl,
         licensed_entity_name: licensedEntityName,
         // Carried for the same reason as agency_name: with email confirmation
         // ON there is no session in this request, so the acceptance cannot be
@@ -327,6 +334,8 @@ async function createAccount(formData: FormData): Promise<ActionState> {
   if (!inviteToken && websiteUrl) {
     await supabase.rpc("set_agency_website", { p_url: websiteUrl });
   }
+  // A new office's founder and an invited agent alike. Never blocks.
+  if (signUpData.user) await saveSignupListingsPage(supabase, signUpData.user.id, listingsPageUrl);
   if (!inviteToken && licensedEntityName) {
     await saveSignupEntityName(supabase, licensedEntityName);
   }

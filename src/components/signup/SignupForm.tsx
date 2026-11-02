@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useActionState, useEffect, useState } from "react";
+import { ListingsPageSignupField } from "@/components/signup/ListingsPageSignupField";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -372,6 +373,9 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
           </p>
         )}
       </div>
+      {/* Their own listings page (Adam, 2 Nov 2026): optional, with Skip.
+          Not for an invited assistant, who lists nothing of their own. */}
+      {!invite?.isAssistant && <ListingsPageSignupField defaultValue={kept?.listingsPage} />}
       {/* Acceptance of the published documents.
           A real checkbox rather than "by continuing you agree", because what
           gets recorded has to be an act the person took, not an inference from

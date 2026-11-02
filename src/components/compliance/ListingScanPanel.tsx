@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Globe, AlertTriangle, Check } from "lucide-react";
 import { checkListingNow } from "@/lib/actions/website-scan";
+import { searchLine, type SearchTry } from "@/lib/listings-pages";
 
 // The advertised-price check, as shown on c1.
 //
@@ -41,10 +42,14 @@ function when(iso: string): string {
 export function ListingScanPanel({
   propertyId,
   finding,
+  pageSearch,
 }: {
   propertyId: string;
   finding?: ScanFinding;
+  /** Where the morning's check looked for this listing's page, while none is found (2 Nov 2026). */
+  pageSearch?: { at: string; tries: SearchTry[] } | null;
 }) {
+  const notFound = searchLine(pageSearch);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -69,12 +74,17 @@ export function ListingScanPanel({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium text-rc-muted">The live ad</p>
+          {!finding && notFound && (
+            <p className="mt-1 text-[11px] leading-relaxed text-rc-amber-deep">
+              {notFound} Add your own listings page in Profile settings, or paste this listing&rsquo;s link in Edit
+              listing details.
+            </p>
+          )}
 
           {!finding ? (
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-              Your website is checked against this listing&rsquo;s ESP every Monday morning once it&rsquo;s advertised,
-              and every morning from 1 November. From then, if no price is showing or it&rsquo;s below the ESP,
-              you&rsquo;ll get an email. Nothing to set up.
+              This listing&rsquo;s web page is checked against its ESP every morning once it&rsquo;s advertised. If no
+              price is showing or it&rsquo;s below the ESP, you&rsquo;ll get an email. Nothing to set up.
             </p>
           ) : (
             <div className="mt-1">

@@ -1,3 +1,4 @@
+import { saveSignupListingsPage } from "@/lib/auth/signup-listings-page";
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { accessFrom, type Access } from "@/lib/access";
@@ -59,6 +60,7 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     licensee_email?: string | null;
     licensee_name?: string | null;
     website_url?: string | null;
+    listings_page_url?: string | null;
     licensed_entity_name?: string | null;
     is_licensee?: boolean;
     /** Permission to create a NEW agency while signups are closed — 0045. */
@@ -98,6 +100,8 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
     if (!joinError && !meta.invite_token && typeof meta.website_url === "string" && meta.website_url) {
       await supabase.rpc("set_agency_website", { p_url: meta.website_url });
     }
+    // Their own listings page, if they gave one at sign-up (2 Nov 2026).
+    if (!joinError) await saveSignupListingsPage(supabase, user.id, meta.listings_page_url);
     if (!joinError && !meta.invite_token && typeof meta.licensed_entity_name === "string" && meta.licensed_entity_name) {
       await saveSignupEntityName(supabase, meta.licensed_entity_name);
     }

@@ -11,6 +11,7 @@ import { reopenStaleNoRevision } from "@/lib/data/no-revision-reask";
 import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import { PRICE_CHECK_FROM, scanModeAt } from "@/lib/listing-scan-schedule";
 import { fetchPublicPage } from "@/lib/net/public-page";
+import { PAGE_IS_DATA, checkListingsPages, findListingPage, pageCache } from "@/lib/listing-scan/pages-scan";
 import { READER_MODEL, logReadFailure, readFailureWhy, type ReadFailureWhy } from "@/lib/documents/read-core";
 import { UnfinishedAnswer, toolAnswer, unfinishedMessage } from "@/lib/documents/reader-answer";
 import type { PropertyItem } from "@/lib/types";
@@ -318,7 +319,8 @@ async function readWithModel(
     system:
       "You read a real estate listing page and report the advertised price exactly as a member of the public " +
       "would see it. Report only what is on the page. Never infer a price from anything other than a price " +
-      "displayed for this property, and never carry over a figure from another listing shown on the same page.",
+      "displayed for this property, and never carry over a figure from another listing shown on the same page." +
+      PAGE_IS_DATA,
     messages: [
       {
         role: "user",
@@ -609,23 +611,24 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
 
   const { data: property } = await supabase
     .from("properties")
-    .select("id, agency_id, address, listing_url")
+    .select("id, agency_id, address, listing_url, created_by")
     .eq("id", propertyId)
     .maybeSingle();
 
   if (!property) return { error: "Couldn't find that property." };
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const p = property as { id: string; agency_id: string; address: string; listing_url: string | null };
+  const p = property as { id: string; agency_id: string; address: string; listing_url: string | null; created_by: string | null };
 
   // Same path as the daily run: find the page if we do not have one yet.
   let url = p.listing_url;
   if (!url) {
-    url = await discoverListingUrl(supabase, anthropic, p);
+    // The listing agent's own page first, then the office page (2 Nov 2026).
+    url = await findListingPage(supabase, anthropic, p, pageCache());
     if (!url) {
       return {
         error:
-          "Couldn't find this listing on your website. If it's published, paste the link in Edit listing details; if it isn't yet, there's nothing to check.",
+          "Couldn't find this listing on the agent's listings page or the office's. If it's published, paste the link in Edit listing details; if it isn't yet, there's nothing to check.",
       };
     }
   }
@@ -660,8 +663,27 @@ export async function runDailyListingScan(): Promise<{
   readFailed: number;
   inputTokens: number;
   outputTokens: number;
+  /** Office and agents' listings pages read this morning, and those turned away or not read (2 Nov 2026). */
+  pagesChecked: number;
+  pagesRefused: number;
+  pagesFailed: number;
+  /** Listings with no page yet whose page wasn't found this morning; why is recorded on each listing. */
+  notFound: number;
 }> {
-  const none = { discovered: 0, checked: 0, read: 0, skipped: 0, withIssues: 0, readFailed: 0, inputTokens: 0, outputTokens: 0 };
+  const none = {
+    discovered: 0,
+    checked: 0,
+    read: 0,
+    skipped: 0,
+    withIssues: 0,
+    readFailed: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    pagesChecked: 0,
+    pagesRefused: 0,
+    pagesFailed: 0,
+    notFound: 0,
+  };
   if (!process.env.ANTHROPIC_API_KEY) return none;
 
   const supabase = createServiceClient();
@@ -673,7 +695,7 @@ export async function runDailyListingScan(): Promise<{
   // its page can be found.
   const { data: rows } = await supabase
     .from("properties")
-    .select("id, agency_id, address, listing_url, stage")
+    .select("id, agency_id, address, listing_url, stage, created_by")
     .gte("stage", 2)
     .lte("stage", 4);
 
@@ -687,9 +709,17 @@ export async function runDailyListingScan(): Promise<{
     agency_id: string;
     address: string;
     listing_url: string | null;
+    created_by: string | null;
   }>).filter((p) => !ended.has(p.agency_id));
 
   const db = supabase as unknown as Db;
+  // Each page is fetched once this morning, however many listings use it.
+  const fetchPage = pageCache();
+
+  // Every office page and every agent's own page first: what each showed is
+  // the line under its field, and the group-page warning (2 Nov 2026).
+  const pageChecks = await checkListingsPages(db, anthropic, fetchPage, properties, ended);
+  let notFound = 0;
   // Until 31 October: the weekly check on Mondays, page-finding only on other
   // mornings. From 1 November: the daily check. See lib/listing-scan-schedule.
   const mode = scanModeAt(new Date());
@@ -707,8 +737,13 @@ export async function runDailyListingScan(): Promise<{
     // website with concurrent requests for one check a day.
     let url = property.listing_url;
     if (!url) {
-      url = await discoverListingUrl(db, anthropic, property);
-      if (!url) continue; // not published yet, or not findable — try again tomorrow
+      // The listing agent's own page first, then the office page. Where it
+      // looked, and why it found nothing, is recorded on the listing.
+      url = await findListingPage(db, anthropic, property, fetchPage);
+      if (!url) {
+        notFound += 1;
+        continue; // not published yet, or not findable — try again tomorrow
+      }
       discovered += 1;
     }
 
@@ -735,167 +770,5 @@ export async function runDailyListingScan(): Promise<{
     }
   }
 
-  return { discovered, checked, read, skipped, withIssues, readFailed, inputTokens, outputTokens };
-}
-
-// ── Finding the listing page ───────────────────────────────────────────────
-//
-// Pasting a URL per listing is the kind of unnecessary work this product exists
-// to remove (Adam, 16 Aug 2026). With the agency's website recorded once, the
-// app goes and finds the page itself.
-//
-// CONFIRM ONCE, THEN IT IS A FACT. Matching an address to a link is inference,
-// and a check that silently matched the wrong page would report a clean result
-// for a listing nobody looked at — the worst failure available to this feature,
-// because it is invisible. So discovery proposes; the agent confirms; the exact
-// URL is then stored on the property and never guessed again.
-//
-// SAME HOST ONLY, and at most one hop from the site's own pages. This is a
-// server fetching a URL chosen by a model reading a web page, which is a short
-// route to fetching something nobody intended. Constraining candidates to the
-// agency's own domain keeps the model's choice inside the set of pages the
-// agency already publishes.
-
-export type ListingCandidate = { url: string; label: string; why: string };
-
-const LINK_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-
-/** Same-host links with their anchor text, deduplicated, capped. */
-function linksFrom(html: string, base: URL): Array<{ href: string; text: string }> {
-  const seen = new Set<string>();
-  const out: Array<{ href: string; text: string }> = [];
-  let m: RegExpExecArray | null;
-  while ((m = LINK_RE.exec(html)) !== null) {
-    let abs: URL;
-    try {
-      abs = new URL(m[1], base);
-    } catch {
-      continue;
-    }
-    if (abs.protocol !== "https:" || abs.hostname !== base.hostname) continue;
-    abs.hash = "";
-    const key = abs.toString();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
-    out.push({ href: key, text });
-    if (out.length >= 400) break;
-  }
-  return out;
-}
-
-const CANDIDATE_TOOL: Anthropic.Tool = {
-  name: "choose_listing_page",
-  description:
-    "Pick the link most likely to be this property's own listing page, or the link most likely to be the agency's for-sale index if the listing itself is not in this list.",
-  input_schema: {
-    type: "object",
-    properties: {
-      listingUrl: {
-        type: "string",
-        description: "The link that is this property's own listing page. Omit if none of the links is clearly that page.",
-      },
-      indexUrl: {
-        type: "string",
-        description:
-          "The link most likely to be the agency's for-sale / current-listings index, to look at next. Omit if the listing itself was found or no such index is present.",
-      },
-      why: {
-        type: "string",
-        description: "One short sentence on why this link matches the address, for the agent to sanity-check.",
-      },
-    },
-    required: [],
-  },
-};
-
-/**
- * Finds and stores this property's listing page, from the agency's website.
- *
- * Runs automatically every morning (see runDailyListingScan) for any on-market
- * listing that has no page recorded yet. There is deliberately no button for this.
- *
- * Adam, 16 Aug 2026: a "find the listing page" button is "another step that the
- * agent has to do ... may as well just eyeball their own website. The whole
- * point of this is for RealComply to routinely check the website and come back
- * to the agent and let them know if their advertised price has slipped below
- * the ESP." A check the agent has to set up per listing is not a check that
- * happens.
- *
- * What replaced the confirmation step is corroboration: whatever page this
- * finds, the scan only reports on it if the page itself shows this property's
- * address. A wrong match therefore produces "couldn't confirm this page",
- * never a false all-clear. See addressConfirmed on ScanFinding.
- *
- * Returns null when nothing convincing was found, which is a normal outcome —
- * a listing not yet published has no page, and in a day or two it will.
- */
-async function discoverListingUrl(
-  supabase: Db,
-  anthropic: Anthropic,
-  property: { id: string; agency_id: string; address: string },
-): Promise<string | null> {
-  const { data: agencyRow } = await supabase
-    .from("agencies")
-    .select("website_url")
-    .eq("id", property.agency_id)
-    .maybeSingle();
-  const website = (agencyRow as { website_url?: string | null } | null)?.website_url;
-  if (!website) return null;
-
-  try {
-    let current = website;
-
-    // Two passes at most: the site's own page, then one index it points at.
-    // Anything deeper is a crawl, and a crawl of someone's website is not a
-    // thing to start doing quietly on a schedule.
-    for (let hop = 0; hop < 2; hop++) {
-      const page = await fetchPublicPage(current);
-      const links = linksFrom(page.html, page.url);
-      if (links.length === 0) return null;
-
-      const response = await anthropic.messages.create({
-        model: READER_MODEL,
-        max_tokens: 300,
-        system:
-          "You match a property address to the correct link on a real estate agency's own website. Choose only " +
-          "from the links given. If no link clearly corresponds to that specific property, say nothing rather " +
-          "than choosing the closest one — a wrong match is worse than no match here.",
-        messages: [
-          {
-            role: "user",
-            content:
-              `Property: ${property.address}\n\nLinks on ${page.url.toString()}:\n` +
-              links.map((l) => `${l.href} — ${l.text}`).join("\n"),
-          },
-        ],
-        tools: [CANDIDATE_TOOL],
-        tool_choice: { type: "tool", name: "choose_listing_page" },
-      });
-
-      // Strict like every read (1 Nov 2026): an answer cut off before its
-      // link is no match, logged as an error below, not a quiet "no match".
-      const choice = toolAnswer(response) as { listingUrl?: string; indexUrl?: string };
-
-      // Only ever accept a link that was actually in the list we supplied.
-      const known = new Set(links.map((l) => l.href));
-
-      if (choice.listingUrl && known.has(choice.listingUrl)) {
-        await supabase.from("properties").update({ listing_url: choice.listingUrl }).eq("id", property.id);
-        return choice.listingUrl;
-      }
-      if (choice.indexUrl && known.has(choice.indexUrl)) {
-        current = choice.indexUrl;
-        continue;
-      }
-      return null;
-    }
-    return null;
-  } catch (err) {
-    // A website that cannot be read is the next run's problem, not an error the
-    // agent needs to see — they did not ask for this to run. The reader's own
-    // failure is logged as one (1 Nov 2026), so it isn't silent either.
-    if (err instanceof UnfinishedAnswer || err instanceof Anthropic.APIError) logReadFailure("listing_page_finder", err);
-    return null;
-  }
+  return { discovered, checked, read, skipped, withIssues, readFailed, inputTokens, outputTokens, ...pageChecks, notFound };
 }
