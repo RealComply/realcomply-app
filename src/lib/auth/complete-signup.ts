@@ -1,3 +1,4 @@
+import { saveSignupListingsPage } from "@/lib/auth/signup-listings-page";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { notifyNewAgencySignup } from "@/lib/email/signup-notification";
 import { welcomeOfficeAgent } from "@/lib/onboarding/agent-welcome";
@@ -34,6 +35,7 @@ type SignupMetadata = {
   licensee_email?: string | null;
   licensee_name?: string | null;
   website_url?: string | null;
+  listings_page_url?: string | null;
   licensed_entity_name?: string | null;
   is_licensee?: boolean;
   terms_version?: string;
@@ -118,6 +120,8 @@ export async function completeSignup(supabase: SupabaseClient, user: User): Prom
   if (typeof meta.website_url === "string" && meta.website_url) {
     await supabase.rpc("set_agency_website", { p_url: meta.website_url });
   }
+  // Their own listings page, if they gave one (2 Nov 2026). Never blocks.
+  await saveSignupListingsPage(supabase, user.id, meta.listings_page_url);
   if (typeof meta.licensed_entity_name === "string" && meta.licensed_entity_name) {
     await saveSignupEntityName(supabase, meta.licensed_entity_name);
   }

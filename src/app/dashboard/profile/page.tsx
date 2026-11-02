@@ -20,6 +20,14 @@ import {
   type LicenseeHistoryLine,
 } from "@/lib/licensee-history";
 import { LicenseeInChargeCard, type Candidate, type HistoryTableRow } from "@/components/profile/LicenseeInChargeCard";
+import {
+  AgentsListingsPagesCard,
+  MyListingsPageField,
+  OfficePageCheck,
+  type AgentPageRow,
+  type PageState,
+} from "@/components/profile/ListingsPages";
+import { checkLine, groupWarning, groupWarningText, pageCheckFrom, type PageCheck } from "@/lib/listings-pages";
 
 // Profile settings, from the picture top right (Adam, 12 Oct 2026: "if you
 // click on the agent's icon in the top right corner, there should be an option
@@ -95,6 +103,41 @@ export default async function ProfileSettingsPage() {
 
   const licensee = access.isAgentPlan ? null : await licenseeCard(supabase, profile, access.officeLicensee);
 
+  // Listings pages for the daily price check (Adam, 2 Nov 2026; 0105): each
+  // lister's own page, and what this morning's check found on every page.
+  // Before 0105 runs these read nothing, and the fields show as not set.
+  const [{ data: pageRows }, { data: checkRows }, { data: listerRows }] = await Promise.all([
+    supabase.from("agent_listing_pages").select("profile_id, url").eq("agency_id", profile.agency_id),
+    supabase.from("listings_page_checks").select("*").eq("agency_id", profile.agency_id),
+    access.runsOffice && !access.isAgentPlan
+      ? supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .eq("agency_id", profile.agency_id)
+          .eq("is_agent", true)
+          .is("archived_at", null)
+          .order("full_name", { ascending: true })
+      : Promise.resolve({ data: [] }),
+  ]);
+  const pageOf = new Map(((pageRows ?? []) as Array<{ profile_id: string; url: string }>).map((r) => [r.profile_id, r.url]));
+  const checks = new Map<string, PageCheck>();
+  for (const row of (checkRows ?? []) as Array<Record<string, unknown>>) {
+    const check = pageCheckFrom(row);
+    if (check) checks.set(check.pageKey, check);
+  }
+  const pageState = (pageKey: string, url: string | null): PageState => {
+    const check = checks.get(pageKey) ?? null;
+    const warning = groupWarning(check, url);
+    return { line: checkLine(check, url), warning: warning ? groupWarningText(warning) : null, pageKey: check?.pageKey ?? null };
+  };
+  const myPage = pageOf.get(profile.id) ?? null;
+  const agentRows: AgentPageRow[] = ((listerRows ?? []) as Array<{ id: string; full_name: string | null; email: string }>).map((p) => ({
+    profileId: p.id,
+    name: p.full_name?.trim() || p.email,
+    url: pageOf.get(p.id) ?? null,
+    state: pageState(`agent:${p.id}`, pageOf.get(p.id) ?? null),
+  }));
+
   const officeDetails = [
     { label: "Corporation licence", where: "Registers", href: "/dashboard/registers?tab=licence" },
     { label: "PI, cyber and workers insurance", where: "Registers", href: "/dashboard/registers?tab=insurance" },
@@ -127,8 +170,16 @@ export default async function ProfileSettingsPage() {
                   current={agency?.licensee_email ?? null}
                   currentName={agency?.licensee_name ?? null}
                   website={agency?.website_url ?? null}
+                  websiteCheck={
+                    <OfficePageCheck state={pageState(`office:${profile.agency_id}`, agency?.website_url ?? null)} />
+                  }
                 />
               )}
+              {/* Each agent's own page, under the office page (Adam, 2 Nov
+                  2026). The licensee in charge and an office manager add or
+                  change anyone's. Not on an agent's own plan: there it is
+                  their "My listings page", below. */}
+              {!access.isAgentPlan && <AgentsListingsPagesCard rows={agentRows} />}
               {/* Only the licensee changes the licensee's name and email
                   (Adam, 26 Oct 2026; 0095, checked by the database). An
                   office manager of an office whose licensee isn't on
@@ -198,6 +249,9 @@ export default async function ProfileSettingsPage() {
         >
           Change password
         </Link>
+        {/* Anyone who lists properties (Adam, 2 Nov 2026). An agent on their
+            own plan sees this and the office page above. */}
+        {profile.is_agent && <MyListingsPageField current={myPage} state={pageState(`agent:${profile.id}`, myPage)} />}
       </section>
 
       {access.runsOffice && (

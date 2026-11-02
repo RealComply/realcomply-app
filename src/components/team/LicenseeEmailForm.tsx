@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, type ReactNode } from "react";
 import { saveLicenseeEmail } from "@/lib/actions/team";
 import { LicenseeChangeNotice } from "@/components/team/LicenseeChangeNotice";
 
@@ -22,10 +22,13 @@ export function LicenseeEmailForm({
   current,
   currentName,
   website,
+  websiteCheck,
 }: {
   current: string | null;
   currentName: string | null;
   website: string | null;
+  /** This morning's check of the office listings page, and the group-page warning (2 Nov 2026). */
+  websiteCheck?: ReactNode;
 }) {
   const [state, action, pending] = useActionState(saveLicenseeEmail, initial);
 
@@ -124,6 +127,7 @@ export function LicenseeEmailForm({
           Saved.
         </p>
       )}
+      {websiteCheck}
     </form>
     </>
   );

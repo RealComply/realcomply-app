@@ -36,6 +36,7 @@ import { signedLink, type SignoffLink } from "@/lib/data/signoff-links";
 import { tickedLine, type PriceApproval } from "@/lib/rules/price-statement";
 import { espText, SALE_PRICE_NOTE_PROMPT, salePriceFlagText, savedSaleCheck } from "@/lib/rules/sale-price";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
+import type { SearchTry } from "@/lib/listings-pages";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
@@ -1863,6 +1864,8 @@ function GuideItem({
     note?: string;
     flagReasons?: string[];
     websiteScan?: ScanFinding;
+    /** Where the morning's check looked for this listing's page (0105, 2 Nov 2026). */
+    pageSearch?: { at: string; tries: SearchTry[] } | null;
     rejectionPrompt?: string;
     // Persisted by setItemStatus (lib/actions/compliance.ts). Declared here so
     // the inputs can default to what was last recorded rather than resetting
@@ -1964,7 +1967,7 @@ function GuideItem({
       {/* The independent read of the live page. Sits below the agent's own
           record rather than replacing it: the form above is what the agent
           says is advertised, this is what the website actually shows. */}
-      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} />
+      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} pageSearch={data.pageSearch} />
     </ItemShell>
   );
 }
