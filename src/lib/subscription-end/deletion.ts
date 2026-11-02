@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { sendEmail } from "@/lib/email/send";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { backupConfig, listAllObjects } from "@/lib/backup/storage-backup";
+import { removeAuditPacks } from "@/lib/pdf/audit-pack-store";
 import { activityDeleteAfter, deletionDate, longDate, onOrAfter, sydneyDate } from "./dates";
 import { isProtectedAgency, protectionReason } from "./protected";
 import { endedRecipients, FOOTER } from "./emails";
@@ -276,10 +277,14 @@ async function resumeRun(
   const backups = await deleteBackupCopies(supabase, agencyRef, livePaths);
   if (!backups.ok) return fail("backups", backups.reason);
 
-  // 4b. Files in Supabase Storage.
+  // 4b. Files in Supabase Storage. First any finished audit packs, which
+  // are full copies of the documents and must never outlive them (Adam,
+  // 2 Nov 2026; lib/pdf/audit-pack-store.ts). Then the documents.
   await setStep(supabase, runId, "files");
   const beforeFiles = await stopIfChanged("files");
   if (beforeFiles) return beforeFiles;
+  const packs = await removeAuditPacks(supabase, agencyRef);
+  if (packs.problem) return fail("files", `finished audit packs not deleted: ${packs.problem}`);
   for (let i = 0; i < livePaths.length; i += 100) {
     const { error } = await supabase.storage.from(EVIDENCE_BUCKET).remove(livePaths.slice(i, i + 100));
     if (error) return fail("files", error.message);

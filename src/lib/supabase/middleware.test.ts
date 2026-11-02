@@ -57,6 +57,7 @@ const SIGNED_OUT_OK = [
   "/annexure/download",
   "/annexure/download/x",
   "/unsubscribe",
+  "/api/cron/audit-packs", // the hourly clean-up of finished audit packs: CRON_SECRET, like every job
   "/api/cron/backup-storage",
   "/api/cron/cpd-reminders",
   "/api/cron/licence-reminders",

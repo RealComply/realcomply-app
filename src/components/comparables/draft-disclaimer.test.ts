@@ -102,7 +102,6 @@ describe("the disclaimer", () => {
       espReasoning: saved.data.note,
       comparables: [],
       signatures: { agent: null, licensee: null },
-      attachments: [],
       rulesetVersion: "test",
       preparedFor: "test",
       generatedAt: new Date("2026-10-02T00:00:00Z"),

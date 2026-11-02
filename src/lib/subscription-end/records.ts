@@ -63,7 +63,8 @@ export async function listingsFor(service: SupabaseClient, agencyId: string): Pr
 export type Manifest = {
   agencyName: string;
   listings: Array<{ id: string; folder: string }>;
-  files: Array<{ zipPath: string; url: string }>;
+  /** path: where it is stored, so a file already inside its listing's audit pack isn't zipped twice (2 Nov 2026). */
+  files: Array<{ zipPath: string; url: string; path: string }>;
   csv: Array<{ zipPath: string; content: string }>;
 };
 
@@ -127,7 +128,7 @@ export async function buildManifest(service: SupabaseClient, agencyId: string, a
       let zipPath = base;
       for (let n = 2; zipNames.has(zipPath); n++) zipPath = base.replace(/(\.[^./]*)?$/, ` (${n})$1`);
       zipNames.add(zipPath);
-      files.push({ zipPath, url: signed.signedUrl });
+      files.push({ zipPath, url: signed.signedUrl, path: signed.path });
     }
   }
 

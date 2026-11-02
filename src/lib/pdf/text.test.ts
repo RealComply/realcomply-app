@@ -107,7 +107,6 @@ const record = (over: Partial<ComplianceRecordInput>) =>
       { address: "3 Côte Rd, Exampleville", salePrice: 800000, saleDate: "2026-07-01", weighting: "relied", agentNote: "Same street,\nnewer kitchen" },
     ],
     signatures: { agent: { typedName: "Nguyễn Văn An", signedAt: "2026-10-12T01:00:00Z" }, licensee: null },
-    attachments: [],
     rulesetVersion: "test",
     preparedFor: "test",
     generatedAt: new Date("2026-10-12T00:00:00Z"),

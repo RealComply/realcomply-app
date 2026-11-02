@@ -33,7 +33,8 @@ export type JobCheck =
   | "pm-retention"
   | "backup-storage"
   | "subscription-end"
-  | "reader-check";
+  | "reader-check"
+  | "audit-packs";
 
 export type Check = JobCheck | "email";
 
@@ -83,6 +84,7 @@ const LABELS: Record<JobCheck, string> = {
   "backup-storage": "hourly document backup",
   "subscription-end": "subscription end and day-14 deletion",
   "reader-check": "daily reader check",
+  "audit-packs": "hourly clean-up of finished audit packs",
 };
 
 /**

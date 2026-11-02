@@ -7,6 +7,8 @@ import { licenseeChangeStatus } from "@/lib/data/licensee-change";
 import { LOCKED_LISTING_MESSAGE } from "@/lib/licensee-history";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { removeAuditPacks } from "@/lib/pdf/audit-pack-store";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import {
   buildEvidencePath,
@@ -498,6 +500,14 @@ export async function deleteProperty(
       await supabase.storage.from(EVIDENCE_BUCKET).remove(paths.slice(i, i + 100));
     }
   }
+
+  // Any finished audit pack for this listing goes too: a pack is a full copy
+  // of its documents and must never outlive them (Adam, 2 Nov 2026). Only the
+  // server's own key reaches the holding area; the licensee's right to delete
+  // this listing was checked above. Best-effort like the files: the hourly
+  // clean-up (api/cron/audit-packs) takes anything left within the hour.
+  const packs = await removeAuditPacks(createServiceClient(), `${property.agency_id}/${propertyId}`);
+  if (packs.problem) console.error("audit packs not removed with the listing:", propertyId, packs.problem);
 
   const { error } = await supabase.from("properties").delete().eq("id", propertyId);
 
