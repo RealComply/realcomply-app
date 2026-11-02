@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allItemsInRuleset } from "@/lib/rules/nsw-sales";
-import { fileTypeLabel, packDocKind, packDocumentsFor, uploadedAtFromPath } from "@/lib/pdf/pack-documents";
+import { DOCUMENT_TITLE, fileTypeLabel, packDocKind, packDocumentsFor, reportTitle, uploadedAtFromPath } from "@/lib/pdf/pack-documents";
 import { readFileSync } from "node:fs";
 import { AUDIT_PACK_MAX_BYTES, KEEP_PACK_MS, PACK_DOCUMENTS_MAX_BYTES, clearOldAuditPacks, removeAuditPacks, storeAuditPack } from "@/lib/pdf/audit-pack-store";
 import type { PropertyItem } from "@/lib/types";
@@ -21,8 +21,8 @@ test("the record's order, the current file on each card, every report on the rep
     f3: row("f3", {
       data: {
         entries: [
-          { evidencePath: `${FOLDER}f3/1761000000000-strata.pdf`, evidenceFileName: "Strata (made up).pdf", recordedAt: "2026-10-21T00:00:00Z" },
-          { evidencePath: `${FOLDER}f3/1760500000000-pest.jpg`, evidenceFileName: "Pest (made up).jpg", recordedAt: "2026-10-15T00:00:00Z" },
+          { evidencePath: `${FOLDER}f3/1761000000000-strata.pdf`, evidenceFileName: "Strata (made up).pdf", strata: true, recordedAt: "2026-10-21T00:00:00Z" },
+          { evidencePath: `${FOLDER}f3/1760500000000-pest.jpg`, evidenceFileName: "Pest (made up).jpg", pestInspection: true, buildingInspection: true, recordedAt: "2026-10-15T00:00:00Z" },
           { evidencePath: null, recordedAt: "2026-10-16T00:00:00Z" },
         ],
       },
@@ -44,6 +44,32 @@ test("the record's order, the current file on each card, every report on the rep
   assert.equal(docs[2].uploadedAt, "2026-10-15T00:00:00Z", "a report's entry time");
   assert.equal(docs[2].kind, "image");
   assert.ok(docs.every((d) => d.path.startsWith(FOLDER)));
+  // Each named for the document it is, not the card's title (Adam, 3 Nov 2026).
+  assert.deepEqual(
+    docs.map((d) => d.cardTitle),
+    ["Agency agreement", "Contract for sale", "Building and pest report", "Strata report"],
+  );
+});
+
+test("a report on the reports card is named by what it is", () => {
+  assert.equal(reportTitle({ pestInspection: true }), "Pest report");
+  assert.equal(reportTitle({ buildingInspection: true }), "Building report");
+  assert.equal(reportTitle({ pestInspection: true, buildingInspection: true }), "Building and pest report");
+  assert.equal(reportTitle({ strata: true }), "Strata report");
+  assert.equal(reportTitle({ pestInspection: true, buildingInspection: true, strata: true }), "Building and pest and strata report");
+  assert.equal(reportTitle({}), "Building, pest or strata report", "a report logged from its file alone, before it was read");
+});
+
+test("every card that can hold a file has a document name, and none is a card's question", () => {
+  for (const item of allItemsInRuleset()) {
+    const title = DOCUMENT_TITLE[item.key];
+    if (!title) continue;
+    assert.ok(!title.endsWith("?"), `${item.key}: ${title}`);
+    assert.notEqual(title, item.label, `${item.key} is named for the document, not the card`);
+  }
+  for (const key of ["a3", "a1", "a2", "a4", "b1", "b1a", "t1", "t2", "t4", "b3", "d3", "f4"]) {
+    assert.ok(DOCUMENT_TITLE[key], `${key} has a document name`);
+  }
 });
 
 test("a file on a card the record doesn't show is still in, never left out silently", () => {
@@ -127,6 +153,18 @@ test("an office's or a listing's packs are all removed, whatever their age, and 
   assert.deepEqual(await removeAuditPacks(service, "agency-1"), { removed: 1, left: 0, problem: null });
   assert.deepEqual([...stored], [`agency-2/listing-9/${now}-c.pdf`], "another office's are untouched");
   assert.equal((await removeAuditPacks(service, "")).problem, "no folder given", "never the whole holding area by mistake");
+});
+
+test("the report on the ESP card is named as the comparative market analysis, not by the card's title", () => {
+  const docs = packDocumentsFor(
+    allItemsInRuleset(),
+    { a4: row("a4", { evidence_path: `${FOLDER}a4/1759280400000-cma.pdf`, data: { evidenceFileName: "CMA (made up).pdf", espLow: 750000, espHigh: 790000 } }) },
+    FOLDER,
+  );
+  assert.equal(docs.length, 1);
+  assert.equal(docs[0].cardTitle, "Comparative market analysis");
+  assert.equal(docs[0].stage, "Listing set-up");
+  assert.equal(docs[0].fileName, "CMA (made up).pdf");
 });
 
 test("the holding area takes a 500 MB pack, the same limit 0106 sets on the bucket; a pack holds 450 MB of documents", () => {
