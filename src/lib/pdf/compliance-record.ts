@@ -346,17 +346,16 @@ export type ComplianceRecordInput = {
     agent: { typedName: string; signedAt: string | null } | null;
     licensee: { typedName: string; signedAt: string | null } | null;
   };
-  /**
-   * Source documents appended after the summary (Adam, 24 Aug 2026).
-   *
-   * PDFs have their pages copied in; images become a page of their own.
-   * Anything else is listed in the index as held-but-not-attached rather than
-   * silently omitted — a document missing from a pack with no explanation is
-   * worse than one the pack tells you to go and ask for.
-   */
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
   loadDocument?: (doc: PackDocument) => Promise<LoadedDocument>;
+  /**
+   * The most document bytes one pack takes (lib/pdf/audit-pack-store.ts). A
+   * document that would take it over gets its contents line and a separator
+   * page saying it isn't included, and the documents after it still go in.
+   * No limit when not given.
+   */
+  maxDocumentBytes?: number;
   /** Told, for each document, whether it went inside the PDF (the records zip leaves those out). */
   report?: (path: string, included: boolean) => void;
   rulesetVersion: string;
@@ -425,6 +424,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     signatures,
     documents = [],
     loadDocument,
+    maxDocumentBytes,
     report,
     rulesetVersion,
     preparedFor,
@@ -871,8 +871,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   //   separator page: "Not included in this PDF: [file type]. Kept in
   //   RealComply." A damaged, empty or password-protected PDF gets a separator
   //   page saying it couldn't be added, and why; the rest of the pack builds.
-  //   Nothing is ever left out silently. The full ESP reasoning stays in the
-  //   record above.
+  //   A pack holds up to 450 MB of documents (lib/pdf/audit-pack-store.ts):
+  //   one that would take it over is named the same way, "Not included in
+  //   this PDF". Nothing is ever left out silently. The full ESP reasoning
+  //   stays in the record above.
   // WHY: the office must keep these records for 3 years and hand them to Fair
   //   Trading on request. Links to stored files would expire, need a login,
   //   stop working 14 days after an office cancels, and expose private
@@ -885,6 +887,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     await appendDocuments(doc, fonts, {
       documents,
       loadDocument: loadDocument ?? (async () => ({ problem: "it couldn't be read" })),
+      maxDocumentBytes: maxDocumentBytes ?? Number.POSITIVE_INFINITY,
       report,
       address: property.address,
       draftMark: isDraft ? "DRAFT - not yet signed off" : null,
@@ -941,13 +944,19 @@ async function appendDocuments(
   opts: {
     documents: PackDocument[];
     loadDocument: (d: PackDocument) => Promise<LoadedDocument>;
+    maxDocumentBytes: number;
     report?: (path: string, included: boolean) => void;
     address: string;
     draftMark: string | null;
   },
 ): Promise<void> {
-  const { documents, loadDocument, report, address, draftMark } = opts;
+  const { documents, loadDocument, maxDocumentBytes, report, address, draftMark } = opts;
   const recordPages = doc.getPageCount();
+  // What the pack can hold is finite (the holding area takes one file of up
+  // to 500 MB, 0106). Documents go in, in order, while they fit; one that
+  // doesn't is named, never dropped, and smaller ones after it still go in.
+  let addedBytes = 0;
+  const limitLabel = `${Math.round(maxDocumentBytes / (1024 * 1024))} MB`;
 
   // The contents comes straight after the record, so its pages are kept
   // first and filled in once every document's page number is known.
@@ -966,6 +975,8 @@ async function appendDocuments(
       const loaded = await loadDocument(d).catch(() => ({ problem: "it couldn't be read" }) as LoadedDocument);
       if ("problem" in loaded) {
         note = `This document couldn't be added: ${loaded.problem}. Kept in RealComply.`;
+      } else if (addedBytes + loaded.bytes.length > maxDocumentBytes) {
+        note = `Not included in this PDF: the audit pack is at its size limit (${limitLabel}). Kept in RealComply.`;
       } else {
         try {
           if (d.kind === "pdf") {
@@ -989,6 +1000,7 @@ async function appendDocuments(
               height: img.height * scale,
             });
           }
+          addedBytes += loaded.bytes.length;
         } catch (err) {
           note = `This document couldn't be added: ${whyNotAdded(err)}. Kept in RealComply.`;
         }

@@ -19,6 +19,13 @@
 --      (src/lib/pdf/audit-pack-store.ts). Nobody signed in can read or write
 --      the bucket: no policies on it, so only the server, with its own key.
 --      Same Supabase project, in Sydney; nothing goes anywhere new.
+--      It takes one PDF of up to 500 MB. The app puts up to 450 MB of
+--      documents in a pack and names any that don't fit.
+--
+-- BEFORE RUNNING: the project-wide upload limit (Supabase: Storage, Settings,
+-- Global file size limit) must be at least 500 MB, or it caps this bucket.
+-- Raising it changes nothing for uploads: the evidence bucket keeps its own
+-- 150 MB limit (0056).
 --
 -- No new tables. Safe to run twice.
 
@@ -66,10 +73,14 @@ revoke execute on function public.listing_file_uploads(uuid) from public, anon;
 grant execute on function public.listing_file_uploads(uuid) to authenticated, service_role;
 
 -- ── 2. The holding area for finished packs ─────────────────────────────────
--- Private, PDFs only. No policies: only the server's own key reaches it.
-insert into storage.buckets (id, name, public, allowed_mime_types)
-values ('audit-packs', 'audit-packs', false, array['application/pdf'])
-on conflict (id) do update set public = false, allowed_mime_types = array['application/pdf'];
+-- Private, PDFs only, up to 500 MB each. No policies: only the server's own
+-- key reaches it.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('audit-packs', 'audit-packs', false, 500 * 1024 * 1024, array['application/pdf'])
+on conflict (id) do update
+  set public = false,
+      file_size_limit = 500 * 1024 * 1024,
+      allowed_mime_types = array['application/pdf'];
 
 commit;
 
@@ -79,4 +90,5 @@ select
   to_regprocedure('public.listing_file_uploads(uuid)') is not null
     and has_function_privilege('authenticated', 'public.listing_file_uploads(uuid)', 'execute')
     and not has_function_privilege('anon', 'public.listing_file_uploads(uuid)', 'execute') as uploads_lookup_ready,
-  exists (select 1 from storage.buckets where id = 'audit-packs' and public = false) as holding_area_private;
+  exists (select 1 from storage.buckets
+           where id = 'audit-packs' and public = false and file_size_limit = 524288000) as holding_area_private;

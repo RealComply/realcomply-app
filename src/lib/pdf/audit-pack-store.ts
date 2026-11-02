@@ -13,6 +13,21 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // anywhere new.
 
 export const AUDIT_PACK_BUCKET = "audit-packs";
+/**
+ * The biggest pack the holding area takes: the bucket's own limit (0106). The
+ * project-wide upload limit (Supabase: Storage, Settings, Global file size
+ * limit) must be at least this, or it caps the bucket. Uploads of evidence
+ * keep their own 150 MB limit on their bucket (0056).
+ */
+export const AUDIT_PACK_MAX_BYTES = 500 * 1024 * 1024;
+/**
+ * The most document bytes one pack takes (lib/pdf/compliance-record.ts). Below
+ * AUDIT_PACK_MAX_BYTES to leave room for the record, the contents and the
+ * separator pages, and for a PDF growing a little as its pages are copied in.
+ * Building a pack this size takes about 1 GB of the server's memory (measured
+ * 2 Nov 2026: about 2.2 times the pack's size).
+ */
+export const PACK_DOCUMENTS_MAX_BYTES = 450 * 1024 * 1024;
 /** How long the download link lasts. Long enough for a slow connection to start it. */
 const LINK_SECONDS = 10 * 60;
 /** How long a copy is kept. */
@@ -30,6 +45,9 @@ export async function storeAuditPack(
   where: { agencyId: string; propertyId: string },
   { inline = false }: { inline?: boolean } = {},
 ): Promise<string> {
+  if (pack.pdf.length > AUDIT_PACK_MAX_BYTES) {
+    throw new Error(`audit pack not stored: ${Math.round(pack.pdf.length / 1048576)} MB is over the holding area's limit`);
+  }
   const path = `${where.agencyId}/${where.propertyId}/${Date.now()}-${crypto.randomUUID()}.pdf`;
   const bucket = service.storage.from(AUDIT_PACK_BUCKET);
   const { error } = await bucket.upload(path, pack.pdf, { contentType: "application/pdf", upsert: false });

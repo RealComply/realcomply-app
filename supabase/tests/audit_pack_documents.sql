@@ -67,6 +67,9 @@ begin
     raise exception 'FAIL 5: anon may call it'; end if;
   if not exists (select 1 from storage.buckets where id = 'audit-packs' and public = false and allowed_mime_types = array['application/pdf']) then
     raise exception 'FAIL 5b: the holding area is not a private PDF bucket'; end if;
+  -- 6. It takes a pack of up to 500 MB (lib/pdf/audit-pack-store.ts, AUDIT_PACK_MAX_BYTES).
+  if not exists (select 1 from storage.buckets where id = 'audit-packs' and file_size_limit = 500 * 1024 * 1024) then
+    raise exception 'FAIL 6: the holding area does not take a 500 MB pack'; end if;
 
   raise notice 'audit pack documents: all checks passed';
 end

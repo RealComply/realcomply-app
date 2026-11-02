@@ -1,4 +1,5 @@
 import { describe, it } from "node:test";
+import { randomBytes } from "node:crypto";
 import assert from "node:assert/strict";
 import { PDFArray, PDFDict, PDFDocument, PDFName } from "pdf-lib";
 import { buildComplianceRecordPdf, type ComplianceRecordInput } from "@/lib/pdf/compliance-record";
@@ -200,6 +201,37 @@ describe("every document on the listing, inside the one PDF (2 Nov 2026)", () =>
     });
     const pdf = await PDFDocument.load(bytes);
     assert.equal(pdf.getPageCount(), recordPages + 3, "contents, separator, the photo's page");
+  });
+
+  it("a document that would take the pack over its size limit is named, not dropped; smaller ones after it still go in", async () => {
+    const small = await onePagePdf();
+    // A one-page PDF of 1.5 MB: the padding is random, so it can't be compressed away.
+    const big = await PDFDocument.create();
+    big.addPage([300, 300]).drawText("The big one", { x: 20, y: 150, size: 12 });
+    await big.attach(randomBytes(1.5 * 1024 * 1024), "padding.bin", { mimeType: "application/octet-stream" });
+    const bigBytes = await big.save();
+    assert.ok(bigBytes.length > 1024 * 1024);
+    const report: Array<[string, boolean]> = [];
+    const bytes = await pack({
+      documents: [
+        doc({ fileName: "first.pdf", path: "a/p/a1/1-first.pdf" }),
+        doc({ fileName: "too big.pdf", path: "a/p/a2/2-big.pdf" }),
+        doc({ fileName: "last.pdf", path: "a/p/a7/3-last.pdf" }),
+      ],
+      loadDocument: async (d) => ({ bytes: d.fileName === "too big.pdf" ? bigBytes : small }),
+      maxDocumentBytes: 1024 * 1024,
+      report: (path, included) => report.push([path, included]),
+    });
+    const text = pdfText(bytes).replace(/\s+/g, " ");
+    assert.ok(!text.includes("The big one"), "the big one is not inside");
+    assert.ok(text.includes("Not included in this PDF: the audit pack is at its size limit (1 MB). Kept in RealComply."), text.slice(-1200));
+    assert.ok(text.includes("too big.pdf · Uploaded by Ana Agent, 1 October 2026 · not included in this PDF"), "named on the contents page");
+    assert.equal((text.match(/Someone else's document/g) ?? []).length, 2, "the small ones before and after it are both in");
+    assert.deepEqual(report, [
+      ["a/p/a1/1-first.pdf", true],
+      ["a/p/a2/2-big.pdf", false],
+      ["a/p/a7/3-last.pdf", true],
+    ]);
   });
 
   it("no internal ids in the pack: names, titles and dates only", async () => {

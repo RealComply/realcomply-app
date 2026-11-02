@@ -15,6 +15,7 @@ import { priceApprovalFor } from "@/lib/data/price-approval";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET, complaintFolder, isInFolder, listingFolder } from "@/lib/storage/evidence";
 import { packDocKind, packDocumentsFor, type PackDocument } from "@/lib/pdf/pack-documents";
+import { PACK_DOCUMENTS_MAX_BYTES } from "@/lib/pdf/audit-pack-store";
 import { readableBytes } from "@/lib/documents/readable-bytes";
 import { EMPTY_FILE_MESSAGE, downloadedFileProblem } from "@/lib/storage/file-check";
 import { addedLine, complaintFilesFor, removedLine } from "@/lib/complaint-files";
@@ -254,6 +255,7 @@ export async function buildAuditPack(
     signatures: { agent: agentSignature, licensee: licenseeSignature },
     documents,
     loadDocument,
+    maxDocumentBytes: PACK_DOCUMENTS_MAX_BYTES,
     report: (path, inPdf) => {
       if (inPdf) included.push(path);
     },

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allItemsInRuleset } from "@/lib/rules/nsw-sales";
 import { fileTypeLabel, packDocKind, packDocumentsFor, uploadedAtFromPath } from "@/lib/pdf/pack-documents";
-import { clearOldAuditPacks } from "@/lib/pdf/audit-pack-store";
+import { readFileSync } from "node:fs";
+import { AUDIT_PACK_MAX_BYTES, PACK_DOCUMENTS_MAX_BYTES, clearOldAuditPacks, storeAuditPack } from "@/lib/pdf/audit-pack-store";
 import type { PropertyItem } from "@/lib/types";
 
 // Every document on the listing, in the pack's order (Adam, 2 Nov 2026).
@@ -86,4 +87,24 @@ test("the holding area keeps a pack for a day, then it goes", async () => {
   const service = { storage: { from: () => bucket } } as unknown as SupabaseClient;
   assert.deepEqual(await clearOldAuditPacks(service, now), { removed: 1, problem: null });
   assert.deepEqual(removed, [`agency-1/listing-1/${now - 30 * 60 * 60 * 1000}-b.pdf`]);
+});
+
+test("the holding area takes a 500 MB pack, the same limit 0106 sets on the bucket; a pack holds 450 MB of documents", () => {
+  const sql = readFileSync(new URL("../../../supabase/migrations/0106_audit_pack_documents.sql", import.meta.url), "utf8");
+  assert.equal(AUDIT_PACK_MAX_BYTES, 500 * 1024 * 1024);
+  assert.match(sql, /values \('audit-packs', 'audit-packs', false, 500 \* 1024 \* 1024,/);
+  assert.match(sql, /file_size_limit = 500 \* 1024 \* 1024,/);
+  assert.match(sql, /file_size_limit = 524288000/);
+  // Room for the record, the contents and separators, and a PDF growing a little as it's copied.
+  assert.ok(PACK_DOCUMENTS_MAX_BYTES <= AUDIT_PACK_MAX_BYTES * 0.9);
+});
+
+test("a pack over the holding area's limit is refused before anything is uploaded", async () => {
+  let uploads = 0;
+  const service = {
+    storage: { from: () => ({ upload: async () => { uploads++; return { error: null }; }, createSignedUrl: async () => ({ data: { signedUrl: "x" }, error: null }) }) },
+  } as unknown as SupabaseClient;
+  const pdf = { length: AUDIT_PACK_MAX_BYTES + 1 } as unknown as Uint8Array;
+  await assert.rejects(storeAuditPack(service, { pdf, filename: "x.pdf" }, { agencyId: "a", propertyId: "p" }), /over the holding area's limit/);
+  assert.equal(uploads, 0);
 });
