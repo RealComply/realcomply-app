@@ -101,8 +101,9 @@ export function CardReopenArea({
     reopenKey === item.key ? showsSharedReopen(item, status, ctx.signedOff) : showsSharedReopen(item, "done", true);
   const showMarkDone = isOpen && Boolean(stamp.reopenedAt) && MARK_DONE_AGAIN_KEYS.has(item.key) && !ctx.signedOff;
 
-  // Why it is open again. b4 says what the licensee has to do; the signature
-  // cards say the file needs signing off again; anything else who and when.
+  // Why it is open again. b4 says to tick it again when the ESP it rested on
+  // changed (an agent ticks it since 2 Nov 2026); the signature cards say the
+  // file needs signing off again; anything else who and when.
   let reopened: string | null = null;
   if (isOpen && stamp.reopenedAt) {
     if (item.key === "b4") {

@@ -21,7 +21,7 @@ const initial: AskState = { error: null, sent: false };
 
 const OFFICE_SIDE = "Team, Office profile, registers, CPD, training, trust records, the SG Manual and billing";
 const LICENSEE_KEEPS =
-  "Price statement approvals, file sign-offs, annexure adoption, changing the licensee in charge and deleting compliance records";
+  "File sign-offs, annexure adoption, changing the licensee in charge and deleting compliance records";
 
 function Chip({ tone, children }: { tone: "green" | "amber" | "grey"; children: React.ReactNode }) {
   const cls =

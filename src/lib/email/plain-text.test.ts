@@ -2,7 +2,6 @@ import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { renderEmailHtml, renderEmailText, type EmailDocument } from "./layout";
 import { buildSignoffRequestEmail } from "./signoff-request";
-import { buildPriceStatementRequestEmail } from "./price-statement-request";
 import { holderDocument } from "./licence-reminders";
 import { earlyAccessAcknowledgementHtml, earlyAccessAcknowledgementText } from "./early-access-ack";
 
@@ -40,23 +39,6 @@ describe("typed text in an email footer", () => {
     assert.ok(m.html.includes("&lt;img src=&quot;https://evil.example/pixel.gif&quot;&gt;"));
     // The plain-text version shows the name exactly as it was typed.
     assert.ok(m.text.includes(`Sent by ${PLANTED} through RealComply, the compliance system ${IMG} uses`));
-  });
-
-  it("the price statement email: the same, and the names are no longer cut down to make them safe", () => {
-    const m = buildPriceStatementRequestEmail({
-      agentName: "Sam <Lead> Agent",
-      agencyName: PLANTED,
-      propertyAddress: "1 Test St, Exampleville",
-      url: "https://www.realcomply.com.au/approve/tok",
-      expiresAt: "26 Oct 2026",
-      priceStatement: "Guide $750,000",
-      espLow: 750000,
-      espHigh: 790000,
-    });
-
-    assert.deepEqual(tags(m.html).filter((t) => t.includes("evil.example")), []);
-    assert.ok(m.html.includes("Sam &lt;Lead&gt; Agent"), "shown as typed, brackets and all");
-    assert.ok(m.text.includes("the compliance system Sam <Lead> Agent uses"));
   });
 
   it("any footer line: markup is escaped, so nothing but RealComply's own links can appear there", () => {

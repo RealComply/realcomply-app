@@ -76,11 +76,16 @@ The final stage has three steps in order: the agent signs, the file is sent to
 the licensee, and the licensee signs.
 
 A licensee who uses RealComply signs in the app. If they don't, you send them a
-link by email. They review the file, then sign it or send it back. The price
-statement works the same way before the listing is advertised: send it from its
-card and they approve it from the email. No account needed. Links last 30 days
-and can be withdrawn. The licensee's email is set at agency setup or on the Team
-page.
+link by email. They review the file, then sign it or send it back. No account
+needed. Links last 30 days and can be withdrawn. The licensee's email is set at
+agency setup or on the Team page.
+
+The price statement card, before the listing is advertised, is different: any
+agent on the listing ticks it once the licensee in charge has approved the price
+statement. Nothing is sent to the licensee for it, and it works the same on
+every plan. The law doesn't require the licensee to sign it; recording their
+approval helps show the agency took all reasonable precautions (s73A(1B)) if a
+price statement is ever questioned.
 
 ## Registers
 

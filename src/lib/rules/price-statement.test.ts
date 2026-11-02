@@ -1,76 +1,61 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import {
-  APPROVER_NAME_MAX,
-  PRICE_STATEMENT_MAX,
-  approverNameTooLong,
-  espRangeText,
-  noLicenseeEmailMessage,
-  normalisePriceStatement,
-  priceApproval,
-  priceRequestStale,
-  priceStatementByEmail,
-  sentBackPriceStatementLine,
-} from "./price-statement";
+import { earlierApprovalLine, espRangeText, priceApproval, tickedLine } from "./price-statement";
 
-describe("normalisePriceStatement", () => {
-  it("trims and makes every run of spaces or line breaks one space", () => {
-    assert.equal(normalisePriceStatement("  Guide   $750,000 –\n\n $790,000 \t"), "Guide $750,000 – $790,000");
+// b4, the price statement card. REVERSAL (Adam, 2 Nov 2026): an agent ticks it
+// now, and the database stamps who and when (0104). The licensee's approvals
+// from before then still read as they did. The rules for the emailed link
+// went with it; their tests are in git history.
+
+describe("an agent's tick, from 2 Nov 2026", () => {
+  const people = new Map([["agent-1", { full_name: "Ana Agent" }], ["lic-1", { full_name: "Lee Licensee" }]]);
+  const tick = { note: "Guide $900,000 to $950,000", tickedBy: "agent-1", tickedAt: "2026-11-02T03:15:00Z" };
+
+  it("reads as a tick, naming whoever ticked it", () => {
+    assert.deepEqual(priceApproval({ status: "done", data: tick, completed_by: "agent-1" }, people), {
+      text: "Guide $900,000 to $950,000",
+      via: "tick",
+      name: "Ana Agent",
+      at: "2026-11-02T03:15:00Z",
+      sentTo: null,
+    });
   });
-  it("takes 300 characters and refuses 301", () => {
-    assert.equal(normalisePriceStatement("x".repeat(PRICE_STATEMENT_MAX))?.length, 300);
-    assert.equal(normalisePriceStatement("x".repeat(PRICE_STATEMENT_MAX + 1)), null);
-    // Counted as the database counts: characters, not UTF-16 units.
-    assert.ok(normalisePriceStatement("🏠".repeat(PRICE_STATEMENT_MAX)));
+
+  it("says who ticked it and the date, like any other card", () => {
+    const approval = priceApproval({ status: "done", data: tick, completed_by: "agent-1" }, people)!;
+    assert.equal(tickedLine(approval), "Ticked by Ana Agent, 2 November 2026");
+    assert.equal(tickedLine({ name: null, at: null }), "Ticked by a team member");
   });
-  it("is null when there is nothing to approve", () => {
-    assert.equal(normalisePriceStatement(""), null);
-    assert.equal(normalisePriceStatement("   \n "), null);
-    assert.equal(normalisePriceStatement(null), null);
-    assert.equal(normalisePriceStatement(42), null);
+
+  it("names the licensee when they are the one who ticked it", () => {
+    const approval = priceApproval({ status: "done", data: { ...tick, tickedBy: "lic-1" }, completed_by: "lic-1" }, people);
+    assert.equal(approval?.via, "tick");
+    assert.equal(approval?.name, "Lee Licensee");
+  });
+
+  it("is nothing on a card that isn't ticked", () => {
+    assert.equal(priceApproval({ status: "open", data: tick, completed_by: null }, people), null);
   });
 });
 
-describe("priceStatementByEmail", () => {
-  const person = (over: Partial<{ is_licensee_in_charge: boolean; archived_at: string | null }>) => ({
-    is_licensee_in_charge: false,
-    archived_at: null,
-    ...over,
-  });
-  it("goes by email when nobody is a licensee in charge", () => {
-    assert.equal(priceStatementByEmail([]), true);
-    assert.equal(priceStatementByEmail([person({}), person({})]), true);
-  });
-  it("stays in the app when the office has an active licensee in charge", () => {
-    assert.equal(priceStatementByEmail([person({}), person({ is_licensee_in_charge: true })]), false);
-  });
-  it("goes by email when the only licensee in charge has left", () => {
-    assert.equal(priceStatementByEmail([person({ is_licensee_in_charge: true, archived_at: "2026-09-01T00:00:00Z" })]), true);
-  });
-  it("stays in the app while one licensee in charge is active, whoever else has left", () => {
-    const left = person({ is_licensee_in_charge: true, archived_at: "2026-09-01T00:00:00Z" });
-    assert.equal(priceStatementByEmail([left, person({ is_licensee_in_charge: true })]), false);
-    assert.equal(priceStatementByEmail([person({ is_licensee_in_charge: true }), left]), false);
-  });
-  it("goes by email when every licensee in charge has left", () => {
-    const left = (at: string) => person({ is_licensee_in_charge: true, archived_at: at });
-    assert.equal(priceStatementByEmail([left("2026-08-01T00:00:00Z"), left("2026-09-01T00:00:00Z"), person({})]), true);
-  });
-});
-
-describe("sentBackPriceStatementLine", () => {
-  // Nobody signed in can mark b4 done when it goes by email, so the note on
-  // the card and the to-do list can't tell the agent to.
-  it("sends the agent to the send form on b4 when it goes by email", () => {
+describe("the licensee's approval from before 2 Nov 2026, as it read", () => {
+  const when = (iso: string) => `[${iso}]`;
+  it("through the emailed link, with the address and the time", () => {
+    const approval = priceApproval({
+      status: "done",
+      completed_by: null,
+      data: { note: "Guide $750,000", signedVia: "link", signedName: "Lee Licensee", signoffRequestId: "r1", signedAt: "2026-10-12T02:15:00Z", sentTo: "lee@example.com" },
+    })!;
     assert.equal(
-      sentBackPriceStatementLine("b4", true),
-      "Send the price statement to your licensee again from this card. Their approval clears this note.",
+      earlierApprovalLine(approval, when),
+      "Approved by Lee Licensee through the emailed link to lee@example.com, [2026-10-12T02:15:00Z] (Sydney time)",
     );
   });
-  it("leaves b4 in the app, and every other card, to the usual words", () => {
-    assert.equal(sentBackPriceStatementLine("b4", false), null);
-    assert.equal(sentBackPriceStatementLine("a4", true), null);
-    assert.equal(sentBackPriceStatementLine("sign_licensee", true), null);
+  it("in RealComply, with the time where it was stamped", () => {
+    const approval = priceApproval({ status: "done", completed_by: "u1", data: { note: "Guide $1.2m", signedAt: "2026-10-20T01:00:00Z", signedBy: "u1" } })!;
+    assert.equal(earlierApprovalLine(approval, when), "Approved in RealComply by the licensee in charge, [2026-10-20T01:00:00Z] (Sydney time)");
+    const older = priceApproval({ status: "done", completed_by: "u1", data: { note: "Guide $1.2m" } })!;
+    assert.equal(earlierApprovalLine(older, when), "Approved in RealComply by the licensee in charge");
   });
 });
 
@@ -135,37 +120,6 @@ describe("priceApproval", () => {
   });
 });
 
-describe("priceRequestStale", () => {
-  const items = (over: Record<string, { status?: string; data?: unknown }> = {}) => ({
-    a4: { status: "done", data: { espLow: 750000, espHigh: 790000 } },
-    a4c: { status: "done", data: {} },
-    ...over,
-  });
-  const request = { espLow: 750000, espHigh: 790000 };
-
-  it("is current while the ESP on foot is the one shown and the reasoning card is done", () => {
-    assert.equal(priceRequestStale(request, items()), false);
-  });
-  it("is stale once the ESP changes", () => {
-    assert.equal(priceRequestStale(request, items({ a4: { status: "done", data: { espLow: 760000, espHigh: 790000 } } })), true);
-  });
-  it("follows a revised ESP on d3, both figures or neither", () => {
-    const revised = items({ d3: { status: "done", data: { revisedEspLow: 700000, revisedEspHigh: 740000 } } });
-    assert.equal(priceRequestStale(request, revised), true);
-    assert.equal(priceRequestStale({ espLow: 700000, espHigh: 740000 }, revised), false);
-    const half = items({ d3: { status: "done", data: { revisedEspLow: 700000 } } });
-    assert.equal(priceRequestStale(request, half), false);
-  });
-  it("is stale once the ESP reasoning card is reopened", () => {
-    assert.equal(priceRequestStale(request, items({ a4c: { status: "open", data: {} } })), true);
-  });
-  it("matches a request sent with no ESP on file only while there is still none", () => {
-    const none = { espLow: null, espHigh: null };
-    assert.equal(priceRequestStale(none, items({ a4: { status: "open", data: {} } })), false);
-    assert.equal(priceRequestStale(none, items()), true);
-  });
-});
-
 describe("espRangeText", () => {
   it("writes a range, a single figure, or nothing", () => {
     assert.equal(espRangeText(750000, 790000), "$750,000 to $790,000");
@@ -178,39 +132,5 @@ describe("espRangeText", () => {
     assert.equal(espRangeText(750000.5, 790000), "$750,001 to $790,000");
     assert.equal(espRangeText(750000.49, 790000.5), "$750,000 to $790,001");
     assert.equal(espRangeText(1200000.5, 1200000.5), "$1,200,001");
-  });
-});
-
-describe("approverNameTooLong", () => {
-  it("takes 200 characters and refuses 201, as the database does", () => {
-    assert.equal(approverNameTooLong("x".repeat(APPROVER_NAME_MAX)), false);
-    assert.equal(approverNameTooLong("x".repeat(APPROVER_NAME_MAX + 1)), true);
-  });
-  it("counts characters, not UTF-16 units", () => {
-    assert.equal(approverNameTooLong("😀".repeat(APPROVER_NAME_MAX)), false);
-  });
-  it("ignores the spaces around the name", () => {
-    assert.equal(approverNameTooLong(`  ${"x".repeat(APPROVER_NAME_MAX)}  `), false);
-  });
-});
-
-describe("noLicenseeEmailMessage", () => {
-  it("sends the agent on their own plan to Team", () => {
-    assert.equal(
-      noLicenseeEmailMessage({ actsAsLicensee: true, isAgentPlan: true }),
-      "Add your licensee in charge's email in Team settings first.",
-    );
-  });
-  it("sends their assistant to the agent, who can add it", () => {
-    assert.equal(
-      noLicenseeEmailMessage({ actsAsLicensee: false, isAgentPlan: true }),
-      "Ask your agent to add your licensee in charge's email in Team settings.",
-    );
-  });
-  it("sends an office whose licensee isn't on RealComply to support", () => {
-    assert.equal(
-      noLicenseeEmailMessage({ actsAsLicensee: false, isAgentPlan: false }),
-      "There's no email on file for your licensee in charge. Contact RealComply support to add it.",
-    );
   });
 });

@@ -30,12 +30,10 @@ import {
 } from "@/lib/rules/aml-precommencement";
 import { FileDropZone } from "@/components/FileDropZone";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
-import { PriceStatementLinkPanel } from "@/components/signoff/PriceStatementLinkPanel";
 import { FlagNote, useFlagFor } from "@/components/compliance/SendBack";
 import { useViewerAccess } from "@/components/ViewerAccess";
-import { liveLink, signedLink, type SignoffLink } from "@/lib/data/signoff-links";
-import { withdrawPriceStatementLink } from "@/lib/actions/signoff-links";
-import type { PriceApproval } from "@/lib/rules/price-statement";
+import { signedLink, type SignoffLink } from "@/lib/data/signoff-links";
+import { tickedLine, type PriceApproval } from "@/lib/rules/price-statement";
 import { espText, SALE_PRICE_NOTE_PROMPT, salePriceFlagText, savedSaleCheck } from "@/lib/rules/sale-price";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
@@ -199,8 +197,8 @@ function ItemShell({
   /** Passed through to the pill — see StatusPill. */
   awaitingReview?: boolean;
   /** The attached file as a link only, with nothing to attach, replace or
-   *  remove: a licensee-only card seen by anyone else, or one locked once
-   *  done (LicenseeOnlyItem). */
+   *  remove: a card locked once done, such as the licensee's own price
+   *  statement approval from before 2 Nov 2026 (EarlierPriceApproval). */
   evidenceReadOnly?: boolean;
   /**
    * False keeps a done card open: for a done card whose body still carries
@@ -789,6 +787,7 @@ function ChecklistItem({
   allEsp,
   comparablesReportRead = false,
   reportRead = null,
+  doneLine = null,
 }: {
   item: ComplianceItem;
   propertyId: string;
@@ -817,6 +816,8 @@ function ChecklistItem({
   // it loses to anything the agent has saved, and it is not recorded until
   // they save it themselves.
   noteSeed?: string;
+  /** b4: who ticked it and when, shown while it is done (0104). */
+  doneLine?: string | null;
 }) {
   const boundAction = setItemStatus.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -1671,7 +1672,10 @@ function ChecklistItem({
           >
             Mark done
           </button>
-          {(isDone || status === "flagged") && !reopenLocked && (
+          {/* b4 reopens through the shared Reopen under the card instead
+              (reopen_listing_card, 0104): it also takes the licensee's own
+              approval from before 2 Nov 2026 into the card's history. */}
+          {(isDone || status === "flagged") && !reopenLocked && item.key !== "b4" && (
             <button
               type="submit"
               name="status"
@@ -1685,6 +1689,7 @@ function ChecklistItem({
         </div>
       </form>
       <FieldError error={state.error} />
+      {isDone && doneLine && <p className="mt-2 text-xs text-rc-muted">{doneLine}</p>}
       {/* Why it is flagged (10 Oct 2026). The reason was saved (an inspection
           dated after the agreement, a contract after the launch) but never
           shown, so the card said "Flagged" and nothing else. */}
@@ -4126,27 +4131,23 @@ function AuctionOutcomeItem({
   );
 }
 
-// A licensee-only item (b4) seen by anyone else, or by anyone once it is
-// done: what is recorded and who it is waiting on, instead of a "Mark done"
-// that refused only once pressed (preview check, 9 Oct 2026). Once done it is
-// locked for the licensee too (guard_listing_signoff, 0058), so the form and
-// the file controls would only fail. setItemStatus refuses on the server
-// either way. The sign cards have their own version of this in SignItem.
-//
-// Once done it says who approved, when, and how (12 Oct 2026): in the app, or
-// through the emailed link and to which address (0066). Until then it said
-// "Done by the licensee in charge" whichever way, with no name and no time.
-// Rows from before 0058 carry no time, and still read the old way.
-function LicenseeOnlyItem({
+// b4 holding the licensee's own approval from before 2 Nov 2026. An agent
+// ticks this card now (REVERSAL, Adam 2 Nov 2026: lib/rules/nsw-sales.ts),
+// and an approval the licensee gave before then reads exactly as it did: who
+// approved, when and how, in RealComply or through the emailed link and to
+// which address (0066). Rows from before 0058 carry no time, and still read
+// the old way. It can't be changed (0104); the shared Reopen under the card
+// moves it into the card's history, and the card starts again as a tick.
+function EarlierPriceApproval({
   item,
   propertyId,
   current,
-  approval = null,
+  approval,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
-  approval?: PriceApproval | null;
+  approval: PriceApproval;
 }) {
   const note = ((current?.data ?? {}) as { note?: string }).note;
   const quoted = (text: string | null) =>
@@ -4155,7 +4156,7 @@ function LicenseeOnlyItem({
     ) : null;
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} evidenceReadOnly>
-      {current?.status === "done" && approval?.via === "link" ? (
+      {approval.via === "link" ? (
         <p className="text-sm text-rc-muted">
           Approved by <span className="font-medium text-rc-ink">{approval.name ?? "the licensee in charge"}</span>
           {approval.at && <> on {formatAuDateTimeShort(approval.at)} (Sydney time)</>}, by email to{" "}
@@ -4163,134 +4164,20 @@ function LicenseeOnlyItem({
           {approval.text ? ":" : "."}
           {quoted(approval.text)}
         </p>
-      ) : current?.status === "done" && approval?.at ? (
+      ) : approval.at ? (
         <p className="text-sm text-rc-muted">
           Approved in RealComply by{" "}
           <span className="font-medium text-rc-ink">{approval.name ?? "the licensee in charge"}</span> on{" "}
           {formatAuDateTimeShort(approval.at)} (Sydney time){approval.text ? ":" : "."}
           {quoted(approval.text)}
         </p>
-      ) : current?.status === "done" ? (
+      ) : (
         <p className="text-sm text-rc-muted">
           Done by the licensee in charge{note ? ": " : "."}
           {note && <span className="text-rc-ink">{note}</span>}
         </p>
-      ) : (
-        <p className="text-sm text-rc-muted">Waiting on the licensee in charge.</p>
       )}
     </ItemShell>
-  );
-}
-
-// What the b4 card needs to know about the price statement going by email
-// (12 Oct 2026, 0066). Worked out once by the page, from reads it already
-// makes; see lib/rules/price-statement.ts for each rule.
-export type B4Route = {
-  /** Nobody in the office is an active licensee in charge on RealComply. */
-  byEmail: boolean;
-  /** The ESP reasoning card is complete, or the listing is a practice one. */
-  gateOpen: boolean;
-  testMode: boolean;
-  licenseeName: string | null;
-  licenseeEmail: string | null;
-  /** The viewer can add the licensee's email in Team. */
-  actsAsLicensee: boolean;
-  /** The office is on an agent plan, so the agent can add the email even when the viewer can't. */
-  agentPlan: boolean;
-  /** This listing's price statement requests only, newest first. */
-  links: SignoffLink[];
-  /** The live request can no longer be approved (the ESP or the ESP reasoning changed). */
-  stale: boolean;
-  /** Who approved b4, when and how. Null until it is done. */
-  approval: PriceApproval | null;
-};
-
-// b4 where the licensee in charge does not use RealComply: the card is the
-// request to them, sent by email, instead of a "Waiting on the licensee"
-// nobody could ever answer. ItemShell as on every card, so a flag the
-// licensee left on it still shows (FlagNote), and the file control is
-// read-only: the approval is the licensee's, by email, and a file put on the
-// card would sit beside it as if it were part of it. A file an agent put on
-// b4 before the card was read-only to them comes off when the licensee
-// approves by link, and stays on record (submit_signoff, 0066): the licensee
-// never saw it.
-function PriceStatementByEmailItem({
-  item,
-  propertyId,
-  current,
-  route,
-  seed,
-}: {
-  item: ComplianceItem;
-  propertyId: string;
-  current?: PropertyItem;
-  route: B4Route;
-  seed: string | null;
-}) {
-  return (
-    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} evidenceReadOnly>
-      <PriceStatementLinkPanel
-        propertyId={propertyId}
-        links={route.links}
-        gateOpen={route.gateOpen}
-        testMode={route.testMode}
-        licenseeName={route.licenseeName}
-        licenseeEmail={route.licenseeEmail}
-        actsAsLicensee={route.actsAsLicensee}
-        agentPlan={route.agentPlan}
-        stale={route.stale}
-        seed={seed}
-      />
-    </ItemShell>
-  );
-}
-
-// A price statement request still out by email in an office whose licensee
-// in charge now uses RealComply (they joined, or came back, while it was
-// pending). Both ways stay open and the first approval counts: the link
-// stops working once b4 is done, and the app refuses an approval the link
-// already gave (0066). Said under the card, with a way to withdraw it.
-//
-// Unless the ESP or the ESP reasoning has changed since it went (stale).
-// Then the link no longer works and only the approval in the app can count,
-// so the line says so instead of offering a race the link can't win.
-function PriceLinkAlsoOut({ propertyId, link, stale }: { propertyId: string; link: SignoffLink; stale: boolean }) {
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-rc-muted">
-      {stale ? (
-        <span>
-          An earlier request to <span className="break-all">{link.sentTo}</span> can no longer be approved.
-          Withdraw it.
-        </span>
-      ) : (
-        <span>
-          A request also went to <span className="break-all">{link.sentTo}</span> on{" "}
-          {formatAuTimestamp(link.emailSentAt ?? link.createdAt)}. Whichever approval comes first counts.
-        </span>
-      )}
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => {
-          setError(null);
-          startTransition(async () => {
-            const result = await withdrawPriceStatementLink(link.id, propertyId);
-            if (result.error) setError(result.error);
-          });
-        }}
-        className="inline-flex items-center gap-1 font-semibold text-rc-muted underline transition hover:text-rc-ink disabled:opacity-60"
-      >
-        <X size={12} aria-hidden="true" />
-        {pending ? "Withdrawing…" : "Withdraw"}
-      </button>
-      {error && (
-        <span className="w-full font-medium text-rc-amber-deep" role="alert">
-          {error}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -4305,9 +4192,9 @@ type ItemCardProps = {
   // The agency's standing position. Passed in rather than fetched here so the
   // page does one agency lookup for the whole list instead of one per card.
   amlPreCommencementEnabled?: boolean;
-  // The final sign-off's links for this file, read once by the page (the
-  // price statement's go in b4Route). The send_licensee card's panel uses
-  // them, and the sign card reads a link signature's time from them.
+  // The final sign-off's links for this file, read once by the page. The
+  // send_licensee card's panel uses them, and the sign card reads a link
+  // signature's time from them.
   signoffLinks?: SignoffLink[];
   // The listing's own attributes and its comparable sales. Only the ESP card
   // and the ESP reasoning card use them.
@@ -4316,28 +4203,14 @@ type ItemCardProps = {
   // Properties on the market as at the agency agreement date (29 Sep 2026).
   // Only the ESP reasoning card uses them.
   marketListings?: MarketListing[];
-  // The price statement by email (0066). Only the b4 card uses it.
-  b4Route?: B4Route;
+  // b4, the price statement: who ticked it and when, or the licensee's own
+  // approval from before 2 Nov 2026 (lib/rules/price-statement.ts). Only the
+  // b4 card uses it.
+  b4Approval?: PriceApproval | null;
 };
 
 export function ItemCard(props: ItemCardProps) {
-  const { item, propertyId, current, b4Route } = props;
-  if (item.key !== "b4") return <ItemCardBody {...props} />;
-  // In-app b4 with a request still out by email: the card as usual, and a
-  // line under it about the request.
-  //
-  // The b4 card is always inside the same div, line or no line. If the root
-  // changed when the line came or went, React would remount the card and
-  // throw away anything typed into it, such as a note the licensee was
-  // writing when they withdrew the emailed request.
-  const alsoOut =
-    b4Route && !b4Route.byEmail && current?.status !== "done" ? liveLink(b4Route.links, "b4") : null;
-  return (
-    <div>
-      <ItemCardBody {...props} />
-      {alsoOut && <PriceLinkAlsoOut propertyId={propertyId} link={alsoOut} stale={b4Route?.stale ?? false} />}
-    </div>
-  );
+  return <ItemCardBody {...props} />;
 }
 
 function ItemCardBody({
@@ -4352,36 +4225,12 @@ function ItemCardBody({
   comparables = [],
   marketListings = [],
   listingAgentId,
-  b4Route,
+  b4Approval = null,
 }: ItemCardProps) {
-  // b4 where nobody in the office is an active licensee in charge on
-  // RealComply: it goes to the licensee by email from this card (Adam, 12 Oct
-  // 2026, option (a)). Before the licensee-only branch below, which would
-  // otherwise show "Waiting on the licensee in charge" to a file nobody
-  // signed in can ever complete. Once done, that branch shows the approval.
-  if (item.key === "b4" && b4Route?.byEmail && current?.status !== "done") {
-    return (
-      <PriceStatementByEmailItem
-        item={item}
-        propertyId={propertyId}
-        current={current}
-        route={b4Route}
-        seed={
-          (allItems["a3"]?.data as { aiDraft?: { offerPrice?: string } } | undefined)?.aiDraft?.offerPrice ?? null
-        }
-      />
-    );
-  }
-
-  if (item.licenseeOnly && item.kind !== "sign" && (!profile.is_licensee_in_charge || current?.status === "done")) {
-    return (
-      <LicenseeOnlyItem
-        item={item}
-        propertyId={propertyId}
-        current={current}
-        approval={item.key === "b4" ? (b4Route?.approval ?? null) : null}
-      />
-    );
+  // b4 with the licensee's own approval from before 2 Nov 2026: as it read
+  // then. A tick from then on is an ordinary checklist card below.
+  if (item.key === "b4" && current?.status === "done" && b4Approval && b4Approval.via !== "tick") {
+    return <EarlierPriceApproval item={item} propertyId={propertyId} current={current} approval={b4Approval} />;
   }
 
   switch (item.kind) {
@@ -4491,13 +4340,13 @@ function ItemCardBody({
           // is both a waste and a chance to fat-finger the number this item
           // exists to pin down (Adam, 22 Aug 2026).
           //
-          // Read across from a3 rather than extracted onto b4 directly. b4 is
-          // licenseeOnly, and extraction never writes to a licensee item — the
-          // approval has to remain an act the licensee took. This only fills
-          // the box in front of them.
+          // Read across from a3 rather than extracted onto b4 directly: the
+          // tick has to remain an act a person took (an agent's, since 2 Nov
+          // 2026). This only fills the box in front of them.
           //
           // Undefined for an auction file, where the agreement has no such
           // term and the model is told to omit it.
+          doneLine={item.key === "b4" && b4Approval?.via === "tick" ? tickedLine(b4Approval) : null}
           noteSeed={
             item.key === "b4"
               ? (allItems["a3"]?.data as { aiDraft?: { offerPrice?: string } } | undefined)?.aiDraft

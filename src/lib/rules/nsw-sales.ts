@@ -1044,14 +1044,38 @@ const items: ComplianceItem[] = [
     key: "b4",
     stage: 1,
     kind: "checklist",
-    label: "Licensee approved the price statement before publication",
-    // The second sentence since 12 Oct 2026 (Adam, option (a)): an office
-    // whose licensee in charge is not on RealComply sends it to them by email
-    // from this card, and they approve the exact words there.
+    // ═══════════════════════════════════════════════════════════════════════
+    // REVERSAL (Adam, 2 Nov 2026). AN AGENT TICKS THIS CARD. NO LICENSEE LINK.
+    //
+    // WAS: a licensee-only card (licenseeOnly: true). The licensee in charge
+    //   ticked it in the app, or signed an approval link sent to them by email
+    //   (property_signoff_requests, item_key 'b4'; 12 Oct 2026, 0066). Only
+    //   they could reopen it.
+    // NOW: any agent on the listing ticks it to confirm the licensee in charge
+    //   approved the price statement. No link, no name, no date, no upload. It
+    //   works the same on every plan, including an office plan whose licensee
+    //   has no login, and the licensee can still tick it if they're the one on
+    //   the listing. It reopens like any other card. The database stamps who
+    //   ticked it and when (0104): "Ticked by [name], [date]".
+    // WHY: the Act doesn't require licensee sign-off at this point. The
+    //   licensee already signs the whole file off before it's filed (the
+    //   'sign_licensee' card, unchanged), and Adam wants no extra steps that
+    //   slow agents down.
+    //
+    // The licensee's approvals from before 2 Nov 2026 stay as they were and
+    // still read that way on the card, the summary, the compliance record and
+    // the card's history (lib/rules/price-statement.ts). Their link rows in
+    // property_signoff_requests are untouched; no new one can be made.
+    //
+    // KEPT: the price statement typed on the card (requiresNote, Adam 20 Aug,
+    // below), and b4 going back to open when the ESP it rests on changes (0100).
+    // ═══════════════════════════════════════════════════════════════════════
+    // Adam's words, as a card title without the full stop, like every other
+    // card: it is listed with others ("needs finishing first: ...").
+    label: "The licensee in charge approved the price statement before it was published",
     description:
-      "The licensee in charge confirms the price statement on the marketing material (the advertised guide/range) is accurate, before it's published. If your licensee in charge doesn't use RealComply, send it to them for approval by email from this card.",
+      "The law doesn't require the licensee to sign this. Recording their approval helps show you took all reasonable precautions (s73A(1B) of the Property and Stock Agents Act) if a price statement is ever questioned.",
     legalBasis: "Supports ss 73 & 73A, Property and Stock Agents Act 2002 (NSW); s32 (duty to properly supervise)",
-    licenseeOnly: true,
     requiresDate: false,
     requiredForStageCompletion: true,
     // Adam, 20 Aug 2026: "in the notes, it should be a requirement to type in

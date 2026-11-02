@@ -4,14 +4,14 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { EditPropertyDetails } from "@/components/property/EditPropertyDetails";
 import { requireAccess } from "@/lib/data/current-profile";
-import { ItemCard, type B4Route } from "@/components/compliance/ItemCard";
+import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
 import { TransferListingSection } from "@/components/compliance/TransferListingSection";
 import { HandToAgent } from "@/components/compliance/HandToAgent";
 import { allItemsFor, itemsForStage, AUCTION_DAY_KEYS } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
-import { linksFor, liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
-import { priceApproval, priceRequestStale, priceStatementByEmail } from "@/lib/rules/price-statement";
+import { linksFor, signoffLinksFor } from "@/lib/data/signoff-links";
+import { priceApproval } from "@/lib/rules/price-statement";
 import { openFlagsFor, sendBackRoundFor } from "@/lib/data/send-backs";
 import { SendBackBanner, SendBackProvider } from "@/components/compliance/SendBack";
 import { ReopenProvider, type ReopenPage } from "@/components/compliance/Reopen";
@@ -80,11 +80,10 @@ export default async function PropertyPage({
   const [{ data: propertyItemRows }, { data: agencyRow }, peopleRows, signoffLinks, comparables, marketListings] = await Promise.all([
     supabase.from("property_items").select("*").eq("property_id", id),
     // One lookup for the page, passed down to every card, rather than each
-    // card asking. amv uses the AML position; b4 uses the licensee's name and
-    // email, to say where a price statement request goes (12 Oct 2026).
+    // card asking. amv uses the AML position.
     supabase
       .from("agencies")
-      .select("aml_precommencement_enabled, licensee_name, licensee_email")
+      .select("aml_precommencement_enabled")
       .eq("id", profile.agency_id)
       .maybeSingle(),
     // For the hand-over card: whose listing this is, and who handed it over.
@@ -122,11 +121,10 @@ export default async function PropertyPage({
 
   const ruleCtx = await ruleContextFor(supabase, p);
 
-  // The final sign-off's links and the price statement's (b4, 0066), kept
-  // apart from here on: a b4 request is never the file going to the licensee,
-  // and an approved one is never their signature.
+  // The final sign-off's links. A price statement link from before 2 Nov
+  // 2026 (b4, 0066) was never the file going to the licensee, and an approved
+  // one is never their signature, so they are left out from here on.
   const finalLinks = linksFor(signoffLinks, "sign_licensee");
-  const priceLinks = linksFor(signoffLinks, "b4");
 
   // Cards the licensee sent back and the agent has not fixed yet (0062), and
   // the whole latest send-back for the to-do list at the top. "Sent to the
@@ -190,30 +188,9 @@ export default async function PropertyPage({
 
   const people = peopleRows;
 
-  // b4 by email (Adam, 12 Oct 2026, option (a)). All from reads the page has
-  // already made; see lib/rules/price-statement.ts for each rule.
-  //   byEmail: nobody in the office is an active licensee in charge.
-  //   gateOpen: the ESP reasoning card counts as complete. allItems carries
-  //     its effective status (withEffectiveEspStatus above), so this is the
-  //     same rule the server checks before sending.
-  //   stale: read against the rows as stored, as the database reads them.
-  const storedItems = Object.fromEntries(
-    ((propertyItemRows ?? []) as PropertyItem[]).map((item) => [item.item_key, item]),
-  );
-  const livePrice = liveLink(priceLinks, "b4");
-  const agencyDetails = agencyRow as { licensee_name?: string | null; licensee_email?: string | null } | null;
-  const b4Route: B4Route = {
-    byEmail: priceStatementByEmail(people),
-    gateOpen: p.test_mode || allItems["a4c"]?.status === "done",
-    testMode: p.test_mode,
-    licenseeName: agencyDetails?.licensee_name ?? null,
-    licenseeEmail: agencyDetails?.licensee_email ?? null,
-    actsAsLicensee: access.actsAsLicensee,
-    agentPlan: access.isAgentPlan,
-    links: priceLinks,
-    stale: livePrice ? priceRequestStale(livePrice, storedItems) : false,
-    approval: priceApproval(allItems["b4"], new Map(people.map((x) => [x.id, { full_name: x.full_name }]))),
-  };
+  // b4, the price statement: who ticked it and when, or the licensee's own
+  // approval from before 2 Nov 2026 (REVERSAL: lib/rules/price-statement.ts).
+  const b4Approval = priceApproval(allItems["b4"], new Map(people.map((x) => [x.id, { full_name: x.full_name }])));
   const personName = (id: string | null) => {
     const found = people.find((x) => x.id === id);
     return found?.full_name ?? "the agent";
@@ -264,7 +241,6 @@ export default async function PropertyPage({
         propertyId: p.id,
         flags: openFlags,
         round: round?.cards ?? [],
-        priceStatementByEmail: b4Route.byEmail,
       }}
     >
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
@@ -403,7 +379,7 @@ export default async function PropertyPage({
                   subject={subject}
                   comparables={comparables}
                   marketListings={marketListings}
-                  b4Route={b4Route}
+                  b4Approval={b4Approval}
                 />
               ))}
             </div>
@@ -425,7 +401,7 @@ export default async function PropertyPage({
               subject={subject}
               comparables={comparables}
               marketListings={marketListings}
-              b4Route={b4Route}
+              b4Approval={b4Approval}
               />
           ))}
         </div>

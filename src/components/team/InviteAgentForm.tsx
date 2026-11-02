@@ -192,9 +192,9 @@ export function InviteAgentForm({
               and we&rsquo;ll correct them.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-rc-ink">
-              When {licenseeFirst} joins, they&rsquo;re licensee in charge on RealComply. Price statements, file
-              sign-offs and the SG annexure then happen in the app, not by email link. Your office manager approval stays
-              as it is, and {licenseeFirst} can withdraw it in Team.
+              When {licenseeFirst} joins, they&rsquo;re licensee in charge on RealComply. File sign-offs and the SG
+              annexure then happen in the app, not by email link. Your office manager approval stays as it is, and{" "}
+              {licenseeFirst} can withdraw it in Team.
             </p>
           </div>
         )}
@@ -204,8 +204,8 @@ export function InviteAgentForm({
             <p className="text-sm font-bold text-rc-ink">{personName || "They"} join{personName ? "s" : ""} as office manager</p>
             <p className="mt-1 text-xs leading-relaxed text-rc-muted">
               {personName || "They"} will look after Team, Office profile, registers, CPD, training, trust records, the
-              SG Manual and billing. Price statement approvals, file sign-offs, annexure adoption, changing the licensee
-              in charge and deleting compliance records stay with you.
+              SG Manual and billing. File sign-offs, annexure adoption, changing the licensee in charge and deleting
+              compliance records stay with you.
             </p>
             <label className="mt-2 flex items-start gap-2 text-sm font-semibold text-rc-ink">
               <input
