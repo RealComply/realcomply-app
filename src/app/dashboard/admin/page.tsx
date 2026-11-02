@@ -8,6 +8,8 @@ import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyA
 import { WelcomeTest } from "@/components/admin/WelcomeTest";
 import { CpdReminderTest } from "@/components/admin/CpdReminderTest";
 import { ReaderCheckTest } from "@/components/admin/ReaderCheckTest";
+import { CmaRereads } from "@/components/admin/CmaRereads";
+import { cmaRereadListings } from "@/lib/documents/cma-reread";
 import { PmAnnouncement, type PmAnnouncementListRow } from "@/components/admin/PmAnnouncement";
 import { PM_ANNOUNCEMENT_TEST_ADDRESS, pmAnnouncementList } from "@/lib/email/pm-announcement";
 import { cpdSendDatesThisYear } from "@/lib/actions/cpd-reminders-admin";
@@ -55,6 +57,10 @@ import { deletionDate, longDate, sydneyDate } from "@/lib/subscription-end/dates
 // Retention Policy section 6 needs a place to record it.
 
 export const dynamic = "force-dynamic";
+
+// Server Actions on this page can run the document reader (the reader check,
+// the comparable-sales re-reads): up to a minute or two each.
+export const maxDuration = 300;
 
 type AgencyRow = {
   id: string;
@@ -301,6 +307,7 @@ export default async function AdminPage() {
   // the backup is complete — see countEvidenceObjects. null means the bucket
   // could not be read at all, which is a failure, not a zero.
   const sourceCount = backupConfigured ? await countEvidenceObjects() : null;
+  const cmaRereads = await cmaRereadListings(supabase);
   const backupIncomplete =
     backupConfigured && (sourceCount === null || sourceCount > backedUp.length);
 
@@ -458,6 +465,9 @@ export default async function AdminPage() {
       </p>
       <div className="mt-3">
         <ReaderCheckTest />
+      </div>
+      <div className="mt-3">
+        <CmaRereads listings={cmaRereads} />
       </div>
 
       {/* AGENCIES, oldest first — so Cass stays at the top and each new tester

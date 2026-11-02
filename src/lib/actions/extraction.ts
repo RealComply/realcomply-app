@@ -6,6 +6,7 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { downloadedFileProblem } from "@/lib/storage/file-check";
 import { reportReadFailed, reportReadFrom, type ReportRead } from "@/lib/documents/report-read";
+import { addReportRows } from "@/lib/documents/report-rows";
 import { READ_FAILED_JUST_NOW, TOO_LARGE_TO_READ, mergeReads } from "@/lib/documents/reader-parts";
 import {
   FileCantBeRead,
@@ -1547,84 +1548,12 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
       }
     }
 
-    if (agencyId && comparablesPatch.comparableSales?.length) {
-      const { data: existingRows } = await supabase
-        .from("property_comparables")
-        .select("id, address")
-        .eq("property_id", propertyId);
-
-      const seen = new Set(
-        ((existingRows ?? []) as Array<{ address: string }>).map((r) => normaliseAddress(r.address)),
-      );
-
-      const fresh = comparablesPatch.comparableSales
-        .filter((c) => c.address?.trim())
-        .filter((c) => !seen.has(normaliseAddress(c.address)))
-        .map((c, index) => ({
-          agency_id: agencyId,
-          property_id: propertyId,
-          address: c.address.trim(),
-          sale_price: c.salePrice ?? null,
-          sale_date: c.saleDate ?? null,
-          bedrooms: c.bedrooms ?? null,
-          bathrooms: c.bathrooms ?? null,
-          car_spaces: c.carSpaces ?? null,
-          land_size_sqm: c.landSizeSqm ?? null,
-          internal_area_sqm: c.internalAreaSqm ?? null,
-          distance_m: c.distanceM ?? null,
-          property_type: c.propertyType ?? null,
-          source: "report",
-          position: seen.size + index,
-        }));
-
-      if (fresh.length > 0) {
-        await supabase.from("property_comparables").insert(fresh);
-      }
-    }
-
-    // ON THE MARKET (29 Sep 2026). Same two rules as the sales: a re-read
-    // only ever ADDS listings it has not seen (matched on the normalised
-    // address), and it never writes a weighting. Only the ORIGINAL list
-    // (as_at null) is checked for duplicates — a list recorded at an ESP
-    // revision is a different snapshot and may legitimately repeat an
-    // address. If migration 0050 has not been run the insert fails quietly
-    // and the sales above are unaffected.
-    if (agencyId && comparablesPatch.marketListings?.length) {
-      const { data: existingListings } = await supabase
-        .from("property_market_listings")
-        .select("id, address")
-        .eq("property_id", propertyId)
-        .is("as_at", null);
-
-      const seenListings = new Set(
-        ((existingListings ?? []) as Array<{ address: string }>).map((r) => normaliseAddress(r.address)),
-      );
-
-      const freshListings = comparablesPatch.marketListings
-        .filter((l) => l.address?.trim())
-        .filter((l) => !seenListings.has(normaliseAddress(l.address)))
-        .map((l, index) => ({
-          agency_id: agencyId,
-          property_id: propertyId,
-          address: l.address.trim(),
-          asking_price: l.askingPrice?.trim() || null,
-          sale_method: l.saleMethod?.trim() || null,
-          listed_date: /^\d{4}-\d{2}-\d{2}$/.test(l.listedDate ?? "") ? l.listedDate : null,
-          bedrooms: l.bedrooms ?? null,
-          bathrooms: l.bathrooms ?? null,
-          car_spaces: l.carSpaces ?? null,
-          land_size_sqm: l.landSizeSqm ?? null,
-          internal_area_sqm: l.internalAreaSqm ?? null,
-          distance_m: l.distanceM ?? null,
-          property_type: l.propertyType ?? null,
-          source: "report",
-          as_at: null,
-          position: seenListings.size + index,
-        }));
-
-      if (freshListings.length > 0) {
-        await supabase.from("property_market_listings").insert(freshListings);
-      }
+    // The sales and the listings on the market: only ever ADDED, never over
+    // the agent's own rows. lib/documents/report-rows, shared with Adam's
+    // re-reads on the staff page since 2 Nov 2026.
+    if (agencyId) {
+      const added = await addReportRows(supabase, { agencyId, propertyId }, comparablesPatch);
+      for (const problem of added.problems) console.error("report rows not added:", propertyId, problem);
     }
   }
 
@@ -1925,22 +1854,4 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
   }
 
   return failures.length > 0 ? { error: `Extracted what it could, but hit an issue: ${failures.join("; ")}` } : ok;
-}
-
-// Address matching for the re-read guard above.
-//
-// Deliberately crude: lowercase, collapse whitespace and punctuation, and drop
-// the common street-type abbreviations so "14 Smith St" and "14 Smith Street"
-// are one property rather than two. It does not need to be clever — the only
-// job is stopping a second read of the same report from doubling every row,
-// and a false miss shows up as a visible duplicate the agent can remove, while
-// a false match would silently hide a genuinely different sale. Erring towards
-// the visible failure is the right way round.
-function normaliseAddress(address: string): string {
-  return address
-    .toLowerCase()
-    .replace(/[.,]/g, " ")
-    .replace(/\b(street|st|road|rd|avenue|ave|drive|dr|place|pl|court|ct|crescent|cres|parade|pde|lane|ln|way|close|cl|terrace|tce)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
