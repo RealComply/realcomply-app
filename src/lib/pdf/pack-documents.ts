@@ -18,7 +18,7 @@ export type PackDocKind = "pdf" | "image" | "heic" | "other";
 export type PackDocument = {
   /** The stage's name, as the record heads it ("Pre-market"), or "Complaints". */
   stage: string;
-  /** The card's title as the record prints it, or "Complaint received 12 October 2026". */
+  /** What the document is ("Agency agreement", DOCUMENT_TITLE), else the card's title, or "Complaint received 12 October 2026". */
   cardTitle: string;
   /** The name the file was uploaded under. Never the storage path. */
   fileName: string;
@@ -71,6 +71,62 @@ export function uploadedAtFromPath(path: string): string | null {
   return Number.isNaN(at.getTime()) ? null : at.toISOString();
 }
 
+// WHAT EACH DOCUMENT IS CALLED in the contents and on its separator page
+// (Adam, 3 Nov 2026): the document itself, not the card's title or question.
+// A contents line reading "Estimated selling price (ESP) recorded" opened the
+// comparative market analysis, not the estimate or its reasoning (which the
+// record prints itself), and the same was true of every card. A card not
+// listed here already names its document ("Pool compliance certificate",
+// "Bidders record", "Offers log") and keeps its title.
+export const DOCUMENT_TITLE: Record<string, string> = {
+  a3: "Agency agreement",
+  a1: "Vendor identity verification",
+  a2: "Proof the consumer guide was given",
+  a4: "Comparative market analysis",
+  a4c: "ESP reasoning",
+  a7: "Material facts record",
+  a8: "Agent's interest disclosure and consent",
+  amv: "Vendor AML/KYC request",
+  poa_doc: "Power of Attorney",
+  b1a: "Covering letter or email with the contract",
+  b1: "Contract for sale",
+  t1: "Notice of sale to the managing agent",
+  t2: "Notice of sale to the tenant",
+  t5: "Tenant's permission for photos",
+  t3: "Tenant inspection access record",
+  t4: "Lease",
+  b3: "Vendor's approval of marketing",
+  amvc: "Vendor AML/KYC result",
+  c1: "Advertised price guide",
+  c4: "Marketing showing the agent's interest",
+  x4: "Reserve given to the auctioneer",
+  x5: "Conditions of sale",
+  x6: "Auction notices",
+  x3: "Bidders guide record",
+  x8: "Auction outcome record",
+  x9: "Vendor's permission to set aside the reserve",
+  x10: "Telephone or absentee bidder authority",
+  e1: "Proof the contract was served",
+  e2: "Material facts disclosure to the purchaser",
+  amp: "Purchaser AML/KYC request",
+  ampc: "Purchaser AML/KYC result",
+  b5: "Record of price quotes",
+  f0: "Sale price record",
+  d3: "ESP revision notice",
+  f4: "Record of property reports disclosed",
+};
+
+/** A report on the reports card (f3), named by what it is: "Building and pest report", "Strata report". */
+export function reportTitle(entry: { pestInspection?: unknown; buildingInspection?: unknown; strata?: unknown }): string {
+  const kinds = [entry.buildingInspection === true && "building", entry.pestInspection === true && "pest"].filter(Boolean) as string[];
+  const parts: string[] = [];
+  if (kinds.length > 0) parts.push(kinds.join(" and "));
+  if (entry.strata === true) parts.push("strata");
+  if (parts.length === 0) return "Building, pest or strata report";
+  const name = `${parts.join(" and ")} report`;
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 const baseName = (path: string) => path.split("/").pop() ?? "document";
 const named = (data: unknown, path: string) => {
   const name = (data as { evidenceFileName?: unknown } | null)?.evidenceFileName;
@@ -118,7 +174,7 @@ export function packDocumentsFor(
       for (const e of entries) {
         if (typeof e.evidencePath !== "string" || !e.evidencePath) continue;
         const name = typeof e.evidenceFileName === "string" && e.evidenceFileName ? e.evidenceFileName : baseName(e.evidencePath);
-        add(stage, title, e.evidencePath, name, { at: typeof e.recordedAt === "string" ? e.recordedAt : null });
+        add(stage, reportTitle(e), e.evidencePath, name, { at: typeof e.recordedAt === "string" ? e.recordedAt : null });
       }
     }
   };
@@ -127,14 +183,14 @@ export function packDocumentsFor(
   for (const stage of [0, 1, 2, 3, 4, 5] as PropertyStage[]) {
     for (const item of items.filter((i) => i.stage === stage)) {
       shown.add(item.key);
-      cardFiles(STAGE_LABELS[stage], item.label, item.key, byKey[item.key]);
+      cardFiles(STAGE_LABELS[stage], DOCUMENT_TITLE[item.key] ?? item.label, item.key, byKey[item.key]);
     }
   }
   // A file on a card the record doesn't show (a retired card, say) is still
   // a document on the listing: never left out silently.
   for (const [key, row] of Object.entries(byKey)) {
     if (shown.has(key)) continue;
-    cardFiles("Other documents on this listing", getItem(key)?.label ?? "A card no longer in use", key, row);
+    cardFiles("Other documents on this listing", DOCUMENT_TITLE[key] ?? getItem(key)?.label ?? "A card no longer in use", key, row);
   }
   return out;
 }
