@@ -12,7 +12,8 @@ import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { signatureOnCard } from "@/lib/rules/listing-signature";
-import { priceApproval } from "@/lib/rules/price-statement";
+import { earlierApprovalLine, tickedLine } from "@/lib/rules/price-statement";
+import { priceApprovalFor } from "@/lib/data/price-approval";
 import { saleRecordLines } from "@/lib/rules/sale-price";
 import { RoofMark } from "@/components/RoofMark";
 
@@ -51,9 +52,10 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   // A licensee who signed through the emailed link counts too (10 Oct 2026):
   // see lib/rules/listing-signature.ts. Only a card that is done (12 Oct 2026).
   const signed = (key: string) => signatureOnCard(allItems[key]) !== null;
-  // The price statement the licensee approved, and how (b4; the same line as
-  // the PDF, lib/pdf/compliance-record.ts).
-  const approval = priceApproval(allItems["b4"]);
+  // The price statement card (b4; the same line as the PDF,
+  // lib/pdf/compliance-record.ts): who ticked it and when, or the licensee's
+  // own approval from before 2 Nov 2026, and how.
+  const approval = await priceApprovalFor(supabase, allItems["b4"]);
   const missingSignatures = [
     signed("sign_agent") ? null : "the agent",
     signed("sign_licensee") ? null : "the licensee in charge",
@@ -153,10 +155,9 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                               {" · "}
                             </>
                           )}
-                          {approval.via === "link"
-                            ? `Approved by ${approval.name ?? "the licensee in charge"} through the emailed link to ${approval.sentTo ?? "the licensee's email"}`
-                            : "Approved in RealComply by the licensee in charge"}
-                          {approval.at && `, ${formatAuDateTimeShort(approval.at)} (Sydney time)`}
+                          {approval.via === "tick"
+                            ? tickedLine(approval)
+                            : earlierApprovalLine(approval, formatAuDateTimeShort)}
                         </p>
                       )}
                       {/* The sale price, what it was compared with, and any flag and note (f0, 26 Oct 2026). */}

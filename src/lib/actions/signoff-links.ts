@@ -11,36 +11,22 @@ import { buildSignoffStatement } from "@/lib/signoff/statement";
 // step by hand, and it fell behind when the ruleset moved to 2026.3.
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { effectiveEsp } from "@/lib/data/effective-esp";
-import { espGateFor } from "@/lib/data/esp-gate";
-import { agencyPeople } from "@/lib/data/people";
 import { liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
 import { sendEmail } from "@/lib/email/send";
 import { buildSignoffRequestEmail } from "@/lib/email/signoff-request";
-import { buildPriceStatementRequestEmail } from "@/lib/email/price-statement-request";
-import { STAGE_GATE_MESSAGE } from "@/lib/rules/esp-reasoning-gate";
-import {
-  APPROVER_NAME_MAX,
-  PRICE_STATEMENT_MAX,
-  approverNameTooLong,
-  noLicenseeEmailMessage,
-  normalisePriceStatement,
-  priceRequestStale,
-  priceStatementByEmail,
-} from "@/lib/rules/price-statement";
-import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
+import { formatAuDate } from "@/lib/format-date";
 import type { PropertyItem } from "@/lib/types";
 
 
 // Issuing and revoking licensee sign-off links. See
 // RealComply-licensee-signoff-link.md and 0014_licensee_signoff_links.sql.
 //
-// And, since 0066 (Adam, 12 Oct 2026), the price statement link: where the
-// office's licensee in charge does not use RealComply, b4 goes to them by
-// email and they approve the exact words there. Same table, same token rules,
-// a different item_key. Both live in this file so tokenFor stays the one
-// place the server reads a token with its own access. Every final sign-off
-// path below names "sign_licensee", so a b4 request is never handed back,
-// resent or withdrawn as the final link.
+// From 0066 (12 Oct 2026) until 2 Nov 2026 this file also sent the price
+// statement (b4) to a licensee not on RealComply, as a link in the same table
+// with item_key 'b4'. REVERSAL (Adam, 2 Nov 2026): an agent ticks b4 now and
+// no price statement link is made (0104). The old rows stay in the table;
+// every path below names "sign_licensee", so one is never handed back, resent
+// or withdrawn as the final link, and the signing page doesn't open one.
 
 
 
@@ -98,7 +84,6 @@ async function deliverLinkEmail(
     // Every licensee, with an account or not, gets the sign-off page: the
     // file on the page, sign below it, or send it back (Adam, 12 Oct 2026).
     // On an agent's listing the app has no Licensee signature card to land on.
-    // A price statement link opens the same page, which shows the statement.
     const { subject, text, html } = args.build(`${appBaseUrl()}/signoff/${token}`);
 
     // Reply-to is the agent, not the sending address. See the note in
@@ -417,14 +402,7 @@ export async function revokeSignoffLink(requestId: string, propertyId: string): 
 
 export type PublicSignoffRequest = {
   request_id: string;
-  /** What the link is for (0066): the final sign-off, or the price statement. */
-  item_key: "sign_licensee" | "b4";
   statement: string;
-  /** b4 only: the exact words being approved, fixed when the request was made. */
-  price_statement: string | null;
-  /** b4 only: the estimated selling price shown with it. */
-  esp_low: number | null;
-  esp_high: number | null;
   ruleset_version: string | null;
   property_address: string;
   agency_name: string;
@@ -452,10 +430,14 @@ export async function getSignoffRequest(token: string): Promise<PublicSignoffReq
   // because the ESP or the ESP reasoning changed after it was sent.
   const { data, error } = await supabase.rpc("get_signoff_request_v3", { p_token: token });
   if (error || !data || (Array.isArray(data) && data.length === 0)) return null;
-  const row = (Array.isArray(data) ? data[0] : data) as PublicSignoffRequest;
-  // Anything but a price statement request reads as the final sign-off, which
-  // is what every link was before 0066.
-  return { ...row, item_key: row.item_key === "b4" ? "b4" : "sign_licensee" };
+  const row = (Array.isArray(data) ? data[0] : data) as PublicSignoffRequest & { item_key?: string };
+  // A price statement link (b4, 0066) doesn't open any more: an agent ticks
+  // b4 since 2 Nov 2026, and none was waiting then. It reads as a link that
+  // is no longer valid.
+  if (row.item_key === "b4") return null;
+  const request = { ...row };
+  delete request.item_key;
+  return request;
 }
 
 /**
@@ -464,9 +446,6 @@ export async function getSignoffRequest(token: string): Promise<PublicSignoffReq
  * returns — no second step, and no window in which a licensee has signed
  * something the file still shows as outstanding.
  *
- * For a price statement link the same RPC completes b4 instead (0066). Which
- * one is decided by the database from the request the token names. The
- * hidden "kind" field below only picks the words on an error.
  */
 export async function submitSignoff(
   _prev: { error: string | null; signed: boolean },
@@ -474,16 +453,9 @@ export async function submitSignoff(
 ): Promise<{ error: string | null; signed: boolean }> {
   const token = String(formData.get("token") ?? "");
   const typedName = String(formData.get("typedName") ?? "").trim();
-  const approving = formData.get("kind") === "b4";
 
   if (!typedName) {
-    return { error: approving ? "Type your full name to approve." : "Type your full name to sign.", signed: false };
-  }
-  // The database refuses a longer name on a price statement link, and that
-  // refusal would read below as a link that no longer works. The page's box
-  // stops at the limit too; this is for a name that gets past it.
-  if (approving && approverNameTooLong(typedName)) {
-    return { error: `Type your name only, up to ${APPROVER_NAME_MAX} characters.`, signed: false };
+    return { error: "Type your full name to sign.", signed: false };
   }
 
   const supabase = await createClient();
@@ -494,310 +466,10 @@ export async function submitSignoff(
 
   if (error || data !== true) {
     return {
-      error: approving
-        ? "This link is no longer valid. It may have expired, been withdrawn, or already been approved."
-        : "This link is no longer valid. It may have expired, been withdrawn, or already been signed.",
+      error: "This link is no longer valid. It may have expired, been withdrawn, or already been signed.",
       signed: false,
     };
   }
 
   return { error: null, signed: true };
-}
-
-// ── The price statement (b4) by email ──────────────────────────────────────
-//
-// Adam, 12 Oct 2026, option (a). Where nobody in the office is an active
-// licensee in charge on RealComply, b4 is sent to agencies.licensee_email and
-// the licensee approves the exact words from the email. Anyone who can see
-// the listing can send it, send it again, change the wording or withdraw it,
-// assistants included: none of that approves anything. Only the person
-// reading the email can.
-//
-// The rule is checked three times: the page decides what to show, these
-// actions work it out again from their own reads, and the database refuses
-// (0066). The database also sets who it goes to, builds the statement the
-// licensee reads, and fixes the ESP they are shown. The app sends only the
-// listing, the kind and the words.
-//
-// Never marks "Send to licensee" done. That step is the final file going to
-// the licensee, and this is not it.
-
-export type PriceLinkState = {
-  error: string | null;
-  sentTo?: string;
-  /** False when the request was saved and the email did not go. */
-  emailed?: boolean;
-};
-
-/** The database's own sentence when one of its rules refuses (raised in 0066's guard), otherwise null. */
-function databaseRefusal(error: { code?: string; message?: string } | null): string | null {
-  if (!error || error.code !== "P0001") return null;
-  return error.message?.trim() || null;
-}
-
-const toNumber = (v: unknown): number | null => {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-};
-
-/** Whether b4 on this listing is already done, read with the caller's own access. */
-async function b4Done(supabase: Client, propertyId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from("property_items")
-    .select("status")
-    .eq("property_id", propertyId)
-    .eq("item_key", "b4")
-    .maybeSingle();
-  return (data as { status?: string } | null)?.status === "done";
-}
-
-const ALREADY_APPROVED = "Your licensee has already approved the price statement.";
-
-export async function issuePriceStatementLink(
-  propertyId: string,
-  _prev: PriceLinkState,
-  formData: FormData,
-): Promise<PriceLinkState> {
-  const { supabase, profile, access } = await requireAuthContext();
-
-  const priceStatement = normalisePriceStatement(formData.get("priceStatement"));
-  if (!priceStatement) {
-    return { error: `Type the price statement, up to ${PRICE_STATEMENT_MAX} characters.` };
-  }
-
-  const { data: property } = await supabase
-    .from("properties")
-    .select("id, address, agency_id, test_mode")
-    .eq("id", propertyId)
-    .maybeSingle();
-  const p = property as { id: string; address: string; agency_id: string; test_mode: boolean } | null;
-  if (!p) return { error: "Couldn't find that listing." };
-
-  if (p.test_mode) {
-    return { error: "This is a practice listing, so nothing is sent to your licensee." };
-  }
-
-  if (!priceStatementByEmail(await agencyPeople(supabase))) {
-    return { error: "Your licensee in charge uses RealComply, so they approve the price statement in the app." };
-  }
-
-  // Already approved, or a request already out: the card was read before
-  // that happened (another tab, the assistant, the licensee). Both refresh
-  // it, so it shows where things are now. Without that, the button seems to
-  // do nothing and the form stays as it was.
-  if (await b4Done(supabase, propertyId)) {
-    revalidatePath(`/dashboard/${propertyId}`);
-    return { error: "The price statement on this listing is already approved." };
-  }
-
-  // The same gate as marking b4 done in the app (Adam, 2 Oct 2026): nothing
-  // in Pre-market is completed before the ESP reasoning is.
-  const gate = await espGateFor(supabase, propertyId);
-  if (!gate.complete) return { error: STAGE_GATE_MESSAGE };
-
-  // One request out at a time, handed back rather than replaced, for the
-  // same reason as the final link: two live requests is two versions of one
-  // approval. To change the words, withdraw it and send a new one.
-  const outstanding = liveLink(await signoffLinksFor(supabase, propertyId), "b4");
-  if (outstanding) {
-    revalidatePath(`/dashboard/${propertyId}`);
-    return {
-      error: `A request is already out for this. It went to ${outstanding.sentTo}.`,
-      sentTo: outstanding.sentTo,
-      emailed: outstanding.emailSentAt !== null,
-    };
-  }
-
-  const { data: agency } = await supabase
-    .from("agencies")
-    .select("name, licensee_email")
-    .eq("id", p.agency_id)
-    .maybeSingle();
-  const a = agency as { name?: string | null; licensee_email?: string | null } | null;
-  if (!a?.licensee_email?.trim()) {
-    // Who can add it decides the words: see noLicenseeEmailMessage.
-    return { error: noLicenseeEmailMessage(access) };
-  }
-
-  // Only what the database cannot work out for itself. It sets the recipient,
-  // the token and expiry, the ESP shown and the statement read (0066), and
-  // refuses in a plain sentence when one of its rules says no.
-  const { data: inserted, error } = await supabase
-    .from("property_signoff_requests")
-    .insert({
-      agency_id: p.agency_id,
-      property_id: propertyId,
-      item_key: "b4",
-      price_statement: priceStatement,
-      ruleset_version: RULESET_VERSION,
-    })
-    .select("id, expires_at, sent_to, price_statement, esp_low, esp_high")
-    .single();
-
-  if (error || !inserted) {
-    return { error: databaseRefusal(error) ?? "Couldn't send that. Try again in a moment." };
-  }
-
-  const row = inserted as {
-    id: string;
-    expires_at: string;
-    sent_to: string;
-    price_statement: string | null;
-    esp_low: number | string | null;
-    esp_high: number | string | null;
-  };
-
-  const emailed = await deliverLinkEmail(supabase, {
-    requestId: row.id,
-    sentTo: row.sent_to,
-    agentEmail: (profile as { email?: string | null }).email ?? null,
-    priorAttempts: 0,
-    build: (url) =>
-      buildPriceStatementRequestEmail({
-        agentName: (profile as { full_name?: string | null }).full_name || "Your agent",
-        agencyName: a.name ?? "the agency",
-        propertyAddress: p.address,
-        url,
-        expiresAt: formatAuTimestamp(row.expires_at),
-        priceStatement: row.price_statement ?? priceStatement,
-        espLow: toNumber(row.esp_low),
-        espHigh: toNumber(row.esp_high),
-      }),
-  });
-
-  revalidatePath(`/dashboard/${propertyId}`);
-  if (!emailed) {
-    return {
-      error: "The request was saved but the email couldn't be sent. Press Send again in a moment.",
-      sentTo: row.sent_to,
-      emailed: false,
-    };
-  }
-  return { error: null, sentTo: row.sent_to, emailed: true };
-}
-
-/**
- * Sends the price statement request again, with the same token. The email is
- * built only from what the request fixed when it was made (the words, the
- * ESP shown and the expiry), so the licensee gets the same request again,
- * not a new one.
- */
-export async function resendPriceStatementLink(propertyId: string): Promise<PriceLinkState> {
-  const { supabase, profile } = await requireAuthContext();
-
-  // Each refusal below means the card was read before something changed:
-  // the licensee approved, the request expired or was withdrawn, the listing
-  // became a practice one, or the ESP moved. Each one refreshes the card so
-  // it shows where things are now.
-  const outstanding = liveLink(await signoffLinksFor(supabase, propertyId), "b4");
-  if (!outstanding || !outstanding.priceStatement) {
-    const approved = await b4Done(supabase, propertyId);
-    revalidatePath(`/dashboard/${propertyId}`);
-    return { error: approved ? ALREADY_APPROVED : "There's no request waiting to send again. Send a new one." };
-  }
-
-  const [{ data: property }, { data: rows }] = await Promise.all([
-    supabase.from("properties").select("address, agency_id, test_mode").eq("id", propertyId).maybeSingle(),
-    supabase
-      .from("property_items")
-      .select("item_key, status, data")
-      .eq("property_id", propertyId)
-      .in("item_key", ["a4", "d3", "a4c"]),
-  ]);
-  const p = property as { address: string; agency_id: string; test_mode: boolean } | null;
-  if (!p) return { error: "Couldn't find that listing." };
-
-  // A listing switched to practice after the request went. Nothing more goes
-  // to the licensee from it, as nothing goes from a practice listing in the
-  // first place. The request already out can still be withdrawn.
-  if (p.test_mode) {
-    revalidatePath(`/dashboard/${propertyId}`);
-    return { error: "This is a practice listing, so nothing is sent to your licensee." };
-  }
-
-  // A request the licensee can no longer approve is not worth sending again:
-  // the link would open on "no longer valid".
-  const items = Object.fromEntries(
-    ((rows ?? []) as Array<{ item_key: string; status: string; data: unknown }>).map((r) => [r.item_key, r]),
-  );
-  if (priceRequestStale(outstanding, items)) {
-    revalidatePath(`/dashboard/${propertyId}`);
-    return {
-      error:
-        "The estimated selling price or the ESP reasoning has changed since this was sent, so your licensee can no longer approve it. Withdraw it and send a new one.",
-    };
-  }
-
-  const { data: agency } = await supabase.from("agencies").select("name").eq("id", p.agency_id).maybeSingle();
-
-  const emailed = await deliverLinkEmail(supabase, {
-    requestId: outstanding.id,
-    sentTo: outstanding.sentTo,
-    agentEmail: (profile as { email?: string | null }).email ?? null,
-    priorAttempts: outstanding.emailAttempts,
-    build: (url) =>
-      buildPriceStatementRequestEmail({
-        agentName: (profile as { full_name?: string | null }).full_name || "Your agent",
-        agencyName: (agency as { name?: string } | null)?.name ?? "the agency",
-        propertyAddress: p.address,
-        url,
-        expiresAt: formatAuTimestamp(outstanding.expiresAt),
-        priceStatement: outstanding.priceStatement!,
-        espLow: outstanding.espLow,
-        espHigh: outstanding.espHigh,
-      }),
-  });
-
-  revalidatePath(`/dashboard/${propertyId}`);
-  return {
-    error: emailed ? null : "Couldn't send that email. Try again in a moment.",
-    sentTo: outstanding.sentTo,
-    emailed,
-  };
-}
-
-/**
- * Withdraws a price statement request that has not been approved. Also how
- * "Change wording" works: the words come back so the card can put them in the
- * box to edit and send again. The old link then opens on "no longer valid".
- *
- * Through the caller's own access, and only this listing's b4 request: the
- * final sign-off link has its own Withdraw (revokeSignoffLink).
- */
-export async function withdrawPriceStatementLink(
-  requestId: string,
-  propertyId: string,
-): Promise<{ error: string | null; priceStatement: string | null }> {
-  const { supabase } = await requireAuthContext();
-
-  const { data, error } = await supabase
-    .from("property_signoff_requests")
-    .update({ revoked_at: new Date().toISOString() })
-    .eq("id", requestId)
-    .eq("property_id", propertyId)
-    .eq("item_key", "b4")
-    .is("signed_at", null)
-    .is("revoked_at", null)
-    .select("price_statement");
-
-  if (error) {
-    return { error: "Couldn't withdraw that request. Try again in a moment.", priceStatement: null };
-  }
-  // Nothing to withdraw: the card was read before the licensee approved, or
-  // before someone else withdrew it. Refresh it so it shows which.
-  if (!data || data.length === 0) {
-    const approved = await b4Done(supabase, propertyId);
-    revalidatePath(`/dashboard/${propertyId}`);
-    return {
-      error: approved ? ALREADY_APPROVED : "That request has already been approved or withdrawn.",
-      priceStatement: null,
-    };
-  }
-
-  revalidatePath(`/dashboard/${propertyId}`);
-  return {
-    error: null,
-    priceStatement: (data[0] as { price_statement?: string | null }).price_statement ?? null,
-  };
 }

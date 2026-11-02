@@ -10,6 +10,13 @@
 --
 -- Pass: the last line says "Price statement link: all checks passed".
 -- Fail: it stops with an error naming the check that failed.
+--
+-- RETIRED BY 0104 (Adam, 2 Nov 2026). The price statement card (b4) is an
+-- agent's tick now, and no price statement link can be made. So this test
+-- passes only on a database built through 0103, and stops at check 3 on one
+-- with 0104. Kept as the record of what 0065 and 0066 did. The parts of it
+-- that still hold (the final sign-off cards and link) are proved again by
+-- supabase/tests/b4_agent_tick.sql, which is the one to run from 0104 on.
 
 begin;
 

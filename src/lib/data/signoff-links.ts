@@ -23,6 +23,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // there is no default, so a b4 request can never be read as the final
 // sign-off: a signed b4 is not the licensee's signature on the file, and a
 // live b4 does not mean the file has gone to the licensee.
+//
+// No new b4 link since 2 Nov 2026 (REVERSAL, 0104): an agent ticks the price
+// statement card now. The old rows stay, and are still read as "b4" here so
+// that nothing takes one for the final sign-off.
 
 export type SignoffLinkItem = "sign_licensee" | "b4";
 

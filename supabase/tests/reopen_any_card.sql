@@ -1,6 +1,7 @@
 -- ===== READ ONLY. Every card can be reopened, 28 October 2026 =====
 --
--- Proves supabase/migrations/0100_reopen_any_card.sql. Run after it. Safe on
+-- Proves supabase/migrations/0100_reopen_any_card.sql, with check 7 as changed
+-- by 0104 (the price statement card is an agent's tick). Run after 0104. Safe on
 -- the live database: everything happens inside one transaction that is
 -- rolled back at the end, so the made-up offices and people never exist
 -- outside it.
@@ -155,42 +156,29 @@ begin
   if (select status from public.property_items where property_id = p1 and item_key = 'b4') <> 'done' then
     raise exception 'FAIL 6c: a "No" answer reopened cancelled the approval'; end if;
 
-  -- 7. An agent, the office manager and an assistant can't reopen the approval.
+  -- 7. CHANGED BY 0104 (2 Nov 2026): b4 is an agent's tick now and reopens
+  --    like any other card, so the agent, the office manager and an assistant
+  --    can reopen it too (supabase/tests/b4_agent_tick.sql proves the rest).
+  --    What still holds: the licensee's approval given before 0104 (a signed
+  --    time and signer, no tick) can't be changed directly, and reopening it
+  --    keeps it in the history.
   perform set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
   set local role authenticated;
   begin
-    perform public.reopen_listing_card(p1, 'b4');
-    raise exception 'FAIL 7: the agent reopened b4';
-  exception when others then
-    if sqlerrm like 'FAIL%' then raise; end if;
-    if sqlerrm <> 'Only the licensee in charge can reopen a licensee sign-off.' then
-      raise exception 'FAIL 7b: the agent was told "%"', sqlerrm; end if;
-  end;
-  begin
     update public.property_items set status = 'open' where property_id = p1 and item_key = 'b4';
-    raise exception 'FAIL 7c: the agent reopened b4 directly';
+    raise exception 'FAIL 7: the agent changed the licensee''s approval directly';
   exception when others then
     if sqlerrm like 'FAIL%' then raise; end if;
   end;
   reset role;
   perform set_config('request.jwt.claims', json_build_object('sub', m, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  begin
-    perform public.reopen_listing_card(pm, 'b4');
-    raise exception 'FAIL 7d: the office manager reopened b4';
-  exception when others then
-    if sqlerrm like 'FAIL%' then raise; end if;
-  end;
+  t := public.reopen_listing_card(pm, 'b4');
   reset role;
-  perform set_config('request.jwt.claims', json_build_object('sub', s, 'role', 'authenticated')::text, true);
-  set local role authenticated;
-  begin
-    perform public.reopen_listing_card(p1, 'b4');
-    raise exception 'FAIL 7e: the assistant reopened b4';
-  exception when others then
-    if sqlerrm like 'FAIL%' then raise; end if;
-  end;
-  reset role;
+  if (select status from public.property_items where property_id = pm and item_key = 'b4') <> 'open'
+     or not exists (select 1 from public.listing_signoff_cancellations
+                     where property_id = pm and item_key = 'b4' and because = 'withdrawn' and cancelled_by = m) then
+    raise exception 'FAIL 7b: the office manager''s reopen of the approval wasn''t kept in the history'; end if;
 
   -- 8. The licensee reopens the approval: cancelled and kept.
   perform set_config('request.jwt.claims', json_build_object('sub', l, 'role', 'authenticated')::text, true);

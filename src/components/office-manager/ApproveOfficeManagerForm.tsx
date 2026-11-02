@@ -5,7 +5,7 @@ import { approveOfficeManagerByLink, type ApproveState } from "@/lib/actions/off
 import { formatAuTimestamp } from "@/lib/format-date";
 
 // The approval control on the licensee's page (0093). Typed name plus the
-// time, the same standard as a price statement approval. No "are you sure":
+// time, the same standard as the licensee's file sign-off. No "are you sure":
 // the words are directly above the button, and the button says what it does.
 
 const initial: ApproveState = { error: null, approved: false };

@@ -11,7 +11,7 @@ import { comparablesFor } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
-import { priceApproval } from "@/lib/rules/price-statement";
+import { priceApprovalFor } from "@/lib/data/price-approval";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET, complaintFolder, isInFolder } from "@/lib/storage/evidence";
 import { EMPTY_FILE_MESSAGE, downloadedFileProblem } from "@/lib/storage/file-check";
@@ -225,9 +225,10 @@ export async function buildAuditPack(
     })),
     noneOnMarket: Boolean((byKey["a4c"]?.data as { noneOnMarket?: boolean } | undefined)?.noneOnMarket),
     agreementDate: byKey["a3"]?.event_date ?? null,
-    // What the licensee approved before the listing was advertised, and how:
-    // in the app, or through the emailed link (b4, 0066).
-    priceApproval: priceApproval(byKey["b4"]),
+    // The price statement card (b4): who ticked it and when (2 Nov 2026 on),
+    // or what the licensee approved before then, and how: in the app, or
+    // through the emailed link (0066).
+    priceApproval: await priceApprovalFor(supabase, byKey["b4"]),
     complaints: linked.complaints,
     signatures: { agent: agentSignature, licensee: licenseeSignature },
     attachments,

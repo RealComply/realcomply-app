@@ -9,13 +9,21 @@ import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream, PDFRef, type P
 export function pdfText(bytes: Uint8Array): string {
   const raw = Buffer.from(bytes).toString("latin1");
   const out: string[] = [];
-  const re = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  // The CR before "endstream" is optional, so a compressed stream whose own
+  // last byte is a CR (0x0D) loses it to the pattern and no longer inflates:
+  // its text then read as empty (2 Nov 2026, when a longer card title moved
+  // the bytes). The byte is tried back on before giving up.
+  const re = /stream\r?\n([\s\S]*?)(\r?)\nendstream/g;
   for (let m = re.exec(raw); m; m = re.exec(raw)) {
     let body: string;
     try {
       body = inflateSync(Buffer.from(m[1], "latin1")).toString("latin1");
     } catch {
-      body = m[1];
+      try {
+        body = inflateSync(Buffer.from(m[1] + m[2], "latin1")).toString("latin1");
+      } catch {
+        body = m[1];
+      }
     }
     for (const hex of body.match(/<([0-9A-Fa-f\s]+)>\s*Tj/g) ?? []) {
       out.push(Buffer.from(hex.replace(/[<>\sTj]/g, ""), "hex").toString("latin1"));

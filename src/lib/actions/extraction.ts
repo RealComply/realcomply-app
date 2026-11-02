@@ -1631,10 +1631,10 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
             note: patch.note,
             espLow: patch.espLow,
             espHigh: patch.espHigh,
-            // a3 only. Seeds b4's "what the price statement is" note, which is
-            // a licensee-only item extraction must never write to directly —
-            // so it is parked here on the agreement's own card and read across
-            // by the b4 card. See ItemCard.
+            // a3 only. Seeds b4's "what the price statement is" note, which
+            // extraction never writes to directly: ticking b4 is a person's act
+            // (an agent's, since 2 Nov 2026) — so it is parked here on the
+            // agreement's own card and read across by the b4 card. See ItemCard.
             offerPrice: patch.offerPrice,
             eventDate: patch.eventDate,
             consumerGuideProvided: patch.consumerGuideProvided,

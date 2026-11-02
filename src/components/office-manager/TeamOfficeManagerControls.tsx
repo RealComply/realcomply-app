@@ -96,8 +96,8 @@ export function TeamOfficeManagerControls({
           <p className="text-sm font-bold text-rc-ink">Make {personName} office manager?</p>
           <p className="mt-1 text-xs leading-relaxed text-rc-muted">
             {personName} will look after Team, Office profile, registers, CPD, training, trust records, the SG Manual and
-            billing. Price statement approvals, file sign-offs, annexure adoption, changing the licensee in charge and
-            deleting compliance records stay with you.
+            billing. File sign-offs, annexure adoption, changing the licensee in charge and deleting compliance records
+            stay with you.
           </p>
           <label className="mt-2 flex items-start gap-2 text-sm font-semibold text-rc-ink">
             <input

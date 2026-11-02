@@ -62,12 +62,15 @@ describe("which cards show the shared Reopen", () => {
 describe("pressing Reopen", () => {
   const press = (key: string, signedOff: boolean, isLicensee: boolean) => reopenPress({ key, signedOff, isLicensee });
 
-  it("refuses anyone but the licensee on the licensee's own sign-off cards, signed off or not", () => {
-    for (const key of ["b4", "sign_licensee"]) {
-      for (const signedOff of [false, true]) {
-        assert.deepEqual(press(key, signedOff, false), { kind: "refuse", note: ONLY_LICENSEE_SIGNOFF, canAsk: false });
-      }
+  it("refuses anyone but the licensee on the licensee's own sign-off card, signed off or not", () => {
+    for (const signedOff of [false, true]) {
+      assert.deepEqual(press("sign_licensee", signedOff, false), { kind: "refuse", note: ONLY_LICENSEE_SIGNOFF, canAsk: false });
     }
+  });
+
+  it("lets anyone reopen the price statement card (b4): an agent ticks it since 2 Nov 2026", () => {
+    assert.deepEqual(press("b4", false, false), { kind: "go" });
+    assert.deepEqual(press("b4", true, false), { kind: "refuse", note: ONLY_LICENSEE_SIGNED_FILE, canAsk: true });
   });
 
   it("refuses anyone but the licensee on a signed-off file, and offers to ask the licensee", () => {
@@ -105,19 +108,21 @@ describe("the words", () => {
     assert.equal(reopenedLine("Ana Agent", AT), "Reopened by Ana Agent, 28 October 2026.");
   });
 
-  it("says why the price statement approval went back to open", () => {
+  it("says why the price statement card went back to open, and to tick it again", () => {
     assert.equal(
       priceApprovalReopenedLine({ name: "Ana Agent", at: AT, why: "reopened", becauseTitle: "Estimated selling price (ESP) recorded" }),
-      "Reopened by Ana Agent, 28 October 2026, because “Estimated selling price (ESP) recorded” was reopened. The licensee needs to approve again.",
+      "Reopened by Ana Agent, 28 October 2026, because “Estimated selling price (ESP) recorded” was reopened. Tick it again once the licensee in charge has approved the new price statement.",
     );
     assert.equal(
       priceApprovalReopenedLine({ name: "Ana Agent", at: AT, why: "esp_changed", becauseTitle: "x" }),
-      "Reopened by Ana Agent, 28 October 2026, because the ESP on the file changed. The licensee needs to approve again.",
+      "Reopened by Ana Agent, 28 October 2026, because the ESP on the file changed. Tick it again once the licensee in charge has approved the new price statement.",
     );
+    // Reopened by hand: like any other card (2 Nov 2026).
     assert.equal(
-      priceApprovalReopenedLine({ name: "Lee Licensee", at: AT, why: "withdrawn", becauseTitle: null }),
-      "Reopened by Lee Licensee, 28 October 2026. The licensee needs to approve again.",
+      priceApprovalReopenedLine({ name: "Sam Assistant", at: AT, why: "withdrawn", becauseTitle: null }),
+      "Reopened by Sam Assistant, 28 October 2026.",
     );
+    assert.equal(priceApprovalReopenedLine({ name: "Ana Agent", at: AT, why: null, becauseTitle: null }), "Reopened by Ana Agent, 28 October 2026.");
   });
 
   it("says why the file sign-off was cancelled", () => {
@@ -202,6 +207,19 @@ describe("cancelled approvals and signatures in the history", () => {
       card: { status: "done", completed_by: "l", data: { note: "Guide" } },
     };
     assert.equal(cancellationLine(c, names, titles), "Approved by Lee Licensee: “Guide”. Cancelled 28 October 2026 by Lee Licensee.");
+  });
+
+  it("an agent's tick (from 2 Nov 2026) put back to open when the ESP changed says who ticked it", () => {
+    const c: Cancellation = {
+      ...base,
+      itemKey: "b4",
+      because: "esp_changed",
+      card: { status: "done", completed_by: "a", data: { note: "Guide $900k", tickedBy: "a", tickedAt: "2026-11-02T03:15:00Z" } },
+    };
+    assert.equal(
+      cancellationLine(c, names, titles),
+      "Ticked by Ana Agent, 2 November 2026: “Guide $900k”. Cancelled 28 October 2026 by Ana Agent, because the ESP on the file changed.",
+    );
   });
 });
 

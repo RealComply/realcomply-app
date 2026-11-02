@@ -1,6 +1,6 @@
 import { formatAuTimestamp } from "@/lib/format-date";
 import { listingSignature } from "@/lib/rules/listing-signature";
-import { priceApproval } from "@/lib/rules/price-statement";
+import { priceApproval, tickedLine } from "@/lib/rules/price-statement";
 
 // Reopening cards on a sales listing (Adam, 28 Oct 2026).
 //
@@ -17,11 +17,17 @@ import { priceApproval } from "@/lib/rules/price-statement";
 //      the listing. Who and when go on the card; everything on it stays.
 //   2. Reopening the ESP card, the ESP reasoning card, or the ESP revision
 //      while it holds the revised ESP (or the ESP on the file changing)
-//      cancels the licensee's price statement approval. It is kept, marked
-//      cancelled, b4 goes back to open saying why, and every approval link
-//      for it stops. The licensee approves again the usual way.
-//   3. Only the licensee in charge reopens the licensee's own sign-off cards:
-//      the price statement approval (b4) and their signature.
+//      cancels the price statement approval. It is kept, marked cancelled,
+//      b4 goes back to open saying why, and every approval link for it stops.
+//   3. Only the licensee in charge reopens the licensee's own sign-off card:
+//      their signature.
+//
+// REVERSAL (Adam, 2 Nov 2026; 0104). b4, the price statement, is an agent's
+// tick now, not the licensee's card: it reopens like any other card, by
+// anyone who can work the listing. Rule 2 stays: when the ESP changes, the
+// tick goes back to open and is kept in the card's history, so the new price
+// statement is ticked again. A licensee's approval from before 2 Nov 2026
+// still goes into the history when its card is reopened.
 //   4. A signed-off file can't be changed by anyone. The licensee in charge
 //      reopens a card, which cancels the file sign-off (kept, marked
 //      cancelled); anyone else can ask the licensee to, with a reason.
@@ -34,8 +40,8 @@ export const ONLY_LICENSEE_SIGNED_FILE = "Only the licensee can reopen a signed-
 export const CANCELS_SIGNOFF = "Reopening this card cancels the file sign-off. The file will need signing off again.";
 export const CONFIRM_CANCEL_SIGNOFF = `${CANCELS_SIGNOFF} Reopen?`;
 
-/** The licensee's own sign-off cards. */
-export const LICENSEE_SIGNOFF_KEYS: ReadonlySet<string> = new Set(["b4", "sign_licensee"]);
+/** The licensee's own sign-off card. Not b4 since 2 Nov 2026: an agent ticks it now (0104). */
+export const LICENSEE_SIGNOFF_KEYS: ReadonlySet<string> = new Set(["sign_licensee"]);
 
 /** No Reopen of its own: it goes back to not generated when the sign-off is cancelled. */
 export const NO_REOPEN_KEYS: ReadonlySet<string> = new Set(["f2"]);
@@ -54,6 +60,10 @@ type CardShape = { key: string; kind: string };
  * Whether the card's own body already carries a Reopen (or "Change answer")
  * on a file that isn't signed off: the ordinary checklist cards and the ESP
  * revision. Every other card gets the shared Reopen under its body.
+ *
+ * Not b4, though it is an ordinary checklist card since 2 Nov 2026: it
+ * reopens through the shared Reopen (reopen_listing_card, 0104), which also
+ * takes a licensee's approval from before then into the card's history.
  */
 export function hasOwnReopen(card: CardShape): boolean {
   return (card.kind === "checklist" && card.key !== "b4") || card.kind === "reduction";
@@ -116,7 +126,12 @@ export function reopenedLine(name: string, at: string): string {
   return `Reopened by ${name}, ${formatAuTimestamp(at)}.`;
 }
 
-/** On b4 after its approval was cancelled. */
+/**
+ * On b4 once reopened. When the ESP it rests on changed, it says to tick it
+ * again for the new price statement; reopened by hand, it reads like any
+ * other card (an agent ticks b4 since 2 Nov 2026; until then this said "The
+ * licensee needs to approve again").
+ */
 export function priceApprovalReopenedLine(args: {
   name: string;
   at: string;
@@ -124,13 +139,14 @@ export function priceApprovalReopenedLine(args: {
   becauseTitle: string | null;
 }): string {
   const head = `Reopened by ${args.name}, ${formatAuTimestamp(args.at)}`;
+  const again = "Tick it again once the licensee in charge has approved the new price statement.";
   if (args.why === "reopened" && args.becauseTitle) {
-    return `${head}, because ${quoted(args.becauseTitle)} was reopened. The licensee needs to approve again.`;
+    return `${head}, because ${quoted(args.becauseTitle)} was reopened. ${again}`;
   }
   if (args.why === "esp_changed") {
-    return `${head}, because the ESP on the file changed. The licensee needs to approve again.`;
+    return `${head}, because the ESP on the file changed. ${again}`;
   }
-  return `${head}. The licensee needs to approve again.`;
+  return reopenedLine(args.name, args.at);
 }
 
 /** On the signature cards after the file sign-off was cancelled. */
@@ -165,11 +181,18 @@ export function cancellationLine(
   let given: string;
   if (c.itemKey === "b4") {
     const approval = priceApproval({ ...c.card, status: "done" }, undefined);
-    const by = approval?.name ?? names(approval?.via === "app" ? (c.card.completed_by ?? null) : null);
-    const when = approval?.at ? ` on ${formatAuTimestamp(approval.at)}` : "";
-    const how = approval?.via === "link" ? " by email" : "";
     const words = approval?.text ? `: ${quoted(approval.text)}` : "";
-    given = `Approved by ${by}${when}${how}${words}.`;
+    if (approval?.via === "tick") {
+      // An agent's tick (from 2 Nov 2026), put back to open when the ESP changed.
+      const tickedBy = (c.card.data as { tickedBy?: string } | null | undefined)?.tickedBy ?? c.card.completed_by ?? null;
+      given = `${tickedLine({ name: names(tickedBy), at: approval.at })}${words}.`;
+    } else {
+      // The licensee's own approval, from before then.
+      const by = approval?.name ?? names(approval?.via === "app" ? (c.card.completed_by ?? null) : null);
+      const when = approval?.at ? ` on ${formatAuTimestamp(approval.at)}` : "";
+      const how = approval?.via === "link" ? " by email" : "";
+      given = `Approved by ${by}${when}${how}${words}.`;
+    }
   } else {
     const signature = listingSignature(c.card.data, c.linkSignedAt);
     const by = signature?.typedName ?? names(c.card.completed_by ?? null);

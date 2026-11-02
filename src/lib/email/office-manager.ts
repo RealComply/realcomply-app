@@ -23,8 +23,9 @@ export const OFFICE_MANAGER_CAN = [
   "Look after billing",
 ] as const;
 
+// Not "Price statement approvals" since 2 Nov 2026: an agent ticks the price
+// statement card now, so it isn't the licensee's to keep.
 export const LICENSEE_KEEPS = [
-  "Price statement approvals",
   "File sign-offs",
   "Adopting the SG annexure",
   "Changing the licensee in charge",

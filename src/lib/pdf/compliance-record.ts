@@ -5,7 +5,7 @@ import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { pdfText } from "./text";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
-import type { PriceApproval } from "@/lib/rules/price-statement";
+import { earlierApprovalLine, tickedLine, type PriceApproval } from "@/lib/rules/price-statement";
 import { saleRecordLines } from "@/lib/rules/sale-price";
 import { formatAuDate } from "@/lib/format-date";
 import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
@@ -616,11 +616,9 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         if (priceApproval.text) {
           c.text(`Approved price statement: "${priceApproval.text}"`, { size: 9, indent: 12 });
         }
-        const when = priceApproval.at ? `, ${formatSignedAt(priceApproval.at)} (Sydney time)` : "";
+        // An agent's tick from 2 Nov 2026; the licensee's own approval before it.
         c.text(
-          priceApproval.via === "link"
-            ? `Approved by ${priceApproval.name ?? "the licensee in charge"} through the emailed link to ${priceApproval.sentTo ?? "the licensee's email"}${when}`
-            : `Approved in RealComply by the licensee in charge${when}`,
+          priceApproval.via === "tick" ? tickedLine(priceApproval) : earlierApprovalLine(priceApproval, formatSignedAt),
           { size: 8.5, color: MUTED, indent: 12 },
         );
       }

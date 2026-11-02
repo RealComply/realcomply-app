@@ -27,10 +27,7 @@ import {
 import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/rules/not-applicable";
 import { COVERING_LETTER_KEY, afterAgentSave } from "@/lib/documents/covering-letter";
 import { ruleContextFor } from "@/lib/data/rule-context";
-import { agencyPeople } from "@/lib/data/people";
-import { priceStatementByEmail } from "@/lib/rules/price-statement";
 import { checkSalePrice } from "@/lib/rules/sale-price";
-import { liveLink, signoffLinksFor } from "@/lib/data/signoff-links";
 import { stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
@@ -288,7 +285,7 @@ export async function setItemStatus(
   }
 
   // Same reasoning as the date above, for items where the NOTE is the record.
-  // b4 (licensee approved the price statement) is the case: a tick on its own
+  // b4 (the licensee approved the price statement) is the case: a tick on its own
   // asserts that something was approved while preserving nothing about what it
   // said, so a later challenge to the advertised guide finds an approval of an
   // unknown figure. Only blocks "done", for the same reason — flagging or
@@ -2405,14 +2402,12 @@ export async function uploadEvidence(
 ): Promise<ActionState> {
   const { supabase, user, profile } = await requireAuthContext();
 
-  // A licensee-only card (b4) takes a file from the licensee only (12 Oct
-  // 2026). The card has shown everyone else the file as a link and nothing
-  // to attach since 9 Oct, but the action itself never checked, so a file
-  // could be put on b4 by calling it directly. On a price statement approved
-  // by email the file would then sit beside an approval it was never part of.
+  // A licensee-only card takes a file from the licensee only (12 Oct 2026).
+  // It was written for b4, which is an agent's tick since 2 Nov 2026 (0104),
+  // so today it is the licensee's signature card (sign_licensee) alone.
   //
-  // The database refuses the same on b4 and sign_licensee (0066's guard), in
-  // the same sentence. A refusal there comes back through
+  // The database refuses the same on sign_licensee (0104's guard, from
+  // 0066's), in the same sentence. A refusal there comes back through
   // finalizeEvidenceRecord word for word, so the agent reads one message
   // whichever side says no first. Change both together.
   if (getItem(itemKey)?.licenseeOnly && !profile.is_licensee_in_charge) {
@@ -2697,24 +2692,9 @@ export async function completeStage(
           .filter((i) => i.requiredForStageCompletion && !isComplete(i.key))
           .map((i) => i.label),
     });
-    // Where b4 is one of the cards in the way and nobody in the office is a
-    // licensee in charge on RealComply, say how it gets done: it goes to the
-    // licensee by email from its card (Adam, 12 Oct 2026). Without this the
-    // agent is told to complete a card only the licensee can complete. Once
-    // a request is out, telling them to send it reads as if it never went.
-    const b4Label = getItem("b4")?.label;
-    const b4Hint = async (labels: string[]) => {
-      if (!b4Label || !labels.includes(b4Label) || !priceStatementByEmail(await agencyPeople(supabase))) {
-        return "";
-      }
-      return liveLink(await signoffLinksFor(supabase, propertyId), "b4")
-        ? " Your licensee hasn't approved the price statement yet."
-        : " Send the price statement to your licensee for approval on its card.";
-    };
-
     if (hold.stage !== property.stage) {
       return {
-        error: `${STAGE_LABELS[hold.stage]} needs finishing first: ${hold.waitingOn.join(", ")}.${await b4Hint(hold.waitingOn)}`,
+        error: `${STAGE_LABELS[hold.stage]} needs finishing first: ${hold.waitingOn.join(", ")}.`,
       };
     }
 
@@ -2723,7 +2703,7 @@ export async function completeStage(
     if (incomplete.length > 0) {
       const labels = incomplete.map((i) => i.label);
       return {
-        error: `Complete these first: ${labels.join(", ")}.${await b4Hint(labels)}`,
+        error: `Complete these first: ${labels.join(", ")}.`,
       };
     }
   }

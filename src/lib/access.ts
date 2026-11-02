@@ -16,9 +16,10 @@
 // OFFICE MANAGER (Adam, 26 Oct 2026; 0093). Someone the licensee in charge
 // approves gets the office side: Team, Office profile, registers, CPD,
 // training, trust records, the SG Manual and billing ("runs the office",
-// runs_office() in the database). Price statement approvals, file sign-offs,
-// annexure adoption, changing the licensee in charge and deleting compliance
-// records stay with the licensee (actsAsLicensee). Office overview is not
+// runs_office() in the database). File sign-offs, annexure adoption, changing
+// the licensee in charge and deleting compliance records stay with the
+// licensee (actsAsLicensee). (Price statement approvals did too until 2 Nov
+// 2026, when the price statement card became an agent's tick.) Office overview is not
 // decided yet, so it stays with the licensee.
 //
 // DECISION (Adam, 31 Oct 2026; 0102): the complaints register, "adding and
