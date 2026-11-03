@@ -37,7 +37,7 @@ import { tickedLine, type PriceApproval } from "@/lib/rules/price-statement";
 import { espText, SALE_PRICE_NOTE_PROMPT, salePriceFlagText, savedSaleCheck } from "@/lib/rules/sale-price";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import { EspDraftForm, EspHistoryList, EspNoticeUpload, type EspHistoryView } from "@/components/compliance/EspRevisionParts";
-import { HISTORY_HELP, RECORD_ANOTHER, pendingFrom } from "@/lib/esp-history";
+import { ADD_REVISION, HISTORY_HELP, pendingFrom } from "@/lib/esp-history";
 import { espFrom } from "@/lib/data/effective-esp";
 import type { SearchTry } from "@/lib/listings-pages";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
@@ -2844,10 +2844,19 @@ function DocumentItem({ item, propertyId, current }: { item: ComplianceItem; pro
 // ESP REVISION HISTORY (Adam, 3 Nov 2026; mockup approved; 0110).
 // WAS: one set of figures and one notice; a new notice wrote over the last.
 // NOW: nothing on this card is ever written over. Answering Yes records the
-// first revision; "Record another revision" adds the next. A notice uploaded
-// is read into a draft; the agent checks the figures and saves, and that
-// becomes the latest, which drives every check. Every version is listed,
-// newest first, with the original ESP from the agency agreement at the bottom.
+// first revision; "Add new estimated selling price revision" adds the next. A
+// notice uploaded is read into a draft; the agent checks the figures and
+// saves, and that becomes the latest, which drives every check. Every version
+// is listed, newest first, with the original ESP from the agency agreement at
+// the bottom.
+//
+// REVERSAL (Master, 3 Nov 2026). Was: to add another revision the agent
+// reopened the card. Now: the button is on the card whenever it's answered
+// Yes, including when the card is done, and a done card with revisions stays
+// unfolded so the stack and the button are always in view. Nobody reopens the
+// card or uses "Change answer" to add one. A card answered No: "Change
+// answer" to Yes records the first revision, as before; the button adds each
+// one after. Why: reopening and changing the answer isn't intuitive (Adam).
 function ReductionItem({
   item,
   propertyId,
@@ -2923,7 +2932,7 @@ function ReductionItem({
     return (
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
         <p className="text-sm text-rc-muted">
-          Marked &mdash; the estimated selling price wasn&rsquo;t revised on this listing.{" "}
+          Marked: the estimated selling price wasn&rsquo;t revised on this listing.{" "}
           <button type="button" onClick={() => setReconsidering(true)} className="text-rc-green-deep hover:underline">
             Change answer
           </button>
@@ -2935,7 +2944,9 @@ function ReductionItem({
   const outstanding = current?.status === "open" && hasRevisions && !pending ? (data.outstanding ?? []) : [];
 
   return (
-    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
+    // foldable={false}: answered Yes, the card never folds away when done, so
+    // every revision and the button to add the next are always in view.
+    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} foldable={false}>
       <div className="space-y-3">
         {hasRevisions && espHistory && (
           <>
@@ -2958,7 +2969,7 @@ function ReductionItem({
         ) : !hasRevisions || adding ? (
           <EspNoticeUpload
             propertyId={propertyId}
-            title={hasRevisions ? RECORD_ANOTHER : null}
+            title={hasRevisions ? ADD_REVISION : null}
             onCancel={hasRevisions ? () => setAdding(false) : undefined}
           />
         ) : (
@@ -3020,7 +3031,7 @@ function ReductionItem({
               onClick={() => setAdding(true)}
               className="rounded-md bg-rc-green-deep px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-90"
             >
-              {RECORD_ANOTHER}
+              {ADD_REVISION}
             </button>
           </>
         )}
