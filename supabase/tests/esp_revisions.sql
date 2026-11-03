@@ -20,6 +20,7 @@ declare
   n   integer;
   r   record;
   folder text;
+  folder_reopened text;  -- when the card was last reopened, before the button
 begin
   insert into auth.users (id, email) values (a, 'er-a@example.invalid'), (x, 'er-x@example.invalid');
   insert into public.agencies (id, name, plan, status, licensee_name, licensee_email) values
@@ -89,6 +90,32 @@ begin
   if r.esp_low <> 1250000 or r.esp_high <> 1300000 then
     raise exception 'FAIL 3: the checks read % to %, not the latest', r.esp_low, r.esp_high; end if;
 
+  -- 3b. Added from the button on a done card, with no reopening (Master,
+  --     3 Nov 2026). The draft read from the notice lands on the done card,
+  --     saving keeps it done, and the approval is still cancelled.
+  update public.property_items set status = 'done', data = data || jsonb_build_object('tickedBy', a, 'tickedAt', now())
+   where property_id = p1 and item_key = 'b4';
+  perform set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  update public.property_items
+     set data = data || jsonb_build_object('pending', jsonb_build_object('path', folder || '4-notice.pdf', 'fileName', 'Notice 4.pdf',
+                                                                          'low', 1200000, 'high', 1260000))
+   where property_id = p1 and item_key = 'd3';
+  select * into r from public.property_items where property_id = p1 and item_key = 'd3';
+  if r.status <> 'done' or not (r.data ? 'pending') or (r.data ->> 'revisedEspLow')::numeric <> 1250000 then
+    raise exception 'FAIL 3b: the draft on a done card: %', row_to_json(r); end if;
+  folder_reopened := r.data ->> 'reopenedAt';
+  n := public.record_esp_revision(p1, 1200000, 1260000, date '2026-11-02', folder || '4-notice.pdf', 'Notice 4.pdf',
+                                  false, null, null, '{"evidenceProvidedBeforeNotice": true, "advertisingUpdated": true}', 'done');
+  reset role;
+  if n <> 4 then raise exception 'FAIL 3c: the revision from the button was numbered %', n; end if;
+  select * into r from public.property_items where property_id = p1 and item_key = 'd3';
+  if r.status <> 'done' or r.data ? 'pending' or (r.data ->> 'reopenedAt') is distinct from folder_reopened
+     or (r.data ->> 'latestRevision')::int <> 4 then
+    raise exception 'FAIL 3d: after saving from the button the card is %', row_to_json(r); end if;
+  if (select status from public.property_items where property_id = p1 and item_key = 'b4') <> 'open' then
+    raise exception 'FAIL 3e: the price statement approval survived a revision added to a done card'; end if;
+
   -- 4. Nobody signed in can change or delete a revision.
   perform set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -108,7 +135,7 @@ begin
   values (o1, p1, 99, 1200000, 1250000, folder || '4.pdf', x, 'Someone Else', now() - interval '1 year');
   reset role;
   select * into r from public.esp_revisions where property_id = p1 order by revision_no desc limit 1;
-  if r.revision_no <> 4 or r.recorded_by <> a or r.recorded_by_name <> 'Ana Agent' or r.recorded_at < now() - interval '1 minute' then
+  if r.revision_no <> 5 or r.recorded_by <> a or r.recorded_by_name <> 'Ana Agent' or r.recorded_at < now() - interval '1 minute' then
     raise exception 'FAIL 5: a forged revision kept %', row_to_json(r); end if;
 
   -- 6. A notice outside the listing's own folder is refused.
