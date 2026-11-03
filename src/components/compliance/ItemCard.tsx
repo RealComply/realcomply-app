@@ -187,6 +187,7 @@ function ItemShell({
   evidenceReadOnly = false,
   optional = false,
   evidenceReadNote = null,
+  hideReopen = false,
   children,
 }: {
   item: ComplianceItem;
@@ -209,6 +210,8 @@ function ItemShell({
    * is signed). See the fold notes below.
    */
   foldable?: boolean;
+  /** No Reopen button on an unsigned file: the card has its own way to change (see CardReopenArea). */
+  hideReopen?: boolean;
   children: ReactNode;
 }) {
   // BEHIND AN ICON, NOT UNDER THE TITLE (Adam, 8 Sep 2026): "when we have
@@ -416,7 +419,7 @@ function ItemShell({
         />
       )}
       </fieldset>
-      <CardReopenArea item={item} status={status} current={current} />
+      <CardReopenArea item={item} status={status} current={current} hideReopen={hideReopen} />
       </DictationSuspended.Provider>
       </div>
     </div>
@@ -2946,7 +2949,17 @@ function ReductionItem({
   return (
     // foldable={false}: answered Yes, the card never folds away when done, so
     // every revision and the button to add the next are always in view.
-    <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} foldable={false}>
+    // hideReopen: no Reopen button on it (Adam, 3 Nov 2026: "remove the
+    // Reopen button on this card"). The button adds a revision; nothing else
+    // here needs reopening. On a signed-off file it stays (CardReopenArea).
+    <ItemShell
+      item={item}
+      status={current?.status}
+      propertyId={propertyId}
+      current={current}
+      foldable={false}
+      hideReopen
+    >
       <div className="space-y-3">
         {hasRevisions && espHistory && (
           <>
