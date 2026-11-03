@@ -146,10 +146,13 @@ export async function buildSignoffPackPdf(input: PackPdfInput): Promise<Uint8Arr
     c.text("Signed", { size: 12, bold: true, color: INK, gap: 2 });
     c.text(`"${s.tick}"`, { gap: 2 });
     c.text(`${s.name}, licensee in charge, ${s.dateLabel} (${s.how}).`, { bold: true });
-    c.text(
-      `${s.signedCount} ${s.signedCount === 1 ? "item" : "items"} signed. ${s.heldCount} held back, each with the licensee's note above; they go back to the office and into next month's pack.`,
-      { color: MUTED },
-    );
+    const held =
+      s.heldCount === 0
+        ? "Nothing held back."
+        : s.heldCount === 1
+          ? "1 held back, with the licensee's note above; it goes back to the office and into next month's pack."
+          : `${s.heldCount} held back, each with the licensee's note above; they go back to the office and into next month's pack.`;
+    c.text(`${s.signedCount} ${s.signedCount === 1 ? "item" : "items"} signed. ${held}`, { color: MUTED });
   }
 
   const total = c.pages.length;

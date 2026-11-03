@@ -66,7 +66,7 @@ describe("the sign-off pack PDF", () => {
     const text = (await pdfText(bytes)).replace(/\s+/g, " ");
     assert.ok(text.includes(PACK_TICK));
     assert.ok(text.includes("Priya Nandakumar, licensee in charge, 4 Nov 2026 (signed in RealComply)."));
-    assert.ok(text.includes("60 items signed. 1 held back"));
+    assert.ok(text.includes("60 items signed. 1 held back, with the licensee's note above; it goes back to the office"));
     assert.ok(text.includes("Held back: Missing the vendor's ID."));
     assert.ok(text.includes("Signed in this pack"));
   });
