@@ -49,3 +49,21 @@ test("a complaint's lines: under review, resolved, then waiting for or given the
     ["Waiting for the licensee's sign-off"],
   );
 });
+
+test("signed in a monthly pack, the record says which (0109)", () => {
+  assert.equal(
+    giftReviewedLine({ status: "reviewed", reviewed_by_name: "Lee Licensee", reviewed_at: "2026-11-02T22:00:00Z" }, "2026-10-01"),
+    "Reviewed by Lee Licensee, 3 November 2026, in the October pack",
+  );
+  const signed = {
+    status: "resolved" as const,
+    under_review_by_name: null,
+    under_review_at: null,
+    resolved_by_name: null,
+    resolved_at: null,
+    signed_off_name: "Lee Licensee",
+    signed_off_at: "2026-11-02T22:00:00Z",
+  };
+  assert.equal(complaintRecordLines(signed, "2026-10-01").at(-1), "Signed off by Lee Licensee, 3 November 2026, in the October pack");
+});
+

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { agencyPeople } from "@/lib/data/people";
 import { createClient } from "@/lib/supabase/server";
+import { monthName } from "@/lib/licensee-signoff/model";
 import { requireAccess } from "@/lib/data/current-profile";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AnnexureAdoptionCard } from "@/components/registers/AnnexureAdoptionCard";
@@ -31,6 +32,24 @@ export default async function DocumentSignoffsPage() {
   // Office manager approvals (0093): who, approved by whom, how, when and the
   // wording. The licensee and the office manager see them; an agent doesn't.
   const officeManagers = access.runsOffice ? await officeManagersOf(supabase, profile.agency_id) : [];
+  // Signed monthly sign-off packs (Adam, 3 Nov 2026; 0109): "The signed PDF is
+  // also filed in Sign-offs." Before 0109 the table isn't there: none.
+  const { data: packRows } = access.runsOffice
+    ? await supabase
+        .from("signoff_packs")
+        .select("id, month, signed_at, signed_name, signed_via, signed_file_path")
+        .eq("agency_id", profile.agency_id)
+        .not("signed_at", "is", null)
+        .order("month", { ascending: false })
+    : { data: null };
+  const signedPacks = (packRows ?? []) as Array<{
+    id: string;
+    month: string;
+    signed_at: string;
+    signed_name: string | null;
+    signed_via: string | null;
+    signed_file_path: string | null;
+  }>;
 
   const [{ data: docRows }, { data: sigRows }, staff, { data: adoptionRows }, { data: readRows }, { data: ackRows }] =
     await Promise.all([
@@ -181,6 +200,38 @@ export default async function DocumentSignoffsPage() {
             ),
           )}
         </div>
+
+        {signedPacks.length > 0 && (
+          <section id="sign-off-packs" className="mt-10 scroll-mt-6">
+            <h2 className="text-sm font-semibold text-rc-ink">Monthly sign-off packs</h2>
+            <p className="mt-1 text-xs text-rc-muted">Each month&apos;s pack, as the licensee in charge signed it.</p>
+            <ul className="mt-3 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
+              {signedPacks.map((p) => (
+                <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                  <span>
+                    <span className="font-semibold text-rc-ink">
+                      {monthName(p.month)} {p.month.slice(0, 4)} pack
+                    </span>
+                    <span className="text-rc-muted">
+                      {" "}
+                      · signed by {p.signed_name ?? "the licensee in charge"}, {formatAuTimestamp(p.signed_at)}
+                      {p.signed_via === "link" ? ", through the emailed link" : ""}
+                    </span>
+                  </span>
+                  {p.signed_file_path && (
+                    <Link
+                      href={`/dashboard/licensee-signoff/pdf?pack=${p.id}`}
+                      prefetch={false}
+                      className="text-sm font-semibold text-rc-green-deep hover:underline"
+                    >
+                      Download (PDF)
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {officeManagers.length > 0 && (
           <section id="office-managers" className="mt-10 scroll-mt-6">

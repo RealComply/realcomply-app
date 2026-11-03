@@ -281,3 +281,18 @@ describe("a licensee signature given through a copied link (option 2, Adam 3 Nov
     assert.ok(!text.includes("Signed through a link"));
   });
 });
+
+describe("a licensee signature given in a monthly sign-off pack (Adam, 3 Nov 2026; 0109)", () => {
+  it("says which month's pack it was signed in", async () => {
+    const text = pdfText(
+      await pack({ signatures: { ...signed, licensee: { ...signed.licensee, packMonth: "2026-10-01" } } }),
+    ).replace(/\s+/g, " ");
+    assert.ok(text.includes("in the October pack"), text.slice(0, 400));
+    assert.match(text, /Signed by [^,]+, \d{1,2} \w+ \d{4}, in the October pack/);
+  });
+
+  it("says nothing of the kind for a file signed on its own", async () => {
+    const text = pdfText(await pack()).replace(/\s+/g, " ");
+    assert.ok(!text.includes("pack Signed by") && !/in the \w+ pack/.test(text));
+  });
+});

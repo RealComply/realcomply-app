@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireOfficePage } from "@/lib/data/current-profile";
 import { TrustAccountSwitcher } from "@/components/registers/TrustAccountSwitcher";
 import { TrustAccountPanel } from "@/components/registers/TrustAccountPanel";
+import { packMonthsOf } from "@/lib/licensee-signoff/waiting";
 import { formatAuDate } from "@/lib/format-date";
 import {
   auditDueOn,
@@ -51,7 +52,7 @@ export default async function TrustAccountsPage({
         .order("created_at", { ascending: false }),
       supabase.from("signoff_signatures").select("*"),
       supabase.from("trust_audits").select("*"),
-      supabase.from("profiles").select("id, full_name, email"),
+      supabase.from("profiles").select("id, full_name, email, is_licensee_in_charge"),
     ]);
 
   const allAccounts = (accountRows ?? []) as TrustAccount[];
@@ -65,7 +66,7 @@ export default async function TrustAccountsPage({
   const docs = (docRows ?? []) as SignoffDocument[];
   const sigs = (sigRows ?? []) as SignoffSignature[];
   const audits = (auditRows ?? []) as TrustAudit[];
-  const staff = (staffRows ?? []) as Pick<Profile, "id" | "full_name" | "email">[];
+  const staff = (staffRows ?? []) as Pick<Profile, "id" | "full_name" | "email" | "is_licensee_in_charge">[];
   const nameOf = (id: string | null) =>
     id ? staff.find((p) => p.id === id)?.full_name ?? null : null;
 
@@ -106,6 +107,13 @@ export default async function TrustAccountsPage({
   const activeAudit = active
     ? audits.find((a) => a.trust_account_id === active.id && a.period_end === auditPeriod) ?? null
     : null;
+
+  // Confirmed in a monthly licensee sign-off pack: which month (0109).
+  const auditPackMonth = activeAudit?.confirmed_at
+    ? ((await packMonthsOf(supabase, profile.agency_id, [activeAudit.id])).get(activeAudit.id) ?? null)
+    : null;
+  const licensee = staff.find((p) => p.is_licensee_in_charge);
+  const licenseeName = (licensee?.full_name ?? "").trim() || licensee?.email || "the licensee in charge";
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10">
@@ -150,12 +158,16 @@ export default async function TrustAccountsPage({
               // No assistant since Adam's 7 Oct reversal: this page refuses them.
               canUpload={Boolean(!active.archived_at && manages)}
               canSign={Boolean(!active.archived_at && profile.is_licensee_in_charge)}
+              canEnterAudit={Boolean(!active.archived_at && access.isOfficeManager)}
               signerName={profile.full_name ?? ""}
               auditPeriodEnd={auditPeriod}
               auditDueOn={auditDue}
               auditDaysToDue={daysUntil(auditDue, today)}
               audit={activeAudit}
-              auditConfirmedByName={nameOf(activeAudit?.confirmed_by ?? null)}
+              // Confirmed by link, with no login: the name they typed (0109).
+              auditConfirmedByName={nameOf(activeAudit?.confirmed_by ?? null) ?? activeAudit?.confirmed_name ?? null}
+              auditPackMonth={auditPackMonth}
+              licenseeName={licenseeName}
               auditYearLabel={`Year ending ${formatAuDate(currentPeriod)}`}
               auditIsOwed={Boolean(activeAudit) || auditOwed(auditPeriod, active.opened_on)}
               openedOn={active.opened_on ?? null}

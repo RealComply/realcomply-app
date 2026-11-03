@@ -27,7 +27,10 @@ export function GiftsPanel({
   viewerProfile,
   nameOf = {},
   autoOpenAdd = false,
+  packMonthOf = {},
 }: {
+  /** Which month's pack a review was given in (0109). */
+  packMonthOf?: Record<string, string>;
   gifts: Gift[];
   staff: Profile[];
   threshold: number;
@@ -193,8 +196,8 @@ export function GiftsPanel({
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[g.status]}`}>
                         {STATUS_LABELS[g.status]}
                       </span>
-                      {giftReviewedLine(g) && (
-                        <span className="mt-1 block whitespace-nowrap text-[11px] text-rc-muted">{giftReviewedLine(g)}</span>
+                      {giftReviewedLine(g, packMonthOf[g.id] ?? null) && (
+                        <span className="mt-1 block whitespace-nowrap text-[11px] text-rc-muted">{giftReviewedLine(g, packMonthOf[g.id] ?? null)}</span>
                       )}
                     </td>
                     <td className="py-2 text-right">

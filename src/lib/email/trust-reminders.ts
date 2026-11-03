@@ -196,6 +196,11 @@ export async function runTrustReminders(
           result.failed += 1;
         } else if (kind === "none") {
           result.skippedNothingDue += 1;
+        } else if (kind === "ready_for_signoff" && (agency as { licensee_signoff_mode?: string }).licensee_signoff_mode === "monthly") {
+          // "Monthly pack" (Adam, 3 Nov 2026; 0109): no email for a single
+          // item. An uploaded reconciliation is in the month's pack; one not
+          // uploaded yet still gets its reminders.
+          result.skippedNothingDue += 1;
         } else if (await alreadyRecorded(supabase, agency.id, account.id, "reconciliation", month, stage)) {
           result.alreadySent += 1;
         } else {

@@ -37,6 +37,8 @@ export type IssueResult = {
   sentTo?: string;
   /** Whether the email actually went. False means the link exists and was not delivered; send again. */
   emailed?: boolean;
+  /** An office set to "Monthly pack" (0109): no email; the file goes into the month's pack. */
+  inPack?: boolean;
 };
 
 /**
@@ -272,6 +274,19 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
   }
 
   const row = inserted as { id: string; expires_at: string };
+
+  // "Monthly pack" (Adam, 3 Nov 2026; 0109): no emails for single items. The
+  // file is handed to the licensee in the month's sign-off pack instead.
+  const { data: modeRow } = await supabase
+    .from("agencies")
+    .select("licensee_signoff_mode")
+    .eq("id", profile.agency_id)
+    .maybeSingle();
+  if ((modeRow as { licensee_signoff_mode?: string } | null)?.licensee_signoff_mode === "monthly") {
+    await markSentToLicensee(supabase, propertyId);
+    revalidatePath(`/dashboard/${propertyId}`);
+    return { error: null, sentTo: licenseeEmail, emailed: false, inPack: true };
+  }
 
   const emailed = await deliverLinkEmail(supabase, {
     requestId: row.id,

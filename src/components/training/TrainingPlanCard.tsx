@@ -1,6 +1,7 @@
 "use client";
 
 import { useViewerAccess } from "@/components/ViewerAccess";
+import { monthName } from "@/lib/licensee-signoff/model";
 import { useActionState, useEffect, useRef, useState, useTransition, type ChangeEvent } from "react";
 import Link from "next/link";
 import { CheckCircle2, Paperclip, Trash2 } from "lucide-react";
@@ -40,6 +41,7 @@ export function TrainingPlanCard({
   cpdYearLabel,
   recordsById = {},
   urlByPath = {},
+  packMonth = null,
 }: {
   subject: Profile;
   viewerProfile: Profile;
@@ -51,6 +53,8 @@ export function TrainingPlanCard({
   recordsById?: Record<string, CpdRecord>;
   /** Links to certificates and plan documents, made on the server. */
   urlByPath?: Record<string, string>;
+  /** Approved in a monthly licensee sign-off pack (0109): its month. */
+  packMonth?: string | null;
 }) {
   const isSelf = viewerProfile.id === subject.id;
   const isLicensee = Boolean(viewerProfile.is_licensee_in_charge);
@@ -159,7 +163,7 @@ export function TrainingPlanCard({
                 {addingItem && <AddItemForm planId={plan.id} onDone={() => setAddingItem(false)} />}
               </div>
 
-              <SignOff plan={plan} isSelf={isSelf} isLicensee={isLicensee} itemCount={items.length} />
+              <SignOff plan={plan} isSelf={isSelf} isLicensee={isLicensee} itemCount={items.length} packMonth={packMonth} />
             </div>
           )}
         </>
@@ -588,11 +592,13 @@ function SignOff({
   isSelf,
   isLicensee,
   itemCount,
+  packMonth,
 }: {
   plan: TrainingPlan;
   isSelf: boolean;
   isLicensee: boolean;
   itemCount: number;
+  packMonth: string | null;
 }) {
   const [staffState, staffAction, staffPending] = useActionState(signTrainingPlan.bind(null, plan.id, "staff"), initial);
   const [principalState, principalAction, principalPending] = useActionState(
@@ -645,6 +651,7 @@ function SignOff({
             <p className="text-neutral-600">
               <CheckCircle2 size={12} className="mr-1 inline align-[-1px] text-rc-green-deep" />
               Approved by {plan.principal_signed_name} on {plan.principal_signed_at.slice(0, 10)}
+              {packMonth ? `, in the ${monthName(packMonth)} sign-off pack` : ""}
             </p>
             {isLicensee && (
               <button type="button" onClick={() => reopenTrainingPlan(plan.id)} className="shrink-0 text-xs font-medium text-rc-muted hover:underline">

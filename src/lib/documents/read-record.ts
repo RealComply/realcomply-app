@@ -37,6 +37,7 @@ export const READERS = {
   cpd_certificate: "CPD certificate",
   licence: "licence or certificate of registration",
   insurance_certificate: "insurance certificate",
+  trust_audit_report: "trust account audit report",
 } as const;
 
 export type ReaderName = keyof typeof READERS;

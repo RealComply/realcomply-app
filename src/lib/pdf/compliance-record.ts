@@ -14,6 +14,7 @@ import { checkedPdf } from "@/lib/pdf/checked-pdf";
 import { fileTypeLabel, type PackDocument } from "@/lib/pdf/pack-documents";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { copiedLinkLine } from "@/lib/links/delivery";
+import { signedInPackLine } from "@/lib/licensee-signoff/model";
 
 /** The answer, tick or upload under a question or document card, with who and when (Sydney). */
 const questionAndDocumentLines = (item: ComplianceItem, current: PropertyItem | undefined): string[] =>
@@ -350,7 +351,13 @@ export type ComplianceRecordInput = {
      * copied to send by hand (option 2, Adam 3 Nov 2026; 0107), the first such
      * copy. Printed under the signature, so it can't happen unseen.
      */
-    licensee: { typedName: string; signedAt: string | null; copiedLink?: { by: string; at: string } | null } | null;
+    licensee: {
+      typedName: string;
+      signedAt: string | null;
+      copiedLink?: { by: string; at: string } | null;
+      /** Signed in a monthly sign-off pack (0109): its month, "2026-10-01". */
+      packMonth?: string | null;
+    } | null;
   };
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
@@ -785,7 +792,12 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
 
     const block = (
       role: string,
-      sig: { typedName: string; signedAt: string | null; copiedLink?: { by: string; at: string } | null } | null,
+      sig: {
+        typedName: string;
+        signedAt: string | null;
+        copiedLink?: { by: string; at: string } | null;
+        packMonth?: string | null;
+      } | null,
     ) => {
       c.need(46);
       if (!sig) {
@@ -821,6 +833,13 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         c.text(`Signed ${formatSignedAt(sig.signedAt)} (Sydney time)`, { size: 9, color: MUTED });
       }
       if (sig.copiedLink) c.text(copiedLinkLine(sig.copiedLink), { size: 8.5, color: MUTED });
+      // Adam, 3 Nov 2026: "Signed by [name], [date], in the [Month] pack".
+      if (sig.packMonth && sig.signedAt) {
+        c.text(signedInPackLine(sig.typedName, formatAuDate(sydneyDate(new Date(sig.signedAt))), sig.packMonth), {
+          size: 8.5,
+          color: MUTED,
+        });
+      }
       c.y -= 12;
     };
 

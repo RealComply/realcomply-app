@@ -38,6 +38,7 @@ export function ComplaintsPanel({
   canChange = false,
   canMoveOn = canChange,
   canSignOff = canChange,
+  packMonthOf = {},
   nameOf = {},
   resolutionTargetDays,
   files = [],
@@ -61,6 +62,8 @@ export function ComplaintsPanel({
   canMoveOn?: boolean;
   /** The sign-off of a resolved complaint: the licensee in charge only (0108). */
   canSignOff?: boolean;
+  /** Which month's pack a sign-off was given in (0109). */
+  packMonthOf?: Record<string, string>;
   /** Everyone's display name, people who have left included (the picker isn't). */
   nameOf?: Record<string, string>;
   resolutionTargetDays: number;
@@ -229,7 +232,7 @@ export function ComplaintsPanel({
                           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[c.status]}`}>
                             {STATUS_LABELS[c.status]}
                           </span>
-                          {complaintRecordLines(c).map((line) => (
+                          {complaintRecordLines(c, packMonthOf[c.id] ?? null).map((line) => (
                             <span key={line} className="mt-1 block whitespace-nowrap text-[11px] text-rc-muted">
                               {line}
                             </span>

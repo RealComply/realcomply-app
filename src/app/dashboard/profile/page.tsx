@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
+import { SignoffModeCard } from "@/components/licensee-signoff/SignoffModeCard";
 import { pmAgencySettings } from "@/lib/data/pm";
 import { agencyLogoUrl } from "@/lib/storage/evidence";
 import { AgencyLogoForm } from "@/components/team/AgencyLogoForm";
@@ -53,6 +54,20 @@ import { checkLine, groupWarning, groupWarningText, pageCheckFrom, type PageChec
 export default async function ProfileSettingsPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
+  // Read on its own: the column arrives with 0109, and the page must load before it.
+  const { data: modeRow } = await supabase
+    .from("agencies")
+    .select("licensee_signoff_mode, licensee_signoff_mode_set_by_name, licensee_signoff_mode_set_at")
+    .eq("id", profile.agency_id)
+    .maybeSingle();
+  const m = (modeRow ?? {}) as { licensee_signoff_mode?: string; licensee_signoff_mode_set_by_name?: string | null; licensee_signoff_mode_set_at?: string | null };
+  const signoffMode = {
+    mode: (m.licensee_signoff_mode === "monthly" ? "monthly" : "as_they_come") as "monthly" | "as_they_come",
+    setBy:
+      m.licensee_signoff_mode_set_by_name && m.licensee_signoff_mode_set_at
+        ? `Set by ${m.licensee_signoff_mode_set_by_name}, ${formatAuTimestamp(m.licensee_signoff_mode_set_at)}`
+        : null,
+  };
 
   const [{ data: agencyRow }, pm, { data: changeRows }] = await Promise.all([
     supabase
@@ -180,6 +195,8 @@ export default async function ProfileSettingsPage() {
                   change anyone's. Not on an agent's own plan: there it is
                   their "My listings page", below. */}
               {!access.isAgentPlan && <AgentsListingsPagesCard rows={agentRows} />}
+              {/* "How your licensee signs off" (Adam, 3 Nov 2026; 0109). */}
+              {!access.isAgentPlan && <SignoffModeCard mode={signoffMode.mode} setBy={signoffMode.setBy} />}
               {/* Only the licensee changes the licensee's name and email
                   (Adam, 26 Oct 2026; 0095, checked by the database). An
                   office manager of an office whose licensee isn't on

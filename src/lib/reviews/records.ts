@@ -1,5 +1,6 @@
 import { formatAuTimestamp } from "@/lib/format-date";
 import type { Complaint, Gift } from "@/lib/types";
+import { monthName } from "@/lib/licensee-signoff/model";
 
 // Who and when, for gift reviews and complaints (Adam, 3 Nov 2026; 0108).
 // The database writes the names and times; this only words them. Reviews and
@@ -12,9 +13,16 @@ export const COMPLAINT_SIGN_OFF_WORDS = "I've reviewed how this complaint was ha
 const byOn = (verb: string, name: string | null | undefined, at: string | null | undefined): string | null =>
   name && at ? `${verb} by ${name}, ${formatAuTimestamp(at)}` : null;
 
+/** ", in the October pack" when it was signed in a monthly pack (0109). */
+const inPack = (packMonth: string | null | undefined) => (packMonth ? `, in the ${monthName(packMonth)} pack` : "");
+
 /** "Reviewed by Lee Licensee, 3 Nov 2026", or null for a review from before 0108. */
-export function giftReviewedLine(g: Pick<Gift, "status" | "reviewed_by_name" | "reviewed_at">): string | null {
-  return g.status === "reviewed" ? byOn("Reviewed", g.reviewed_by_name, g.reviewed_at) : null;
+export function giftReviewedLine(
+  g: Pick<Gift, "status" | "reviewed_by_name" | "reviewed_at">,
+  packMonth: string | null = null,
+): string | null {
+  const line = g.status === "reviewed" ? byOn("Reviewed", g.reviewed_by_name, g.reviewed_at) : null;
+  return line ? `${line}${inPack(packMonth)}` : null;
 }
 
 /** Where a complaint is up to, in plain lines under its status. */
@@ -29,6 +37,7 @@ export function complaintRecordLines(
     | "signed_off_name"
     | "signed_off_at"
   >,
+  packMonth: string | null = null,
 ): string[] {
   const lines: string[] = [];
   if (c.status !== "open") {
@@ -39,7 +48,7 @@ export function complaintRecordLines(
     const resolved = byOn("Resolved", c.resolved_by_name, c.resolved_at);
     if (resolved) lines.push(resolved);
     const signed = byOn("Signed off", c.signed_off_name, c.signed_off_at);
-    lines.push(signed ?? "Waiting for the licensee's sign-off");
+    lines.push(signed ? `${signed}${inPack(packMonth)}` : "Waiting for the licensee's sign-off");
   }
   return lines;
 }

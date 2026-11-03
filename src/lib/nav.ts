@@ -5,6 +5,7 @@ import {
   CreditCard,
   FileText,
   ClipboardCheck,
+  ClipboardSignature,
   GraduationCap,
   Home,
   KeyRound,
@@ -53,6 +54,8 @@ export type NavLink = {
   pmOnly?: boolean;
   /** The licensee's only: not shown to an office manager (0093). */
   licenseeOnly?: boolean;
+  /** Office plans only, never an agent's own plan (0109). */
+  officePlanOnly?: boolean;
 };
 
 export type NavCountKey = "listings" | "signoffs" | "registers" | "trust";
@@ -97,6 +100,15 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Office overview",
         Icon: LayoutGrid,
         keywords: ["portfolio", "team files"],
+      },
+      // The monthly licensee sign-off pack (Adam, 3 Nov 2026; 0109): the
+      // licensee in charge and the office manager, on an office plan.
+      {
+        href: "/dashboard/licensee-signoff",
+        label: "Licensee sign-off",
+        Icon: ClipboardSignature,
+        officePlanOnly: true,
+        keywords: ["monthly pack", "sign off", "signoff", "licensee pack"],
       },
     ],
   },
@@ -253,6 +265,10 @@ export function visibleNavLink(
   viewer: { actsAsLicensee: boolean; runsOffice?: boolean; pmEnabled: boolean; isAccountHolder?: boolean },
 ): boolean {
   if (link.pmOnly && !viewer.pmEnabled) return false;
+  // Property management is on for exactly the office plans (0086), so
+  // pmEnabled is also "on an office plan".
+  if (link.officePlanOnly && !viewer.pmEnabled) return false;
+  if (link.officePlanOnly && !viewer.actsAsLicensee && !viewer.runsOffice) return false;
   if (viewer.actsAsLicensee) return true;
   // An office manager (0093): the licensee's menu, less what stays with the
   // licensee.

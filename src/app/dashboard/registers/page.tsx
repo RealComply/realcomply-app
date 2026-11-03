@@ -6,6 +6,7 @@ import { RegistersTabs } from "@/components/registers/RegistersTabs";
 import { LicencePanel } from "@/components/registers/LicencePanel";
 import { InsurancePanel } from "@/components/registers/InsurancePanel";
 import { GiftsPanel } from "@/components/registers/GiftsPanel";
+import { packMonthsOf } from "@/lib/licensee-signoff/waiting";
 import { ComplaintsPanel } from "@/components/registers/ComplaintsPanel";
 import { BreachesPanel } from "@/components/registers/BreachesPanel";
 import { currentCpdYear } from "@/lib/cpd-year";
@@ -118,6 +119,15 @@ export default async function RegistersPage({
   const agency = agencyRow as Agency | null;
   const gifts = (giftRows ?? []) as Gift[];
   const complaints = (complaintRows ?? []) as Complaint[];
+  // Which month's pack a review or sign-off was given in (0109), for its line.
+  const packMonthOf = Object.fromEntries(
+    await packMonthsOf(
+      supabase,
+      profile.agency_id,
+      [...gifts.filter((g) => g.reviewed_via && g.reviewed_via !== "app").map((g) => g.id),
+       ...complaints.filter((c) => c.signed_off_via && c.signed_off_via !== "app").map((c) => c.id)],
+    ),
+  );
   const properties = (propertyRows ?? []) as Property[];
   const breaches = (breachRows ?? []) as Breach[];
 
@@ -346,6 +356,7 @@ export default async function RegistersPage({
               }
               gifts={
                 <GiftsPanel
+                  packMonthOf={packMonthOf}
                   gifts={gifts}
                   staff={staff}
                   threshold={agency.gift_threshold}
@@ -356,6 +367,7 @@ export default async function RegistersPage({
               }
               complaints={
                 !complaintsShown ? null : <ComplaintsPanel
+                  packMonthOf={packMonthOf}
                   complaints={complaints}
                   staff={staff}
                   properties={properties}

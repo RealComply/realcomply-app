@@ -7,6 +7,7 @@ import { TrainingTabs } from "@/components/training/TrainingTabs";
 import { TrainingPlanCard } from "@/components/training/TrainingPlanCard";
 import { WhyDisclosure } from "@/components/WhyDisclosure";
 import { currentCpdYear } from "@/lib/cpd-year";
+import { packMonthsOf } from "@/lib/licensee-signoff/waiting";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type {
   CpdRecord,
@@ -78,6 +79,12 @@ export default async function TrainingPage({
   }
 
   const planByProfile = new Map(plans.map((p) => [p.profile_id, p]));
+  // Plans approved in a monthly licensee sign-off pack say which (0109).
+  const packMonthOf = await packMonthsOf(
+    supabase,
+    profile.agency_id,
+    plans.filter((p) => p.principal_signed_at).map((p) => p.id),
+  );
   const itemsByPlan = new Map<string, TrainingPlanItem[]>();
   for (const item of items) {
     if (!itemsByPlan.has(item.plan_id)) itemsByPlan.set(item.plan_id, []);
@@ -154,6 +161,7 @@ export default async function TrainingPage({
                 cpdYearLabel={year.label}
                 recordsById={recordsById}
                 urlByPath={urlByPath}
+                packMonth={plan ? (packMonthOf.get(plan.id) ?? null) : null}
               />
             );
           })

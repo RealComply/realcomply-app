@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sydneyDate } from "@/lib/subscription-end/dates";
+import { offerItemLink } from "@/lib/licensee-signoff/server";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
@@ -786,7 +787,7 @@ export async function addGift(_prev: ActionState, formData: FormData): Promise<A
 
   const status = value !== null && value > threshold ? "flagged" : "recorded";
 
-  const { error } = await supabase.from("gifts").insert({
+  const { data: saved, error } = await supabase.from("gifts").insert({
     agency_id: profile.agency_id,
     profile_id: agentId,
     gift_date: giftDate,
@@ -797,9 +798,12 @@ export async function addGift(_prev: ActionState, formData: FormData): Promise<A
     status,
     notes,
     created_by: profile.id,
-  });
+  }).select("id").maybeSingle();
 
   if (error) return { error: "Couldn't save that entry — try again." };
+  // Over the limit: a licensee with no login, in an office that signs as items
+  // come in, gets an email link to review it (Adam, 3 Nov 2026; 0109).
+  if (status === "flagged" && saved) await offerItemLink(profile.agency_id, "gift", (saved as { id: string }).id, profile.id);
   revalidatePath("/dashboard/registers");
   return ok;
 }
@@ -884,7 +888,7 @@ export async function updateComplaintStatus(
   complaintId: string,
   status: "open" | "under_review" | "resolved",
 ): Promise<void> {
-  const { supabase, access } = await requireAuthContext();
+  const { supabase, profile, access } = await requireAuthContext();
   // REVERSAL (Adam, 3 Nov 2026; 0108). Was (31 Oct 2026, "adding and read
   // only"): Review and Resolve were the licensee in charge's only. Now the
   // licensee or the office manager marks a complaint Under review or
@@ -892,11 +896,16 @@ export async function updateComplaintStatus(
   // Resolved stays with the licensee, and the database refuses an office
   // manager (0108).
   if (!access.officeLicensee && !(access.isOfficeManager && status !== "open")) return;
-  await supabase
+  const { data: moved } = await supabase
     .from("complaints")
     .update({ status, resolved_date: status === "resolved" ? sydneyDate(new Date()) : null })
     .eq("id", complaintId)
-    .neq("status", status);
+    .neq("status", status)
+    .select("id")
+    .maybeSingle();
+  // Resolved: a licensee with no login, in an office that signs as items come
+  // in, gets an email link to sign it off (0109).
+  if (status === "resolved" && moved) await offerItemLink(profile.agency_id, "complaint", complaintId, profile.id);
   revalidatePath("/dashboard/registers");
 }
 

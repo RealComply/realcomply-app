@@ -40,6 +40,10 @@
     {
       "path": "/api/cron/audit-packs",
       "schedule": "45 * * * *"
+    },
+    {
+      "path": "/api/cron/licensee-signoff",
+      "schedule": "55 21 * * *"
     }
   ]
 }
