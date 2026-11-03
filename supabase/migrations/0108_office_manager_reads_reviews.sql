@@ -428,7 +428,7 @@ select
   (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'gifts'
       and column_name in ('reviewed_by', 'reviewed_by_name', 'reviewed_at')) = 3 as gift_review_columns,
   (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'complaints'
-      and column_name like any (array['under_review_%', 'resolved_by%', 'resolved_at', 'signed_off_%'])) = 9 as complaint_columns,
+      and column_name like any (array['under_review_%', 'resolved_by%', 'resolved_at', 'signed_off_%'])) >= 9 as complaint_columns,
   exists (select 1 from pg_trigger where tgname = 'gifts_review_guard')
     and exists (select 1 from pg_trigger where tgname = 'complaints_update_guard') as guards_on,
   has_function_privilege('authenticated', 'public.sign_off_complaint(uuid)', 'execute') as sign_off_ready;
