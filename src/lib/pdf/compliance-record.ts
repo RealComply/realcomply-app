@@ -12,6 +12,7 @@ import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
 import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
 import { checkedPdf } from "@/lib/pdf/checked-pdf";
 import { fileTypeLabel, type PackDocument } from "@/lib/pdf/pack-documents";
+import type { EspPackRow } from "@/lib/esp-history";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { copiedLinkLine } from "@/lib/links/delivery";
 
@@ -335,6 +336,13 @@ export type ComplianceRecordInput = {
    */
   priceApproval?: PriceApproval | null;
   /**
+   * "Estimated selling price: every change" (Adam, 3 Nov 2026; 0110): the
+   * original and every revision, each with a link to its evidence's page in
+   * the pack, then the price statement approvals and cancellations in date
+   * order. Null (or absent) when the ESP was never revised: no page.
+   */
+  espHistory?: { rows: EspPackRow[]; approvals: string[] } | null;
+  /**
    * Complaints the office linked to this listing, with their files (0101,
    * Adam 30 Oct 2026). Only ever given where the caller may see complaints:
    * the licensee in charge, or an office manager since 0102 (the database
@@ -426,6 +434,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     noneOnMarket = false,
     agreementDate = null,
     priceApproval = null,
+    espHistory = null,
     complaints = [],
     signatures,
     documents = [],
@@ -893,8 +902,9 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   //
   // No internal ids anywhere in it: names, titles, dates and page numbers
   // only (the file's storage path is used to fetch it, never printed).
-  if (documents.length > 0) {
+  if (documents.length > 0 || espHistory) {
     await appendDocuments(doc, fonts, {
+      espHistory,
       documents,
       loadDocument: loadDocument ?? (async () => ({ problem: "it couldn't be read" })),
       maxDocumentBytes: maxDocumentBytes ?? Number.POSITIVE_INFINITY,
@@ -952,6 +962,7 @@ async function appendDocuments(
   doc: PDFDocument,
   fonts: Fonts,
   opts: {
+    espHistory?: { rows: EspPackRow[]; approvals: string[] } | null;
     documents: PackDocument[];
     loadDocument: (d: PackDocument) => Promise<LoadedDocument>;
     maxDocumentBytes: number;
@@ -960,8 +971,12 @@ async function appendDocuments(
     draftMark: string | null;
   },
 ): Promise<void> {
-  const { documents, loadDocument, maxDocumentBytes, report, address, draftMark } = opts;
+  const { documents, loadDocument, maxDocumentBytes, report, address, draftMark, espHistory = null } = opts;
   const recordPages = doc.getPageCount();
+  // "Estimated selling price: every change" (Adam, 3 Nov 2026) comes straight
+  // after the record, before the contents: kept now, drawn once every
+  // document's page is known, so each evidence entry links to it.
+  const espPage = espHistory ? doc.addPage([PAGE_W, PAGE_H]) : null;
   // What the pack can hold is finite (the holding area takes one file of up
   // to 500 MB, 0106). Documents go in, in order, while they fit; one that
   // doesn't is named, never dropped, and smaller ones after it still go in.
@@ -1051,6 +1066,10 @@ async function appendDocuments(
   // The contents: one line per document, each a link to its separator page.
   const total = doc.getPageCount();
   const width = PAGE_W - MARGIN * 2;
+
+  if (espPage && espHistory) {
+    drawEspHistoryPage(doc, fonts, espPage, espHistory, placed, contentsPages[0] ?? null);
+  }
   contentsPages.forEach((page, p) => {
     page.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: GREEN });
     let y = PAGE_H - 80;
@@ -1083,8 +1102,115 @@ async function appendDocuments(
     const text = fit(`${draftMark ? `${draftMark} · ` : ""}${address} · Audit pack page ${i} of ${total}`, fonts.regular, 7.5, width);
     page.drawText(text, { x: MARGIN, y: 30, size: 7.5, font: fonts.regular, color: draftMark ? AMBER : FAINT });
   };
-  contentsPages.forEach((page, i) => footer(page, recordPages + i + 1));
+  const firstContents = recordPages + (espPage ? 2 : 1);
+  if (espPage) footer(espPage, recordPages + 1);
+  contentsPages.forEach((page, i) => footer(page, firstContents + i));
   for (const { separator, pageNo } of placed) footer(separator, pageNo);
+}
+
+/**
+ * The page "Estimated selling price: every change" (Adam, 3 Nov 2026; the
+ * approved mockup): a table of Version, ESP, Date, Recorded by and Evidence,
+ * each Evidence entry a link to that document's page in the pack, then the
+ * price statement approvals and cancellations in date order.
+ */
+function drawEspHistoryPage(
+  doc: PDFDocument,
+  fonts: Fonts,
+  page: PDFPage,
+  history: { rows: EspPackRow[]; approvals: string[] },
+  placed: Array<{ d: PackDocument; separator: PDFPage; pageNo: number }>,
+  contents: PDFPage | null,
+) {
+  const width = PAGE_W - MARGIN * 2;
+  page.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: GREEN });
+  let y = PAGE_H - 80;
+  page.drawText("Estimated selling price: every change", { x: MARGIN, y, size: 18, font: fonts.bold, color: INK });
+  y -= 20;
+  page.drawText(
+    fit("Every estimate on this listing, oldest first. The latest is the one every check used. Select an evidence entry to go to it.", fonts.regular, 9, width),
+    { x: MARGIN, y, size: 9, font: fonts.regular, color: MUTED },
+  );
+  y -= 30;
+
+  // Version | ESP | Date | Recorded by | Evidence. A cell takes two lines
+  // where it needs them, so nothing is cut short.
+  const cols = [
+    { label: "VERSION", w: 92 },
+    { label: "ESP", w: 122 },
+    { label: "DATE", w: 82 },
+    { label: "RECORDED BY", w: 92 },
+    { label: "EVIDENCE", w: width - (92 + 122 + 82 + 92) },
+  ];
+  const SIZE = 8.5;
+  const wrap2 = (text: string, font: PDFFont, w: number): string[] => {
+    const words = pdfText(text, font).split(" ");
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && font.widthOfTextAtSize(next, SIZE) > w) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    if (line) lines.push(line);
+    return lines.length <= 2 ? lines : [lines[0], fit(lines.slice(1).join(" "), font, SIZE, w)];
+  };
+  let x = MARGIN;
+  for (const c of cols) {
+    page.drawText(c.label, { x, y, size: 7.5, font: fonts.bold, color: FAINT });
+    x += c.w;
+  }
+  y -= 8;
+  page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + width, y }, thickness: 0.6, color: BORDER });
+  y -= 16;
+
+  const byPath = new Map(placed.map((p) => [p.d.path, p]));
+  for (const row of history.rows) {
+    const target = row.evidencePath ? byPath.get(row.evidencePath) : undefined;
+    const evidence = target ? [`${row.evidenceLabel},`, `page ${target.pageNo}`] : [row.evidencePath ? row.evidenceLabel : "None on file"];
+    const cells: string[][] = [
+      wrap2(row.version, fonts.bold, cols[0].w - 8),
+      wrap2(row.esp, fonts.regular, cols[1].w - 8),
+      wrap2(row.date, fonts.regular, cols[2].w - 8),
+      wrap2(row.recordedBy, fonts.regular, cols[3].w - 8),
+      evidence.map((l) => fit(l, target ? fonts.bold : fonts.regular, SIZE, cols[4].w - 8)),
+    ];
+    const lineCount = Math.max(...cells.map((c) => c.length));
+    x = MARGIN;
+    cells.forEach((lines, i) => {
+      const isLink = i === 4 && Boolean(target);
+      const font = i === 0 || isLink ? fonts.bold : fonts.regular;
+      lines.forEach((text, j) => {
+        page.drawText(text, { x, y: y - j * 11, size: SIZE, font, color: isLink ? LINK : i === 0 ? INK : MUTED });
+      });
+      if (isLink && target) {
+        const w = Math.max(...lines.map((l) => font.widthOfTextAtSize(l, SIZE)));
+        linkTo(doc, page, { x: x - 2, y: y - (lines.length - 1) * 11 - 4, w: w + 4, h: lines.length * 11 + 6 }, target.separator);
+      }
+      x += cols[i].w;
+    });
+    y -= (lineCount - 1) * 11 + 12;
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + width, y }, thickness: 0.4, color: BORDER });
+    y -= 16;
+  }
+
+  y -= 10;
+  page.drawText("Price statement approvals", { x: MARGIN, y, size: 11, font: fonts.bold, color: INK });
+  y -= 18;
+  const lines = history.approvals.length > 0 ? history.approvals : ["No price statement approval on record."];
+  for (const line of lines) {
+    if (y < 110) break;
+    page.drawText(fit(line, fonts.regular, 9.5, width), { x: MARGIN, y, size: 9.5, font: fonts.regular, color: MUTED });
+    y -= 15;
+  }
+
+  if (contents) {
+    const back = "Go to contents";
+    page.drawText(back, { x: MARGIN, y: 72, size: 10, font: fonts.bold, color: LINK });
+    linkTo(doc, page, { x: MARGIN - 2, y: 68, w: fonts.bold.widthOfTextAtSize(back, 10) + 4, h: 16 }, contents);
+  }
 }
 
 /** A filename that survives Windows, macOS and email. */

@@ -281,3 +281,46 @@ describe("a licensee signature given through a copied link (option 2, Adam 3 Nov
     assert.ok(!text.includes("Signed through a link"));
   });
 });
+
+describe("Estimated selling price: every change (Adam, 3 Nov 2026; 0110)", () => {
+  it("comes straight after the record, lists every version, and each evidence entry goes to its notice's page", async () => {
+    const recordPages = (await pdfPageTexts(await pack())).length;
+    const agreement = doc();
+    const n1 = doc({ stage: "Campaign", cardTitle: "ESP revision notice, Revision 1", fileName: "Notice 14 Oct.jpg", path: "a/p/d3/1-notice.pdf" });
+    const n2 = doc({ stage: "Campaign", cardTitle: "ESP revision notice, Revision 2 (latest)", fileName: "Notice 28 Oct.pdf", path: "a/p/d3/2-notice.pdf" });
+    const bytes = await pack({
+      documents: [agreement, n1, n2],
+      loadDocument: async () => ({ bytes: await onePagePdf() }),
+      espHistory: {
+        rows: [
+          { version: "Original", esp: "$1,400,000 to $1,450,000", date: "2 October 2026", recordedBy: "From the agency agreement", evidencePath: agreement.path, evidenceLabel: "Agency agreement" },
+          { version: "Revision 1", esp: "$1,300,000 to $1,360,000", date: "14 October 2026", recordedBy: "Dana Whitlock", evidencePath: n1.path, evidenceLabel: "Revised ESP notice" },
+          { version: "Revision 2 (latest)", esp: "$1,250,000 to $1,300,000", date: "28 October 2026", recordedBy: "Dana Whitlock", evidencePath: n2.path, evidenceLabel: "Revised ESP notice" },
+        ],
+        approvals: ["Approved 3 October 2026 by Dana Whitlock", "Cancelled 14 October 2026: Revision 1 recorded"],
+      },
+    });
+    const pages = await pdfPageTexts(bytes);
+    const esp = pages[recordPages].replace(/\s+/g, " ");
+    assert.ok(esp.includes("Estimated selling price: every change"), esp);
+    assert.ok(esp.includes("Revision 2 (latest)") && esp.includes("$1,250,000 to $1,300,000"), esp);
+    assert.ok(esp.includes("Cancelled 14 October 2026: Revision 1 recorded"), esp);
+    // Record, this page, contents, then three separators each with a one-page document.
+    const contentsPage = recordPages + 2;
+    const separators = [contentsPage + 1, contentsPage + 3, contentsPage + 5];
+    assert.equal(pages.length, recordPages + 2 + 6);
+    assert.ok(pages[contentsPage - 1].includes("Contents"));
+    assert.ok(esp.includes(`Agency agreement, page ${separators[0]}`) && esp.includes(`Revised ESP notice, page ${separators[2]}`), esp);
+    assert.ok(esp.includes("From the agency agreement") && !esp.includes("..."), esp);
+    const links = await linksOn(bytes);
+    assert.deepEqual(links[recordPages], [...separators, contentsPage], "each evidence entry goes to its document; then to the contents");
+    assert.ok(!esp.includes("—"));
+  });
+
+  it("no page when the ESP was never revised", async () => {
+    const recordPages = (await pdfPageTexts(await pack())).length;
+    const pages = await pdfPageTexts(await pack({ documents: [doc()], loadDocument: async () => ({ bytes: await onePagePdf() }) }));
+    assert.ok(pages[recordPages].includes("Contents"));
+    assert.ok(!pages.some((p) => p.includes("every change")));
+  });
+});

@@ -1600,6 +1600,10 @@ const items: ComplianceItem[] = [
   {
     key: "d3",
     evidenceRequired: true,
+    // Its own notice upload, in the card (Adam, 3 Nov 2026; 0110): every
+    // revision keeps its own notice, so the general uploader, which replaces
+    // or removes the one file, isn't used here.
+    hideEvidence: true,
     stage: 3,
     kind: "reduction",
     // CORRECTED 22 Aug 2026, and the correction matters because the previous
