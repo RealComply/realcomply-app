@@ -136,7 +136,8 @@ export default async function LicenseeSignoffPage() {
           openedLine={delivery ? openedLine(delivery) : null}
           nudge={
             delivery && unopenedNudgeDue(delivery)
-              ? `${office.licensee.name} hasn't opened the pack yet. Copy the link and send it yourself, or ask them to check their quarantine.`
+              ? // "No one uses that word" (Adam, 3 Nov 2026): spam or junk folder, not quarantine.
+                `${office.licensee.name} hasn't opened the pack yet. Copy the link and send it yourself, or ask them to check their spam or junk folder.`
               : null
           }
           emailFailed={Boolean(link && !link.email_sent_at && Number(link.email_attempts) > 0)}
