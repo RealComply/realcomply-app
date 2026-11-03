@@ -46,6 +46,9 @@ type AgencyRow = {
   stripe_subscription_id: string | null;
   trial_ends_at: string | null;
   ended_at: string | null;
+  created_at?: string;
+  licensee_name?: string | null;
+  licensee_email?: string | null;
 };
 
 const DAY = 86_400;
@@ -76,6 +79,9 @@ let stripeReads: string[];
 let afterAgencyRead: (() => void) | null;
 // Runs on each read of a subscription from Stripe, with the read's number.
 let onStripeRead: ((id: string, n: number) => void) | null;
+// Every email handed to the provider, and how the provider answers.
+let emails: Array<{ to: string[]; subject: string; text: string }>;
+let emailStatus: number;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -151,7 +157,10 @@ function stub() {
     // On the way through, the day 0 email and the early access welcome look
     // for people and send mail. Nobody is there to send to.
     if (url.host === "db.test") return json([]);
-    if (url.host === "api.resend.com") return json({ id: "email_1" });
+    if (url.host === "api.resend.com") {
+      emails.push(JSON.parse(String(init?.body)));
+      return emailStatus === 200 ? json({ id: "email_1" }) : json({ message: "provider down" }, emailStatus);
+    }
 
     throw new Error(`unexpected fetch in test: ${method} ${url}`);
   });
@@ -189,6 +198,8 @@ beforeEach(() => {
   stripeReads = [];
   afterAgencyRead = null;
   onStripeRead = null;
+  emails = [];
+  emailStatus = 200;
   for (const [k, v] of Object.entries(env)) process.env[k] = v;
   mock.method(console, "log", () => {});
   mock.method(console, "info", () => {});
@@ -486,5 +497,97 @@ describe("Stripe webhook: Stripe is asked, the message is not believed", () => {
     assert.equal(r.status, 200);
     assert.equal(agency.status, "canceled");
     assert.ok(agency.ended_at);
+  });
+});
+
+// An office cancelled: Adam is told (brief, 3 Nov 2026). Made-up office.
+describe("Stripe webhook: an office cancels, and Adam gets one email", () => {
+  const cancelled = (feedback: string | null, comment: string | null): Subscription & Record<string, unknown> => ({
+    ...subscription("sub_throwaway", "canceled", 3),
+    trial_end: NOW + 11 * DAY,
+    canceled_at: NOW - 60,
+    ended_at: NOW - 58,
+    livemode: false,
+    cancellation_details: { feedback, comment, reason: "cancellation_requested" },
+  });
+  const trialing = (): AgencyRow => ({
+    id: AGENCY,
+    name: "Throwaway Test Realty",
+    status: "trialing",
+    plan: "office_1",
+    stripe_customer_id: CUSTOMER,
+    stripe_subscription_id: "sub_throwaway",
+    trial_ends_at: null,
+    ended_at: null,
+    created_at: new Date((NOW - 3 * DAY) * 1000).toISOString(),
+    licensee_name: "Lee Throwaway",
+    licensee_email: "lee@example.invalid",
+  });
+  const toAdam = () => emails.filter((e) => e.subject.startsWith("Cancelled:"));
+
+  it("a trial cancelled with a reason: one email to Adam, with the reason; the same message again sends nothing", async () => {
+    stripe.set("sub_throwaway", cancelled("too_expensive", "Too dear for a two-person office (made up)."));
+    agency = trialing();
+
+    const r1 = await subscriptionMessage("customer.subscription.deleted", stripe.get("sub_throwaway")!);
+    const r2 = await subscriptionMessage("customer.subscription.deleted", stripe.get("sub_throwaway")!);
+
+    assert.equal(r1.status, 200);
+    assert.equal(r2.status, 200);
+    assert.equal(agency.status, "canceled");
+    assert.equal(toAdam().length, 1, "told once, not twice");
+    const [email] = toAdam();
+    assert.deepEqual(email.to, ["admin@realcomply.com.au"]);
+    assert.equal(email.subject, "Cancelled: Throwaway Test Realty");
+    for (const line of [
+      "Licensee: Lee Throwaway (lee@example.invalid)",
+      "Plan: office_1",
+      "When: During the free trial",
+      "Reason they gave: It's too expensive",
+      'Their words: "Too dear for a two-person office (made up)."',
+      "https://dashboard.stripe.com/test/customers/cus_throwaway",
+    ]) {
+      assert.ok(email.text.includes(line), `${line}\n---\n${email.text}`);
+    }
+  });
+
+  it("no reason given: says so", async () => {
+    stripe.set("sub_throwaway", cancelled(null, null));
+    agency = trialing();
+    await subscriptionMessage("customer.subscription.deleted", stripe.get("sub_throwaway")!);
+    assert.equal(toAdam().length, 1);
+    assert.ok(toAdam()[0].text.includes("Reason they gave: None given"), toAdam()[0].text);
+  });
+
+  it("a comped office (Adam gave it free access, which cancels its subscription): no email, office stays free", async () => {
+    stripe.set("sub_throwaway", cancelled(null, null));
+    agency = { ...trialing(), status: "comped" };
+    const r = await subscriptionMessage("customer.subscription.deleted", stripe.get("sub_throwaway")!);
+    assert.equal(r.status, 200);
+    assert.equal(agency.status, "comped");
+    assert.deepEqual(toAdam(), []);
+  });
+
+  it("already cancelled when the message arrives (another copy got there first): no second email", async () => {
+    stripe.set("sub_throwaway", cancelled("unused", null));
+    agency = trialing();
+    // The other copy writes "canceled" just after this one read the office.
+    afterAgencyRead = () => {
+      agency.status = "canceled";
+    };
+    const r = await subscriptionMessage("customer.subscription.deleted", stripe.get("sub_throwaway")!);
+    assert.equal(r.status, 200);
+    assert.equal(agency.status, "canceled");
+    assert.deepEqual(toAdam(), [], "decided by the write, not by what was read before it");
+  });
+
+  it("the email fails: Stripe still gets 200, and the office stays cancelled", async () => {
+    stripe.set("sub_throwaway", cancelled("other", "Testing (made up)."));
+    agency = trialing();
+    emailStatus = 500;
+    const r = await subscriptionMessage("customer.subscription.deleted", stripe.get("sub_throwaway")!);
+    assert.equal(r.status, 200);
+    assert.equal(agency.status, "canceled");
+    assert.equal(toAdam().length, 1, "it was tried");
   });
 });
