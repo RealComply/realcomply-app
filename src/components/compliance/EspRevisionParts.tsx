@@ -3,11 +3,12 @@
 import { useActionState, useState, useTransition } from "react";
 import { AlertTriangle, Paperclip, Sparkles, Info } from "lucide-react";
 import { FileDropZone } from "@/components/FileDropZone";
+import { AcceptedFilesLine, CantReadNotice } from "@/components/AcceptedFiles";
+import { unreadableKind } from "@/lib/storage/accepted-files";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { cancelEspDraft, readEspNotice, recordEspRevision, type EspActionState } from "@/lib/actions/esp-revisions";
 import {
-  ACCEPTED_FILES,
   ADD_REVISION,
   UPLOAD_HELP,
   replaceWarning,
@@ -132,7 +133,7 @@ export function EspNoticeUpload({
       {title && <p className="text-sm font-bold text-rc-ink">{title}</p>}
       <p className="text-xs leading-relaxed text-rc-muted">{UPLOAD_HELP}</p>
       <FileDropZone compact file={file} onFile={setFile} disabled={busy !== null} label="Drag the notice here, or click to browse" />
-      <p className="text-[11px] text-rc-muted">{ACCEPTED_FILES}</p>
+      <AcceptedFilesLine />
       {error && (
         <p role="alert" className="text-xs font-medium text-rc-amber-deep">
           {error}
@@ -173,17 +174,26 @@ const typed = (raw: string) => {
  * checks against it, the date it was given, the two confirmations, and what
  * saving does. Save revision records it; Cancel drops the draft and nothing
  * else changes.
+ *
+ * A notice in a Word file or a saved email can't be read (Adam, 3 Nov 2026):
+ * the draft says so in his words, in place of "The notice couldn't be read.
+ * Type the figures from it, or upload a clearer copy.", and keeps the figures
+ * to type. Its "Upload a PDF" cancels the draft, as Cancel does, so the upload
+ * box comes back for the PDF.
  */
 export function EspDraftForm({
   propertyId,
   pending,
   latestNo,
   fileUrl,
+  onUploadPdf,
 }: {
   propertyId: string;
   pending: PendingRevision;
   latestNo: number | null;
   fileUrl: string | null;
+  /** After "Upload a PDF" has cancelled the draft: brings the upload box back. */
+  onUploadPdf?: () => void;
 }) {
   const [state, action, saving] = useActionState<EspActionState, FormData>(recordEspRevision.bind(null, propertyId), { error: null });
   const [cancelling, startCancel] = useTransition();
@@ -193,6 +203,12 @@ export function EspDraftForm({
   const highN = typed(high);
   const spread = lowN && highN && highN >= lowN ? ((highN - lowN) / lowN) * 100 : null;
   const cancel = () => startCancel(async () => void (await cancelEspDraft(propertyId)));
+  const cantRead = !pending.notRecognised && unreadableKind(pending.fileName) !== null;
+  const uploadPdf = () =>
+    startCancel(async () => {
+      const { error } = await cancelEspDraft(propertyId);
+      if (!error) onUploadPdf?.();
+    });
 
   return (
     <form action={action} className="space-y-3 rounded-xl border border-rc-border bg-white p-3.5">
@@ -216,6 +232,8 @@ export function EspDraftForm({
             gave the seller.
           </span>
         </p>
+      ) : cantRead ? (
+        <CantReadNotice fileName={pending.fileName} onUploadPdf={uploadPdf} disabled={saving || cancelling} />
       ) : pending.readFailed ? (
         <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-2 text-xs text-rc-amber-deep">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />

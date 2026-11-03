@@ -1,7 +1,7 @@
 "use client";
 
 import { useViewerAccess } from "@/components/ViewerAccess";
-import { useActionState, useEffect, useState, type ChangeEvent } from "react";
+import { useActionState, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Check, Paperclip, Trash2 } from "lucide-react";
 import {
   addCpdFromCertificate,
@@ -15,6 +15,8 @@ import {
   type CpdNameQuestion,
 } from "@/lib/actions/registers";
 import { NameQuestionBox } from "@/components/NameQuestionBox";
+import { AcceptedFilesLine, CantReadNotice } from "@/components/AcceptedFiles";
+import { unreadableKind } from "@/lib/storage/accepted-files";
 import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildCpdDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
@@ -82,6 +84,12 @@ export function CpdPersonCard({
   // saved until it is answered.
   const [question, setQuestion] = useState<CpdNameQuestion | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // A Word, Excel or saved email certificate just added (Adam, 3 Nov 2026):
+  // saved on its own CPD row, and said so under the upload in his words, with
+  // "Upload a PDF" to this picker, in place of "That file type can't be read
+  // yet (application/...), so the details need typing in."
+  const [cantReadName, setCantReadName] = useState<string | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
 
   // One path for a picked file and a dropped one — see useFileDrop.
   const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: uploading || Boolean(question) });
@@ -95,6 +103,7 @@ export function CpdPersonCard({
   async function upload(file: File) {
     setError(null);
     setNotice(null);
+    setCantReadName(null);
     setUploading(true);
     // Always cleared, and a thrown save says so (check, 10 Oct 2026): it left
     // the card on "Reading certificate…" with the drop zone off until a reload.
@@ -108,7 +117,9 @@ export function CpdPersonCard({
       }
       const { error: saveError, question: asked, readProblem } = await addCpdFromCertificate(subject.id, path, stored.name);
       // Saved, but the read failed: the card says why (1 Nov 2026).
-      if (saveError || readProblem) setError(saveError ?? readProblem ?? null);
+      if (saveError) setError(saveError);
+      else if (unreadableKind(stored.name)) setCantReadName(stored.name);
+      else if (readProblem) setError(readProblem);
       if (asked) setQuestion(asked);
     } catch {
       setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");
@@ -194,23 +205,30 @@ export function CpdPersonCard({
           attach used elsewhere would be a different behaviour on the same
           card. */}
       {canEdit && !question && (
-        <label
-          {...drop.dragProps}
-          className={`mt-3 block cursor-pointer rounded-xl border border-dashed px-4 py-4 text-center transition ${
-            drop.isOver
-              ? "border-rc-green-deep bg-rc-green-soft"
-              : "border-rc-border bg-white hover:border-rc-green-deep hover:bg-rc-green-soft"
-          } ${uploading ? "opacity-60" : ""}`}
-        >
-          <span className="text-sm font-semibold text-rc-green-deep">
-            {uploading ? "Reading certificate…" : "+ Attach certificate"}
-          </span>
-          <span className="mt-1 block text-[11px] text-rc-faint">
-            Optional. PDF or photo from whichever trainer you used: drag it here or click. RealComply reads the
-            provider, topic, hours and date off it.
-          </span>
-          <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
-        </label>
+        <>
+          <label
+            {...drop.dragProps}
+            className={`mt-3 block cursor-pointer rounded-xl border border-dashed px-4 py-4 text-center transition ${
+              drop.isOver
+                ? "border-rc-green-deep bg-rc-green-soft"
+                : "border-rc-border bg-white hover:border-rc-green-deep hover:bg-rc-green-soft"
+            } ${uploading ? "opacity-60" : ""}`}
+          >
+            <span className="text-sm font-semibold text-rc-green-deep">
+              {uploading ? "Reading certificate…" : "+ Attach certificate"}
+            </span>
+            <span className="mt-1 block text-[11px] text-rc-faint">
+              Optional. PDF or photo from whichever trainer you used: drag it here or click. RealComply reads the
+              provider, topic, hours and date off it.
+            </span>
+            <input ref={picker} type="file" onChange={handleFile} disabled={uploading} className="hidden" />
+          </label>
+          {/* Under the upload; the hint inside it stays (Adam, 3 Nov 2026). */}
+          <AcceptedFilesLine className="mt-1.5" />
+          {cantReadName && !uploading && (
+            <CantReadNotice className="mt-2" fileName={cantReadName} onUploadPdf={() => picker.current?.click()} />
+          )}
+        </>
       )}
       {drop.dropError && (
         <p role="alert" className="mt-1.5 text-[11px] font-medium text-rc-amber-deep">
@@ -279,6 +297,11 @@ function CertificateRow({
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [linkFailed, setLinkFailed] = useState(false);
   const [editing, setEditing] = useState(false);
+  // A Word, Excel or saved email certificate just attached to this row
+  // (Adam, 3 Nov 2026), said here in his words in place of the read's own
+  // failure. No "Upload a PDF": a row takes one certificate, and this one is
+  // on it now.
+  const [cantReadName, setCantReadName] = useState<string | null>(null);
   // Closes once the save has gone through, not as soon as it is sent (check,
   // 10 Oct 2026): a refused save ("Give the activity a name.") closed the form
   // and its message with it, so nothing was saved and nothing said so.
@@ -311,6 +334,9 @@ function CertificateRow({
   const missingHours = amount === null;
   const missingDate = !record.completed_date;
   const missingProvider = !record.provider;
+  // Nothing was read off a certificate RealComply can't open, so the row says
+  // what it doesn't have, not what the certificate doesn't show.
+  const certificateRead = unreadableKind(record.evidence_file_name ?? record.evidence_path) === null;
 
   if (editing) {
     return (
@@ -415,7 +441,7 @@ function CertificateRow({
         {(missingHours || missingDate || missingProvider) && (
           <MissingCpdFields
             record={record}
-            fromCertificate={Boolean(record.evidence_path) && source === "certificate"}
+            fromCertificate={Boolean(record.evidence_path) && source === "certificate" && certificateRead}
             missingHours={missingHours}
             missingDate={missingDate}
             missingProvider={missingProvider}
@@ -461,7 +487,10 @@ function CertificateRow({
         )}
       </div>
       </div>
-      {canEdit && !record.evidence_path && <AttachToRow record={record} onReadProblem={onReadProblem} />}
+      {canEdit && !record.evidence_path && (
+        <AttachToRow record={record} onReadProblem={onReadProblem} onCantRead={setCantReadName} />
+      )}
+      {cantReadName && record.evidence_path && <CantReadNotice className="mt-2" fileName={cantReadName} />}
     </div>
   );
 }
@@ -471,7 +500,16 @@ function CertificateRow({
  * training plan), taken in this same place. Read the same way as a new one,
  * with the same name question; it fills only what the row is missing.
  */
-function AttachToRow({ record, onReadProblem }: { record: CpdRecord; onReadProblem?: (message: string) => void }) {
+function AttachToRow({
+  record,
+  onReadProblem,
+  onCantRead,
+}: {
+  record: CpdRecord;
+  onReadProblem?: (message: string) => void;
+  /** A Word, Excel or saved email certificate went on: the row says so (3 Nov 2026). */
+  onCantRead?: (fileName: string) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState<CpdNameQuestion | null>(null);
@@ -499,7 +537,9 @@ function AttachToRow({ record, onReadProblem }: { record: CpdRecord; onReadProbl
       const { error: saveError, question: asked, readProblem } = await attachCpdCertificate(record.id, path, stored.name);
       if (saveError) setError(saveError);
       // Saved, but the read failed. Said on the person's card, since this
-      // control goes once the certificate is on the row (1 Nov 2026).
+      // control goes once the certificate is on the row (1 Nov 2026). One it
+      // can't read is said on the row itself (3 Nov 2026).
+      else if (unreadableKind(stored.name)) onCantRead?.(stored.name);
       else if (readProblem) onReadProblem?.(readProblem);
       if (asked) setQuestion(asked);
     } catch {
@@ -543,6 +583,8 @@ function AttachToRow({ record, onReadProblem }: { record: CpdRecord; onReadProbl
           <input type="file" onChange={handleFile} disabled={busy} className="hidden" />
         </label>
       )}
+      {/* Under the upload, where the hint was only on hover (Adam, 3 Nov 2026). */}
+      {!question && <AcceptedFilesLine className="mt-0.5" />}
       {(error ?? drop.dropError) && (
         <p role="alert" className="mt-1 text-[11px] font-medium text-rc-amber-deep">
           {error ?? drop.dropError}

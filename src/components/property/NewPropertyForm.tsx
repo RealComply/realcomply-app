@@ -9,6 +9,7 @@ import type { ActionState } from "@/lib/actions/auth";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildStagingPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { FileDropZone } from "@/components/FileDropZone";
+import { AcceptedFilesLine } from "@/components/AcceptedFiles";
 import { SaleMethodFields } from "@/components/property/SaleMethodFields";
 import { PropertyFigures } from "@/components/property/PropertyFigures";
 import { ExtractionProgress } from "@/components/property/ExtractionProgress";
@@ -377,6 +378,9 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
 
         <div className="border-t border-rc-border pt-6">
           <h2 className="text-sm font-semibold text-rc-ink">Documents</h2>
+          {/* All three are read, and the form stays short: one line for the
+              three, under the heading (Adam, 3 Nov 2026). */}
+          <AcceptedFilesLine className="mt-1" />
           <div className="mt-4 space-y-4">
             {DOC_FIELDS.map(({ field, label }) => (
               <DocUpload
