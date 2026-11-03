@@ -176,8 +176,15 @@ export function espVersions(
 export const HISTORY_HELP =
   "Every change stays on the file, with its notice. RealComply checks advertised prices and the sale price against the latest one.";
 
-/** "Record another revision" (the mockup). */
-export const RECORD_ANOTHER = "Record another revision";
+/**
+ * The button on the card that adds the next revision.
+ * REVERSAL (Master, 3 Nov 2026). Was: "Record another revision", and to add
+ * one the agent reopened the card (Adam's instruction to Global Property,
+ * 3 Nov). Now: this button, shown whenever the card is answered Yes, done or
+ * not, with no reopening. Why: reopening and changing the answer isn't
+ * intuitive (Adam, 3 Nov).
+ */
+export const ADD_REVISION = "Add new estimated selling price revision";
 export const UPLOAD_HELP =
   "Upload the notice you gave the seller and RealComply reads the new figures from it. Check them before you save.";
 /** Under the upload (Adam, 3 Nov 2026). */

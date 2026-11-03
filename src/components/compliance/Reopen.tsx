@@ -71,10 +71,18 @@ export function CardReopenArea({
   item,
   status,
   current,
+  hideReopen = false,
 }: {
   item: { key: string; kind: string };
   status?: string | null;
   current?: PropertyItem;
+  /**
+   * No Reopen button while the file isn't signed off: the card has its own
+   * way to change (Adam, 3 Nov 2026, the ESP revision card: "remove the
+   * Reopen button on this card"). On a signed-off file it stays, as the way
+   * to reopen the file or ask the licensee to.
+   */
+  hideReopen?: boolean;
 }) {
   const ctx = useReopen();
   const [pending, start] = useTransition();
@@ -98,7 +106,8 @@ export function CardReopenArea({
   // which is done whatever the send card itself says.
   const reopenKey = reopenKeyFor(item.key, ctx.signedOff);
   const showReopen =
-    reopenKey === item.key ? showsSharedReopen(item, status, ctx.signedOff) : showsSharedReopen(item, "done", true);
+    !(hideReopen && !ctx.signedOff) &&
+    (reopenKey === item.key ? showsSharedReopen(item, status, ctx.signedOff) : showsSharedReopen(item, "done", true));
   const showMarkDone = isOpen && Boolean(stamp.reopenedAt) && MARK_DONE_AGAIN_KEYS.has(item.key) && !ctx.signedOff;
 
   // Why it is open again. b4 says to tick it again when the ESP it rested on

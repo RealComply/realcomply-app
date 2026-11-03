@@ -8,7 +8,7 @@ import { buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence"
 import { cancelEspDraft, readEspNotice, recordEspRevision, type EspActionState } from "@/lib/actions/esp-revisions";
 import {
   ACCEPTED_FILES,
-  RECORD_ANOTHER,
+  ADD_REVISION,
   UPLOAD_HELP,
   replaceWarning,
   type EspVersion,
@@ -86,7 +86,7 @@ export function EspNoticeUpload({
   onCancel,
 }: {
   propertyId: string;
-  /** "Record another revision" once there is one; none for the first. */
+  /** "Add new estimated selling price revision" once there is one; none for the first. */
   title: string | null;
   onCancel?: () => void;
 }) {
@@ -196,7 +196,7 @@ export function EspDraftForm({
 
   return (
     <form action={action} className="space-y-3 rounded-xl border border-rc-border bg-white p-3.5">
-      <p className="text-sm font-bold text-rc-ink">{latestNo ? RECORD_ANOTHER : "Record the revision"}</p>
+      <p className="text-sm font-bold text-rc-ink">{latestNo ? ADD_REVISION : "Record the revision"}</p>
       <p className="flex flex-wrap items-center gap-1.5 text-xs text-rc-muted">
         <Paperclip size={12} aria-hidden="true" />
         {fileUrl ? (

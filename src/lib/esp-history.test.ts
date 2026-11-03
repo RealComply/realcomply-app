@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ADD_REVISION,
   LATEST_PILL,
   approvalLines,
   cancelledBecause,
@@ -85,6 +86,12 @@ describe("the card lists every version, newest first", () => {
     assert.equal(espRange(r!.low, r!.high), "$1,350,000");
     assert.equal(revisionFrom({ revision_no: 1 }), null);
     assert.equal(recordedLine({ recordedByName: null, recordedAt: "" }), null);
+  });
+});
+
+describe("adding a revision (Master, 3 Nov 2026)", () => {
+  it("the button on the card says what Master asked for, word for word", () => {
+    assert.equal(ADD_REVISION, "Add new estimated selling price revision");
   });
 });
 

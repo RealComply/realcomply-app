@@ -85,7 +85,7 @@ describe("the office manager card on Home", () => {
     const friday = at("2026-10-29T14:00:00Z");
     assert.equal(
       friday?.kind === "waiting" && friday.nudge,
-      "Jordan Blake hasn't opened the approval link yet. Ask them to check their quarantine.",
+      "Jordan Blake hasn't opened the approval link yet. Ask them to check their spam or junk folder.",
     );
     const opened = officeManagerCard({
       ...base,

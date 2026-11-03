@@ -71,9 +71,9 @@ test("the nudge: after 2 full NSW business days unopened", () => {
 test("the nudge in Adam's words; Copy link only on the file sign-off", () => {
   assert.equal(
     nudgeText("signoff", "Vic Srbinovski"),
-    "Vic Srbinovski hasn't opened the sign-off link yet. Copy it and send it yourself, or ask them to check their quarantine.",
+    "Vic Srbinovski hasn't opened the sign-off link yet. Copy it and send it yourself, or ask them to check their spam or junk folder.",
   );
-  assert.equal(nudgeText("office_manager", "Vic"), "Vic hasn't opened the approval link yet. Ask them to check their quarantine.");
+  assert.equal(nudgeText("office_manager", "Vic"), "Vic hasn't opened the approval link yet. Ask them to check their spam or junk folder.");
   assert.ok(!/Copy/.test(nudgeText("annexure", "Vic")), "no Copy link for the annexure");
   assert.equal(copyLinkHint("Vic"), "If Vic hasn't received it, copy the link and send it yourself.");
   for (const kind of ["signoff", "office_manager", "annexure"] as const) {
@@ -142,7 +142,7 @@ test("Home: the annexure link while it waits on the licensee, with no Copy link"
   });
   assert.equal(
     annexureLinkStatus(row, "Lee Licensee", sydney("2026-11-05T09:00:00"))?.nudge,
-    "Lee Licensee hasn't opened the link to adopt the annexure yet. Ask them to check their quarantine.",
+    "Lee Licensee hasn't opened the link to adopt the annexure yet. Ask them to check their spam or junk folder.",
   );
   const opened = annexureLinkStatus({ ...row, opened_at: "2026-11-02T22:14:00.000Z" }, "Lee Licensee", sydney("2026-11-09T09:00:00"));
   assert.equal(opened?.openedLine, "Opened 3 November 2026, 9:14am");
