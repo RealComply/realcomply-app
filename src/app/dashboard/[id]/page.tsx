@@ -25,6 +25,7 @@ import { stageProgress } from "@/lib/rules/stage-progress";
 import { StageProgressBar } from "@/components/compliance/StageProgressBar";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
+import { espHistoryFor } from "@/lib/data/esp-revisions";
 
 // "Read uploaded documents" and "Read again" run from this page. A large PDF
 // is now read in parts (25 Oct 2026, lib/documents/reader-parts.ts), and a
@@ -199,6 +200,11 @@ export default async function PropertyPage({
   // b4, the price statement: who ticked it and when, or the licensee's own
   // approval from before 2 Nov 2026 (REVERSAL: lib/rules/price-statement.ts).
   const b4Approval = priceApproval(allItems["b4"], new Map(people.map((x) => [x.id, { full_name: x.full_name }])));
+  // Every ESP revision, with its notice (Adam, 3 Nov 2026; 0110): only for
+  // the stage the d3 card is on.
+  const espHistory = stageItems.some((i) => i.key === "d3")
+    ? await espHistoryFor(supabase, p.agency_id, p.id, allItems)
+    : undefined;
   const personName = (id: string | null) => {
     const found = people.find((x) => x.id === id);
     return found?.full_name ?? "the agent";
@@ -388,6 +394,7 @@ export default async function PropertyPage({
                   comparables={comparables}
                   marketListings={marketListings}
                   b4Approval={b4Approval}
+                  espHistory={espHistory}
                 />
               ))}
             </div>
@@ -410,6 +417,7 @@ export default async function PropertyPage({
               comparables={comparables}
               marketListings={marketListings}
               b4Approval={b4Approval}
+              espHistory={espHistory}
               />
           ))}
         </div>

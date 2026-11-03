@@ -12,6 +12,17 @@ import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
 import { priceApprovalFor } from "@/lib/data/price-approval";
+import { priceApproval } from "@/lib/rules/price-statement";
+import { espRevisionsFor } from "@/lib/data/esp-revisions";
+import {
+  approvalLines,
+  cancelledBecause,
+  espPackRows,
+  revisionsOrCard,
+  type ApprovalEvent,
+  type EspPackRow,
+  type EspRevision,
+} from "@/lib/esp-history";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET, complaintFolder, isInFolder, listingFolder } from "@/lib/storage/evidence";
 import { packDocKind, packDocumentsFor, type PackDocument } from "@/lib/pdf/pack-documents";
@@ -207,6 +218,13 @@ export async function buildAuditPack(
   );
   const documents = packDocumentsFor(items, byKey, listingFolder(agencyId, id), uploads);
 
+  // EVERY ESP REVISION, WITH ITS NOTICE (Adam, 3 Nov 2026; 0110). The card
+  // names the latest notice only; each earlier revision's notice goes in just
+  // before it, oldest first, so every version's evidence is in the pack. The
+  // page "Estimated selling price: every change" links to each.
+  const revisions = revisionsOrCard(await espRevisionsFor(supabase, agencyId, id), byKey["d3"]);
+  const espHistory = revisions.length > 0 ? await espHistoryPage(supabase, agencyId, id, byKey, revisions, documents, uploads) : null;
+
   // Complaints the office linked to this listing, and their files (0101).
   // Read with the client passed in, so with a signed-in user's own access
   // only the licensee in charge's pack has them, or an office manager's
@@ -279,6 +297,7 @@ export async function buildAuditPack(
     // or what the licensee approved before then, and how: in the app, or
     // through the emailed link (0066).
     priceApproval: await priceApprovalFor(supabase, byKey["b4"]),
+    espHistory,
     complaints: linked.complaints,
     signatures: { agent: agentSignature, licensee: licenseeSignature },
     documents,
@@ -294,6 +313,88 @@ export async function buildAuditPack(
 
   const filename = complianceRecordFilename(p, agencyName, generatedAt, isDraft);
   return { pdf, filename, included };
+}
+
+/**
+ * The ESP revision notices in the pack, and the page "Estimated selling price:
+ * every change" (Adam, 3 Nov 2026): Version, ESP, Date, Recorded by and
+ * Evidence, each evidence a link to its document's page; then the price
+ * statement approvals and cancellations in date order. Adds each earlier
+ * revision's notice to `documents`, just before the latest's.
+ */
+async function espHistoryPage(
+  supabase: SupabaseClient,
+  agencyId: string,
+  propertyId: string,
+  byKey: Record<string, PropertyItem>,
+  revisions: EspRevision[],
+  documents: PackDocument[],
+  uploads: Map<string, { by: string | null; at: string | null }>,
+): Promise<{ rows: EspPackRow[]; approvals: string[] }> {
+  const folder = listingFolder(agencyId, propertyId);
+  const latest = revisions[revisions.length - 1];
+  const at = documents.findIndex((d) => d.path === latest.noticePath);
+  const stage = at >= 0 ? documents[at].stage : "Other documents on this listing";
+  if (at >= 0) documents[at] = { ...documents[at], cardTitle: `ESP revision notice, Revision ${latest.no} (latest)` };
+  const earlier: PackDocument[] = revisions
+    .slice(0, -1)
+    .filter((r) => isInFolder(r.noticePath, folder) && !documents.some((d) => d.path === r.noticePath))
+    .map((r) => {
+      const fileName = r.noticeFileName ?? r.noticePath.split("/").pop() ?? "notice";
+      return {
+        stage,
+        cardTitle: `ESP revision notice, Revision ${r.no}`,
+        fileName,
+        path: r.noticePath,
+        kind: packDocKind(fileName),
+        uploadedBy: uploads.get(r.noticePath)?.by ?? r.recordedByName,
+        uploadedAt: uploads.get(r.noticePath)?.at ?? (r.recordedAt || null),
+      };
+    });
+  documents.splice(at >= 0 ? at : documents.length, 0, ...earlier);
+
+  const a4 = (byKey["a4"]?.data ?? {}) as { espLow?: unknown; espHigh?: unknown };
+  const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
+  const agreementPath = byKey["a3"]?.evidence_path && isInFolder(byKey["a3"].evidence_path, folder) ? byKey["a3"].evidence_path : null;
+  const rows = espPackRows(
+    { low: num(a4.espLow), high: num(a4.espHigh), agreementDate: byKey["a3"]?.event_date ?? null, agreementPath },
+    revisions,
+  );
+
+  // The approvals: each cancelled one (the card as it stood, 0100), and the current one.
+  const { data: cancelRows } = await supabase
+    .from("listing_signoff_cancellations")
+    .select("card, cancelled_at, because, because_item_key")
+    .eq("agency_id", agencyId)
+    .eq("property_id", propertyId)
+    .eq("item_key", "b4");
+  const cancels = (cancelRows ?? []) as Array<{ card: unknown; cancelled_at: string; because: string; because_item_key: string | null }>;
+  const cards = [...cancels.map((c) => c.card as PropertyItem), byKey["b4"]].filter(Boolean) as PropertyItem[];
+  const ids = [
+    ...new Set(
+      cards
+        .flatMap((c) => [(c.data as { tickedBy?: unknown } | null)?.tickedBy, c.completed_by])
+        .filter((v): v is string => typeof v === "string"),
+    ),
+  ];
+  const { data: people } = ids.length > 0 ? await supabase.from("profiles").select("id, full_name").in("id", ids) : { data: [] };
+  const names = new Map(((people ?? []) as Array<{ id: string; full_name: string | null }>).map((x) => [x.id, { full_name: x.full_name }]));
+  const events: ApprovalEvent[] = [];
+  const approved = (row: PropertyItem | null | undefined) => {
+    const a = priceApproval(row, names);
+    if (a?.at && !events.some((e) => e.kind === "approved" && e.at === a.at)) events.push({ kind: "approved", at: a.at, by: a.name, because: null });
+  };
+  for (const c of cancels) {
+    approved(c.card as PropertyItem);
+    events.push({
+      kind: "cancelled",
+      at: c.cancelled_at,
+      by: null,
+      because: cancelledBecause({ because: c.because, becauseItemKey: c.because_item_key, cancelledAt: c.cancelled_at }, revisions),
+    });
+  }
+  approved(byKey["b4"]);
+  return { rows, approvals: approvalLines(events) };
 }
 
 const COMPLAINT_STATUS: Record<string, string> = { open: "Open", under_review: "Under review", resolved: "Resolved" };

@@ -1305,161 +1305,44 @@ async function readCoveringLetterOnto(propertyId: string): Promise<ActionState> 
 }
 
 /**
- * Reads the notice attached to d3 and records the revised price on it.
+ * The notice on the d3 card, read again (Read again, or a file attached
+ * through the card's general uploader).
  *
- * The figures are written to the item's own data rather than overwriting a4.
- * a4 is what the agency agreement said at listing set-up, and it stays that:
- * a compliance file should show the original estimate AND the revision, not a
- * single figure that quietly changed. effectiveEsp() is what resolves the two
- * into "the price right now" for everything that needs to compare against it.
+ * CHANGE (Adam, 3 Nov 2026; 0110). WAS: the read wrote the new figures, the
+ * date given, the method and the reason over the card's, so an earlier
+ * revision was lost. NOW: nothing on this card is ever written over. A notice
+ * goes into the card's draft and becomes a revision only when the agent checks
+ * the figures and saves (lib/actions/esp-revisions.ts). The card's own notice
+ * is the latest revision's, already read and recorded, so once a revision is
+ * recorded there is nothing here to read again.
  */
 async function readRevisedEspNoticeOnto(propertyId: string): Promise<ActionState> {
   const { supabase, profile } = await requireAuthContext();
-
   const { data: row } = await supabase
     .from("property_items")
     .select("*")
     .eq("property_id", propertyId)
     .eq("item_key", "d3")
     .maybeSingle();
-
   const item = row as PropertyItem | null;
-  if (!item?.evidence_path) return ok;
-
+  const data = (item?.data ?? {}) as Record<string, unknown>;
+  if (!item?.evidence_path || data.latestRevision != null) return ok;
+  const { count } = await supabase
+    .from("esp_revisions")
+    .select("id", { count: "exact", head: true })
+    .eq("property_id", propertyId);
+  if ((count ?? 0) > 0) return ok;
   const fileName =
-    (item.data as { evidenceFileName?: string } | null)?.evidenceFileName ??
-    item.evidence_path.split("/").pop() ??
-    "notice";
-
-  // A failed read has to survive on the item, not just be returned.
-  //
-  // Until 26 Aug 2026 this returned an error string that the caller logged to
-  // the server console and deliberately did not show — reasonable for a
-  // comparables report, where a stale finding is the only cost and the
-  // page-level button is the retry. It was wrong here. For this document the
-  // read IS the record: there was no manual path, so a failed read left the
-  // item permanently un-completable with nothing on screen to say why. That is
-  // what happened on 16 Greenmount Way, and the first anyone knew of it was a
-  // flag at settlement weeks later.
-  //
-  // Now the failure is written to the item, the card shows it, and the manual
-  // fallback (enterRevisedEspManually) opens.
-  const markReadFailed = async (reason: string) => {
-    await supabase
-      .from("property_items")
-      .update({
-        agency_id: profile.agency_id,
-        data: {
-          ...((item.data as Record<string, unknown>) ?? {}),
-          espRevised: true,
-          noticeReadFailed: true,
-          noticeReadFailedReason: reason,
-          noticeReadAttemptedAt: new Date().toISOString(),
-        },
-      })
-      .eq("property_id", propertyId)
-      .eq("item_key", "d3");
-    revalidatePath(`/dashboard/${propertyId}`);
-  };
-
-  const result = await extractRevisedEspNotice(supabase, item.evidence_path, fileName, propertyId);
-  if (!result.ok) {
-    // Why, in plain words (1 Nov 2026). Every failure used to say the file
-    // couldn't be opened, including an answer cut off at the reader's limit
-    // and a reader that was busy.
-    const reason = failedReadSentence(
-      result.why,
-      "the notice",
-      "Try Read again, or put the figures in yourself.",
-      "The file couldn't be opened for reading. It may be a format we can't read, or the scan may be damaged.",
-    );
-    await markReadFailed(reason);
-    return {
-      error:
-        result.why === "file" || result.why === "unsupported" || result.why === "other"
-          ? "Couldn't read that notice. Check it opens, then try attaching it again."
-          : reason,
-    };
-  }
-  const fields = result.fields;
-
-  if (fields.looksLikeRevisedEspNotice === false) {
-    await supabase
-      .from("property_items")
-      .update({
-        data: {
-          ...((item.data as Record<string, unknown>) ?? {}),
-          noticeNotRecognised: true,
-          revisedEspLow: undefined,
-          revisedEspHigh: undefined,
-          // Distinct from a failed read, and deliberately does NOT open the
-          // manual fallback. This document was readable — it just is not a
-          // revision notice. Offering to type the revised price beside the
-          // wrong document would produce a record pointing at evidence that
-          // does not support it.
-          noticeReadFailed: undefined,
-          noticeReadFailedReason: undefined,
-        },
-      })
-      .eq("property_id", propertyId)
-      .eq("item_key", "d3");
-    revalidatePath(`/dashboard/${propertyId}`);
-    return {
-      error:
-        "That doesn't look like a notice revising the estimated selling price. Attach the notice you served on the vendor.",
-    };
-  }
-
-  // Both figures or neither. Half a range would feed a comparison that looks
-  // authoritative and is not — see the same rule in effectiveEsp().
-  const bothFigures = fields.revisedEspLow != null && fields.revisedEspHigh != null;
-
-  await supabase
-    .from("property_items")
-    .update({
-      agency_id: profile.agency_id,
-      data: {
-        ...((item.data as Record<string, unknown>) ?? {}),
-        espRevised: true,
-        noticeNotRecognised: undefined,
-        revisedEspLow: bothFigures ? fields.revisedEspLow : undefined,
-        revisedEspHigh: bothFigures ? fields.revisedEspHigh : undefined,
-        noticeServedOn: fields.noticeServedOn,
-        methodOfService: fields.methodOfService,
-        reason: fields.reason,
-        evidenceProvidedBeforeNotice: fields.evidenceProvidedBeforeNotice,
-        noticeReadAt: new Date().toISOString(),
-        // Written in the SAME update as the figures rather than in a second
-        // pass. markReadFailed spreads the item.data this function loaded at
-        // the start, so calling it after this write would put the pre-read
-        // values back — including figures from an earlier successful read that
-        // this one has just superseded.
-        //
-        // A clean read clears the failure and the typed-by-hand mark: the
-        // figures come off the document again, and the card should stop saying
-        // otherwise. A read that could not make out the numbers records why,
-        // which is what opens the manual fallback on the card — a handwritten
-        // notice, a figure amended in pen, a photo at an angle.
-        noticeReadFailed: bothFigures ? undefined : true,
-        noticeReadFailedReason: bothFigures
-          ? undefined
-          : "The notice was read, but the revised price couldn't be made out. If it's handwritten or the photo is unclear, put the figures in yourself.",
-        noticeReadAttemptedAt: bothFigures ? undefined : new Date().toISOString(),
-        enteredManually: undefined,
-      },
-    })
-    .eq("property_id", propertyId)
-    .eq("item_key", "d3");
-
+    (typeof data.evidenceFileName === "string" && data.evidenceFileName) || item.evidence_path.split("/").pop() || "notice";
+  const { readNoticeIntoPending } = await import("@/lib/esp-notice");
+  const result = await readNoticeIntoPending(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    path: item.evidence_path,
+    fileName,
+  });
   revalidatePath(`/dashboard/${propertyId}`);
-
-  if (!bothFigures) {
-    return {
-      error:
-        "Read the notice but couldn't make out the revised price. Open it and check, then re-attach a clearer copy.",
-    };
-  }
-  return ok;
+  return result;
 }
 
 /**
