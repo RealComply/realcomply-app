@@ -6,6 +6,8 @@ import { addComplaint, updateComplaintStatus, deleteComplaint, type ActionState 
 import { useOnSaved } from "@/lib/use-on-saved";
 import { complaintFilesFor } from "@/lib/complaint-files";
 import { ComplaintFiles } from "@/components/registers/ComplaintFiles";
+import { ComplaintSignOff } from "@/components/registers/ComplaintSignOff";
+import { complaintAwaitsSignOff, complaintRecordLines } from "@/lib/reviews/records";
 import type { Complaint, ComplaintFile, Profile, Property } from "@/lib/types";
 
 const initialState: ActionState = { error: null };
@@ -34,6 +36,8 @@ export function ComplaintsPanel({
   properties,
   viewerProfile,
   canChange = false,
+  canMoveOn = canChange,
+  canSignOff = canChange,
   nameOf = {},
   resolutionTargetDays,
   files = [],
@@ -50,6 +54,13 @@ export function ComplaintsPanel({
    * more (Adam, 31 Oct 2026: "adding and read only"; 0102).
    */
   canChange?: boolean;
+  /**
+   * Under review and Resolved: the licensee in charge or the office manager
+   * (REVERSAL, Adam, 3 Nov 2026; 0108). Was: the licensee only.
+   */
+  canMoveOn?: boolean;
+  /** The sign-off of a resolved complaint: the licensee in charge only (0108). */
+  canSignOff?: boolean;
   /** Everyone's display name, people who have left included (the picker isn't). */
   nameOf?: Record<string, string>;
   resolutionTargetDays: number;
@@ -108,7 +119,9 @@ export function ComplaintsPanel({
             </p>
             {!canChange && (
               <p className="mt-1 text-xs text-rc-muted">
-                You can log complaints and add files. Review, Resolve and removing are for the licensee in charge.
+                {canMoveOn
+                  ? "You can log complaints, add files, and mark them Under review or Resolved. Signing off and removing are for the licensee in charge."
+                  : "You can log complaints and add files. Review, Resolve and removing are for the licensee in charge."}
               </p>
             )}
           </div>
@@ -216,6 +229,11 @@ export function ComplaintsPanel({
                           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[c.status]}`}>
                             {STATUS_LABELS[c.status]}
                           </span>
+                          {complaintRecordLines(c).map((line) => (
+                            <span key={line} className="mt-1 block whitespace-nowrap text-[11px] text-rc-muted">
+                              {line}
+                            </span>
+                          ))}
                         </td>
                         {filesReady && (
                           <td className="py-2 pr-3">
@@ -235,7 +253,7 @@ export function ComplaintsPanel({
                         )}
                         <td className="py-2 text-right">
                           <div className="flex justify-end gap-2">
-                            {canChange && c.status !== "resolved" && (
+                            {canMoveOn && c.status !== "resolved" && (
                               <>
                                 {c.status === "open" && (
                                   <form action={updateComplaintStatus.bind(null, c.id, "under_review")}>
@@ -272,6 +290,15 @@ export function ComplaintsPanel({
                           </div>
                         </td>
                       </tr>
+                      {canSignOff && complaintAwaitsSignOff(c) && (
+                        <tr className="border-b border-neutral-100">
+                          <td colSpan={9} className="pb-3">
+                            <div className="sticky left-0 max-w-[calc(100vw-4rem)] rounded-lg border border-rc-green-deep/20 bg-rc-green-soft/40 p-3 sm:max-w-none">
+                              <ComplaintSignOff complaintId={c.id} />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                       {filesReady && filesOpen && (
                         <tr className="border-b border-neutral-100">
                           <td colSpan={9} className="pb-3">

@@ -88,13 +88,14 @@ export const NAV_GROUPS: NavGroup[] = [
         pmOnly: true,
         keywords: ["pm", "rentals", "tenancies", "leasing", "landlord", "tenant"],
       },
-      // Every listing in the office: the licensee's only, not an office
-      // manager's (not decided, 26 Oct 2026).
+      // Every listing in the office. REVERSAL (Adam, 3 Nov 2026; 0108): was
+      // the licensee's only, not an office manager's (not decided, 26 Oct
+      // 2026). Now an office manager sees it too, to read: "the office
+      // manager sees everything".
       {
         href: "/dashboard/portfolio",
         label: "Office overview",
         Icon: LayoutGrid,
-        licenseeOnly: true,
         keywords: ["portfolio", "team files"],
       },
     ],

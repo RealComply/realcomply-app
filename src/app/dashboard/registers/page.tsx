@@ -361,6 +361,8 @@ export default async function RegistersPage({
                   properties={properties}
                   viewerProfile={profile}
                   canChange={access.officeLicensee}
+                  canMoveOn={access.officeLicensee || access.isOfficeManager}
+                  canSignOff={access.officeLicensee}
                   nameOf={nameOf}
                   resolutionTargetDays={agency.complaint_resolution_target_days}
                   files={complaintFiles}

@@ -207,6 +207,10 @@ export type Gift = {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  /** Who marked it reviewed and when (0108). Null for reviews before 0108, and before 0108 is run. */
+  reviewed_by?: string | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
 };
 
 export type ComplaintStatus = "open" | "under_review" | "resolved";
@@ -224,6 +228,16 @@ export type Complaint = {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  /** Who moved it on and when, and the licensee's sign-off once resolved (0108). Null before 0108. */
+  under_review_by?: string | null;
+  under_review_by_name?: string | null;
+  under_review_at?: string | null;
+  resolved_by?: string | null;
+  resolved_by_name?: string | null;
+  resolved_at?: string | null;
+  signed_off_by?: string | null;
+  signed_off_name?: string | null;
+  signed_off_at?: string | null;
 };
 
 /**

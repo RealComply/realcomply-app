@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { createSignoffDocument } from "@/lib/actions/signoffs";
 import { validIsoDate } from "@/lib/licence-read";
@@ -806,9 +807,15 @@ export async function addGift(_prev: ActionState, formData: FormData): Promise<A
 // Clears a flagged entry once the licensee has looked at it — the entry
 // itself is never hidden or deleted, just marked reviewed (same "record the
 // diligence, don't scrub the record" principle as everywhere else).
+//
+// REVERSAL (Adam, 3 Nov 2026; 0108). Was (0093): the licensee in charge or the
+// office manager could mark a gift reviewed, and nothing recorded who or when.
+// Now: the licensee in charge only (or the agent on their own plan), and the
+// database records who and when. The office manager still records gifts and
+// edits their notes.
 export async function markGiftReviewed(giftId: string): Promise<void> {
   const { supabase, access } = await requireAuthContext();
-  if (!access.runsOffice) return;
+  if (!access.actsAsLicensee) return;
   await supabase.from("gifts").update({ status: "reviewed" }).eq("id", giftId).eq("status", "flagged");
   revalidatePath("/dashboard/registers");
 }
@@ -878,17 +885,37 @@ export async function updateComplaintStatus(
   status: "open" | "under_review" | "resolved",
 ): Promise<void> {
   const { supabase, access } = await requireAuthContext();
-  // Review and Resolve: the licensee in charge only, never an office manager
-  // (Adam, 31 Oct 2026: "adding and read only").
-  if (!access.officeLicensee) return;
+  // REVERSAL (Adam, 3 Nov 2026; 0108). Was (31 Oct 2026, "adding and read
+  // only"): Review and Resolve were the licensee in charge's only. Now the
+  // licensee or the office manager marks a complaint Under review or
+  // Resolved, and the database records who and when. Taking one back out of
+  // Resolved stays with the licensee, and the database refuses an office
+  // manager (0108).
+  if (!access.officeLicensee && !(access.isOfficeManager && status !== "open")) return;
   await supabase
     .from("complaints")
-    .update({
-      status,
-      resolved_date: status === "resolved" ? new Date().toISOString().slice(0, 10) : null,
-    })
-    .eq("id", complaintId);
+    .update({ status, resolved_date: status === "resolved" ? sydneyDate(new Date()) : null })
+    .eq("id", complaintId)
+    .neq("status", status);
   revalidatePath("/dashboard/registers");
+}
+
+/**
+ * The licensee in charge signs off a resolved complaint (Adam, 3 Nov 2026;
+ * 0108): "I've reviewed how this complaint was handled and resolved." The tick
+ * is that statement; the database records who and when.
+ */
+export async function signOffComplaint(complaintId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { supabase, access } = await requireAuthContext();
+  if (!access.officeLicensee) return { error: "Only the licensee in charge can sign off a complaint." };
+  if (formData.get("reviewed") !== "yes") return { error: "Tick the box to sign it off." };
+  const { error } = await supabase.rpc("sign_off_complaint", { p_complaint_id: complaintId });
+  if (error) {
+    const said = (error.code === "P0001" || error.code === "42501") && error.message;
+    return { error: said || "Couldn't sign it off just now. Try again." };
+  }
+  revalidatePath("/dashboard/registers");
+  return { error: null };
 }
 
 export async function deleteComplaint(complaintId: string): Promise<void> {
