@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ChangeEvent } from "react";
+import { useActionState, useEffect, useRef, useState, type ChangeEvent, type Ref } from "react";
 import {
   attachLicenceDocument,
   readLicenceFromDocument,
@@ -17,6 +17,7 @@ import { LICENCE_CATEGORY_LABELS, cleanLicenceCategories } from "@/lib/rules/nsw
 import { LicenceTypes } from "@/components/registers/LicenceTypes";
 import { ReminderLine, type ReminderInfo } from "@/components/registers/ReminderLine";
 import { LicenceReadNotice } from "@/components/registers/LicenceReadNotice";
+import { AcceptedFilesLine } from "@/components/AcceptedFiles";
 import { parseReadState } from "@/lib/licence-read";
 import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { useOnSaved } from "@/lib/use-on-saved";
@@ -75,6 +76,12 @@ export function StaffRegisterCard({
   const [readResult, setReadResult] = useState<LicenceReadResult | null>(null);
   const readState = parseReadState(profile.licence_read);
   const detailsMissing = !profile.licence_type || !profile.licence_number || !profile.licence_expiry;
+  // "Upload a PDF" under a document RealComply can't read opens the upload's
+  // own picker (Adam, 3 Nov 2026).
+  const picker = useRef<HTMLInputElement>(null);
+  const documentName = profile.licence_document_path
+    ? (profile.licence_document_file_name ?? profile.licence_document_path.split("/").pop() ?? null)
+    : null;
 
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
@@ -175,7 +182,7 @@ export function StaffRegisterCard({
             proves nothing to an auditor, and the person who typed it is the
             one who'd have to find the PDF again. Visible to everyone in the
             agency; only the holder and the licensee can change it. */}
-        <LicenceDocument profile={profile} canEdit={canEdit} onResult={setReadResult} />
+        <LicenceDocument profile={profile} canEdit={canEdit} onResult={setReadResult} inputRef={picker} />
         <LicenceReadNotice
           state={readState}
           target={{ kind: "person", profileId: profile.id }}
@@ -184,6 +191,8 @@ export function StaffRegisterCard({
           canReread={Boolean(runsOffice && canEdit && profile.licence_document_path && detailsMissing)}
           onReread={() => readLicenceFromDocument(profile.id)}
           lastResult={readResult}
+          documentFileName={documentName}
+          onUploadPdf={() => picker.current?.click()}
         />
         {former ? (
           // The job skips someone who has left, so no "Next reminder" here.
@@ -234,10 +243,13 @@ function LicenceDocument({
   profile,
   canEdit,
   onResult,
+  inputRef,
 }: {
   profile: Profile;
   canEdit: boolean;
   onResult: (result: LicenceReadResult) => void;
+  /** The picker, for "Upload a PDF" under a document that can't be read. */
+  inputRef?: Ref<HTMLInputElement>;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState<false | "uploading" | "reading">(false);
@@ -315,6 +327,7 @@ function LicenceDocument({
             ? "Upload renewed licence"
             : `Upload ${uploadLabel}`}
       <input
+        ref={inputRef}
         type="file"
         accept="application/pdf,image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
         onChange={handleFile}
@@ -325,37 +338,41 @@ function LicenceDocument({
   ) : null;
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-      {profile.licence_document_path ? (
-        <>
-          {signedUrl ? (
-            <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-rc-green-deep hover:underline">
-              <Paperclip size={12} /> {profile.licence_document_file_name ?? "View document"}
-            </a>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-rc-faint">
-              <Paperclip size={12} /> loading link…
-            </span>
-          )}
-          {uploadControl}
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => removeLicenceDocument(profile.id)}
-              className="text-rc-faint hover:text-rc-amber-deep"
-            >
-              Remove
-            </button>
-          )}
-        </>
-      ) : canEdit ? (
-        uploadControl
-      ) : (
-        <span className="text-rc-faint">No {uploadLabel} on file.</span>
-      )}
-      {(error ?? drop.dropError) && (
-        <span className="text-rc-amber-deep">{error ?? drop.dropError}</span>
-      )}
-    </div>
+    <>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        {profile.licence_document_path ? (
+          <>
+            {signedUrl ? (
+              <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-rc-green-deep hover:underline">
+                <Paperclip size={12} /> {profile.licence_document_file_name ?? "View document"}
+              </a>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-rc-faint">
+                <Paperclip size={12} /> loading link…
+              </span>
+            )}
+            {uploadControl}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => removeLicenceDocument(profile.id)}
+                className="text-rc-faint hover:text-rc-amber-deep"
+              >
+                Remove
+              </button>
+            )}
+          </>
+        ) : canEdit ? (
+          uploadControl
+        ) : (
+          <span className="text-rc-faint">No {uploadLabel} on file.</span>
+        )}
+        {(error ?? drop.dropError) && (
+          <span className="text-rc-amber-deep">{error ?? drop.dropError}</span>
+        )}
+      </div>
+      {/* Under the upload, where the hint was only on hover (Adam, 3 Nov 2026). */}
+      {canEdit && <AcceptedFilesLine className="mt-1" />}
+    </>
   );
 }

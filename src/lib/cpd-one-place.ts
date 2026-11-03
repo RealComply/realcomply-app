@@ -4,13 +4,17 @@
 //   * A CPD row says where its details came from: a training session, a
 //     training plan, a certificate, or typed in. Only a row read off a
 //     certificate says "Read from certificate" (the chip used to say it on
-//     every row, including rows that never had one).
+//     every row, including rows that never had one). A Word, Excel or saved
+//     email certificate is attached but never read, so its row doesn't say it
+//     either (3 Nov 2026).
 //   * Any row without a certificate takes one in that same place. The
 //     certificate fills only what the row is missing; what the session or the
 //     plan recorded is never overwritten.
 //   * A training plan item linked to a CPD record shows that record's
 //     certificate and never asks for one of its own. Only an item with no CPD
 //     record (training that doesn't count for CPD) takes a document.
+
+import { unreadableKind } from "@/lib/storage/accepted-files";
 
 export type CpdRowSource = "session" | "plan" | "certificate" | "typed";
 
@@ -22,12 +26,12 @@ export const CPD_SOURCE_LABEL: Record<CpdRowSource, string> = {
 };
 
 export function cpdRowSource(
-  record: { id: string; source_session_id: string | null; evidence_path: string | null },
+  record: { id: string; source_session_id: string | null; evidence_path: string | null; evidence_file_name?: string | null },
   planRecordIds: ReadonlySet<string>,
 ): CpdRowSource {
   if (record.source_session_id) return "session";
   if (planRecordIds.has(record.id)) return "plan";
-  if (record.evidence_path) return "certificate";
+  if (record.evidence_path && unreadableKind(record.evidence_file_name ?? record.evidence_path) === null) return "certificate";
   return "typed";
 }
 

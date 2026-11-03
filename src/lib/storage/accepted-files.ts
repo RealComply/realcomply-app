@@ -1,0 +1,63 @@
+// What a reading upload takes, and what it says about a file it can't read
+// (Adam, 2 to 3 Nov 2026; mockup approved).
+//
+// One line, the same words everywhere RealComply reads the file with AI, small
+// and grey right under the upload: "Accepted files: Clear photo or PDF." Only
+// where the file is read. A store-only upload (a trust reconciliation, the SG
+// Manual, a complaint's files, a listing card nothing reads) says nothing.
+//
+// Uploads still take Word, Excel and saved emails (EVIDENCE_TYPES in
+// lib/storage/evidence.ts), because a file refused is a file lost. The reader
+// can't open them, so one that goes up at a reading upload is saved, and that
+// spot says so in Adam's words, with a button to upload a PDF instead. Before,
+// it said whatever the reader said, a raw type such as
+// "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+// included.
+//
+// Decided by the stored file's name, so the spot says it again on reload
+// wherever the attached file's name is known. The words and the rule live
+// here, with no browser or database, so every one is tested
+// (accepted-files.test.ts).
+
+/** Under every upload RealComply reads (moved here from lib/esp-history.ts, 3 Nov 2026). */
+export const ACCEPTED_FILES = "Accepted files: Clear photo or PDF.";
+
+/** The button on the notice: straight to choosing a replacement at the same spot. */
+export const UPLOAD_A_PDF = "Upload a PDF";
+
+/** The kinds of file an upload takes but the reader can't open, as the notice names them. */
+export type UnreadableKind = "Word files" | "Excel files" | "saved emails";
+
+const KIND_BY_EXTENSION: Record<string, UnreadableKind> = {
+  doc: "Word files",
+  docx: "Word files",
+  xls: "Excel files",
+  xlsx: "Excel files",
+  eml: "saved emails",
+  msg: "saved emails",
+};
+
+/**
+ * The kind of a stored file the reader can't open, from its name's
+ * extension (any case), or null for anything else: a PDF, a photo, a name
+ * with no extension. A storage path works too: only the part after the last
+ * "/" is looked at.
+ */
+export function unreadableKind(fileName: string | null | undefined): UnreadableKind | null {
+  if (!fileName) return null;
+  const base = fileName.slice(fileName.lastIndexOf("/") + 1).trim();
+  const dot = base.lastIndexOf(".");
+  if (dot < 0) return null;
+  return KIND_BY_EXTENSION[base.slice(dot + 1).toLowerCase()] ?? null;
+}
+
+/** What the spot says, word for word, about a file of that kind (Adam, 3 Nov 2026). */
+export function savedButCantRead(kind: UnreadableKind): string {
+  return `Saved, but we can't read ${kind}. Save it as a PDF and upload that, and we'll fill in the details for you.`;
+}
+
+/** The sentence for a stored file the reader can't open, or null when it can be read. */
+export function cantReadMessage(fileName: string | null | undefined): string | null {
+  const kind = unreadableKind(fileName);
+  return kind ? savedButCantRead(kind) : null;
+}
