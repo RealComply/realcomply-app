@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type DragEvent } from "react";
+import { useId, useImperativeHandle, useRef, useState, type DragEvent, type Ref } from "react";
 import { AlertTriangle, Paperclip, Upload, X } from "lucide-react";
 import { useStrayDropGuard } from "@/lib/use-file-drop";
 import {
@@ -45,6 +45,10 @@ import {
 // the file is now refused on the spot, against the field it belongs to. The
 // check inside uploadEvidenceObject stays where it is: this one is the
 // courtesy, that one is the guard.
+
+/** Opens the zone's file picker from elsewhere: "Upload a PDF" (3 Nov 2026). */
+export type FilePicker = { open: () => void };
+
 export function FileDropZone({
   name,
   file,
@@ -54,6 +58,7 @@ export function FileDropZone({
   compact = false,
   required = false,
   maxBytes = MAX_EVIDENCE_BYTES,
+  pickerRef,
 }: {
   /** Form field name. Omit for zones driven purely by the onFile callback. */
   name?: string;
@@ -74,9 +79,16 @@ export function FileDropZone({
   required?: boolean;
   /** Largest file this zone will accept. Defaults to the storage limit. */
   maxBytes?: number;
+  /**
+   * Lets the spot open this picker itself, for "Upload a PDF" under a file
+   * RealComply can't read (Adam, 3 Nov 2026). Called in the click that asks
+   * for it, so the browser lets the picker open.
+   */
+  pickerRef?: Ref<FilePicker>;
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  useImperativeHandle(pickerRef, () => ({ open: () => inputRef.current?.click() }), []);
   const [over, setOver] = useState(false);
   const [tookFirst, setTookFirst] = useState(false);
   const [tooBig, setTooBig] = useState<string | null>(null);

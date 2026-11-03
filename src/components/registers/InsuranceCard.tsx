@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition, type ChangeEvent } from "react";
+import { useActionState, useRef, useState, useTransition, type ChangeEvent } from "react";
 import { AlertTriangle, Paperclip } from "lucide-react";
 import {
   attachInsuranceCertificate,
@@ -24,6 +24,8 @@ import {
   type InsuranceField,
 } from "@/lib/insurance-read";
 import { useViewerAccess } from "@/components/ViewerAccess";
+import { AcceptedFilesLine, CantReadNotice } from "@/components/AcceptedFiles";
+import { unreadableKind } from "@/lib/storage/accepted-files";
 import { useOnSaved } from "@/lib/use-on-saved";
 import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -117,6 +119,15 @@ export function InsuranceCard({
   const key = targetKey(target);
   const headingId = `insurance-${key}`;
   const named = target.kind === "other" && target.policyKind === "other";
+  // A Word, Excel or saved email certificate (Adam, 3 Nov 2026): kept, and said
+  // so in his words under the upload, with "Upload a PDF" to its picker, in
+  // place of "The certificate couldn't be read, so the details need adding by
+  // hand. It stays attached." The boxes to type the details in stay. By the
+  // certificate's name, so it is said again on reload. The same for a policy
+  // just added under "+ Add other insurance": its card says it.
+  const picker = useRef<HTMLInputElement>(null);
+  const documentName = documentPath ? (documentFileName ?? documentPath.split("/").pop() ?? null) : null;
+  const cantRead = unreadableKind(documentName) !== null;
 
   const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: Boolean(busy) || !canEdit });
 
@@ -308,7 +319,7 @@ export function InsuranceCard({
                 title="Drag a file here, or click. A PDF or a phone photo is fine."
               >
                 {busyText ?? "Upload renewed certificate"}
-                <input type="file" accept={ACCEPT} onChange={handleFile} disabled={Boolean(busy)} className="hidden" />
+                <input ref={picker} type="file" accept={ACCEPT} onChange={handleFile} disabled={Boolean(busy)} className="hidden" />
               </label>
             )}
             {canEdit && hasDetails && !editing && (
@@ -331,23 +342,31 @@ export function InsuranceCard({
               </button>
             )}
           </div>
+          {canEdit && <AcceptedFilesLine />}
+          {cantRead && !busy && (
+            <CantReadNotice fileName={documentName} onUploadPdf={canEdit ? () => picker.current?.click() : undefined} />
+          )}
         </div>
       ) : canEdit ? (
-        <label
-          {...drop.dragProps}
-          className={`mt-3 block cursor-pointer rounded-xl border-[1.5px] border-dashed p-4 text-center transition ${
-            drop.isOver ? "border-rc-green-deep bg-rc-green-soft" : "border-rc-border hover:border-rc-green-deep"
-          } ${busy ? "opacity-70" : ""}`}
-        >
-          <span className="block text-sm font-bold text-rc-green-deep">{busyText ?? "+ Upload certificate of currency"}</span>
-          {!busy && (
-            <span className="mt-1 block text-xs text-rc-muted">
-              PDF or phone photo of the certificate of currency or policy schedule: drag it here or click. RealComply
-              reads the insurer, policy number and expiry off it.
-            </span>
-          )}
-          <input type="file" accept={ACCEPT} onChange={handleFile} disabled={Boolean(busy)} className="hidden" />
-        </label>
+        <>
+          <label
+            {...drop.dragProps}
+            className={`mt-3 block cursor-pointer rounded-xl border-[1.5px] border-dashed p-4 text-center transition ${
+              drop.isOver ? "border-rc-green-deep bg-rc-green-soft" : "border-rc-border hover:border-rc-green-deep"
+            } ${busy ? "opacity-70" : ""}`}
+          >
+            <span className="block text-sm font-bold text-rc-green-deep">{busyText ?? "+ Upload certificate of currency"}</span>
+            {!busy && (
+              <span className="mt-1 block text-xs text-rc-muted">
+                PDF or phone photo of the certificate of currency or policy schedule: drag it here or click. RealComply
+                reads the insurer, policy number and expiry off it.
+              </span>
+            )}
+            <input ref={picker} type="file" accept={ACCEPT} onChange={handleFile} disabled={Boolean(busy)} className="hidden" />
+          </label>
+          {/* Under the upload; the hint inside it stays (Adam, 3 Nov 2026). */}
+          <AcceptedFilesLine className="mt-1.5" />
+        </>
       ) : null}
 
       {/* An added policy without a certificate (only ever by hand in the
@@ -397,6 +416,7 @@ export function InsuranceCard({
           target={target}
           missing={missing}
           couldNotRead={readState?.lastRead?.status === "could_not_read"}
+          saysWhy={!cantRead}
         />
       )}
 
@@ -459,10 +479,13 @@ function GapForm({
   target,
   missing,
   couldNotRead,
+  saysWhy = true,
 }: {
   target: InsuranceTarget;
   missing: InsuranceField[];
   couldNotRead: boolean;
+  /** False under the notice for a certificate that can't be read: it has said why. */
+  saysWhy?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(saveActionFor(target), initialState);
   const labels = missing.map((f) => INSURANCE_FIELD_LABELS[f]);
@@ -474,7 +497,7 @@ function GapForm({
       action={formAction}
       className="mt-3 flex flex-col gap-2 rounded-xl border border-rc-amber/40 bg-rc-amber/10 px-3 py-2.5 text-sm"
     >
-      <span className="text-rc-amber-deep">{lead}</span>
+      {saysWhy && <span className="text-rc-amber-deep">{lead}</span>}
       <div className="flex flex-wrap items-end gap-2">
         {missing.map((f) => (
           <DetailInput key={f} field={f} defaultValue={null} idPrefix={targetKey(target)} />

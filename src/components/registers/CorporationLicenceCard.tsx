@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition, type ChangeEvent } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition, type ChangeEvent, type Ref } from "react";
 import { Building2, Paperclip } from "lucide-react";
 import {
   acceptLicenceHolderAsEntityName,
@@ -20,6 +20,7 @@ import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildCorporationLicenceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { ReminderLine, type ReminderInfo } from "@/components/registers/ReminderLine";
 import { LicenceReadNotice } from "@/components/registers/LicenceReadNotice";
+import { AcceptedFilesLine } from "@/components/AcceptedFiles";
 import type { Agency } from "@/lib/types";
 
 // The corporation's own licence.
@@ -73,6 +74,9 @@ export function CorporationLicenceCard({
   const [readResult, setReadResult] = useState<LicenceReadResult | null>(null);
   const readState = parseReadState(agency.corporation_licence_read);
   const status = expiryStatus(expiry);
+  // "Upload a PDF" under a document RealComply can't read opens the upload's
+  // own picker (Adam, 3 Nov 2026).
+  const picker = useRef<HTMLInputElement>(null);
 
   const statusLabel =
     !expiry
@@ -171,6 +175,7 @@ export function CorporationLicenceCard({
         fileName={documentName}
         canEdit={canEdit}
         onResult={setReadResult}
+        inputRef={picker}
       />
       {canEdit && readState?.entityCheck && readState.entityCheck.path === documentPath && (
         <EntityNameQuestion
@@ -188,6 +193,8 @@ export function CorporationLicenceCard({
         canReread={Boolean(canEdit && documentPath && (!holder || !licenceNumber || !expiry))}
         onReread={() => readCorporationLicenceFromDocument()}
         lastResult={readResult}
+        documentFileName={documentPath ? (documentName ?? documentPath.split("/").pop() ?? null) : null}
+        onUploadPdf={() => picker.current?.click()}
       />
 
       {/* The corporation licence has no holder to email, so its reminders go
@@ -203,12 +210,15 @@ function CorporationDocument({
   fileName,
   canEdit,
   onResult,
+  inputRef,
 }: {
   agencyId: string;
   path: string | null;
   fileName: string | null;
   canEdit: boolean;
   onResult: (r: LicenceReadResult) => void;
+  /** The picker, for "Upload a PDF" under a document that can't be read. */
+  inputRef?: Ref<HTMLInputElement>;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState<false | "uploading" | "reading">(false);
@@ -271,6 +281,7 @@ function CorporationDocument({
             ? "Upload renewed licence"
             : "Upload corporation licence"}
       <input
+        ref={inputRef}
         type="file"
         accept="application/pdf,image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
         onChange={handleFile}
@@ -281,36 +292,40 @@ function CorporationDocument({
   ) : null;
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-      {path ? (
-        <>
-          {signedUrl ? (
-            <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-rc-green-deep hover:underline">
-              <Paperclip size={12} /> {fileName ?? "View document"}
-            </a>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-rc-faint">
-              <Paperclip size={12} /> loading link…
-            </span>
-          )}
-          {control}
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => removeCorporationLicenceDocument()}
-              className="text-rc-faint hover:text-rc-amber-deep"
-            >
-              Remove
-            </button>
-          )}
-        </>
-      ) : canEdit ? (
-        control
-      ) : (
-        <span className="text-rc-faint">No corporation licence document on file.</span>
-      )}
-      {(error ?? drop.dropError) && <span className="text-rc-amber-deep">{error ?? drop.dropError}</span>}
-    </div>
+    <>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        {path ? (
+          <>
+            {signedUrl ? (
+              <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-rc-green-deep hover:underline">
+                <Paperclip size={12} /> {fileName ?? "View document"}
+              </a>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-rc-faint">
+                <Paperclip size={12} /> loading link…
+              </span>
+            )}
+            {control}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => removeCorporationLicenceDocument()}
+                className="text-rc-faint hover:text-rc-amber-deep"
+              >
+                Remove
+              </button>
+            )}
+          </>
+        ) : canEdit ? (
+          control
+        ) : (
+          <span className="text-rc-faint">No corporation licence document on file.</span>
+        )}
+        {(error ?? drop.dropError) && <span className="text-rc-amber-deep">{error ?? drop.dropError}</span>}
+      </div>
+      {/* Under the upload, where the hint was only on hover (Adam, 3 Nov 2026). */}
+      {canEdit && <AcceptedFilesLine className="mt-1" />}
+    </>
   );
 }
 

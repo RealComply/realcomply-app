@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { cantReadMessage } from "@/lib/storage/accepted-files";
 import { downloadedFileProblem } from "@/lib/storage/file-check";
 import { reportReadFailed, reportReadFrom, type ReportRead } from "@/lib/documents/report-read";
 import { addReportRows } from "@/lib/documents/report-rows";
@@ -1272,7 +1273,11 @@ async function readCoveringLetterOnto(propertyId: string): Promise<ActionState> 
       .eq("item_key", COVERING_LETTER_KEY);
     await (item.event_date ? failedWrite.eq("event_date", item.event_date) : failedWrite.is("event_date", null));
     revalidatePath(`/dashboard/${propertyId}`);
-    return { error: reason };
+    // A saved email or a Word file (Adam, 3 Nov 2026): said in his words, not
+    // as "Couldn't read the covering letter. Check it opens". The card says
+    // the same beside the file, by its name.
+    const cantRead = result.why === "unsupported" ? cantReadMessage(fileName) : null;
+    return { error: cantRead ? `Covering letter: ${cantRead}` : reason };
   }
   const fields = result.fields;
 
@@ -1458,7 +1463,13 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
       }
     } catch (err) {
       const why = readFailure(err);
-      failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${why}`);
+      // A Word, Excel or saved email file (Adam, 3 Nov 2026): said in his
+      // words, not as "file type not supported for extraction yet
+      // (application/...)". What is kept on the card is unchanged; the card
+      // says the same, by the file's name.
+      const cantRead =
+        err instanceof FileCantBeRead && err.why === "unsupported" ? cantReadMessage(evidenceFileNameOf(item)) : null;
+      failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${cantRead ?? why}`);
       if (item.item_key === "a4") reportRead = reportReadFailed(why, item.evidence_path!, readAt);
       await noteRead(supabase, { ...where, outcome: "failed", error: err });
     }
