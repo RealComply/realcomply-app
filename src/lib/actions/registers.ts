@@ -10,6 +10,7 @@ import { firstName, possessive, sameName } from "@/lib/licence-name";
 import { pendingReadProblem, signPendingRead, verifyPendingRead } from "@/lib/pending-read";
 import { formatAuDate } from "@/lib/format-date";
 import { fillFromCertificate } from "@/lib/cpd-one-place";
+import { unreadableKind } from "@/lib/storage/accepted-files";
 import type { BreachCategory, BreachSeverity, GiftDirection } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -219,19 +220,37 @@ async function rowForCertificate(
 ) {
   const { data } = await supabase
     .from("cpd_records")
-    .select("id, profile_id, agency_id, evidence_path, hours, completed_date, provider")
+    .select("id, profile_id, agency_id, evidence_path, evidence_file_name, hours, completed_date, provider")
     .eq("id", recordId)
     .maybeSingle();
   const row = data as {
     id: string; profile_id: string; agency_id: string; evidence_path: string | null;
+    evidence_file_name: string | null;
     hours: number | null; completed_date: string | null; provider: string | null;
   } | null;
   if (!row) return { problem: "Couldn't find that CPD record." } as const;
   if (row.profile_id !== actor.id && !actor.is_licensee_in_charge && !officeManager) {
     return { problem: "Only the licensee in charge can attach a certificate for someone else." } as const;
   }
-  if (row.evidence_path) return { problem: "This CPD record already has its certificate." } as const;
+  // One certificate per row, except one RealComply can't read (a Word, Excel
+  // or saved email file), which "Upload a PDF" swaps for a PDF or photo it
+  // can (Adam, 3 Nov 2026). The file swapped out stays in storage.
+  if (row.evidence_path && !unreadableKind(row.evidence_file_name ?? row.evidence_path)) {
+    return { problem: "This CPD record already has its certificate." } as const;
+  }
   return { row } as const;
+}
+
+/**
+ * Only the certificate the row was read with: none, or the unreadable one
+ * being swapped. Another save in between changes it, and this one then saves
+ * nothing ("already has its certificate").
+ */
+function sameCertificate<Q extends { is: (c: string, v: null) => Q; eq: (c: string, v: string) => Q }>(
+  query: Q,
+  evidencePath: string | null,
+): Q {
+  return evidencePath ? query.eq("evidence_path", evidencePath) : query.is("evidence_path", null);
 }
 
 /**
@@ -264,12 +283,13 @@ export async function attachCpdCertificate(
   });
   if (question) return { error: null, question };
 
-  const { data: saved, error } = await supabase
-    .from("cpd_records")
-    .update({ evidence_path: path, evidence_file_name: fileName, ...fillFromCertificate(row, read) })
-    .eq("id", recordId)
-    .is("evidence_path", null)
-    .select("id");
+  const { data: saved, error } = await sameCertificate(
+    supabase
+      .from("cpd_records")
+      .update({ evidence_path: path, evidence_file_name: fileName, ...fillFromCertificate(row, read) })
+      .eq("id", recordId),
+    row.evidence_path,
+  ).select("id");
   if (error) return { error: "Couldn't save that certificate — try again." };
   if ((saved ?? []).length === 0) return { error: "This CPD record already has its certificate." };
 
@@ -352,19 +372,20 @@ export async function confirmCpdCertificateName(token: string): Promise<{ error:
     const found = await rowForCertificate(supabase, profile, pending.recordId, access.isOfficeManager);
     if ("problem" in found) return { error: found.problem ?? "Couldn't save that certificate." };
     if (found.row.profile_id !== pending.profileId) return { error: pendingReadProblem("invalid", "certificate") };
-    const { data: saved, error } = await supabase
-      .from("cpd_records")
-      .update({
-        evidence_path: pending.path,
-        evidence_file_name: pending.fileName,
-        ...fillFromCertificate(found.row, pending.read),
-        name_on_certificate: pending.nameOnDocument,
-        name_confirmed_by: profile.id,
-        name_confirmed_at: new Date().toISOString(),
-      })
-      .eq("id", pending.recordId)
-      .is("evidence_path", null)
-      .select("id");
+    const { data: saved, error } = await sameCertificate(
+      supabase
+        .from("cpd_records")
+        .update({
+          evidence_path: pending.path,
+          evidence_file_name: pending.fileName,
+          ...fillFromCertificate(found.row, pending.read),
+          name_on_certificate: pending.nameOnDocument,
+          name_confirmed_by: profile.id,
+          name_confirmed_at: new Date().toISOString(),
+        })
+        .eq("id", pending.recordId),
+      found.row.evidence_path,
+    ).select("id");
     if (error) return { error: "Couldn't save that certificate. Try again." };
     if ((saved ?? []).length === 0) return { error: "This CPD record already has its certificate." };
     revalidatePath("/dashboard/cpd");

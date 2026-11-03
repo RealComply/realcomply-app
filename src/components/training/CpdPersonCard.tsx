@@ -84,12 +84,6 @@ export function CpdPersonCard({
   // saved until it is answered.
   const [question, setQuestion] = useState<CpdNameQuestion | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // A Word, Excel or saved email certificate just added (Adam, 3 Nov 2026):
-  // saved on its own CPD row, and said so under the upload in his words, with
-  // "Upload a PDF" to this picker, in place of "That file type can't be read
-  // yet (application/...), so the details need typing in."
-  const [cantReadName, setCantReadName] = useState<string | null>(null);
-  const picker = useRef<HTMLInputElement>(null);
 
   // One path for a picked file and a dropped one — see useFileDrop.
   const drop = useFileDrop({ onFile: (f) => void upload(f), disabled: uploading || Boolean(question) });
@@ -103,7 +97,6 @@ export function CpdPersonCard({
   async function upload(file: File) {
     setError(null);
     setNotice(null);
-    setCantReadName(null);
     setUploading(true);
     // Always cleared, and a thrown save says so (check, 10 Oct 2026): it left
     // the card on "Reading certificate…" with the drop zone off until a reload.
@@ -117,9 +110,11 @@ export function CpdPersonCard({
       }
       const { error: saveError, question: asked, readProblem } = await addCpdFromCertificate(subject.id, path, stored.name);
       // Saved, but the read failed: the card says why (1 Nov 2026).
+      // A Word, Excel or saved email certificate (Adam, 3 Nov 2026): saved on
+      // its own row, which says so in his words with "Upload a PDF", in place
+      // of "That file type can't be read yet (application/...)".
       if (saveError) setError(saveError);
-      else if (unreadableKind(stored.name)) setCantReadName(stored.name);
-      else if (readProblem) setError(readProblem);
+      else if (readProblem && !unreadableKind(stored.name)) setError(readProblem);
       if (asked) setQuestion(asked);
     } catch {
       setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");
@@ -221,13 +216,10 @@ export function CpdPersonCard({
               Optional. PDF or photo from whichever trainer you used: drag it here or click. RealComply reads the
               provider, topic, hours and date off it.
             </span>
-            <input ref={picker} type="file" onChange={handleFile} disabled={uploading} className="hidden" />
+            <input type="file" onChange={handleFile} disabled={uploading} className="hidden" />
           </label>
           {/* Under the upload; the hint inside it stays (Adam, 3 Nov 2026). */}
           <AcceptedFilesLine className="mt-1.5" />
-          {cantReadName && !uploading && (
-            <CantReadNotice className="mt-2" fileName={cantReadName} onUploadPdf={() => picker.current?.click()} />
-          )}
         </>
       )}
       {drop.dropError && (
@@ -297,11 +289,6 @@ function CertificateRow({
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [linkFailed, setLinkFailed] = useState(false);
   const [editing, setEditing] = useState(false);
-  // A Word, Excel or saved email certificate just attached to this row
-  // (Adam, 3 Nov 2026), said here in his words in place of the read's own
-  // failure. No "Upload a PDF": a row takes one certificate, and this one is
-  // on it now.
-  const [cantReadName, setCantReadName] = useState<string | null>(null);
   // Closes once the save has gone through, not as soon as it is sent (check,
   // 10 Oct 2026): a refused save ("Give the activity a name.") closed the form
   // and its message with it, so nothing was saved and nothing said so.
@@ -337,6 +324,9 @@ function CertificateRow({
   // Nothing was read off a certificate RealComply can't open, so the row says
   // what it doesn't have, not what the certificate doesn't show.
   const certificateRead = unreadableKind(record.evidence_file_name ?? record.evidence_path) === null;
+  // Its Word, Excel or saved email certificate, which "Upload a PDF" swaps
+  // for one that can be read (Adam, 3 Nov 2026). Said on every visit.
+  const unreadableName = record.evidence_path && !certificateRead ? (record.evidence_file_name ?? record.evidence_path) : null;
 
   if (editing) {
     return (
@@ -487,10 +477,10 @@ function CertificateRow({
         )}
       </div>
       </div>
-      {canEdit && !record.evidence_path && (
-        <AttachToRow record={record} onReadProblem={onReadProblem} onCantRead={setCantReadName} />
+      {canEdit && (!record.evidence_path || unreadableName) && (
+        <AttachToRow record={record} onReadProblem={onReadProblem} replacing={unreadableName} />
       )}
-      {cantReadName && record.evidence_path && <CantReadNotice className="mt-2" fileName={cantReadName} />}
+      {!canEdit && unreadableName && <CantReadNotice className="mt-2" fileName={unreadableName} />}
     </div>
   );
 }
@@ -503,13 +493,14 @@ function CertificateRow({
 function AttachToRow({
   record,
   onReadProblem,
-  onCantRead,
+  replacing = null,
 }: {
   record: CpdRecord;
   onReadProblem?: (message: string) => void;
-  /** A Word, Excel or saved email certificate went on: the row says so (3 Nov 2026). */
-  onCantRead?: (fileName: string) => void;
+  /** The row's Word, Excel or saved email certificate, to swap for a PDF (3 Nov 2026). */
+  replacing?: string | null;
 }) {
+  const picker = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState<CpdNameQuestion | null>(null);
@@ -538,9 +529,8 @@ function AttachToRow({
       if (saveError) setError(saveError);
       // Saved, but the read failed. Said on the person's card, since this
       // control goes once the certificate is on the row (1 Nov 2026). One it
-      // can't read is said on the row itself (3 Nov 2026).
-      else if (unreadableKind(stored.name)) onCantRead?.(stored.name);
-      else if (readProblem) onReadProblem?.(readProblem);
+      // can't read is said on the row itself, by its name (3 Nov 2026).
+      else if (readProblem && !unreadableKind(stored.name)) onReadProblem?.(readProblem);
       if (asked) setQuestion(asked);
     } catch {
       setError("Couldn't save that certificate. Reload the page to see whether it was added, then try again.");
@@ -568,6 +558,13 @@ function AttachToRow({
     <div className="mt-2 border-t border-rc-border pt-2">
       {question ? (
         <NameQuestionBox word="certificate" question={question} onAnswer={answerName} />
+      ) : replacing ? (
+        // "Upload a PDF" opens the picker; dropping a PDF on the notice works too.
+        <div {...drop.dragProps}>
+          <CantReadNotice fileName={replacing} onUploadPdf={() => picker.current?.click()} disabled={busy} />
+          {busy && <p className="mt-1 text-xs font-semibold text-rc-green-deep">Reading certificate…</p>}
+          <input ref={picker} type="file" onChange={handleFile} disabled={busy} className="hidden" />
+        </div>
       ) : (
         <label
           {...drop.dragProps}
