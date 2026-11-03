@@ -36,6 +36,9 @@ import { signedLink, type SignoffLink } from "@/lib/data/signoff-links";
 import { tickedLine, type PriceApproval } from "@/lib/rules/price-statement";
 import { espText, SALE_PRICE_NOTE_PROMPT, salePriceFlagText, savedSaleCheck } from "@/lib/rules/sale-price";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
+import { EspDraftForm, EspHistoryList, EspNoticeUpload, type EspHistoryView } from "@/components/compliance/EspRevisionParts";
+import { HISTORY_HELP, RECORD_ANOTHER, pendingFrom } from "@/lib/esp-history";
+import { espFrom } from "@/lib/data/effective-esp";
 import type { SearchTry } from "@/lib/listings-pages";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -50,7 +53,6 @@ import {
   markEspRevised,
   markNoPriceRevision,
   confirmEspRevision,
-  enterRevisedEspManually,
   addVerbalQuoteEntry,
   addBuyerEntry,
   removeBuyerEntry,
@@ -1852,11 +1854,14 @@ function GuideItem({
   propertyId,
   current,
   espItem,
+  revisionItem,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   espItem?: PropertyItem;
+  /** The ESP revision card (d3): its latest revision is the ESP now (Adam, 3 Nov 2026). */
+  revisionItem?: PropertyItem;
 }) {
   const boundAction = setItemStatus.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -1873,7 +1878,11 @@ function GuideItem({
     guideLow?: number | null;
     guideHigh?: number | null;
   };
-  const esp = (espItem?.data ?? {}) as { espLow?: number; espHigh?: number };
+  // The latest ESP, the same one the check uses (espFrom): the latest
+  // revision when there is one, else the agency agreement's (Adam, 3 Nov
+  // 2026: this card showed the original after a revision).
+  const latestEsp = espFrom(espItem?.data, revisionItem?.data);
+  const esp = { espLow: latestEsp.low ?? undefined, espHigh: latestEsp.high ?? undefined };
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
@@ -1894,7 +1903,7 @@ function GuideItem({
         <p className="text-sm text-rc-muted">Record the ESP (item a4) first — the live check needs it.</p>
       ) : (
         <p className="text-xs text-rc-muted">
-          Recorded ESP{" "}
+          {latestEsp.revised ? "Latest ESP (revised)" : "Recorded ESP"}{" "}
           <span className="font-semibold text-rc-ink">
             ${esp.espLow.toLocaleString()}
             {esp.espHigh && esp.espHigh !== esp.espLow ? ` – $${esp.espHigh.toLocaleString()}` : ""}
@@ -2695,76 +2704,11 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
 //
 // Three states, in order: unanswered, answered Yes and waiting for the notice,
 // notice read and waiting for the two confirmations only a person can give.
-// The fallback for a notice the reader could not make out — a handwritten
-// amendment, a photo taken at an angle, a fax-of-a-fax scan. Added 26 Aug 2026
-// on Adam's instruction.
-//
-// It is deliberately not offered up front. The upload is still the expected
-// path, and this only appears once a read has actually been attempted and
-// failed, so nobody reaches for the keyboard while the document would have
-// answered. What gets typed is marked as typed: enterRevisedEspManually sets
-// enteredManually, and the confirmation panel says so, because a licensee
-// signing this file should be able to tell which figures came off the page.
-function ManualEspEntry({ propertyId, reason }: { propertyId: string; reason: string }) {
-  const action = enterRevisedEspManually.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(action, initialState);
-
-  return (
-    <div className="rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
-      <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
-        <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-        <span>Couldn&rsquo;t read the notice</span>
-      </p>
-      <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{reason}</p>
-      <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">
-        The notice stays attached either way — it&rsquo;s still the record. Copy the figures from it below and
-        they&rsquo;ll be marked as entered by hand.
-      </p>
-
-      <form action={formAction} className="mt-3 space-y-2.5">
-        {state.error && <p className="text-[11px] font-medium text-rc-red">{state.error}</p>}
-        <div className="flex flex-wrap gap-2">
-          <label className="text-[11px] font-medium text-rc-ink">
-            <span className="block">Revised from</span>
-            <input
-              name="revisedEspLow"
-              inputMode="numeric"
-              required
-              placeholder="1,200,000"
-              className="mt-0.5 w-32 rounded-md border border-rc-border px-2 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
-            />
-          </label>
-          <label className="text-[11px] font-medium text-rc-ink">
-            <span className="block">to</span>
-            <input
-              name="revisedEspHigh"
-              inputMode="numeric"
-              required
-              placeholder="1,280,000"
-              className="mt-0.5 w-32 rounded-md border border-rc-border px-2 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
-            />
-          </label>
-          <label className="text-[11px] font-medium text-rc-ink">
-            <span className="block">Served on the vendor</span>
-            <input
-              name="noticeServedOn"
-              type="date"
-              required
-              className="mt-0.5 rounded-md border border-rc-border px-2 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
-            />
-          </label>
-        </div>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-        >
-          {pending ? "Saving…" : "Save these figures"}
-        </button>
-      </form>
-    </div>
-  );
-}
+// CHANGE (Adam, 3 Nov 2026; 0110): the typed-figures fallback (26 Aug 2026)
+// is part of the draft form now (components/compliance/EspRevisionParts.tsx):
+// a notice that can't be read is still kept, the figures are typed from it,
+// and the revision records that they were typed. It used to write the typed
+// figures over the card's, which lost an earlier revision.
 
 /**
  * A Yes / No question, and the one tick Yes can bring (the Power of Attorney
@@ -2897,7 +2841,24 @@ function DocumentItem({ item, propertyId, current }: { item: ComplianceItem; pro
   );
 }
 
-function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
+// ESP REVISION HISTORY (Adam, 3 Nov 2026; mockup approved; 0110).
+// WAS: one set of figures and one notice; a new notice wrote over the last.
+// NOW: nothing on this card is ever written over. Answering Yes records the
+// first revision; "Record another revision" adds the next. A notice uploaded
+// is read into a draft; the agent checks the figures and saves, and that
+// becomes the latest, which drives every check. Every version is listed,
+// newest first, with the original ESP from the agency agreement at the bottom.
+function ReductionItem({
+  item,
+  propertyId,
+  current,
+  espHistory,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  espHistory?: EspHistoryView;
+}) {
   const yesAction = markEspRevised.bind(null, propertyId);
   const noAction = markNoPriceRevision.bind(null, propertyId);
   const confirmAction = confirmEspRevision.bind(null, propertyId);
@@ -2905,26 +2866,17 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
   const data = (current?.data ?? {}) as {
     espRevised?: boolean;
     reopenedReason?: string;
-    noticeNotRecognised?: boolean;
-    noticeReadFailed?: boolean;
-    noticeReadFailedReason?: string;
-    enteredManually?: boolean;
-    revisedEspLow?: number;
-    revisedEspHigh?: number;
-    noticeServedOn?: string;
-    methodOfService?: string;
-    reason?: string;
     evidenceProvidedBeforeNotice?: boolean;
     advertisingUpdated?: boolean;
     outstanding?: string[];
   };
+  const pending = pendingFrom(current?.data);
+  const latestNo = espHistory?.latestNo ?? null;
+  const hasRevisions = latestNo !== null;
   const [reconsidering, setReconsidering] = useState(false);
-  const answered = data.espRevised !== undefined && !reconsidering;
-  const money = (n?: number) => (n == null ? "" : `$${n.toLocaleString("en-AU")}`);
-  const spread =
-    data.revisedEspLow && data.revisedEspHigh && data.revisedEspLow > 0
-      ? ((data.revisedEspHigh - data.revisedEspLow) / data.revisedEspLow) * 100
-      : null;
+  const [adding, setAdding] = useState(false);
+  // Once the ESP was revised, the answer stays Yes: "No" would write over it.
+  const answered = data.espRevised !== undefined && !(reconsidering && !hasRevisions);
 
   if (!answered) {
     return (
@@ -2980,159 +2932,105 @@ function ReductionItem({ item, propertyId, current }: { item: ComplianceItem; pr
     );
   }
 
-  const figuresRead = data.revisedEspLow != null && data.revisedEspHigh != null;
+  const outstanding = current?.status === "open" && hasRevisions && !pending ? (data.outstanding ?? []) : [];
 
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
-      {!figuresRead ? (
-        <div className="space-y-2">
-          {data.noticeNotRecognised ? (
-            <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-2 text-xs text-rc-amber-deep">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-              <span>
-                That doesn&rsquo;t look like a notice revising the estimated selling price. Attach the notice you
-                served on the vendor.
-              </span>
-            </p>
-          ) : data.noticeReadFailed ? (
-            /* The read was attempted and failed. Adam, 26 Aug 2026: "in the
-               event the document is handwritten and the AI can't read it, it
-               should put up a notice and ask for manual confirmation."
-               Before this, a failed read was logged to a server console and
-               the card said nothing — so the item simply could not be
-               completed, and the first anyone knew was a flag at settlement. */
-            <ManualEspEntry
-              propertyId={propertyId}
-              reason={
-                data.noticeReadFailedReason ??
-                "The notice couldn't be read. Put the figures in yourself."
-              }
-            />
-          ) : (
-            <p className="text-sm text-rc-muted">
-              Attach the notice you served on the vendor and the figures will be read off it. Serving that notice
-              is what amends the agency agreement, so there is nothing to re-sign.
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => setReconsidering(true)}
-            className="text-xs text-rc-green-deep hover:underline"
-          >
-            Change answer
-          </button>
-        </div>
-      ) : (
-        <form action={confirmFormAction} className="space-y-3">
-          {/* Says where these figures came from, and it matters. Everything
-              downstream — the daily advertised-price check, the rejected-offer
-              check, the licensee's sign-off summary — measures against this
-              number. A licensee putting their name to the file is entitled to
-              know whether it was read off the document or typed beside it. */}
-          <p
-            className={`flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-xs ${
-              data.enteredManually ? "bg-rc-bg-alt text-rc-ink" : "bg-rc-green-soft text-rc-green-deep"
-            }`}
-          >
-            {data.enteredManually ? (
-              <Info size={13} className="mt-0.5 shrink-0" />
-            ) : (
-              <Sparkles size={13} className="mt-0.5 shrink-0" />
-            )}
-            <span>
-              {data.enteredManually ? "Entered by hand from the notice" : "Read from the notice"}: revised to{" "}
-              <strong>{money(data.revisedEspLow)}</strong> to{" "}
-              <strong>{money(data.revisedEspHigh)}</strong>
-              {data.noticeServedOn ? (
-                <>
-                  , served on the vendor{data.methodOfService ? ` by ${data.methodOfService.toLowerCase()}` : ""} on{" "}
-                  <strong>{data.noticeServedOn}</strong>
-                </>
-              ) : null}
-              {spread !== null ? `. Spread ${spread.toFixed(1)}%` : ""}
-              {spread !== null && spread > 10 ? (
-                <>
-                  {" "}
-                  &mdash; <strong>wider than the 10% s72A(2) allows</strong>, which is a problem with the notice
-                  itself, not with this record.
-                </>
-              ) : null}
-              . {data.enteredManually ? "Check these against the notice before saving." : "Check it against the document before saving."}
-            </span>
-          </p>
-
-          {/* The two things the notice cannot prove about itself. One happened
-              before it (s72A(5)) and one happens after it (s73(3)), so neither
-              can be read off the page. */}
-          <div className="divide-y divide-rc-border rounded-md border border-rc-border">
-            <label className="flex items-start gap-2.5 px-3 py-2.5">
-              <input
-                type="checkbox"
-                name="evidenceProvidedBeforeNotice"
-                value="yes"
-                defaultChecked={data.evidenceProvidedBeforeNotice ?? false}
-                className="mt-0.5 shrink-0 accent-rc-green-deep"
-              />
-              <span>
-                <span className="block text-sm text-rc-ink">
-                  Vendor was given evidence of the new price before the notice
-                </span>
-                <span className="block text-[11px] text-rc-faint">
-                  s72A(5).{" "}
-                  {data.evidenceProvidedBeforeNotice
-                    ? "The notice says so, so this is pre-ticked. Untick it if that is wrong."
-                    : "Comparable sales, market conditions, buyer feedback."}
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2.5 px-3 py-2.5">
-              <input
-                type="checkbox"
-                name="advertisingUpdated"
-                value="yes"
-                defaultChecked={data.advertisingUpdated ?? false}
-                className="mt-0.5 shrink-0 accent-rc-green-deep"
-              />
-              <span>
-                <span className="block text-sm text-rc-ink">Advertising updated to match the revised price</span>
-                <span className="block text-[11px] text-rc-faint">
-                  s73(3). Anything showing a lower figure has to be amended or pulled as soon as practicable.
-                </span>
-              </span>
-            </label>
-          </div>
-
-          {data.outstanding && data.outstanding.length > 0 && (
-            <div className="rounded-lg bg-rc-amber/10 px-2.5 py-2">
-              {data.outstanding.map((o) => (
-                <p key={o} className="flex items-start gap-1.5 text-xs text-rc-amber-deep">
-                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-                  <span>{o}</span>
-                </p>
-              ))}
+      <div className="space-y-3">
+        {hasRevisions && espHistory && (
+          <>
+            <div className="flex gap-2">
+              <span className="rounded-full bg-rc-green-deep px-3.5 py-1 text-xs font-semibold text-white">Yes</span>
+              <span className="rounded-full border border-rc-border px-3.5 py-1 text-xs font-semibold text-rc-faint">No</span>
             </div>
-          )}
+            <p className="text-xs leading-relaxed text-rc-muted">{HISTORY_HELP}</p>
+            <EspHistoryList view={espHistory} />
+          </>
+        )}
 
-          <FieldError error={confirmState.error} />
-
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={confirmPending}
-              className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-            >
-              {confirmPending ? "Saving…" : "Save"}
-            </button>
+        {pending ? (
+          <EspDraftForm
+            propertyId={propertyId}
+            pending={pending}
+            latestNo={latestNo}
+            fileUrl={espHistory?.fileUrls[pending.path] ?? null}
+          />
+        ) : !hasRevisions || adding ? (
+          <EspNoticeUpload
+            propertyId={propertyId}
+            title={hasRevisions ? RECORD_ANOTHER : null}
+            onCancel={hasRevisions ? () => setAdding(false) : undefined}
+          />
+        ) : (
+          <>
+            {/* The two things the latest notice can't prove about itself, while
+                either is still outstanding. Its figures don't change here. */}
+            {outstanding.length > 0 && (
+              <form action={confirmFormAction} className="space-y-2">
+                <div className="divide-y divide-rc-border rounded-md border border-rc-border">
+                  <label className="flex items-start gap-2.5 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      name="evidenceProvidedBeforeNotice"
+                      value="yes"
+                      defaultChecked={data.evidenceProvidedBeforeNotice ?? false}
+                      className="mt-0.5 shrink-0 accent-rc-green-deep"
+                    />
+                    <span>
+                      <span className="block text-sm text-rc-ink">Vendor was given evidence of the new price before the notice</span>
+                      <span className="block text-[11px] text-rc-faint">s72A(5). Comparable sales, market conditions, buyer feedback.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2.5 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      name="advertisingUpdated"
+                      value="yes"
+                      defaultChecked={data.advertisingUpdated ?? false}
+                      className="mt-0.5 shrink-0 accent-rc-green-deep"
+                    />
+                    <span>
+                      <span className="block text-sm text-rc-ink">Advertising updated to match the revised price</span>
+                      <span className="block text-[11px] text-rc-faint">
+                        s73(3). Anything showing a lower figure has to be amended or pulled as soon as practicable.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+                <div className="rounded-lg bg-rc-amber/10 px-2.5 py-2">
+                  {outstanding.map((o) => (
+                    <p key={o} className="flex items-start gap-1.5 text-xs text-rc-amber-deep">
+                      <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                      <span>{o}</span>
+                    </p>
+                  ))}
+                </div>
+                <FieldError error={confirmState.error} />
+                <button
+                  type="submit"
+                  disabled={confirmPending}
+                  className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {confirmPending ? "Saving…" : "Save"}
+                </button>
+              </form>
+            )}
             <button
               type="button"
-              onClick={() => setReconsidering(true)}
-              className="text-xs text-rc-green-deep hover:underline"
+              onClick={() => setAdding(true)}
+              className="rounded-md bg-rc-green-deep px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-90"
             >
-              Change answer
+              {RECORD_ANOTHER}
             </button>
-          </div>
-        </form>
-      )}
+          </>
+        )}
+
+        {!hasRevisions && !pending && (
+          <button type="button" onClick={() => setReconsidering(true)} className="text-xs text-rc-green-deep hover:underline">
+            Change answer
+          </button>
+        )}
+      </div>
     </ItemShell>
   );
 }
@@ -4210,6 +4108,8 @@ type ItemCardProps = {
   // approval from before 2 Nov 2026 (lib/rules/price-statement.ts). Only the
   // b4 card uses it.
   b4Approval?: PriceApproval | null;
+  /** The ESP revision card (d3): every version, and links to each notice (Adam, 3 Nov 2026; 0110). */
+  espHistory?: EspHistoryView;
 };
 
 export function ItemCard(props: ItemCardProps) {
@@ -4229,6 +4129,7 @@ function ItemCardBody({
   marketListings = [],
   listingAgentId,
   b4Approval = null,
+  espHistory,
 }: ItemCardProps) {
   // b4 with the licensee's own approval from before 2 Nov 2026: as it read
   // then. A tick from then on is an ordinary checklist card below.
@@ -4242,7 +4143,7 @@ function ItemCardBody({
     case "reports":
       return <ReportsLogItem item={item} propertyId={propertyId} current={current} />;
     case "reduction":
-      return <ReductionItem item={item} propertyId={propertyId} current={current} />;
+      return <ReductionItem item={item} propertyId={propertyId} current={current} espHistory={espHistory} />;
     case "quotes":
       return <VerbalQuoteLogItem item={item} propertyId={propertyId} current={current} />;
     case "sale":
@@ -4293,6 +4194,7 @@ function ItemCardBody({
           propertyId={propertyId}
           current={current}
           espItem={allItems["a4"]}
+          revisionItem={allItems["d3"]}
         />
       );
     case "checklist":
