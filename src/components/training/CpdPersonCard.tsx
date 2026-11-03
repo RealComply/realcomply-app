@@ -413,7 +413,13 @@ function CertificateRow({
               {amount} {isUnit ? (amount === 1 ? "unit" : "units") : amount === 1 ? "hour" : "hours"} ·{" "}
             </>
           )}
-          {record.completed_date ? <>completed {formatAuDate(record.completed_date)}</> : "completion date not read"}
+          {record.completed_date ? (
+            <>completed {formatAuDate(record.completed_date)}</>
+          ) : unreadableName ? (
+            "no completion date yet"
+          ) : (
+            "completion date not read"
+          )}
           {record.notes && <> · {record.notes.replace(/^Delivery: /, "")}</>}
         </p>
         {/* The name on the certificate, when it wasn't the person's name and
