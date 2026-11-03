@@ -457,6 +457,11 @@ export async function submitSignoff(
   if (!typedName) {
     return { error: "Type your full name to sign.", signed: false };
   }
+  // Option 2 (Adam, 3 Nov 2026): the link can be copied and sent by hand, so
+  // the signer confirms it is them.
+  if (formData.get("confirmSelf") !== "yes") {
+    return { error: "Tick the box to confirm you are the licensee in charge, signing for yourself.", signed: false };
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("submit_signoff", {

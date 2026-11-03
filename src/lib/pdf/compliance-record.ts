@@ -13,6 +13,7 @@ import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
 import { checkedPdf } from "@/lib/pdf/checked-pdf";
 import { fileTypeLabel, type PackDocument } from "@/lib/pdf/pack-documents";
 import { sydneyDate } from "@/lib/subscription-end/dates";
+import { copiedLinkLine } from "@/lib/links/delivery";
 
 /** The answer, tick or upload under a question or document card, with who and when (Sydney). */
 const questionAndDocumentLines = (item: ComplianceItem, current: PropertyItem | undefined): string[] =>
@@ -344,7 +345,12 @@ export type ComplianceRecordInput = {
   /** Typed-name attestations, reproduced with the date each was given. */
   signatures: {
     agent: { typedName: string; signedAt: string | null } | null;
-    licensee: { typedName: string; signedAt: string | null } | null;
+    /**
+     * `copiedLink`: the licensee signed through a link someone in the office
+     * copied to send by hand (option 2, Adam 3 Nov 2026; 0107), the first such
+     * copy. Printed under the signature, so it can't happen unseen.
+     */
+    licensee: { typedName: string; signedAt: string | null; copiedLink?: { by: string; at: string } | null } | null;
   };
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
@@ -777,7 +783,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     c.rule(10, 12);
     c.text(isDraft ? "Signatures" : "Signed", { size: 11, bold: true, gap: 6 });
 
-    const block = (role: string, sig: { typedName: string; signedAt: string | null } | null) => {
+    const block = (
+      role: string,
+      sig: { typedName: string; signedAt: string | null; copiedLink?: { by: string; at: string } | null } | null,
+    ) => {
       c.need(46);
       if (!sig) {
         // Shown in the same shape as a real signature, so the space it will
@@ -811,6 +820,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       if (sig.signedAt) {
         c.text(`Signed ${formatSignedAt(sig.signedAt)} (Sydney time)`, { size: 9, color: MUTED });
       }
+      if (sig.copiedLink) c.text(copiedLinkLine(sig.copiedLink), { size: 8.5, color: MUTED });
       c.y -= 12;
     };
 

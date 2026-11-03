@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { OpenedBeacon } from "@/components/links/OpenedBeacon";
 import { Logo } from "@/components/Logo";
 import { createClient } from "@/lib/supabase/server";
 import { ApproveOfficeManagerForm } from "@/components/office-manager/ApproveOfficeManagerForm";
@@ -101,6 +102,8 @@ export default async function OfficeManagerApprovalPage({ params }: { params: Pr
         If you don&rsquo;t want {first} to be office manager, don&rsquo;t approve. This page changes nothing until you
         press the button.
       </p>
+      {/* "Opened" for whoever sent it, once a person interacts with this page (0107). */}
+      <OpenedBeacon kind="office_manager" token={token} />
     </main>
   );
 }

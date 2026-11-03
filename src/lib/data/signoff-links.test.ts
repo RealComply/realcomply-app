@@ -20,6 +20,9 @@ const link = (over: Partial<SignoffLink>): SignoffLink => ({
   priceStatement: null,
   espLow: null,
   espHigh: null,
+  openedAt: null,
+  copies: [],
+  licenseeName: "Lee Licensee",
   ...over,
 });
 

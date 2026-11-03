@@ -251,9 +251,20 @@ export async function onNewOfficeTrialStarted(
       ? await sendOwnPlanAgentWelcome(supabase, agencyId, { send, env, now, box: { kind: "download", url: downloadUrl as string } })
       : await sendEarlyAccessWelcome(supabase, agencyId, { send, env, annexure: box });
 
+  // When the link's email reached the provider, for "Sent [date]" and the
+  // nudge (0107). Never fails the send: before 0107 the column isn't there.
+  const noteSent = async (linkId: string) => {
+    try {
+      await supabase.from("sg_annexure_links").update({ email_sent_at: now.toISOString() }).eq("id", linkId);
+    } catch (err) {
+      console.error("annexure request: sent time not recorded", agencyId, err);
+    }
+  };
+
   if (plan && link && claimedNow) {
     if (welcome === "sent" && plan.signerIsLicensee) {
       annexure = "in_welcome";
+      await noteSent(link.id);
     } else {
       let ok = false;
       try {
@@ -274,8 +285,10 @@ export async function onNewOfficeTrialStarted(
       } catch (err) {
         console.error("annexure request: send threw", agencyId, err);
       }
-      if (ok) annexure = "emailed";
-      else {
+      if (ok) {
+        annexure = "emailed";
+        await noteSent(link.id);
+      } else {
         // Give the claim back so the next event from Stripe tries again.
         try {
           await supabase.from("sg_annexure_links").delete().eq("id", link.id).is("used_at", null);

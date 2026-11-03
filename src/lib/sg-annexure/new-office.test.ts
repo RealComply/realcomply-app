@@ -148,6 +148,8 @@ describe("a new office's annexure request", () => {
     assert.ok(r.sent[0].html?.includes("14 October 2026"));
     assert.equal(links(db).length, 1);
     assert.equal(links(db)[0].sent_to, "getadamc3+founder@gmail.com");
+    // When the email went, for "Sent [date]" and the nudge (0107).
+    assert.equal(links(db)[0].email_sent_at, NOW.toISOString());
   });
 
   it("early access, signed up by someone else: the welcome says who it went to, and the licensee gets the link", async () => {
@@ -163,6 +165,7 @@ describe("a new office's annexure request", () => {
     assert.equal(request.bcc, "admin@realcomply.com.au");
     assert.ok(request.text.startsWith("Hi Lee,"));
     assert.ok(request.text.includes(`/annexure/${links(db)[0].token}`));
+    assert.equal(links(db)[0].email_sent_at, NOW.toISOString(), "Sent [date] on the founder's Home (0107)");
   });
 
   it("any other new office: the short signing email on its own", async () => {

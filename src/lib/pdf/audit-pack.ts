@@ -16,6 +16,7 @@ import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
 import { EVIDENCE_BUCKET, complaintFolder, isInFolder, listingFolder } from "@/lib/storage/evidence";
 import { packDocKind, packDocumentsFor, type PackDocument } from "@/lib/pdf/pack-documents";
 import { PACK_DOCUMENTS_MAX_BYTES } from "@/lib/pdf/audit-pack-store";
+import { copiesBeforeSigning } from "@/lib/links/delivery";
 import { readableBytes } from "@/lib/documents/readable-bytes";
 import { EMPTY_FILE_MESSAGE, downloadedFileProblem } from "@/lib/storage/file-check";
 import { addedLine, complaintFilesFor, removedLine } from "@/lib/complaint-files";
@@ -135,6 +136,21 @@ export async function buildAuditPack(
   };
   const signatureOf = async (key: string) =>
     byKey[key]?.status === "done" ? signatureOnCard(byKey[key], await linkSignedAt(key)) : null;
+  const copiedBeforeSigning = async (signedAt: string | null): Promise<{ by: string; at: string } | null> => {
+    const requestId = (byKey["sign_licensee"]?.data as { signoffRequestId?: unknown } | undefined)?.signoffRequestId;
+    if (typeof requestId !== "string" || !requestId || !signedAt) return null;
+    const { data: copies } = await supabase
+      .from("signoff_link_copies")
+      .select("copied_by_name, copied_at")
+      .eq("request_id", requestId)
+      .eq("agency_id", agencyId)
+      .order("copied_at");
+    const trail = copiesBeforeSigning(
+      ((copies ?? []) as Array<{ copied_by_name: string; copied_at: string }>).map((c) => ({ by: c.copied_by_name, at: c.copied_at })),
+      signedAt,
+    );
+    return trail[0] ?? null;
+  };
 
   // Whether this pack is a draft, decided here as well as inside the PDF —
   // because the FILENAME has to know too, and the filename is set out here.
@@ -147,7 +163,12 @@ export async function buildAuditPack(
   // of the two — a file attached to an email is judged by its name long before
   // anybody opens page one.
   const agentSignature = await signatureOf("sign_agent");
-  const licenseeSignature = await signatureOf("sign_licensee");
+  const licenseeSigned = await signatureOf("sign_licensee");
+  // Signed through a link someone copied to send by hand (option 2, Adam
+  // 3 Nov 2026; 0107): the first copy before the signature goes on the record.
+  const licenseeSignature = licenseeSigned
+    ? { ...licenseeSigned, copiedLink: await copiedBeforeSigning(licenseeSigned.signedAt) }
+    : null;
   const isDraft = !agentSignature || !licenseeSignature;
 
   // The office's names on the cover (brief, 14 Oct 2026): "[licensed entity

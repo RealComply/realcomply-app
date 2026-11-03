@@ -26,6 +26,10 @@
 //   type always renders. Revisit only if Adam decides a logo is worth the
 //   share of readers who would see an empty box.
 //
+//   No hidden text (2 Nov 2026, queue item 2). The preheader used to sit in a
+//   display:none block padded with invisible characters. Office email
+//   security scores hidden text against a message, so it went.
+//
 // ── DARK MODE ─────────────────────────────────────────────────────────────
 //
 // Apple Mail and Outlook invert colours on their own terms and no email
@@ -90,8 +94,16 @@ export type FooterLink = { text: string; href: string };
 export type FooterLine = string | FooterLink | Array<string | FooterLink>;
 
 export type EmailDocument = {
-  /** The grey line beside the subject in an inbox list. Written, never inherited. */
-  preheader: string;
+  /**
+   * Was the grey line beside the subject in an inbox list, as hidden text.
+   * Not rendered since 2 Nov 2026 (Adam, queue item 2, "email that gets
+   * through"): hidden text padded with invisible characters is one of the
+   * things office email security scores against a message, and an approval
+   * email held in quarantine is worse than a plainer preview line. The inbox
+   * now shows the email's first words. Kept so each email still says what
+   * its preview was written to be.
+   */
+  preheader?: string;
   /** Small line under the title — agency and date on the digest. */
   meta?: string;
   title?: string;
@@ -206,13 +218,6 @@ export function renderEmailHtml(doc: EmailDocument): string {
 <title>${esc(doc.title ?? "RealComply")}</title>
 </head>
 <body style="margin:0;padding:0;background:#eef1ef">
-
-<!-- Preheader: shown beside the subject in an inbox list, hidden in the open
-     message. The trailing whitespace stops the client filling the rest of the
-     preview line with the first words of the body. -->
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0">
-  ${esc(doc.preheader)}${"&#847;&zwnj;&nbsp;".repeat(60)}
-</div>
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
   style="background:#eef1ef">

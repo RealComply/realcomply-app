@@ -15,11 +15,13 @@ export function ReviewAndSign({
   propertyAddress,
   cards,
   agentName,
+  agencyName,
 }: {
   token: string;
   propertyAddress: string;
   cards: ReviewCard[];
   agentName: string | null;
+  agencyName: string;
 }) {
   const [sentBack, setSentBack] = useState(false);
   const sendBack = sendBackWithLink.bind(null, token);
@@ -66,7 +68,7 @@ export function ReviewAndSign({
       {!sentBack && (
         <>
           <h2 className="mt-8 text-base font-bold text-rc-ink">Sign off</h2>
-          <SignoffForm token={token} />
+          <SignoffForm token={token} agencyName={agencyName} />
         </>
       )}
     </>

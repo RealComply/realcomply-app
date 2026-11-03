@@ -14,6 +14,9 @@ import { OfficeManagerHomeCard } from "@/components/office-manager/OfficeManager
 import { OfficeManagerLines } from "@/components/office-manager/OfficeManagerLine";
 import type { OfficeManagerHome } from "@/lib/data/office-manager";
 import { SetupCard, SetupDoneLine } from "@/components/home/SetupCard";
+import { AnnexureLinkCard, UnopenedSignoffLinks } from "@/components/home/LinkNudges";
+import { annexureLinkFor, unopenedSignoffLinksFor } from "@/lib/data/link-nudges";
+import { annexureLinkStatus } from "@/lib/links/delivery";
 import type { SetupView } from "@/lib/data/office-setup";
 import { STAGE_LABELS, type Gift, type Profile, type Property, type TrainingSession } from "@/lib/types";
 
@@ -49,8 +52,16 @@ export async function AgentHome({
   // Every query here goes through the signed-in person's own rules (0058):
   // their listings (or their agents', for an assistant), their CPD, the
   // sessions they attended and the gifts they logged.
-  const [counts, people, { data: propertyRows }, { data: cpdSignoffRows }, { data: sessionRows }, { data: giftRows }] =
-    await Promise.all([
+  const [
+    counts,
+    people,
+    { data: propertyRows },
+    { data: cpdSignoffRows },
+    { data: sessionRows },
+    { data: giftRows },
+    signoffNudges,
+    annexureLink,
+  ] = await Promise.all([
       navCountsFor(supabase, profile),
       agencyPeople(supabase),
       supabase.from("properties").select("*").order("created_at", { ascending: false }),
@@ -62,6 +73,11 @@ export async function AgentHome({
         .eq("cpd_year_start", cpdYear.start),
       supabase.from("training_sessions").select("*").order("session_date", { ascending: false }),
       supabase.from("gifts").select("*"),
+      // Email that gets through (Adam, 2 Nov 2026; 0107): the sign-off links
+      // they sent that nobody has opened in 2 business days, and, for whoever
+      // set the office up or runs it, the annexure link while it waits.
+      unopenedSignoffLinksFor(supabase, profile),
+      annexureLinkFor(supabase),
     ]);
 
   const properties = (propertyRows ?? []) as Property[];
@@ -80,6 +96,11 @@ export async function AgentHome({
         ...(r.flagged > 0 ? [`${r.flagged} flagged`] : []),
       ],
     }));
+
+  const annexureWaiting = annexureLinkStatus(
+    annexureLink,
+    people.find((x) => x.is_licensee_in_charge && !x.archived_at)?.full_name ?? "",
+  );
 
   const awaitingMyReview = properties.filter((p) => p.review_requested_at && p.created_by === profile.id);
 
@@ -109,6 +130,9 @@ export async function AgentHome({
         {officeManager?.card && <OfficeManagerHomeCard card={officeManager.card} />}
 
         {sgReadShows && <SgReadCard />}
+
+        <UnopenedSignoffLinks nudges={signoffNudges} />
+        <AnnexureLinkCard status={annexureWaiting} />
 
         {awaitingMyReview.length > 0 && (
           <section className="mt-6 rounded-card border border-rc-amber-deep/25 bg-rc-amber/10 px-4 py-3.5">

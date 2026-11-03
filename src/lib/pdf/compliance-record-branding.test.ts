@@ -260,3 +260,24 @@ const TINY_PNG = Uint8Array.from(
   atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="),
   (c) => c.charCodeAt(0),
 );
+
+describe("a licensee signature given through a copied link (option 2, Adam 3 Nov 2026; 0107)", () => {
+  it("says so under the signature, with who copied it and when", async () => {
+    const text = pdfText(
+      await pack({
+        signatures: {
+          ...signed,
+          licensee: { ...signed.licensee, copiedLink: { by: "Alex Agent", at: "2026-10-11T23:30:00Z" } },
+        },
+      }),
+    ).replace(/\s+/g, " ");
+    assert.ok(
+      text.includes("Signed through a link Alex Agent copied on 12 October 2026 and sent outside RealComply's email."),
+    );
+  });
+
+  it("says nothing of the kind when the link went only by email", async () => {
+    const text = pdfText(await pack()).replace(/\s+/g, " ");
+    assert.ok(!text.includes("Signed through a link"));
+  });
+});

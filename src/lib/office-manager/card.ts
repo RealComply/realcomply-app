@@ -19,6 +19,8 @@
 // a licensee in charge, and no "ask" where the licensee is on RealComply:
 // they make someone office manager in Team.
 
+import { nudgeText, openedLine, unopenedNudgeDue } from "@/lib/links/delivery";
+
 export const CARD_DAYS = 14;
 
 export type OfficeManagerRecord = {
@@ -38,6 +40,9 @@ export type OfficeManagerRequest = {
   email_sent_at: string | null;
   email_attempts: number;
   expires_at: string;
+  /** When the licensee first opened the link in a browser (0107). Absent before 0107. */
+  opened_at?: string | null;
+  created_at?: string;
 };
 
 export type OfficeManagerCardInput = {
@@ -59,7 +64,17 @@ export type OfficeManagerCardInput = {
 
 export type OfficeManagerCard =
   | { kind: "ask"; licenseeName: string; licenseeEmail: string | null }
-  | { kind: "waiting"; licenseeName: string; sentTo: string; sentAt: string | null; emailFailed: boolean }
+  | {
+      kind: "waiting";
+      licenseeName: string;
+      sentTo: string;
+      sentAt: string | null;
+      emailFailed: boolean;
+      /** "Opened 3 November 2026, 9:14am" or "Not opened yet" (0107). */
+      openedLine: string | null;
+      /** After 2 NSW business days unopened: the nudge, in Adam's words. No Copy link here (option 2). */
+      nudge: string | null;
+    }
   | {
       kind: "approved";
       licenseeName: string;
@@ -109,12 +124,20 @@ export function officeManagerCard(input: OfficeManagerCardInput): OfficeManagerC
 
   const open = input.openRequest && new Date(input.openRequest.expires_at) > input.now ? input.openRequest : null;
   if (open && !input.officeHasLicenseeLogin) {
+    const delivery = {
+      emailSentAt: open.email_sent_at,
+      createdAt: open.created_at ?? open.email_sent_at ?? input.now.toISOString(),
+      openedAt: open.opened_at ?? null,
+      doneAt: null,
+    };
     return {
       kind: "waiting",
       licenseeName,
       sentTo: open.sent_to,
       sentAt: open.email_sent_at,
       emailFailed: open.email_sent_at === null && open.email_attempts > 0,
+      openedLine: openedLine(delivery),
+      nudge: unopenedNudgeDue(delivery, input.now) ? nudgeText("office_manager", licenseeName) : null,
     };
   }
 
