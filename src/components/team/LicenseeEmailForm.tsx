@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, type ReactNode } from "react";
+import { useActionState, useState } from "react";
 import { saveLicenseeEmail } from "@/lib/actions/team";
 import { LicenseeChangeNotice } from "@/components/team/LicenseeChangeNotice";
 
@@ -21,14 +21,9 @@ const initial = { error: null as string | null, saved: false, licenseeChanged: f
 export function LicenseeEmailForm({
   current,
   currentName,
-  website,
-  websiteCheck,
 }: {
   current: string | null;
   currentName: string | null;
-  website: string | null;
-  /** This morning's check of the office listings page, and the group-page warning (2 Nov 2026). */
-  websiteCheck?: ReactNode;
 }) {
   const [state, action, pending] = useActionState(saveLicenseeEmail, initial);
 
@@ -79,36 +74,10 @@ export function LicenseeEmailForm({
         />
       </div>
 
-      {/* The agency's public website. Used to find each listing's own page for
-          the daily advertised-price check, so nobody has to paste a URL per
-          listing. For an individual agent subscription this is their employing
-          agency's site — the listings live there either way. */}
-      <label htmlFor="websiteUrl" className="mt-4 block text-sm font-medium text-rc-ink">
-        {/* Was "Agency website". Same name as the sign-up box from 23 Oct 2026. */}
-        Link to the page with your listings
-      </label>
-      <p className="mt-1 text-xs leading-relaxed text-rc-muted">
-        Where your listings are published. RealComply uses it to find each listing&rsquo;s page and check the
-        advertised price against the ESP.
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input
-          id="websiteUrl"
-          name="websiteUrl"
-          // NOT type="url" — that makes the browser reject
-          // "www.youragency.com.au" before the form is even submitted, with a
-          // message we can't reword. The value is normalised server-side
-          // instead (lib/normalise-url.ts), which accepts what people
-          // actually type.
-          type="text"
-          inputMode="url"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          defaultValue={website ?? ""}
-          placeholder="cassproperty.com.au"
-          className="min-w-0 flex-1 rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
-        />
+      {/* The office's listings page moved to its own card, "Your current
+          listings page", which the office manager can change too (Adam, 3 Nov
+          2026; approved mockup). See components/profile/ListingsPages.tsx. */}
+      <div className="mt-3">
         <button
           type="submit"
           disabled={pending}
@@ -127,7 +96,6 @@ export function LicenseeEmailForm({
           Saved.
         </p>
       )}
-      {websiteCheck}
     </form>
     </>
   );

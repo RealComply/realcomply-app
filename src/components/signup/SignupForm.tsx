@@ -286,37 +286,8 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
             </div>
           )}
 
-          {/* The agency's public website. Asked here for both tiers: an
-              individual agent enters their employing agency's site (Adam,
-              16 Aug 2026), since the listings are published there either way.
-              Used to find each listing's own page for the advertised-price
-              check, so nobody pastes a URL per listing. */}
-          {/* Was "Agency website (optional)". Renamed and required, 23 Oct
-              2026 (Adam): we need the page their listings are on. */}
-          <label htmlFor="websiteUrl" className="mt-4 block text-sm font-medium text-rc-ink">
-            Link to the page with your listings
-          </label>
-          <input
-            id="websiteUrl"
-            name="websiteUrl"
-            required
-            // Plain text, not type="url" — see the note in
-            // components/team/LicenseeEmailForm.tsx. The browser's own URL
-            // validation rejects a bare domain and its message can't be
-            // reworded; normalising server-side accepts what people type.
-            type="text"
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            defaultValue={kept?.websiteUrl}
-            placeholder="youragency.com.au/buy"
-            className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
-          />
-          <p className="mt-1 text-xs leading-relaxed text-rc-muted">
-            The page on your agency&rsquo;s website that shows your listings for sale. Used to check advertised
-            prices against the estimated selling price.
-          </p>
+          {/* The listings page moved down beside the agent's own (Adam, 3 Nov
+              2026): see ListingsPageSignupField. */}
         </div>
       )}
       <div>
@@ -373,9 +344,19 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
           </p>
         )}
       </div>
-      {/* Their own listings page (Adam, 2 Nov 2026): optional, with Skip.
-          Not for an invited assistant, who lists nothing of their own. */}
-      {!invite?.isAssistant && <ListingsPageSignupField defaultValue={kept?.listingsPage} />}
+      {/* The listings page (Adam, 3 Nov 2026; approved mockup): one optional
+          field on each sign-up form, never a reason to stop. An office: its
+          own page. An agent on their own plan ("No, someone else" above):
+          their own page, and their agency's if they add it. An invited agent:
+          their own page. Not for an invited assistant, who lists nothing of
+          their own. */}
+      {!invite?.isAssistant && (
+        <ListingsPageSignupField
+          variant={invite ? "invited" : isLicensee === false ? "own_plan" : "office"}
+          defaultListingsPage={kept?.listingsPage}
+          defaultAgencyPage={kept?.websiteUrl}
+        />
+      )}
       {/* Acceptance of the published documents.
           A real checkbox rather than "by continuing you agree", because what
           gets recorded has to be an act the person took, not an inference from

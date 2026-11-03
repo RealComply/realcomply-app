@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState, useRef, useState, useTransition } from "react";
-import { keepListingsPage, saveListingsPage, type ListingsPageState } from "@/lib/actions/listings-pages";
-import { AGENTS_PAGES_HELP, MY_LISTINGS_PAGE_HELP, NOT_SET_LINE } from "@/lib/listings-pages";
+import { keepListingsPage, saveListingsPage, saveOfficeListingsPage, type ListingsPageState } from "@/lib/actions/listings-pages";
+import { AGENTS_PAGES_HELP, MY_LISTINGS_PAGE_HELP, NOT_SET_LINE, OFFICE_PAGE_HELP, PRICE_CHECK_OFF } from "@/lib/listings-pages";
 
 // An agent's own listings page for the daily price check (Adam, 2 Nov 2026;
 // 0105). "My listings page" on Profile settings; "Agents' own listings pages"
@@ -77,8 +77,26 @@ function CheckAndWarning({ state, onUpdate }: { state: PageState; onUpdate: () =
   );
 }
 
+/** Adam, 3 Nov 2026: no page to check, so no price check. */
+function PriceCheckOff() {
+  return (
+    <p role="status" className="mt-2 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2 text-xs font-semibold text-rc-amber-deep">
+      {PRICE_CHECK_OFF}
+    </p>
+  );
+}
+
 /** "My listings page", in Your details, for anyone who lists properties. */
-export function MyListingsPageField({ current, state }: { current: string | null; state: PageState }) {
+export function MyListingsPageField({
+  current,
+  state,
+  priceCheckOff = false,
+}: {
+  current: string | null;
+  state: PageState;
+  /** No page of their own and no office page: the price check doesn't run for them (Adam, 3 Nov 2026). */
+  priceCheckOff?: boolean;
+}) {
   const [result, action, pending] = useActionState<ListingsPageState, FormData>(saveListingsPage, {
     error: null,
     saved: false,
@@ -120,22 +138,83 @@ export function MyListingsPageField({ current, state }: { current: string | null
           Saved.
         </p>
       )}
+      {priceCheckOff && <PriceCheckOff />}
       <CheckAndWarning state={state} onUpdate={() => input.current?.focus()} />
     </form>
   );
 }
 
-/** Under the office listings page field: this morning's check of the office page, and the warning. */
-export function OfficePageCheck({ state }: { state: PageState }) {
+/**
+ * "Your current listings page" on the Office profile (Adam, 3 Nov 2026;
+ * approved mockup), for the licensee in charge and the office manager: the
+ * page, Change, this morning's check and the group-page warning. With no page,
+ * the price check is off for every agent without a page of their own.
+ */
+export function OfficeListingsPageCard({ current, state }: { current: string | null; state: PageState }) {
+  const [editing, setEditing] = useState(false);
+  const [result, action, pending] = useActionState<ListingsPageState, FormData>(
+    async (prev: ListingsPageState, formData: FormData) => {
+      const next = await saveOfficeListingsPage(prev, formData);
+      if (next.saved) setEditing(false);
+      return next;
+    },
+    { error: null, saved: false },
+  );
+  const showForm = editing || !current;
   return (
-    <CheckAndWarning
-      state={state}
-      onUpdate={() => {
-        const field = document.getElementById("websiteUrl") as HTMLInputElement | null;
-        field?.scrollIntoView({ block: "center" });
-        field?.focus();
-      }}
-    />
+    <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
+      <h3 className="text-sm font-semibold text-rc-ink">Your current listings page</h3>
+      <p className="mt-1 text-xs leading-relaxed text-rc-muted">{OFFICE_PAGE_HELP}</p>
+      {showForm ? (
+        <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
+          <label htmlFor="websiteUrl" className="sr-only">
+            Your current listings page
+          </label>
+          <input
+            id="websiteUrl"
+            name="websiteUrl"
+            // Not type="url": people type "youroffice.com.au/for-sale", and the
+            // server makes it a full address (lib/normalise-url.ts).
+            type="text"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            defaultValue={current ?? ""}
+            placeholder="youroffice.com.au/for-sale"
+            className={INPUT}
+            autoFocus={editing}
+          />
+          <button type="submit" disabled={pending} className={SAVE}>
+            {pending ? "Saving…" : "Save"}
+          </button>
+          {current && (
+            <button type="button" className={QUIET} onClick={() => setEditing(false)} disabled={pending}>
+              Cancel
+            </button>
+          )}
+        </form>
+      ) : (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <p className="min-w-0 flex-1 break-all rounded-lg border border-rc-border px-3 py-2 text-sm text-rc-ink">{current}</p>
+          <button type="button" className={QUIET} onClick={() => setEditing(true)}>
+            Change
+          </button>
+        </div>
+      )}
+      {result.error && (
+        <p className="mt-2 text-sm text-rc-amber-deep" role="alert">
+          {result.error}
+        </p>
+      )}
+      {result.saved && !result.error && !editing && (
+        <p className="mt-2 text-sm font-medium text-rc-green-deep" role="status">
+          Saved.
+        </p>
+      )}
+      {!current && <PriceCheckOff />}
+      {current && <CheckAndWarning state={state} onUpdate={() => setEditing(true)} />}
+    </div>
   );
 }
 

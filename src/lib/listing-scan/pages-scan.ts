@@ -192,6 +192,26 @@ export async function discoverOnPage(
  * up is their agent's. Null when nothing convincing was found, which is
  * normal for a listing not published yet.
  */
+/**
+ * Each office's listings page and each lister's own page, read once for the
+ * morning's run (Adam, 3 Nov 2026: the price check only runs when there is a
+ * page to check).
+ */
+export async function listingsPagesByOwner(
+  supabase: Db,
+): Promise<{ officePage: Map<string, string>; agentPage: Map<string, string> }> {
+  const [{ data: offices }, { data: agents }] = await Promise.all([
+    supabase.from("agencies").select("id, website_url").not("website_url", "is", null),
+    supabase.from("agent_listing_pages").select("profile_id, agency_id, url"),
+  ]);
+  return {
+    officePage: new Map(((offices ?? []) as Array<{ id: string; website_url: string }>).map((a) => [a.id, a.website_url])),
+    agentPage: new Map(
+      ((agents ?? []) as Array<{ profile_id: string; agency_id: string; url: string }>).map((g) => [`${g.agency_id}:${g.profile_id}`, g.url]),
+    ),
+  };
+}
+
 export async function findListingPage(
   supabase: Db,
   anthropic: Anthropic,
@@ -225,6 +245,29 @@ async function notePageSearch(
   property: { id: string; agency_id: string },
   search: { at: string; tries: SearchTry[] } | null,
 ): Promise<void> {
+  await noteOnListing(supabase, property, "pageSearch", search);
+}
+
+/**
+ * "Price check is off" on the listing (c1 data.priceCheckOff, Adam 3 Nov
+ * 2026): neither the listing's agent nor the office has a listings page, so
+ * the morning's check didn't run for it. Cleared once there is a page.
+ */
+export async function notePriceCheckOff(
+  supabase: Db,
+  property: { id: string; agency_id: string },
+  off: boolean,
+): Promise<void> {
+  await noteOnListing(supabase, property, "priceCheckOff", off ? { at: new Date().toISOString() } : null);
+}
+
+/** One note in the listing's c1 data, set or cleared; nothing written when clearing a note that isn't there. */
+async function noteOnListing(
+  supabase: Db,
+  property: { id: string; agency_id: string },
+  key: "pageSearch" | "priceCheckOff",
+  value: unknown,
+): Promise<void> {
   const { data: existing } = await supabase
     .from("property_items")
     .select("*")
@@ -233,9 +276,9 @@ async function notePageSearch(
     .maybeSingle();
   const row = existing as PropertyItem | null;
   const data = { ...((row?.data ?? {}) as Record<string, unknown>) };
-  if (search) data.pageSearch = search;
-  else if (!("pageSearch" in data)) return;
-  else delete data.pageSearch;
+  if (value) data[key] = value;
+  else if (!(key in data)) return;
+  else delete data[key];
   await supabase.from("property_items").upsert(
     {
       agency_id: property.agency_id,

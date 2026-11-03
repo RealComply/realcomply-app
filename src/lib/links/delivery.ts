@@ -83,16 +83,19 @@ export function unopenedNudgeDue(link: LinkDelivery, now: Date = new Date()): bo
 /**
  * The nudge, in Adam's words (2 Nov 2026), for the link it is about. Only the
  * file sign-off offers Copy link (option 2, 3 Nov 2026).
+ *
+ * CHANGE (Adam, 3 Nov 2026): was "ask them to check their quarantine". "No one
+ * uses that word": now "ask them to check their spam or junk folder".
  */
 export function nudgeText(kind: LinkKind, name: string): string {
   const who = name.trim() || "Your licensee";
   if (kind === "signoff") {
-    return `${who} hasn't opened the sign-off link yet. Copy it and send it yourself, or ask them to check their quarantine.`;
+    return `${who} hasn't opened the sign-off link yet. Copy it and send it yourself, or ask them to check their spam or junk folder.`;
   }
   if (kind === "office_manager") {
-    return `${who} hasn't opened the approval link yet. Ask them to check their quarantine.`;
+    return `${who} hasn't opened the approval link yet. Ask them to check their spam or junk folder.`;
   }
-  return `${who} hasn't opened the link to adopt the annexure yet. Ask them to check their quarantine.`;
+  return `${who} hasn't opened the link to adopt the annexure yet. Ask them to check their spam or junk folder.`;
 }
 
 /** Under the Copy link button (Adam, 2 Nov 2026). */

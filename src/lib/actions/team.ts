@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { requireAuthContext } from "@/lib/actions/compliance";
-import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 import type { InviteRole } from "@/lib/team/invite-options";
 
@@ -260,21 +259,10 @@ export async function saveLicenseeEmail(
 
   const licenseeName = String(formData.get("licenseeName") ?? "").trim();
 
-  // Saved in the same submission as the licensee email — one form, one button,
-  // two agency-level settings. Validated only for shape: anything stricter here
-  // rejects valid addresses more often than it catches bad ones, and a wrong
-  // website surfaces immediately the first time the app tries to find a listing.
-  // Typed the way a person says it — cassproperty.com.au — and normalised
-  // here rather than demanded of them. See lib/normalise-url.ts.
-  //
-  // Checked BEFORE anything is saved (10 Oct 2026). It used to run after the
-  // new licensee was already on file, so a website typo returned an error
-  // with no notice, and the corrected resave saw the new name as nothing
-  // changed: the s31(3) notice below never showed for that appointment.
-  const website = normaliseWebsiteUrl(String(formData.get("websiteUrl") ?? ""));
-  if (!website.ok) {
-    return { error: website.error, saved: false };
-  }
+  // The office's listings page was saved here too, in the same form. It has
+  // its own card since 3 Nov 2026 ("Your current listings page"), which the
+  // office manager can change as well: saveOfficeListingsPage in
+  // lib/actions/listings-pages.ts.
 
   const { error } = await supabase.rpc("set_agency_licensee", { p_name: licenseeName, p_email: email });
   if (error) {
@@ -304,16 +292,9 @@ export async function saveLicenseeEmail(
     previousName.length > 0 &&
     previousName.toLowerCase() !== licenseeName.toLowerCase();
 
-  // From here the licensee is saved, so every answer carries licenseeChanged
-  // and the page is refreshed, even if the website then fails to save. The
-  // form is in Office profile (Profile settings) since 14 Oct 2026.
+  // The form is in Office profile (Profile settings) since 14 Oct 2026.
   revalidatePath("/dashboard/team");
   revalidatePath("/dashboard/profile");
-
-  const { error: siteError } = await supabase.rpc("set_agency_website", { p_url: website.url });
-  if (siteError) {
-    return { error: "Saved the email, but couldn't save the website. Try again.", saved: false, licenseeChanged };
-  }
 
   return { error: null, saved: true, licenseeChanged };
 }

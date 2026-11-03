@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Globe, AlertTriangle, Check } from "lucide-react";
 import { checkListingNow } from "@/lib/actions/website-scan";
-import { searchLine, type SearchTry } from "@/lib/listings-pages";
+import { PRICE_CHECK_OFF, searchLine, type SearchTry } from "@/lib/listings-pages";
 
 // The advertised-price check, as shown on c1.
 //
@@ -43,13 +43,16 @@ export function ListingScanPanel({
   propertyId,
   finding,
   pageSearch,
+  priceCheckOff,
 }: {
   propertyId: string;
   finding?: ScanFinding;
   /** Where the morning's check looked for this listing's page, while none is found (2 Nov 2026). */
   pageSearch?: { at: string; tries: SearchTry[] } | null;
+  /** Neither the agent nor the office has a listings page, so the check didn't run (Adam, 3 Nov 2026). */
+  priceCheckOff?: { at: string } | null;
 }) {
-  const notFound = searchLine(pageSearch);
+  const notFound = priceCheckOff ? null : searchLine(pageSearch);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -74,6 +77,9 @@ export function ListingScanPanel({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium text-rc-muted">The live ad</p>
+          {!finding && priceCheckOff && (
+            <p className="mt-1 text-[11px] font-semibold leading-relaxed text-rc-amber-deep">{PRICE_CHECK_OFF}</p>
+          )}
           {!finding && notFound && (
             <p className="mt-1 text-[11px] leading-relaxed text-rc-amber-deep">
               {notFound} Add your own listings page in Profile settings, or paste this listing&rsquo;s link in Edit
@@ -81,7 +87,7 @@ export function ListingScanPanel({
             </p>
           )}
 
-          {!finding ? (
+          {!finding && priceCheckOff ? null : !finding ? (
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
               This listing&rsquo;s web page is checked against its ESP every morning once it&rsquo;s advertised. If no
               price is showing or it&rsquo;s below the ESP, you&rsquo;ll get an email. Nothing to set up.

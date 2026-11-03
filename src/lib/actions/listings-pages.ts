@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
+import { requireAuthContext } from "@/lib/actions/compliance";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 
 // "My listings page" and the Office profile's "Agents' own listings pages"
@@ -39,6 +40,26 @@ export async function saveListingsPage(_prev: ListingsPageState, formData: FormD
     const said = /listings page|isn't in your office|lists properties|Sign in again/i.test(error.message);
     return { error: said ? error.message : "Couldn't save the listings page just now. Try again.", saved: false };
   }
+  revalidatePath("/dashboard/profile");
+  return { error: null, saved: true };
+}
+
+/**
+ * "Your current listings page" on the Office profile (Adam, 3 Nov 2026;
+ * approved mockup): the licensee in charge, the agent on their own plan, or
+ * the office manager. The database lets each of them change it
+ * (set_agency_website, may_change_office_details). Blank removes it, and then
+ * the price check is off for any agent without a page of their own.
+ */
+export async function saveOfficeListingsPage(_prev: ListingsPageState, formData: FormData): Promise<ListingsPageState> {
+  const { supabase, access } = await requireAuthContext();
+  if (!access.runsOffice) {
+    return { error: "Only the licensee in charge or the office manager can change the office's listings page.", saved: false };
+  }
+  const address = await listingsPageAddress(String(formData.get("websiteUrl") ?? ""));
+  if (!address.ok) return { error: address.error, saved: false };
+  const { error } = await supabase.rpc("set_agency_website", { p_url: address.url ?? "" });
+  if (error) return { error: "Couldn't save the listings page just now. Try again.", saved: false };
   revalidatePath("/dashboard/profile");
   return { error: null, saved: true };
 }

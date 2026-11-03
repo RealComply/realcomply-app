@@ -131,13 +131,20 @@ export function checkLine(check: PageCheck | null | undefined, currentUrl: strin
 
 /** More than this many times as many listings as in RealComply reads as a group's page. */
 export const GROUP_PAGE_FACTOR = 3;
+/**
+ * And at least this many listings on the page (Adam asked for a cut-off, 3 Nov
+ * 2026). An agent's own profile often shows a few listings from before they
+ * joined RealComply: 7 on the page against 2 in RealComply is not a group's
+ * page. A group's page shows dozens or hundreds (184 in the mockup).
+ */
+export const GROUP_PAGE_MIN_LISTINGS = 20;
 
 /**
- * The group-page warning (Adam, 2 Nov 2026): the page showed more than three
- * times as many listings as that agent (or office) has in RealComply. Not
- * while they have none in RealComply: there is nothing to match yet, so
- * nothing a big page could match wrongly. Not once "Keep this one" was
- * pressed for this address.
+ * The group-page warning (Adam, 2 Nov 2026): the page showed at least 20
+ * listings, and more than three times as many as that agent (or office) has
+ * in RealComply. Not while they have none in RealComply: there is nothing to
+ * match yet, so nothing a big page could match wrongly, and every new office
+ * starts at none. Not once "Keep this one" was pressed for this address.
  */
 export function groupWarning(
   check: PageCheck | null | undefined,
@@ -146,7 +153,7 @@ export function groupWarning(
   if (!check || !currentUrl || check.url !== currentUrl || check.outcome !== "read") return null;
   const found = check.listingsFound ?? 0;
   const inRealcomply = check.inRealcomply ?? 0;
-  if (inRealcomply < 1 || found <= GROUP_PAGE_FACTOR * inRealcomply) return null;
+  if (inRealcomply < 1 || found < GROUP_PAGE_MIN_LISTINGS || found <= GROUP_PAGE_FACTOR * inRealcomply) return null;
   if (check.keptUrl === currentUrl) return null;
   return { found, inRealcomply };
 }
@@ -159,9 +166,35 @@ export function groupWarningText(w: { found: number; inRealcomply: number }): st
   );
 }
 
-/** The help text under "My listings page" and "Your listings page" at sign-up (Adam, 2 Nov 2026). */
+/** The help text under "My listings page", and "Your listings page" when an invited agent joins (Adam, 2 Nov 2026). */
 export const MY_LISTINGS_PAGE_HELP =
   "If you have your own page on the office website (often your agent profile), add it here. RealComply checks it first for your listings. Leave it blank to use the office page.";
+
+/** "Your listings page" when an agent signs up on their own plan (Adam, 3 Nov 2026; approved mockup). */
+export const OWN_PLAN_PAGE_HELP =
+  "Your own page on your agency's website, often your agent profile. RealComply checks it each morning for your listings and their advertised prices.";
+
+/** The link under it that opens the agency's page (Adam, 3 Nov 2026). */
+export const ADD_AGENCY_PAGE = "+ Add your agency's listings page too";
+
+/** "Your office's listings page" when an office signs up (Adam, 3 Nov 2026; approved mockup). */
+export const OFFICE_PAGE_SIGNUP_HELP =
+  "The page on your website that shows the properties you have for sale right now. Part of a group? Use your own office's page, not the group's home page. Your agents can add their own pages when they join.";
+
+/** "Your current listings page" on the Office profile (approved mockup, 3 Nov 2026). */
+export const OFFICE_PAGE_HELP = "The page on your website that shows the properties you have for sale right now.";
+
+/**
+ * Adam, 3 Nov 2026: "the price check only runs when there is a page to
+ * check. If an agent has no page of their own and there is no office page,
+ * don't scan for them."
+ */
+export function priceCheckOn(agentPage: string | null | undefined, officePage: string | null | undefined): boolean {
+  return Boolean(agentPage || officePage);
+}
+
+/** On My details, the Office profile and the listing, while there is no page (Adam, 3 Nov 2026). */
+export const PRICE_CHECK_OFF = "Price check is off. Add your listings page to turn it on.";
 
 /** The help text on the Office profile card (Adam, 2 Nov 2026). */
 export const AGENTS_PAGES_HELP =

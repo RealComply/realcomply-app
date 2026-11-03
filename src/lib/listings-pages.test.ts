@@ -6,6 +6,8 @@ import {
   groupWarning,
   groupWarningText,
   pagesToTry,
+  priceCheckOn,
+  PRICE_CHECK_OFF,
   searchLine,
   type PageCheck,
 } from "@/lib/listings-pages";
@@ -89,9 +91,15 @@ test("the line under the field after the morning's check, in Adam's words", () =
   assert.match(checkLine(check({ outcome: "failed", listingsFound: null }), AGENT, now) ?? "", /couldn't read this page/);
 });
 
-test("the group-page warning: more than 3 times as many listings as in RealComply", () => {
-  assert.deepEqual(groupWarning(check({ listingsFound: 7, inRealcomply: 2 }), AGENT), { found: 7, inRealcomply: 2 });
-  assert.equal(groupWarning(check({ listingsFound: 6, inRealcomply: 2 }), AGENT), null, "exactly 3 times is not more than");
+test("the group-page warning: at least 20 listings, and more than 3 times as many as in RealComply", () => {
+  assert.deepEqual(groupWarning(check({ listingsFound: 21, inRealcomply: 6 }), AGENT), { found: 21, inRealcomply: 6 });
+  assert.equal(groupWarning(check({ listingsFound: 18, inRealcomply: 6 }), AGENT), null, "exactly 3 times is not more than");
+  // The cut-off Adam asked for (3 Nov 2026): an agent's own profile showing a
+  // few older listings is not a group's page.
+  assert.equal(groupWarning(check({ listingsFound: 7, inRealcomply: 2 }), AGENT), null, "under 20 on the page");
+  assert.equal(groupWarning(check({ listingsFound: 19, inRealcomply: 1 }), AGENT), null, "19 is under 20");
+  assert.deepEqual(groupWarning(check({ listingsFound: 20, inRealcomply: 1 }), AGENT), { found: 20, inRealcomply: 1 });
+  assert.deepEqual(groupWarning(check({ listingsFound: 184, inRealcomply: 3 }), AGENT), { found: 184, inRealcomply: 3 }, "the mockup's group page");
   assert.equal(groupWarning(check({ listingsFound: 40, inRealcomply: 0 }), AGENT), null, "nothing in RealComply to match yet");
   assert.equal(groupWarning(check({ listingsFound: 40, keptUrl: AGENT }), AGENT), null, "Keep this one was pressed for this page");
   assert.deepEqual(groupWarning(check({ listingsFound: 40, keptUrl: OFFICE }), AGENT), { found: 40, inRealcomply: 2 }, "kept a different page");
@@ -110,4 +118,13 @@ test("the sign-up field is optional and never stops a sign-up", () => {
   assert.equal(signupListingsPage("   "), null);
   assert.equal(signupListingsPage("not a page"), null);
   assert.equal(signupListingsPage(null), null);
+});
+
+test("the price check runs only when there is a page to check (Adam, 3 Nov 2026)", () => {
+  assert.equal(priceCheckOn(AGENT, OFFICE), true);
+  assert.equal(priceCheckOn(AGENT, null), true, "the agent's own page");
+  assert.equal(priceCheckOn(null, OFFICE), true, "the office page");
+  assert.equal(priceCheckOn(null, null), false, "no page of their own and no office page");
+  assert.equal(priceCheckOn("", undefined), false);
+  assert.equal(PRICE_CHECK_OFF, "Price check is off. Add your listings page to turn it on.");
 });

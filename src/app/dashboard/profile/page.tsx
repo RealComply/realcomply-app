@@ -23,11 +23,11 @@ import { LicenseeInChargeCard, type Candidate, type HistoryTableRow } from "@/co
 import {
   AgentsListingsPagesCard,
   MyListingsPageField,
-  OfficePageCheck,
+  OfficeListingsPageCard,
   type AgentPageRow,
   type PageState,
 } from "@/components/profile/ListingsPages";
-import { checkLine, groupWarning, groupWarningText, pageCheckFrom, type PageCheck } from "@/lib/listings-pages";
+import { checkLine, groupWarning, groupWarningText, pageCheckFrom, priceCheckOn, type PageCheck } from "@/lib/listings-pages";
 
 // Profile settings, from the picture top right (Adam, 12 Oct 2026: "if you
 // click on the agent's icon in the top right corner, there should be an option
@@ -166,15 +166,15 @@ export default async function ProfileSettingsPage() {
               {/* The licensee's own details stay with the licensee, not an
                   office manager (0093). */}
               {access.actsAsLicensee && (
-                <LicenseeEmailForm
-                  current={agency?.licensee_email ?? null}
-                  currentName={agency?.licensee_name ?? null}
-                  website={agency?.website_url ?? null}
-                  websiteCheck={
-                    <OfficePageCheck state={pageState(`office:${profile.agency_id}`, agency?.website_url ?? null)} />
-                  }
-                />
+                <LicenseeEmailForm current={agency?.licensee_email ?? null} currentName={agency?.licensee_name ?? null} />
               )}
+              {/* The office's listings page, its own card since 3 Nov 2026
+                  (approved mockup): the licensee in charge and the office
+                  manager. On an agent's own plan, their agency's page. */}
+              <OfficeListingsPageCard
+                current={agency?.website_url ?? null}
+                state={pageState(`office:${profile.agency_id}`, agency?.website_url ?? null)}
+              />
               {/* Each agent's own page, under the office page (Adam, 2 Nov
                   2026). The licensee in charge and an office manager add or
                   change anyone's. Not on an agent's own plan: there it is
@@ -251,7 +251,14 @@ export default async function ProfileSettingsPage() {
         </Link>
         {/* Anyone who lists properties (Adam, 2 Nov 2026). An agent on their
             own plan sees this and the office page above. */}
-        {profile.is_agent && <MyListingsPageField current={myPage} state={pageState(`agent:${profile.id}`, myPage)} />}
+        {profile.is_agent && (
+          <MyListingsPageField
+            current={myPage}
+            state={pageState(`agent:${profile.id}`, myPage)}
+            // Adam, 3 Nov 2026: no page of their own and no office page, no price check.
+            priceCheckOff={!priceCheckOn(myPage, agency?.website_url)}
+          />
+        )}
       </section>
 
       {access.runsOffice && (

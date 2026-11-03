@@ -128,13 +128,19 @@ async function createAccount(formData: FormData): Promise<ActionState> {
   const websiteUrl = website.url;
   // Their own listings page (2 Nov 2026): optional, never a reason to stop.
   const listingsPageUrl = signupListingsPage(formData.get("listingsPage"));
-  // REQUIRED for a new office from 23 Oct 2026 (Adam: "that's when we need the
-  // URL to the page that they keep their listings on", so the site can be
-  // scanned). Was optional. Someone joining an existing office by invite is
-  // never asked: the office already has it.
-  if (!inviteToken && !websiteUrl) {
-    return { error: "Add the link to the page with your listings." };
-  }
+  // REVERSAL (Adam, 3 Nov 2026; approved mockup "Agent Listings Pages").
+  // WAS (23 Oct 2026): the office's listings page was REQUIRED for a new
+  //   office ("Link to the page with your listings"; Adam: "that's when we
+  //   need the URL to the page that they keep their listings on").
+  // NOW: optional, "Your office's listings page" for an office and "+ Add
+  //   your agency's listings page too" for an agent on their own plan.
+  //   Leaving it blank never blocks sign-up.
+  // WHY: an agent's own page now comes first, and agents without one fall
+  //   back to the office page; the price check simply doesn't run until there
+  //   is a page ("Price check is off. Add your listings page to turn it on.").
+  //   A typed address that isn't one is still pointed out, as before.
+  // Someone joining an existing office by invite is never asked for it: the
+  // office already has it, and only a new office's page is saved (below).
   // Optional (brief, 14 Oct 2026, Part 4): the company on the corporation
   // licence, if different from the trading name. Saved once the office exists.
   const licensedEntityName = tidyName(String(formData.get("licensedEntityName") ?? ""))?.slice(0, ENTITY_NAME_MAX) ?? null;

@@ -11,7 +11,15 @@ import { reopenStaleNoRevision } from "@/lib/data/no-revision-reask";
 import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import { PRICE_CHECK_FROM, scanModeAt } from "@/lib/listing-scan-schedule";
 import { fetchPublicPage } from "@/lib/net/public-page";
-import { PAGE_IS_DATA, checkListingsPages, findListingPage, pageCache } from "@/lib/listing-scan/pages-scan";
+import {
+  PAGE_IS_DATA,
+  checkListingsPages,
+  findListingPage,
+  listingsPagesByOwner,
+  notePriceCheckOff,
+  pageCache,
+} from "@/lib/listing-scan/pages-scan";
+import { PRICE_CHECK_OFF, priceCheckOn } from "@/lib/listings-pages";
 import { READER_MODEL, logReadFailure, readFailureWhy, type ReadFailureWhy } from "@/lib/documents/read-core";
 import { UnfinishedAnswer, toolAnswer, unfinishedMessage } from "@/lib/documents/reader-answer";
 import type { PropertyItem } from "@/lib/types";
@@ -620,6 +628,23 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const p = property as { id: string; agency_id: string; address: string; listing_url: string | null; created_by: string | null };
 
+  // Adam, 3 Nov 2026: the price check only runs when there is a page to
+  // check, the listing agent's own or the office's.
+  const [{ data: officeRow }, { data: agentRow }] = await Promise.all([
+    supabase.from("agencies").select("website_url").eq("id", p.agency_id).maybeSingle(),
+    p.created_by
+      ? supabase.from("agent_listing_pages").select("url").eq("profile_id", p.created_by).eq("agency_id", p.agency_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  if (
+    !priceCheckOn(
+      (agentRow as { url?: string | null } | null)?.url,
+      (officeRow as { website_url?: string | null } | null)?.website_url,
+    )
+  ) {
+    return { error: PRICE_CHECK_OFF };
+  }
+
   // Same path as the daily run: find the page if we do not have one yet.
   let url = p.listing_url;
   if (!url) {
@@ -669,6 +694,8 @@ export async function runDailyListingScan(): Promise<{
   pagesFailed: number;
   /** Listings with no page yet whose page wasn't found this morning; why is recorded on each listing. */
   notFound: number;
+  /** Listings not checked because neither their agent nor the office has a listings page (Adam, 3 Nov 2026). */
+  priceCheckOff: number;
 }> {
   const none = {
     discovered: 0,
@@ -683,6 +710,7 @@ export async function runDailyListingScan(): Promise<{
     pagesRefused: 0,
     pagesFailed: 0,
     notFound: 0,
+    priceCheckOff: 0,
   };
   if (!process.env.ANTHROPIC_API_KEY) return none;
 
@@ -720,6 +748,12 @@ export async function runDailyListingScan(): Promise<{
   // the line under its field, and the group-page warning (2 Nov 2026).
   const pageChecks = await checkListingsPages(db, anthropic, fetchPage, properties, ended);
   let notFound = 0;
+  // Adam, 3 Nov 2026: "the price check only runs when there is a page to
+  // check. If an agent has no page of their own and there is no office page,
+  // don't scan for them." Their listings say so ("Price check is off"), and
+  // so do My details and the Office profile.
+  const { officePage, agentPage } = await listingsPagesByOwner(db);
+  let priceCheckOff = 0;
   // Until 31 October: the weekly check on Mondays, page-finding only on other
   // mornings. From 1 November: the daily check. See lib/listing-scan-schedule.
   const mode = scanModeAt(new Date());
@@ -733,6 +767,15 @@ export async function runDailyListingScan(): Promise<{
   let outputTokens = 0;
 
   for (const property of properties) {
+    const hasPage = priceCheckOn(
+      property.created_by ? agentPage.get(`${property.agency_id}:${property.created_by}`) : null,
+      officePage.get(property.agency_id),
+    );
+    await notePriceCheckOff(db, property, !hasPage);
+    if (!hasPage) {
+      priceCheckOff += 1;
+      continue;
+    }
     // Sequential rather than parallel. Not worth hammering an agency's own
     // website with concurrent requests for one check a day.
     let url = property.listing_url;
@@ -770,5 +813,5 @@ export async function runDailyListingScan(): Promise<{
     }
   }
 
-  return { discovered, checked, read, skipped, withIssues, readFailed, inputTokens, outputTokens, ...pageChecks, notFound };
+  return { discovered, checked, read, skipped, withIssues, readFailed, inputTokens, outputTokens, ...pageChecks, notFound, priceCheckOff };
 }

@@ -1866,6 +1866,8 @@ function GuideItem({
     websiteScan?: ScanFinding;
     /** Where the morning's check looked for this listing's page (0105, 2 Nov 2026). */
     pageSearch?: { at: string; tries: SearchTry[] } | null;
+    /** Neither the agent nor the office has a listings page (Adam, 3 Nov 2026). */
+    priceCheckOff?: { at: string } | null;
     rejectionPrompt?: string;
     // Persisted by setItemStatus (lib/actions/compliance.ts). Declared here so
     // the inputs can default to what was last recorded rather than resetting
@@ -1967,7 +1969,12 @@ function GuideItem({
       {/* The independent read of the live page. Sits below the agent's own
           record rather than replacing it: the form above is what the agent
           says is advertised, this is what the website actually shows. */}
-      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} pageSearch={data.pageSearch} />
+      <ListingScanPanel
+        propertyId={propertyId}
+        finding={data.websiteScan}
+        pageSearch={data.pageSearch}
+        priceCheckOff={data.priceCheckOff}
+      />
     </ItemShell>
   );
 }
