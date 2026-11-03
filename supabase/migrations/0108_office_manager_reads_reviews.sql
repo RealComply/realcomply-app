@@ -317,20 +317,30 @@ begin
       raise exception 'This complaint is signed off. Its status can''t change.' using errcode = 'P0001';
     end if;
 
-    -- The office manager moves a complaint on, and changes nothing else.
+    -- The office manager moves a complaint on, and changes nothing else
+    -- (Legal, 3 Nov 2026: "the office manager can change only the status,
+    -- not the details"). Every column but the status and what the database
+    -- writes with it is compared, so a column added later is covered too.
     if public.is_office_manager() and not public.is_office_licensee() then
       if new.status is distinct from old.status
          and (old.status = 'resolved' or new.status not in ('under_review', 'resolved')) then
         raise exception 'An office manager can mark a complaint Under review or Resolved.' using errcode = '42501';
       end if;
-      if new.received_date is distinct from old.received_date
-         or new.complainant is distinct from old.complainant
-         or new.agent_id is distinct from old.agent_id
-         or new.property_id is distinct from old.property_id
-         or new.nature is distinct from old.nature
-         or new.notes is distinct from old.notes
-         or new.created_by is distinct from old.created_by
-         or new.agency_id is distinct from old.agency_id then
+      if (to_jsonb(new) - array['status', 'resolved_date', 'under_review_by', 'under_review_by_name', 'under_review_at',
+                                'resolved_by', 'resolved_by_name', 'resolved_at',
+                                'signed_off_by', 'signed_off_name', 'signed_off_at'])
+         is distinct from
+         (to_jsonb(old) - array['status', 'resolved_date', 'under_review_by', 'under_review_by_name', 'under_review_at',
+                                'resolved_by', 'resolved_by_name', 'resolved_at',
+                                'signed_off_by', 'signed_off_name', 'signed_off_at']) then
+        raise exception 'An office manager can mark a complaint Under review or Resolved, and change nothing else.'
+          using errcode = '42501';
+      end if;
+      -- The date it was resolved is the database's: today, when they mark it
+      -- Resolved below. They can't give one, or change it later.
+      if new.status is distinct from old.status then
+        new.resolved_date := null;
+      elsif new.resolved_date is distinct from old.resolved_date then
         raise exception 'An office manager can mark a complaint Under review or Resolved, and change nothing else.'
           using errcode = '42501';
       end if;

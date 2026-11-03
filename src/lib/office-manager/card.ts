@@ -243,6 +243,14 @@ export function licenseeOfficeManagerHome(input: {
   return { cards, lines };
 }
 
+/**
+ * Said wherever the office manager role is chosen: the team invite, "Make
+ * office manager" in Team, and the approval page and email for a licensee
+ * with no login (Legal, 3 Nov 2026, via Master; word for word).
+ */
+export const OFFICE_MANAGER_SEES =
+  "Office managers can see every listing and property in the office and the complaints register. Only the licensee signs off.";
+
 /** The words the licensee approves. The same as office_manager_wording() in 0093. */
 export function officeManagerWording(person: string, office: string): string {
   return `I authorise ${person.trim()} to manage ${office.trim()}'s RealComply account as office manager.`;
