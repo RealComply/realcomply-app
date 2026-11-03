@@ -55,7 +55,7 @@ import {
 //   signing for themselves. The card also says "Opened [date, time]" once a
 //   person opens the link in a browser, and after 2 NSW business days
 //   unopened it nudges: copy it and send it yourself, or ask them to check
-//   their quarantine.
+//   their spam or junk folder (Adam, 3 Nov 2026: not "quarantine").
 // WHY: Vic Srbinovski's approval email of 21 Oct was most likely held by his
 //   office's email security. An office must never need IT to let RealComply
 //   through, and must never rely on email alone.
