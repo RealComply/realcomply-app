@@ -187,8 +187,9 @@ export const HISTORY_HELP =
 export const ADD_REVISION = "Add new estimated selling price revision";
 export const UPLOAD_HELP =
   "Upload the notice you gave the seller and RealComply reads the new figures from it. Check them before you save.";
-/** Under the upload (Adam, 3 Nov 2026). */
-export const ACCEPTED_FILES = "Accepted files: Clear photo or PDF.";
+// The line under the upload, "Accepted files: Clear photo or PDF.", lives in
+// lib/storage/accepted-files.ts since 3 Nov 2026: it is under every upload
+// RealComply reads now, not only this one (Adam).
 
 /**
  * Before saving (Adam, 3 Nov 2026): "Saving this replaces Revision [N] as the

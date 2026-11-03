@@ -11,6 +11,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
 import { selfManaged } from "@/lib/rules/nsw-sales";
 import {
@@ -28,7 +29,9 @@ import {
   PRE_COMMENCEMENT_CONDITIONS,
   agreementPredatesAml,
 } from "@/lib/rules/aml-precommencement";
-import { FileDropZone } from "@/components/FileDropZone";
+import { FileDropZone, type FilePicker } from "@/components/FileDropZone";
+import { AcceptedFilesLine, CantReadNotice, askForPdfAt, useUploadPdfAsk } from "@/components/AcceptedFiles";
+import { unreadableKind } from "@/lib/storage/accepted-files";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
 import { FlagNote, useFlagFor } from "@/components/compliance/SendBack";
 import { useViewerAccess } from "@/components/ViewerAccess";
@@ -561,6 +564,30 @@ function EvidenceUploader({
   // agent explicitly asks to swap it.
   const [replacing, setReplacing] = useState(false);
 
+  // A Word, Excel or saved email file on a card RealComply reads (Adam, 3 Nov
+  // 2026). It is kept, and the card says so in his words, with "Upload a PDF"
+  // straight to choosing the replacement: in place of the read's own failure
+  // ("Comparable sales not read: file type not supported for extraction yet
+  // (application/vnd...)") and of Read again, which can't read it either. By
+  // the attached file's name, so it is said again on reload.
+  const reads = isAiReadItem(itemKey);
+  const picker = useRef<FilePicker>(null);
+  const attachedName = evidencePath ? (evidenceFileName ?? evidencePath.split("/").pop() ?? null) : null;
+  const cantRead = reads && unreadableKind(attachedName) !== null;
+  function uploadPdf() {
+    // The drop zone is drawn first, in this same click, so its picker can open.
+    flushSync(() => {
+      setReplacing(true);
+      setClientError(null);
+    });
+    picker.current?.open();
+  }
+  // The ESP reasoning card's notice about this card's report asks here.
+  useUploadPdfAsk(cantRead ? itemKey : null, () => {
+    uploadPdf();
+    document.getElementById(`card-${itemKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
   const unsaved = Boolean(selectedFile) || uploading || uploadPending;
   useEffect(() => {
     onUnsavedChange?.(unsaved);
@@ -680,7 +707,7 @@ function EvidenceUploader({
               straightened, or simply when someone wants to see it happen.
               Only on items that actually have a reader behind them; offering
               it on a pool certificate would be a button that does nothing. */}
-          {isAiReadItem(itemKey) && <RereadButton propertyId={propertyId} itemKey={itemKey} />}
+          {reads && !cantRead && <RereadButton propertyId={propertyId} itemKey={itemKey} />}
           {replaceOnlyHere ? (
             <button
               type="button"
@@ -699,7 +726,11 @@ function EvidenceUploader({
               </button>
             </form>
           )}
-          {readNote && <ReadNoteLine note={readNote} />}
+          {cantRead ? (
+            <CantReadNotice fileName={attachedName} onUploadPdf={uploadPdf} className="w-full" />
+          ) : (
+            readNote && <ReadNoteLine note={readNote} />
+          )}
         </div>
       ) : (
         // Choosing a file and attaching it are two steps, and missing the
@@ -724,7 +755,10 @@ function EvidenceUploader({
               onFile={setSelectedFile}
               disabled={uploading || uploadPending}
               label="Drag a file here, or click to browse"
+              pickerRef={picker}
             />
+            {/* Only where RealComply reads the file (Adam, 3 Nov 2026). */}
+            {reads && <AcceptedFilesLine />}
             <button
               type="submit"
               disabled={uploading || uploadPending}
@@ -742,7 +776,7 @@ function EvidenceUploader({
               {uploading
                 ? "Uploading…"
                 : uploadPending
-                  ? isAiReadItem(itemKey)
+                  ? reads
                     ? "Reading the document…"
                     : "Saving…"
                   : "Attach file"}
@@ -892,6 +926,13 @@ function ChecklistItem({
   // set, and its history (Adam, 20 Oct 2026). See lib/documents/covering-letter.ts.
   const received =
     item.key === COVERING_LETTER_KEY ? receivedDateLines(current?.data, formatAuDate, formatAuDateTimeShort) : null;
+  // A saved email or a Word file on b1a can't be read (Adam, 3 Nov 2026). The
+  // notice beside the file says so, so "Couldn't read the covering letter.
+  // Check it opens, then try again." is not said as well.
+  const letterName = current?.evidence_path
+    ? ((current.data as { evidenceFileName?: string } | null)?.evidenceFileName ?? current.evidence_path.split("/").pop() ?? null)
+    : null;
+  const letterReadFailed = received?.readFailed && unreadableKind(letterName) === null ? received.readFailed : null;
   // The file in this slot is a different kind of document than the slot
   // expects, so nothing was read from it. Everything the AI would otherwise
   // have offered on this card is suppressed — see the extraction module's
@@ -1059,6 +1100,11 @@ function ChecklistItem({
     !marketListings.some((l) => l.source === "report")
       ? reportReadNote(reportRead, "reasoning")
       : null;
+  // The report on the ESP card is a Word, Excel or saved email file (Adam,
+  // 3 Nov 2026): said in his words, not as "No sales from the comparable-sales
+  // report yet: file type not supported for extraction yet (application/...)".
+  // Upload a PDF opens the ESP card's own picker, where the report is.
+  const reasoningCantRead = reasoningReadNote !== null && unreadableKind(reportRead?.path) !== null;
 
   return (
     <ItemShell
@@ -1099,10 +1145,14 @@ function ChecklistItem({
           comes before them on a4c, so the card reads the same. */}
       {item.key === "a4c" && subject && !espElsewhere && !item.showFindings && !item.hideNote && (
         <div className="mb-3">
-          {reasoningReadNote && (
-            <div className="mb-2">
-              <ReadNoteLine note={reasoningReadNote} />
-            </div>
+          {reasoningCantRead ? (
+            <CantReadNotice fileName={reportRead?.path} onUploadPdf={() => askForPdfAt("a4")} className="mb-2" />
+          ) : (
+            reasoningReadNote && (
+              <div className="mb-2">
+                <ReadNoteLine note={reasoningReadNote} />
+              </div>
+            )
           )}
           <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
           {/* The competition, under the sales (Stephen Borg, 28 Sep
@@ -1166,7 +1216,7 @@ function ChecklistItem({
               email, a signed receipt.
             </span>
           </p>
-        ) : received && (received.readByAi || received.noDate || received.readFailed) ? (
+        ) : received && (received.readByAi || received.noDate || letterReadFailed) ? (
           // b1a: the date on the card came from the covering letter, for the
           // agent to check, and what it replaced; or the letter had no clear
           // date, so nothing changed (20 Oct 2026); or it couldn't be read,
@@ -1187,10 +1237,10 @@ function ChecklistItem({
                 <span>{COVERING_LETTER_NO_DATE}</span>
               </p>
             )}
-            {received.readFailed && (
+            {letterReadFailed && (
               <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-                <span>{received.readFailed}</span>
+                <span>{letterReadFailed}</span>
               </p>
             )}
           </div>
@@ -2383,6 +2433,13 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
   const [evidence, setEvidence] = useState<{ path: string; fileName: string } | null>(null);
   const [draft, setDraft] = useState<ReportExtractionFields | null>(null);
   const wasPending = useRef(pending);
+  // A Word, Excel or saved email report (Adam, 3 Nov 2026): kept with the
+  // entry, said so in his words in place of "File type not supported for
+  // extraction yet (application/...)", and the details stay open to type,
+  // since nothing was read. Before, they were hidden and Log entry saved a
+  // blank entry. Upload a PDF opens this picker again.
+  const reportPicker = useRef<FilePicker>(null);
+  const cantRead = evidence !== null && unreadableKind(evidence.fileName) !== null;
 
   // Reset the upload/extraction state once a submission actually succeeds,
   // so the form is ready for the next entry rather than carrying over the
@@ -2430,7 +2487,8 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
     const { error: extractError, fields } = await extractReportDetails(path, stored.name, propertyId);
     setExtracting(false);
     if (extractError) {
-      setClientError(extractError);
+      // The notice under the drop zone says it for a file of a kind that can't be read.
+      if (unreadableKind(stored.name) === null) setClientError(extractError);
       return;
     }
     setDraft(fields ?? {});
@@ -2503,7 +2561,12 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
               }}
               disabled={uploading || extracting}
               label="Drag the report here, or click to browse"
+              pickerRef={reportPicker}
             />
+            <AcceptedFilesLine />
+            {cantRead && !uploading && !extracting && (
+              <CantReadNotice fileName={evidence?.fileName} onUploadPdf={() => reportPicker.current?.open()} />
+            )}
             {(uploading || extracting) && (
               <span className="text-xs text-rc-faint">{uploading ? "Uploading…" : "Reading report…"}</span>
             )}
@@ -2517,7 +2580,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
               attachment, is an empty hidden input silently beating what the
               agent typed. Either the document supplies these or the agent does,
               never both. */}
-          {evidence && (
+          {evidence && !cantRead && (
             <>
               <input type="hidden" name="pestInspection" value={draft?.pestInspection ? "true" : ""} readOnly />
               <input type="hidden" name="buildingInspection" value={draft?.buildingInspection ? "true" : ""} readOnly />
@@ -2542,7 +2605,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
             report the agent knows about but cannot produce. Rendered as an
             either/or rather than both, because two inputs sharing a name would
             silently send whichever the browser found first. */}
-        {!evidence && (
+        {(!evidence || cantRead) && (
           <div className="rounded-lg border border-rc-border bg-white p-3">
             <p className="text-xs font-medium text-rc-ink">No copy of the report?</p>
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
@@ -2978,6 +3041,9 @@ function ReductionItem({
             pending={pending}
             latestNo={latestNo}
             fileUrl={espHistory?.fileUrls[pending.path] ?? null}
+            // "Upload a PDF" under a notice that can't be read: the draft goes
+            // and the upload box comes back (Adam, 3 Nov 2026).
+            onUploadPdf={() => setAdding(true)}
           />
         ) : !hasRevisions || adding ? (
           <EspNoticeUpload

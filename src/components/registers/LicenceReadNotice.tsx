@@ -11,6 +11,8 @@ import {
   type LicenceReadResult,
 } from "@/lib/actions/licences";
 import { NameQuestionBox } from "@/components/NameQuestionBox";
+import { CantReadNotice } from "@/components/AcceptedFiles";
+import { unreadableKind } from "@/lib/storage/accepted-files";
 import { formatAuTimestamp } from "@/lib/format-date";
 import { LICENCE_FIELD_LABELS, type LicenceField, type LicenceReadState } from "@/lib/licence-read";
 
@@ -28,6 +30,13 @@ import { LICENCE_FIELD_LABELS, type LicenceField, type LicenceReadState } from "
 //      and when. "Change" is the existing Edit control on the card.
 //   4. The one-off "Read from document" for a record that has a file but no
 //      details, for the licensee.
+//
+// A Word, Excel or saved email document (Adam, 3 Nov 2026) is said in his
+// words, with "Upload a PDF", in place of what the read said ("That file type
+// can't be read (application/...)", "[file] couldn't be read, so the details
+// need adding by hand.", "Couldn't read the ... from the document."). The
+// boxes to type the details in stay. By the document's name, so it is said
+// again on reload.
 
 const initial: ActionState = { error: null };
 
@@ -39,6 +48,8 @@ export function LicenceReadNotice({
   canReread,
   onReread,
   lastResult,
+  documentFileName = null,
+  onUploadPdf,
 }: {
   state: LicenceReadState | null;
   target: GapTarget;
@@ -49,6 +60,10 @@ export function LicenceReadNotice({
   onReread: () => Promise<LicenceReadResult>;
   /** The result of an upload or read just now in this browser, if any. */
   lastResult: LicenceReadResult | null;
+  /** The name of the document on the record now, if there is one. */
+  documentFileName?: string | null;
+  /** Opens the upload's picker, for a document RealComply can't read. */
+  onUploadPdf?: () => void;
 }) {
   const [reading, setReading] = useState(false);
   const [readResult, setReadResult] = useState<LicenceReadResult | null>(null);
@@ -59,6 +74,7 @@ export function LicenceReadNotice({
   const shown = answered && answered.to === latest ? answered.result : latest;
 
   const lastRead = state?.lastRead ?? null;
+  const cantRead = unreadableKind(documentFileName) !== null;
   const refused = shown?.outcome === "name_mismatch" || shown?.outcome === "not_a_licence";
   const question = shown?.outcome === "confirm_name" ? shown.question ?? null : null;
 
@@ -101,7 +117,7 @@ export function LicenceReadNotice({
         />
       )}
 
-      {shown?.message && !refused && (
+      {shown?.message && !refused && !(cantRead && shown.outcome === "could_not_read") && (
         <p
           className={
             shown.outcome === "saved" ? "text-rc-green-deep" : shown.outcome === "removed" ? "text-rc-muted" : "text-rc-amber-deep"
@@ -122,7 +138,9 @@ export function LicenceReadNotice({
         </p>
       )}
 
-      {lastRead?.status === "could_not_read" && (
+      {cantRead ? (
+        <CantReadNotice fileName={documentFileName} onUploadPdf={canEdit ? onUploadPdf : undefined} />
+      ) : lastRead?.status === "could_not_read" && (
         <p className="text-rc-amber-deep">
           {lastRead.fileName ?? "The document"} couldn&rsquo;t be read, so the details need adding by hand.
         </p>
@@ -143,10 +161,10 @@ export function LicenceReadNotice({
       ))}
 
       {state && state.missing.length > 0 && (
-        <GapForm target={target} missing={state.missing} canEdit={canEdit} />
+        <GapForm target={target} missing={state.missing} canEdit={canEdit} saysWhy={!cantRead} />
       )}
 
-      {canReread && (
+      {canReread && !cantRead && (
         <button
           type="button"
           onClick={reread}
@@ -160,20 +178,33 @@ export function LicenceReadNotice({
   );
 }
 
-function GapForm({ target, missing, canEdit }: { target: GapTarget; missing: LicenceField[]; canEdit: boolean }) {
+function GapForm({
+  target,
+  missing,
+  canEdit,
+  saysWhy = true,
+}: {
+  target: GapTarget;
+  missing: LicenceField[];
+  canEdit: boolean;
+  /** False under the notice for a document that can't be read: it has said why. */
+  saysWhy?: boolean;
+}) {
   const [state, action, pending] = useActionState(fillLicenceGaps.bind(null, target), initial);
   const names = missing.map((f) => LICENCE_FIELD_LABELS[f]);
 
   if (!canEdit) {
-    return <p className="text-rc-amber-deep">Couldn&rsquo;t read the {joinAnd(names)} from the document.</p>;
+    return saysWhy ? <p className="text-rc-amber-deep">Couldn&rsquo;t read the {joinAnd(names)} from the document.</p> : null;
   }
 
   return (
     <form action={action} className="rounded-md border border-rc-amber/40 bg-rc-amber/10 px-2 py-1.5">
-      <p className="text-rc-amber-deep">
-        Couldn&rsquo;t read the {joinAnd(names)} from the document. Please add {missing.length === 1 ? "it" : "them"}:
-      </p>
-      <div className="mt-1 flex flex-wrap items-center gap-2">
+      {saysWhy && (
+        <p className="text-rc-amber-deep">
+          Couldn&rsquo;t read the {joinAnd(names)} from the document. Please add {missing.length === 1 ? "it" : "them"}:
+        </p>
+      )}
+      <div className={`${saysWhy ? "mt-1 " : ""}flex flex-wrap items-center gap-2`}>
         {missing.includes("holderName") && (
           <input name="holder" placeholder="Licence holder" className="rounded-md border border-rc-border px-2 py-0.5 text-xs" />
         )}

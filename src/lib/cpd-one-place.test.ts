@@ -19,6 +19,14 @@ describe("where a CPD row's details came from", () => {
     assert.equal(CPD_SOURCE_LABEL.certificate, "Read from certificate");
     assert.equal(CPD_SOURCE_LABEL.session, "From training session");
   });
+  it("a Word, Excel or saved email certificate was never read, so its row doesn't say it was", () => {
+    const row = (name: string) => ({ id: "d", source_session_id: null, evidence_path: "ag/_cpd/p/3", evidence_file_name: name });
+    assert.equal(cpdRowSource(row("CPD certificate (made up).docx"), plan), "typed");
+    assert.equal(cpdRowSource(row("Hours.xlsx"), plan), "typed");
+    assert.equal(cpdRowSource(row("From the trainer.eml"), plan), "typed");
+    assert.equal(cpdRowSource(row("Certificate.pdf"), plan), "certificate");
+    assert.equal(cpdRowSource({ id: "e", source_session_id: null, evidence_path: "ag/_cpd/p/4.docx" }, plan), "typed");
+  });
 });
 
 describe("a certificate on an existing row", () => {

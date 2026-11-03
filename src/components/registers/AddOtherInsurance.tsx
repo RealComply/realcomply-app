@@ -8,6 +8,8 @@ import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildOtherInsuranceDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { ACCEPT } from "@/components/registers/InsuranceCard";
+import { AcceptedFilesLine } from "@/components/AcceptedFiles";
+import { unreadableKind } from "@/lib/storage/accepted-files";
 import type { OtherInsuranceKind } from "@/lib/types";
 
 // "+ Add other insurance" (0078; mockup approved by Adam, 16 Oct 2026). One
@@ -89,7 +91,12 @@ export function AddOtherInsurance({ agencyId }: { agencyId: string }) {
     } else {
       reset();
       setOpen(false);
-      setAdded(outcome.message ?? null);
+      // A Word, Excel or saved email certificate (Adam, 3 Nov 2026): the
+      // policy's own card, just added above this, says it is saved and can't
+      // be read, with "Upload a PDF" to that card's picker, where the
+      // certificate now is. Not "[policy] added. The certificate couldn't be
+      // read, so the details need typing in on its card." here as well.
+      setAdded(unreadableKind(stored.name) ? null : (outcome.message ?? null));
     }
   }
 
@@ -181,6 +188,8 @@ export function AddOtherInsurance({ agencyId }: { agencyId: string }) {
         )}
         <input type="file" accept={ACCEPT} onChange={handleFile} disabled={Boolean(busy)} className="hidden" />
       </label>
+      {/* Under the upload; the hint inside it stays (Adam, 3 Nov 2026). */}
+      <AcceptedFilesLine />
 
       {refusal && (
         <p role="alert" className="flex items-start gap-2 rounded-xl bg-rc-red-soft px-3 py-2.5 text-sm text-rc-red">
