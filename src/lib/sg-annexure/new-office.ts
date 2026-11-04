@@ -6,6 +6,7 @@ import { sendOwnPlanAgentWelcome } from "@/lib/onboarding/agent-welcome";
 import { annexureDate, SG_ANNEXURE_VERSION } from "@/lib/legal/sg-annexure";
 import { appBaseUrl } from "@/lib/site-url";
 import { createServiceClient } from "@/lib/supabase/service";
+import { sendLicenseeConfirmation, type ConfirmSendOutcome } from "@/lib/licensee-email/send";
 
 // A new office's trial has started: its welcome, and the request to adopt the
 // SG annexure (brief, 14 Oct 2026; Adam, 14 Oct 2026: "send the licensee's
@@ -43,6 +44,12 @@ import { createServiceClient } from "@/lib/supabase/service";
 // has already succeeded. Server only, with the service key: the webhook has no
 // signed-in person.
 //
+// CONFIRM FIRST (0112; Master, 4 Nov 2026). When the licensee isn't on
+// RealComply, the annexure goes to the licensee email typed at sign-up only
+// once that address has confirmed it is the licensee in charge's. Until then
+// the welcome's box says so, the confirm email goes instead, and the request
+// goes when they click (sendAnnexureAfterConfirm).
+//
 // FREE OFFICES (Adam, 27 Oct 2026). An office set up with a "Free account (no
 // card)" invite (0098) has no card and no trial, so the webhook never runs for
 // it. It gets the same emails when it is created instead: sendFreeOfficeEmails,
@@ -51,6 +58,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 type Client = {
   from: (table: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  rpc?: (fn: string, args?: Record<string, unknown>) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 
 export type AnnexureRequestOutcome =
@@ -60,6 +68,7 @@ export type AnnexureRequestOutcome =
   | "already_requested"
   | "already_adopted"
   | "no_licensee_email"
+  | "awaiting_confirm" // the licensee email confirms first (0112); it goes after the click
   | "failed";
 
 export type NewOfficePlan = {
@@ -94,7 +103,12 @@ const clean = (s: string | null | undefined): string | null => {
 export async function annexurePlanFor(
   supabase: Client,
   agencyId: string,
-): Promise<{ plan: NewOfficePlan | null; reason?: "agent_plan" | "already_adopted" | "no_licensee_email" }> {
+): Promise<{
+  plan: NewOfficePlan | null;
+  reason?: "agent_plan" | "already_adopted" | "no_licensee_email" | "awaiting_confirm";
+  /** For "awaiting_confirm": who the welcome says it is waiting on. */
+  licenseeName?: string | null;
+}> {
   const [{ data: agency }, { data: people }, { data: adopted }, { data: invites }] = await Promise.all([
     supabase
       .from("agencies")
@@ -135,6 +149,10 @@ export async function annexurePlanFor(
   const member = signerIsLicensee ? signer : present.find((p) => p.is_licensee_in_charge) ?? null;
   const email = clean(member?.email) ?? clean(a.licensee_email);
   if (!email) return { plan: null, reason: "no_licensee_email" };
+  // Not a licensee's own login: the licensee email confirms first (0112).
+  if (!member && !(await licenseeEmailConfirmed(supabase, agencyId, email))) {
+    return { plan: null, reason: "awaiting_confirm", licenseeName: clean(a.licensee_name) };
+  }
 
   const licensee = { name: clean(member?.full_name) ?? clean(a.licensee_name), email: email.toLowerCase() };
   const licenceNumber =
@@ -149,6 +167,23 @@ export async function annexurePlanFor(
       licensee,
     },
   };
+}
+
+/** Whether this address is the office's licensee email and has confirmed (0112). */
+async function licenseeEmailConfirmed(supabase: Client, agencyId: string, email: string): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("licensee_email_confirmations")
+      .select("id")
+      .eq("agency_id", agencyId)
+      .eq("email", email.trim().toLowerCase())
+      .not("confirmed_at", "is", null)
+      .is("superseded_at", null)
+      .maybeSingle();
+    return Boolean(data);
+  } catch {
+    return false;
+  }
 }
 
 export function annexureSignUrl(token: string, base = appBaseUrl()): string {
@@ -187,6 +222,8 @@ export async function onNewOfficeTrialStarted(
     send?: (input: SendEmailInput) => Promise<boolean>;
     env?: Record<string, string | undefined>;
     now?: Date;
+    /** The confirm email, for a licensee email that hasn't confirmed (0112). */
+    confirm?: (agencyId: string) => Promise<ConfirmSendOutcome>;
   } = {},
 ): Promise<{ welcome: WelcomeOutcome; annexure: AnnexureRequestOutcome }> {
   const send = deps.send ?? sendEmail;
@@ -197,12 +234,15 @@ export async function onNewOfficeTrialStarted(
   let annexure: AnnexureRequestOutcome = "failed";
   let link: { id: string; token: string } | null = null;
   let claimedNow = false;
+  let waitingOn: string | null = null;
 
   try {
     const found = await annexurePlanFor(supabase, agencyId);
     plan = found.plan;
-    if (!plan) annexure = found.reason ?? "failed";
-    else {
+    if (!plan) {
+      annexure = found.reason ?? "failed";
+      if (found.reason === "awaiting_confirm") waitingOn = found.licenseeName ?? null;
+    } else {
       const { data, error } = await supabase
         .from("sg_annexure_links")
         .insert({ agency_id: agencyId, sent_to: plan.licensee.email, purpose: "new_office" })
@@ -237,7 +277,9 @@ export async function onNewOfficeTrialStarted(
   const box: AnnexureBox | null =
     annexure === "agent_plan"
       ? { kind: "download", url: downloadUrl as string }
-      : plan && link
+      : annexure === "awaiting_confirm"
+        ? { kind: "confirm_first", licenseeName: waitingOn ?? "your licensee in charge" }
+        : plan && link
         ? plan.signerIsLicensee
           ? { kind: "sign", agencyName: plan.agencyName, licenceNumber: plan.licenceNumber, date, url: annexureSignUrl(link.token, base) }
           : { kind: "sent", licenseeName: plan.licensee.name ?? "your licensee in charge" }
@@ -251,57 +293,139 @@ export async function onNewOfficeTrialStarted(
       ? await sendOwnPlanAgentWelcome(supabase, agencyId, { send, env, now, box: { kind: "download", url: downloadUrl as string } })
       : await sendEarlyAccessWelcome(supabase, agencyId, { send, env, annexure: box });
 
-  // When the link's email reached the provider, for "Sent [date]" and the
-  // nudge (0107). Never fails the send: before 0107 the column isn't there.
-  const noteSent = async (linkId: string) => {
-    try {
-      await supabase.from("sg_annexure_links").update({ email_sent_at: now.toISOString() }).eq("id", linkId);
-    } catch (err) {
-      console.error("annexure request: sent time not recorded", agencyId, err);
-    }
-  };
-
   if (plan && link && claimedNow) {
     if (welcome === "sent" && plan.signerIsLicensee) {
       annexure = "in_welcome";
-      await noteSent(link.id);
+      await noteAnnexureSent(supabase, agencyId, link.id, now);
     } else {
-      let ok = false;
-      try {
-        const { subject, text, html } = buildAnnexureRequestEmail({
-          licenseeName: plan.licensee.name,
-          box: { kind: "sign", agencyName: plan.agencyName, licenceNumber: plan.licenceNumber, date, url: annexureSignUrl(link.token, base) },
-          base,
-        });
-        ok = await send({
-          to: plan.licensee.email,
-          bcc: ADMIN_COPY_ADDRESS,
-          replyTo: ADMIN_COPY_ADDRESS,
-          fromName: SENDER_NAME,
-          subject,
-          text,
-          html,
-        });
-      } catch (err) {
-        console.error("annexure request: send threw", agencyId, err);
-      }
-      if (ok) {
-        annexure = "emailed";
-        await noteSent(link.id);
-      } else {
-        // Give the claim back so the next event from Stripe tries again.
-        try {
-          await supabase.from("sg_annexure_links").delete().eq("id", link.id).is("used_at", null);
-        } catch (err) {
-          console.error("annexure request: could not release the claim", agencyId, err);
-        }
-        annexure = "failed";
-        console.error("annexure request: send failed", { agencyId, version: SG_ANNEXURE_VERSION });
-      }
+      annexure = await emailAnnexureRequest(supabase, agencyId, plan, link, { send, base, date, now });
+    }
+  }
+
+  // The licensee email confirms first (0112): the confirm email goes now,
+  // once, and the annexure request when they click.
+  if (annexure === "awaiting_confirm") {
+    const confirm =
+      deps.confirm ??
+      ((id: string) =>
+        sendLicenseeConfirmation(supabase as Required<Client>, id, { onlyIfNeverSent: true, annexureWaiting: true }));
+    try {
+      await confirm(agencyId);
+    } catch (err) {
+      console.error("annexure request: confirm email failed", agencyId, err);
     }
   }
 
   return { welcome, annexure };
+}
+
+/** When the link's email reached the provider, for "Sent [date]" and the nudge (0107). Never fails the send. */
+async function noteAnnexureSent(supabase: Client, agencyId: string, linkId: string, now: Date): Promise<void> {
+  try {
+    await supabase.from("sg_annexure_links").update({ email_sent_at: now.toISOString() }).eq("id", linkId);
+  } catch (err) {
+    console.error("annexure request: sent time not recorded", agencyId, err);
+  }
+}
+
+/**
+ * The short signing email to the licensee, for a link just claimed. A send
+ * that fails gives the claim back, so the next try sends it.
+ */
+async function emailAnnexureRequest(
+  supabase: Client,
+  agencyId: string,
+  plan: NewOfficePlan,
+  link: { id: string; token: string },
+  ctx: { send: (input: SendEmailInput) => Promise<boolean>; base: string; date: string; now: Date },
+): Promise<AnnexureRequestOutcome> {
+  let ok = false;
+  try {
+    const { subject, text, html } = buildAnnexureRequestEmail({
+      licenseeName: plan.licensee.name,
+      box: { kind: "sign", agencyName: plan.agencyName, licenceNumber: plan.licenceNumber, date: ctx.date, url: annexureSignUrl(link.token, ctx.base) },
+      base: ctx.base,
+    });
+    ok = await ctx.send({
+      to: plan.licensee.email,
+      bcc: ADMIN_COPY_ADDRESS,
+      replyTo: ADMIN_COPY_ADDRESS,
+      fromName: SENDER_NAME,
+      subject,
+      text,
+      html,
+    });
+  } catch (err) {
+    console.error("annexure request: send threw", agencyId, err);
+  }
+  if (ok) {
+    await noteAnnexureSent(supabase, agencyId, link.id, ctx.now);
+    return "emailed";
+  }
+  // Give the claim back so the next event from Stripe tries again.
+  try {
+    await supabase.from("sg_annexure_links").delete().eq("id", link.id).is("used_at", null);
+  } catch (err) {
+    console.error("annexure request: could not release the claim", agencyId, err);
+  }
+  console.error("annexure request: send failed", { agencyId, version: SG_ANNEXURE_VERSION });
+  return "failed";
+}
+
+/**
+ * The licensee email has just confirmed (0112). If a new office's annexure
+ * request was waiting for it, it goes now, once. Nothing for an office whose
+ * request wasn't waiting (an existing office confirming gets no new email).
+ * With the service key. Never throws.
+ */
+export async function sendAnnexureAfterConfirm(
+  supabase: Client,
+  agencyId: string,
+  deps: { send?: (input: SendEmailInput) => Promise<boolean>; env?: Record<string, string | undefined>; now?: Date } = {},
+): Promise<AnnexureRequestOutcome | "not_waiting"> {
+  const send = deps.send ?? sendEmail;
+  const env = deps.env ?? process.env;
+  const now = deps.now ?? new Date();
+  try {
+    const { data: waiting } = await supabase
+      .from("licensee_email_confirmations")
+      .select("id")
+      .eq("agency_id", agencyId)
+      .eq("annexure_waiting", true)
+      .not("confirmed_at", "is", null)
+      .is("superseded_at", null)
+      .maybeSingle();
+    const row = waiting as { id: string } | null;
+    if (!row) return "not_waiting";
+
+    const found = await annexurePlanFor(supabase, agencyId);
+    let outcome: AnnexureRequestOutcome = found.reason ?? "failed";
+    if (found.plan) {
+      const { data, error } = await supabase
+        .from("sg_annexure_links")
+        .insert({ agency_id: agencyId, sent_to: found.plan.licensee.email, purpose: "new_office" })
+        .select("id, token")
+        .maybeSingle();
+      if (!error && data) {
+        outcome = await emailAnnexureRequest(supabase, agencyId, found.plan, data as { id: string; token: string }, {
+          send,
+          base: appBaseUrl(env),
+          date: annexureDate(now),
+          now,
+        });
+      } else {
+        outcome = error?.code === "23505" ? "already_requested" : "failed";
+      }
+    }
+    // Done with, unless the send failed and should be tried at the next click.
+    if (outcome !== "failed") {
+      await supabase.from("licensee_email_confirmations").update({ annexure_waiting: false }).eq("id", row.id);
+    }
+    return outcome;
+  } catch (err) {
+    console.error("annexure after confirm: failed", agencyId, err);
+    return "failed";
+  }
 }
 
 /**

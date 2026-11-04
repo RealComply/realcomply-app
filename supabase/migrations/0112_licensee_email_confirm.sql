@@ -62,8 +62,13 @@ create table if not exists public.licensee_email_confirmations (
   confirmed_at    timestamptz,
   confirmed_ip    text check (confirmed_ip is null or char_length(confirmed_ip) <= 100),
   -- Set when the office's licensee email changes away from this address.
-  superseded_at   timestamptz
+  superseded_at   timestamptz,
+  -- A new office's SG annexure request is waiting for this click (set by the
+  -- server at sign-up); it goes once the address confirms. Carried to the
+  -- next address if the office changes it first.
+  annexure_waiting boolean not null default false
 );
+alter table public.licensee_email_confirmations add column if not exists annexure_waiting boolean not null default false;
 comment on table public.licensee_email_confirmations is
   'Whether the licensee email on the Office profile confirmed it belongs to the licensee in charge (0112, Master 4 Nov 2026). One current row per office and address; superseded when the address changes.';
 create unique index if not exists licensee_email_confirmations_one_current
@@ -142,6 +147,22 @@ grant execute on function public.licensee_email_confirmed(uuid) to authenticated
 grant execute on function public.licensee_confirm_first_message(uuid) to authenticated, service_role;
 
 -- ── 3. Asking, sending, confirming ──────────────────────────────────────
+-- Whether a new office's annexure request was waiting on the office's last
+-- address, so a new address carries it on.
+create or replace function public.licensee_annexure_waiting(p_agency uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select c.annexure_waiting from public.licensee_email_confirmations c
+                    where c.agency_id = p_agency and c.confirmed_at is null
+                    order by c.created_at desc limit 1), false);
+$$;
+revoke execute on function public.licensee_annexure_waiting(uuid) from public, anon, authenticated;
+grant execute on function public.licensee_annexure_waiting(uuid) to service_role;
+
 -- Anyone in the office asks (Office profile, "Send again"). Returns the
 -- current row for the licensee email, made if needed, or null when there is
 -- nothing to confirm (no email, or it is the licensee's own login, or it has
@@ -178,8 +199,8 @@ begin
   select * into v_row from public.licensee_email_confirmations
    where agency_id = v_agency.id and email = v_email and superseded_at is null;
   if v_row.id is null then
-    insert into public.licensee_email_confirmations (agency_id, email, created_by)
-    values (v_agency.id, v_email, v_me.id)
+    insert into public.licensee_email_confirmations (agency_id, email, created_by, annexure_waiting)
+    values (v_agency.id, v_email, v_me.id, public.licensee_annexure_waiting(v_agency.id))
     on conflict (agency_id, email) where superseded_at is null do nothing;
     select * into v_row from public.licensee_email_confirmations
      where agency_id = v_agency.id and email = v_email and superseded_at is null;
@@ -292,8 +313,8 @@ begin
   if v_email is null or public.licensee_address_ok(p_agency, v_email) then
     return null;
   end if;
-  insert into public.licensee_email_confirmations (agency_id, email)
-  values (p_agency, v_email)
+  insert into public.licensee_email_confirmations (agency_id, email, annexure_waiting)
+  values (p_agency, v_email, public.licensee_annexure_waiting(p_agency))
   on conflict (agency_id, email) where superseded_at is null do nothing;
   select id into v_id from public.licensee_email_confirmations
    where agency_id = p_agency and email = v_email and superseded_at is null;

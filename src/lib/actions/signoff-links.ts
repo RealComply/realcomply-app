@@ -268,6 +268,10 @@ export async function issueSignoffLink(propertyId: string): Promise<IssueResult>
     .single();
 
   if (error || !inserted) {
+    // The database's own sentence when one of its rules refuses: among them,
+    // a licensee email that hasn't confirmed yet (0112), which says where to
+    // send the confirmation again.
+    if (error?.code === "P0001" && error.message) return { error: error.message };
     return { error: "Couldn't create the sign-off link. Try again." };
   }
 

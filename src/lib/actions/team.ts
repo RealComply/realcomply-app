@@ -6,6 +6,8 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
 import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 import type { InviteRole } from "@/lib/team/invite-options";
+import { createServiceClient } from "@/lib/supabase/service";
+import { sendLicenseeConfirmation } from "@/lib/licensee-email/send";
 
 const INVITE_ROLES: InviteRole[] = ["agent", "assistant", "licensee_in_charge", "office_manager", "property_manager"];
 
@@ -279,6 +281,17 @@ export async function saveLicenseeEmail(
   const { error } = await supabase.rpc("set_agency_licensee", { p_name: licenseeName, p_email: email });
   if (error) {
     return { error: "Couldn't save that. Try again.", saved: false };
+  }
+
+  // A new licensee email confirms first (0112; Master, 4 Nov 2026): the
+  // confirm email goes now, once. Not on an agent's own plan: RealComply
+  // doesn't contact an agent's licensee unless the agent asks (Adam, 14 Oct
+  // 2026), so they send it from Office profile. Never fails the save.
+  if (!access.isAgentPlan) {
+    await sendLicenseeConfirmation(createServiceClient(), profile.agency_id, {
+      replyTo: profile.email,
+      onlyIfNeverSent: true,
+    });
   }
 
   // A CHANGE, not a first entry and not an edited address.

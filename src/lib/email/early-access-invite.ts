@@ -158,6 +158,12 @@ export type AnnexureBox =
   | { kind: "sign"; agencyName: string; licenceNumber: string | null; date: string; url: string }
   /** Office plan, the reader signed up but is not the licensee: the link went to the licensee. */
   | { kind: "sent"; licenseeName: string }
+  /**
+   * Office plan, the reader signed up but is not the licensee, and the
+   * licensee email hasn't confirmed yet (0112; Master, 4 Nov 2026): the
+   * annexure goes once it does.
+   */
+  | { kind: "confirm_first"; licenseeName: string }
   /** Agent on their own plan: the PDF to give their licensee. Nothing goes to the licensee. */
   | { kind: "download"; url: string }
   /** Agent invited by their office: read the annexure (once adopted) and the office's Supervision Guidelines. */
@@ -170,6 +176,11 @@ export function officeSgText(adopted: boolean): string {
 
 export function annexureSentLine(licenseeName: string): string {
   return `We've sent the annexure to ${licenseeName.trim() || "your licensee in charge"} to sign.`;
+}
+
+export function annexureConfirmFirstLine(licenseeName: string): string {
+  const who = licenseeName.trim() || "your licensee in charge";
+  return `We've asked ${who} to confirm their email address first. Once they do, we'll send them the annexure to sign.`;
 }
 
 function annexureBoxHtml(box: AnnexureBox): string {
@@ -210,9 +221,10 @@ ${bottom}`;
 <div style="margin:0 0 -8px">${buttons}</div>
 ${bottom}`;
   }
-  if (box.kind === "sent") {
+  if (box.kind === "sent" || box.kind === "confirm_first") {
+    const line = box.kind === "sent" ? annexureSentLine(box.licenseeName) : annexureConfirmFirstLine(box.licenseeName);
     return `${top}
-<p style="margin:0;font-weight:700;color:${C.ink}">${esc(annexureSentLine(box.licenseeName))}</p>
+<p style="margin:0;font-weight:700;color:${C.ink}">${esc(line)}</p>
 ${bottom}`;
   }
   const rows: Array<[string, string]> = [
@@ -249,6 +261,9 @@ function annexureBoxText(box: AnnexureBox): string[] {
     ];
   }
   if (box.kind === "sent") return [ANNEXURE_BOX_HEADING, ANNEXURE_BOX_TEXT, annexureSentLine(box.licenseeName)];
+  if (box.kind === "confirm_first") {
+    return [ANNEXURE_BOX_HEADING, ANNEXURE_BOX_TEXT, annexureConfirmFirstLine(box.licenseeName)];
+  }
   return [
     ANNEXURE_BOX_HEADING,
     ANNEXURE_BOX_TEXT,

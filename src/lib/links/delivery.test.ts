@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   annexureLinkStatus,
   copiedLinkLine,
+  emailedLinkLine,
   copiesBeforeSigning,
   copyLinkHint,
   formatAuDateTime,
@@ -155,4 +156,8 @@ test("Home: the annexure link while it waits on the licensee, with no Copy link"
   const old = annexureLinkStatus({ ...row, email_sent_at: null }, " ", sydney("2026-11-05T09:00:00"));
   assert.equal(old?.sentLine, "Sent 2 November 2026");
   assert.equal(old?.licenseeName, "getadamc3+lee@gmail.com");
+});
+
+test("a signature made through an emailed link says the address it went to (Master, 4 Nov 2026)", () => {
+  assert.equal(emailedLinkLine(" Lee@Example.invalid "), "Signed through a link emailed to lee@example.invalid.");
 });

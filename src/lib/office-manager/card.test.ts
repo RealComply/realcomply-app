@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  approvedHow,
   licenseeOfficeManagerHome,
   officeManagerCard,
   officeManagerHome,
@@ -309,5 +310,13 @@ describe("the licensee in charge's Home, when someone is made office manager (00
 
   it("shows nothing to anyone but the office's licensee in charge", () => {
     assert.deepEqual(licenseeOfficeManagerHome({ ...input, isOfficeLicensee: false }), { cards: [], lines: [] });
+  });
+});
+
+describe("how an office manager approval was given (Master, 4 Nov 2026)", () => {
+  it("says the address an emailed link went to, where it is known", () => {
+    assert.equal(approvedHow("email_link", " Lee@Example.invalid "), "through a link emailed to lee@example.invalid");
+    assert.equal(approvedHow("email_link", null), "by email link");
+    assert.equal(approvedHow("team", "lee@example.invalid"), "in Team");
   });
 });

@@ -282,6 +282,15 @@ describe("a licensee signature given through a copied link (option 2, Adam 3 Nov
   });
 });
 
+describe("a licensee signature given through the emailed link (Master, 4 Nov 2026; 0112)", () => {
+  it("says the address the link was emailed to", async () => {
+    const text = pdfText(
+      await pack({ signatures: { ...signed, licensee: { ...signed.licensee, emailedTo: "Lee@Example.invalid" } } }),
+    ).replace(/\s+/g, " ");
+    assert.ok(text.includes("Signed through a link emailed to lee@example.invalid."));
+  });
+});
+
 describe("Estimated selling price: every change (Adam, 3 Nov 2026; 0110)", () => {
   it("comes straight after the record, lists every version, and each evidence entry goes to its notice's page", async () => {
     const recordPages = (await pdfPageTexts(await pack())).length;
