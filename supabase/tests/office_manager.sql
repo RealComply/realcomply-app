@@ -40,6 +40,9 @@ begin
     (o1, 'OM Office One ', 'office_1', 'active', 'Jordan Made-Up', 'om-jordan@example.invalid'),
     (o2, 'OM Office Two', 'office_1', 'active', null, null),
     (o3, 'OM Own Plan', 'agent_1', 'active', 'Pat Made-Up', 'om-pat@example.invalid');
+  -- The licensee email has confirmed (0112), so links can go to it.
+  insert into public.licensee_email_confirmations (agency_id, email, confirmed_at) values
+    (o1, 'om-jordan@example.invalid', now()), (o3, 'om-pat@example.invalid', now());
   insert into public.profiles (id, agency_id, full_name, email, is_agent, is_licensee_in_charge, is_assistant, created_at) values
     (f, o1, 'Sam Founder', 'om-f@example.invalid', true, false, false, now() - interval '2 days'),
     (a, o1, 'Alex Agent', 'om-a@example.invalid', true, false, false, now() - interval '1 day'),
@@ -103,6 +106,18 @@ begin
   reset role;
   perform set_config('request.jwt.claims', '', true);
   update public.agencies set licensee_email = 'om-jordan@example.invalid' where id = o1;
+  -- Since 0112, changing the licensee email cancelled the request out to
+  -- the old address, and the address confirms again. Then Sam asks again.
+  if (select cancelled_at from public.office_manager_requests where id = req) is null then
+    raise exception 'FAIL 3b: the request stayed open when the licensee email changed';
+  end if;
+  insert into public.licensee_email_confirmations (agency_id, email, confirmed_at)
+  values (o1, 'om-jordan@example.invalid', now());
+  perform set_config('request.jwt.claims', json_build_object('sub', f, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  req := public.request_office_manager();
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
 
   -- 4. The licensee approves by link, without a login.
   select token into tok from public.office_manager_requests where id = req;
