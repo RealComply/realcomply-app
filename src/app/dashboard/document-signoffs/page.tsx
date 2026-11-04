@@ -215,6 +215,7 @@ export default async function DocumentSignoffsPage() {
                     <span className="text-rc-muted">
                       {" "}
                       · signed by {p.signed_name ?? "the licensee in charge"}, {formatAuTimestamp(p.signed_at)}
+                      {p.signed_via === "link" ? ", through the emailed link" : ""}
                     </span>
                   </span>
                   {p.signed_file_path && (

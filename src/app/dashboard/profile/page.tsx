@@ -61,12 +61,8 @@ export default async function ProfileSettingsPage() {
     .eq("id", profile.agency_id)
     .maybeSingle();
   const m = (modeRow ?? {}) as { licensee_signoff_mode?: string; licensee_signoff_mode_set_by_name?: string | null; licensee_signoff_mode_set_at?: string | null };
-  // A monthly pack is signed in the app, so it needs the licensee in charge
-  // on RealComply (Master, 4 Nov 2026).
-  const { data: licenseeOnRealComply } = await supabase.rpc("office_has_active_licensee");
   const signoffMode = {
     mode: (m.licensee_signoff_mode === "monthly" ? "monthly" : "as_they_come") as "monthly" | "as_they_come",
-    licenseeHasLogin: licenseeOnRealComply === true,
     setBy:
       m.licensee_signoff_mode_set_by_name && m.licensee_signoff_mode_set_at
         ? `Set by ${m.licensee_signoff_mode_set_by_name}, ${formatAuTimestamp(m.licensee_signoff_mode_set_at)}`
@@ -200,13 +196,7 @@ export default async function ProfileSettingsPage() {
                   their "My listings page", below. */}
               {!access.isAgentPlan && <AgentsListingsPagesCard rows={agentRows} />}
               {/* "How your licensee signs off" (Adam, 3 Nov 2026; 0109). */}
-              {!access.isAgentPlan && (
-                <SignoffModeCard
-                  mode={signoffMode.mode}
-                  setBy={signoffMode.setBy}
-                  licenseeHasLogin={signoffMode.licenseeHasLogin}
-                />
-              )}
+              {!access.isAgentPlan && <SignoffModeCard mode={signoffMode.mode} setBy={signoffMode.setBy} />}
               {/* Only the licensee changes the licensee's name and email
                   (Adam, 26 Oct 2026; 0095, checked by the database). An
                   office manager of an office whose licensee isn't on

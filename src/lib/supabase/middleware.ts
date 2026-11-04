@@ -38,6 +38,11 @@ export function isPublicPath(pathname: string): boolean {
     // token is the credential; the pages read and write only through 0093's
     // functions.
     pathname.startsWith("/office-manager/") ||
+    // /licensee/<token> is public for the same reason (0109, Adam 3 Nov
+    // 2026): the licensee in charge signs the month's pack, or one item, from
+    // an email, often with no login. The token is the credential; the server
+    // checks it before reading or signing anything.
+    pathname.startsWith("/licensee/") ||
     // The legal documents are public for the same kind of reason: a privacy
     // policy only account holders can read is not published, and the Stripe
     // customer portal and Meta's app review both link to them signed out.

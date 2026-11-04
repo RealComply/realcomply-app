@@ -5,9 +5,17 @@ import { monthName } from "@/lib/licensee-signoff/model";
 
 // The signed copy of a trust reconciliation or an SG Manual version: the
 // original with a signature page listing everyone who has signed. Moved here
-// from lib/actions/signoffs.ts (3 Nov 2026) so the monthly pack can use it
-// too: a "use server" file's exports can be called from the browser, and
-// this one reads with full rights.
+// from lib/actions/signoffs.ts (3 Nov 2026) so the monthly pack and the
+// licensee's email links can use it too: a "use server" file's exports can
+// be called from the browser, and this one reads with full rights.
+
+/** How a licensee in charge with no login signed (0109), for their line on the signature page. */
+export function licenseeWithoutLoginRole(via: string | null | undefined, packMonth: string | null): string {
+  if (via === "pack" || (via === "link" && packMonth)) {
+    return packMonth ? `Licensee in charge, in the ${packMonth} pack` : "Licensee in charge, in the monthly pack";
+  }
+  return "Licensee in charge, signed through an emailed link";
+}
 
 // The line printed on the signature page naming the obligation the DOCUMENT
 // answers — not the signature.
@@ -78,7 +86,7 @@ export async function stampSignedCopy(
       .order("signed_at", { ascending: true });
 
     const signed = (sigRows ?? []) as Array<{
-      signer_id: string;
+      signer_id: string | null;
       typed_name: string | null;
       signed_at: string;
       signed_via?: string | null;
@@ -87,7 +95,7 @@ export async function stampSignedCopy(
 
     // Signed in a monthly pack (0109): which month, for the line on the page.
     let packMonthOf: string | null = null;
-    if (signed.some((r) => r.signed_via === "pack")) {
+    if (signed.some((r) => r.signed_via === "pack" || r.signed_via === "link")) {
       const { data: packItem } = await supabase
         .from("signoff_pack_items")
         .select("signoff_packs(month)")
@@ -105,7 +113,7 @@ export async function stampSignedCopy(
       .select("id, full_name, email, is_licensee_in_charge")
       .in(
         "id",
-        signed.map((r) => r.signer_id),
+        signed.map((r) => r.signer_id).filter((id): id is string => Boolean(id)),
       );
 
     const profileById = new Map(
@@ -121,6 +129,16 @@ export async function stampSignedCopy(
       title: p.title,
       agencyName: (agency as { name?: string } | null)?.name ?? "This agency",
       signatories: signed.map((r) => {
+        // A licensee in charge with no login (0109): the name they typed, and
+        // how it reached them.
+        if (!r.signer_id) {
+          return {
+            name: r.typed_name ?? "The licensee in charge",
+            email: null,
+            role: licenseeWithoutLoginRole(r.signed_via, packMonthOf),
+            signedAt: r.signed_at,
+          };
+        }
         const who = profileById.get(r.signer_id);
         return {
           // The profile name is authoritative; typed_name is what the older
