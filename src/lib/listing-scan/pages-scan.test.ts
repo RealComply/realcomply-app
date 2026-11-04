@@ -219,3 +219,38 @@ test("a page turned away is logged once with why, naming the website only", asyn
   await assert.rejects(fetchPage(`${SITE}/agents/jo-citizen`));
   assert.deepEqual(logged, ["listing-scan: www.example-agency.invalid turned the check away: The page returned 403."]);
 });
+
+test("listings the page carries as data are read as links, this website's only", () => {
+  const data = [
+    { id: "1", url: `${SITE}/listings/residential_sale-1-testville/`, address: "8 Smith Street, Testville", price: "$1" },
+    { id: "2", url: "https://elsewhere.invalid/listings/2/", address: "9 Jones Road, Testville" },
+    { id: "3", url: `${SITE}/listings/land_sale-3-testville/`, title: "Lot 3, Testville" },
+  ];
+  const html =
+    `<a href="/listings/residential_sale-1-testville/">View</a>` +
+    `<script>var MapDataStore = ${JSON.stringify(data).replace(/\//g, "\\/")}; var other = {"url": 4, "nested": {"url": "x"}};</script>`;
+  assert.deepEqual(linksFrom(html, new URL(`${SITE}/listings`)), [
+    { href: `${SITE}/listings/residential_sale-1-testville/`, text: "View" },
+    { href: `${SITE}/listings/land_sale-3-testville/`, text: "Lot 3, Testville" },
+  ], "a link already on the page keeps its own words; another website's is left out");
+});
+
+test("found in the page's data: a listings page that draws its listings in after it loads", async () => {
+  const { db, tables } = fakeDb({
+    agencies: [{ id: AGENCY, website_url: `${SITE}/listings` }],
+    agent_listing_pages: [],
+    properties: [{ id: LISTING.id, listing_url: null }],
+    property_items: [],
+  });
+  const { anthropic } = fakeReader();
+  const data = [
+    { url: `${SITE}/listing/9-jones/`, address: "9 Jones Road, Testville" },
+    { url: `${SITE}/listing/8-smith/`, address: "8 Smith Street, Testville" },
+  ];
+  const { fetchPage } = fakeWeb({
+    [`${SITE}/listings`]: `<a href="/">Home</a><script>var MapDataStore = ${JSON.stringify(data).replace(/\//g, "\\/")};</script>`,
+  });
+  const url = await findListingPage(db, anthropic, LISTING, fetchPage);
+  assert.equal(url, `${SITE}/listing/8-smith/`);
+  assert.equal(tables.properties[0].listing_url, `${SITE}/listing/8-smith/`);
+});
