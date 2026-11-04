@@ -2,7 +2,6 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   COMPANY_LINE,
-  buildItemLinkEmail,
   buildPackEmail,
   buildSendPackReminder,
   buildSignPackReminder,
@@ -12,10 +11,14 @@ import {
 // sign-off pack: [n] items", body "Hi [name], [office manager] has sent you
 // [Month]'s sign-off pack for [office]: [n] sales files, [n] trust
 // reconciliations and [n] office items. [n] items are flagged for a closer
-// look.", button "Open the pack", "The link works without logging in and is
-// for you only.", footer RealComply Pty Ltd and ABN.
+// look.", button "Open the pack", footer RealComply Pty Ltd and ABN.
+//
+// The licensee signs the pack in the app, logged in, so the button opens the
+// Licensee sign-off page. Adam's approved wording also had "The link works
+// without logging in and is for you only.": that line belongs to the
+// licensee's links, a separate change (Master, 4 Nov 2026), and is left out.
 
-const URL = "https://www.realcomply.com.au/licensee/abc";
+const URL = "https://www.realcomply.com.au/dashboard/licensee-signoff";
 
 describe("the pack email", () => {
   const email = buildPackEmail({
@@ -41,9 +44,17 @@ describe("the pack email", () => {
     );
     assert.ok(text.includes("Open the pack"));
     assert.ok(text.includes(URL));
-    assert.ok(text.includes("The link works without logging in and is for you only."));
     assert.ok(text.includes(COMPANY_LINE));
     assert.ok(email.html.includes(URL));
+  });
+
+  it("never says the link works without logging in: the pack is signed in the app", () => {
+    for (const e of [
+      email,
+      buildSignPackReminder({ licenseeName: "Priya", officeName: "Made Up Realty", month: "2026-10-01", n: 5, url: URL }),
+    ]) {
+      assert.ok(!e.text.includes("without logging in"), e.subject);
+    }
   });
 
   it("calls an audit in the trust group a trust item", () => {
@@ -65,15 +76,6 @@ describe("the pack email", () => {
   it("has no em dashes in any licensee email", () => {
     const all = [
       email,
-      buildItemLinkEmail({
-        licenseeName: "Priya",
-        officeName: "Made Up Realty",
-        itemType: "gift",
-        title: "Gift over $60",
-        details: "Alex Agent · Wine, about $120 · 1 Oct 2026",
-        url: URL,
-        expiresAt: "3 December 2026",
-      }),
       buildSendPackReminder({ name: "Mel Carter", officeName: "Made Up Realty", month: "2026-10-01", n: 5, url: URL }),
       buildSignPackReminder({ licenseeName: "Priya", officeName: "Made Up Realty", month: "2026-10-01", n: 5, url: URL }),
     ];
@@ -81,22 +83,6 @@ describe("the pack email", () => {
       assert.ok(!`${e.subject} ${e.text}`.includes("—"), e.subject);
       assert.ok(!/compliant/i.test(e.text), e.subject);
     }
-  });
-});
-
-describe("one item's link, for a licensee with no login", () => {
-  it("names the office and the ask, and the link's rules", () => {
-    const e = buildItemLinkEmail({
-      licenseeName: "Priya Nandakumar",
-      officeName: "Made Up Realty",
-      itemType: "complaint",
-      title: "Complaint resolved",
-      details: "Late return of bond",
-      url: URL,
-      expiresAt: "3 December 2026",
-    });
-    assert.equal(e.subject, "Made Up Realty: A resolved complaint to sign off");
-    assert.ok(e.text.includes("The link works without logging in and is for you only. It expires on 3 December 2026."));
   });
 });
 

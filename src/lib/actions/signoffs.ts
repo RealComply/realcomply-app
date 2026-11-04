@@ -5,7 +5,6 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { createServiceClient } from "@/lib/supabase/service";
 import { storedFileProblem } from "@/lib/storage/evidence";
 import { stampSignedCopy } from "@/lib/signoff/stamp";
-import { offerItemLink } from "@/lib/licensee-signoff/server";
 import type { SignoffCategory, SignerScope } from "@/lib/types";
 
 export type ActionState = { error: string | null };
@@ -119,12 +118,6 @@ export async function createSignoffDocument(params: {
     if (sigError) {
       return { error: "Document saved, but couldn't set up all the sign-off rows — check the register." };
     }
-  }
-
-  // A licensee with no login, in an office that signs as items come in, gets
-  // an email link to sign this one (Adam, 3 Nov 2026; 0109).
-  if (params.category === "trust_reconciliation" || params.category === "sg_manual") {
-    await offerItemLink(profile.agency_id, params.category, doc.id, profile.id);
   }
 
   revalidatePath("/dashboard/document-signoffs");

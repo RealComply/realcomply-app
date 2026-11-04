@@ -3,7 +3,7 @@ import { sendEmail } from "@/lib/email/send";
 import { appBaseUrl } from "@/lib/site-url";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { buildSendPackReminder, buildSignPackReminder } from "@/lib/email/licensee-signoff";
-import { createLicenseeLink, emailLicenseeLink, licenseeLinkUrl, officeFor } from "@/lib/licensee-signoff/server";
+import { officeFor, packPageUrl } from "@/lib/licensee-signoff/server";
 import { draftItems, draftMonth, packsFor } from "@/lib/licensee-signoff/pack";
 
 // The "Monthly pack" reminders (Adam, 3 Nov 2026; 0109): "On the 1st of each
@@ -68,36 +68,32 @@ export async function sendPackReminders(service: SupabaseClient, now: Date = new
         }
       }
 
-      // A pack sent 7 days ago and not signed: the licensee, with a fresh link.
+      // A pack sent 7 days ago and not signed: the licensee, who signs it in
+      // the app. Only a licensee with a login has a pack to sign.
       const open = packs.open;
-      if (open?.sent_at && now.getTime() - Date.parse(open.sent_at) >= SEVEN_DAYS && office.licensee.email) {
+      if (
+        open?.sent_at &&
+        now.getTime() - Date.parse(open.sent_at) >= SEVEN_DAYS &&
+        office.licensee.profileId &&
+        office.licensee.email
+      ) {
         const { data: row } = await service.from("signoff_packs").select("licensee_reminded_at").eq("id", open.id).maybeSingle();
         if (!(row as { licensee_reminded_at?: string | null } | null)?.licensee_reminded_at) {
           const { count } = await service
             .from("signoff_pack_items")
             .select("id", { count: "exact", head: true })
             .eq("pack_id", open.id);
-          const link = await createLicenseeLink(service, {
-            agencyId: a.id,
-            purpose: "pack",
-            packId: open.id,
-            sentTo: office.licensee.email,
+          const email = buildSignPackReminder({
             licenseeName: office.licensee.name,
-            createdBy: null,
+            officeName: office.name,
+            month: open.month,
+            n: count ?? 0,
+            url: packPageUrl(),
           });
-          if (link) {
-            const email = buildSignPackReminder({
-              licenseeName: office.licensee.name,
-              officeName: office.name,
-              month: open.month,
-              n: count ?? 0,
-              url: licenseeLinkUrl(link.token),
-            });
-            if (await emailLicenseeLink(service, link.id, { to: office.licensee.email, ...email })) {
-              await service.from("signoff_packs").update({ licensee_reminded_at: now.toISOString() }).eq("id", open.id);
-              result.signReminders += 1;
-            } else result.failed += 1;
-          }
+          if (await sendEmail({ to: office.licensee.email, ...email })) {
+            await service.from("signoff_packs").update({ licensee_reminded_at: now.toISOString() }).eq("id", open.id);
+            result.signReminders += 1;
+          } else result.failed += 1;
         }
       }
     } catch (err) {

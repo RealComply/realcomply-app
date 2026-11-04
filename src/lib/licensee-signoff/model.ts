@@ -1,12 +1,12 @@
-// The monthly licensee sign-off pack, and the licensee's email links (Adam,
-// 3 Nov 2026; 0109). Pure: every rule here is tested (model.test.ts).
+// The monthly licensee sign-off pack (Adam, 3 Nov 2026; 0109). Pure: every
+// rule here is tested (model.test.ts).
 //
 // WHY. In larger offices (450 sales a year) the licensee in charge doesn't
 // sign each item as it comes in: the office manager brings them everything
-// once a month. And a licensee with no login had no way to sign a trust
-// reconciliation, the SG Manual, a training plan, a complaint or a gift.
-// Signing in the pack, or by link, does exactly what signing each item on its
-// own does (Adam: "This is the main rule").
+// once a month. Signing in the pack does exactly what signing each item on
+// its own does (Adam: "This is the main rule"). The licensee signs the pack
+// in the app; a licensee with no login has no pack yet (Master, 4 Nov 2026:
+// their links are a separate change).
 
 export type ItemType =
   | "sales_file"
@@ -210,7 +210,7 @@ export const MODE_OPTIONS = [
   {
     value: "as_they_come" as const,
     label: "As items come in",
-    line: "The licensee is told about each file, reconciliation or review as it's ready.",
+    line: "The licensee signs each item on its own as it's ready: a file through its email, everything else in RealComply.",
   },
   {
     value: "monthly" as const,
@@ -219,6 +219,8 @@ export const MODE_OPTIONS = [
       "No emails for single items. On the 1st of each month the office manager is reminded to send the pack. If the licensee hasn't signed it within 7 days, they get a reminder.",
   },
 ];
+/** Under "Monthly pack" while the licensee in charge isn't on RealComply (Master, 4 Nov 2026). Also 0109's refusal. */
+export const MONTHLY_NEEDS_LOGIN = "Your licensee needs to be on RealComply to sign a monthly pack.";
 export const MODE_FOOTNOTE =
   "Either way, the licensee can still sign any item on its own at any time. You can change this whenever you like.";
 export type SignoffMode = (typeof MODE_OPTIONS)[number]["value"];

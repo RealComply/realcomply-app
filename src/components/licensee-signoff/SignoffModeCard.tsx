@@ -2,14 +2,26 @@
 
 import { useActionState, useState } from "react";
 import { setSignoffMode, type PackActionState } from "@/lib/actions/licensee-signoff";
-import { MODE_FOOTNOTE, MODE_OPTIONS, type SignoffMode } from "@/lib/licensee-signoff/model";
+import { MODE_FOOTNOTE, MODE_OPTIONS, MONTHLY_NEEDS_LOGIN, type SignoffMode } from "@/lib/licensee-signoff/model";
 
 // "How your licensee signs off" (Adam, 3 Nov 2026; the approved mockup, view
 // 5). The licensee in charge and the office manager. It changes reminders
-// only: the Licensee sign-off page and the pack work either way.
-export function SignoffModeCard({ mode, setBy }: { mode: SignoffMode; setBy: string | null }) {
+// only: the Licensee sign-off page and the pack work either way. A monthly
+// pack is signed in the app, so "Monthly pack" can't be chosen while the
+// licensee in charge isn't on RealComply (Master, 4 Nov 2026); the database
+// refuses it too (0109).
+export function SignoffModeCard({
+  mode,
+  setBy,
+  licenseeHasLogin,
+}: {
+  mode: SignoffMode;
+  setBy: string | null;
+  licenseeHasLogin: boolean;
+}) {
   const [state, action, pending] = useActionState<PackActionState, FormData>(setSignoffMode, { error: null });
   const [chosen, setChosen] = useState<SignoffMode>(mode);
+  const unavailable = (value: SignoffMode) => value === "monthly" && !licenseeHasLogin && mode !== "monthly";
   return (
     <form action={action} className="space-y-3 rounded-card border border-rc-border bg-white p-4 shadow-card">
       <h3 className="text-base font-bold text-rc-ink">How your licensee signs off</h3>
@@ -17,21 +29,25 @@ export function SignoffModeCard({ mode, setBy }: { mode: SignoffMode; setBy: str
         {MODE_OPTIONS.map((o) => (
           <label
             key={o.value}
-            className={`grid cursor-pointer grid-cols-[20px_1fr] gap-2.5 rounded-xl border px-3.5 py-3 ${
-              chosen === o.value ? "border-rc-green-deep bg-rc-green-soft" : "border-rc-border bg-rc-bg-alt"
-            }`}
+            className={`grid grid-cols-[20px_1fr] gap-2.5 rounded-xl border px-3.5 py-3 ${
+              unavailable(o.value) ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+            } ${chosen === o.value ? "border-rc-green-deep bg-rc-green-soft" : "border-rc-border bg-rc-bg-alt"}`}
           >
             <input
               type="radio"
               name="mode"
               value={o.value}
               checked={chosen === o.value}
+              disabled={unavailable(o.value)}
               onChange={() => setChosen(o.value)}
               className="mt-1"
             />
             <span>
               <span className="block text-sm font-bold text-rc-ink">{o.label}</span>
               <span className="block text-sm text-rc-muted">{o.line}</span>
+              {o.value === "monthly" && !licenseeHasLogin && (
+                <span className="mt-1 block text-sm font-semibold text-rc-amber-deep">{MONTHLY_NEEDS_LOGIN}</span>
+              )}
             </span>
           </label>
         ))}

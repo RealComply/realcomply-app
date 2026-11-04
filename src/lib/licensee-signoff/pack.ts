@@ -200,9 +200,9 @@ export async function signPack(
   p: {
     office: Office;
     pack: PackRow;
-    signerId: string | null;
+    signerId: string;
     name: string;
-    via: "app" | "link";
+    via: "app";
     holds: Array<{ id: string; note: string }>;
   },
 ): Promise<{ signed: number; held: number; skipped: number }> {
@@ -278,7 +278,7 @@ export function packPdfInput(
         tick: PACK_TICK,
         signedCount: rows.filter((r) => r.pdf.outcome === "signed").length,
         heldCount: rows.filter((r) => r.pdf.outcome === "held").length,
-        how: pack.signed_via === "link" ? "through the emailed link" : "in RealComply",
+        how: "in RealComply",
       }
     : null;
   return {

@@ -11,9 +11,9 @@ import { GROUP_OF, type ItemType, type WaitingItem } from "@/lib/licensee-signof
 // is signed twice.
 //
 // Read with whatever client the caller has: the office manager or the
-// licensee (both read all of it since 0108), or the server's own key for a
-// licensee's emailed link once its token has been checked. Every read names
-// the office, so the server's key never reads another office's records.
+// licensee (both read all of it since 0108), or the server's own key. Every
+// read names the office, so the server's key never reads another office's
+// records.
 
 type Row = Record<string, unknown>;
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -148,7 +148,7 @@ export async function waitingItems(
   const licenseeSignedDocs = new Set<string>();
   for (const s of (sigs ?? []) as Row[]) {
     signedDocs.add(str(s.document_id));
-    if (!s.signer_id || licenseeIds.has(str(s.signer_id))) licenseeSignedDocs.add(str(s.document_id));
+    if (licenseeIds.has(str(s.signer_id))) licenseeSignedDocs.add(str(s.document_id));
   }
   const seenMonth = new Set<string>();
   let newestSg: Row | null = null;

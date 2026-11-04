@@ -1,13 +1,9 @@
--- ===== 0109: Licensee sign-off: an email link per item, and the monthly pack =====
+-- ===== 0109: Licensee sign-off: the monthly pack, signed in the app =====
 --
--- Monthly licensee sign-off pack, parts 2 and 3 (Adam, 3 Nov 2026). Run after
--- 0108.
+-- Monthly licensee sign-off pack, part 3 (Adam, 3 Nov 2026). Run after 0108.
 --
 -- WHY. In larger offices the licensee in charge doesn't sign each item as it
--- comes in: the office manager brings them everything once a month. And an
--- office whose licensee has no login (Raine & Horne Queanbeyan, for one) had
--- no way at all to sign a trust reconciliation, the SG Manual, a training
--- plan, a complaint or a gift review: a trust month just went overdue.
+-- comes in: the office manager brings them everything once a month.
 --
 -- WHAT. One engine signs the items waiting for the licensee in charge, and
 -- signing through it does EXACTLY what signing each item on its own does
@@ -22,21 +18,12 @@
 --   * gift            the review of a gift over the limit (0108)
 -- Property management has no licensee sign-off, so nothing of it is waiting.
 --
--- Three ways in, all through licensee_sign_item():
---   1. In the app, by the licensee in charge (the pack page).
---   2. An email link for ONE item, for a licensee with no login, in an office
---      set to "As items come in" (Adam, 3 Nov 2026).
---   3. An email link for the MONTH'S PACK (Adam, 3 Nov 2026: "A licensee
---      without a login uses the same link, the same way they sign today").
--- Links follow the email job's rules (0107): the token is never readable from
--- the table, Copy link records who copied it, Opened only when a person
--- interacts with the page, and the signer ticks that they are the licensee
--- in charge, signing for themselves.
---
--- A SIGNATURE WITHOUT A LOGIN. signoff_signatures needed a profile to sign.
--- A licensee with no login now signs with their typed name and no profile,
--- one such signature per document, and how it was signed is recorded
--- (signed_via: app, link or pack) on every kind.
+-- The licensee in charge signs the pack in the app, logged in, through
+-- licensee_sign_pack() (server only). How each item was signed is recorded
+-- on every kind (signed_via: app, or pack). A licensee with no login signs
+-- nothing through this file: their links are a separate change (Master,
+-- 4 Nov 2026: part 2 waits for the terms email), so an office whose licensee
+-- isn't on RealComply can't choose "Monthly pack" yet.
 --
 -- THE PACK. The office manager (or the licensee) sends the month's pack;
 -- once sent it is fixed, and anything that comes in afterwards goes into the
@@ -50,21 +37,10 @@
 begin;
 
 -- ── 1. How each kind records how it was signed ───────────────────────
-do $$
-begin
-  alter table public.signoff_signatures alter column signer_id drop not null;
-end $$;
 alter table public.signoff_signatures add column if not exists signed_via text;
 alter table public.signoff_signatures drop constraint if exists signoff_signatures_signed_via_check;
 alter table public.signoff_signatures add constraint signoff_signatures_signed_via_check
-  check (signed_via is null or signed_via in ('app', 'link', 'pack'));
--- A signature with no profile is the licensee in charge with no login: it has
--- their typed name and its time, and there is at most one on a document.
-alter table public.signoff_signatures drop constraint if exists signoff_signatures_named_without_login;
-alter table public.signoff_signatures add constraint signoff_signatures_named_without_login
-  check (signer_id is not null or (typed_name is not null and signed_at is not null));
-create unique index if not exists signoff_signatures_one_without_login
-  on public.signoff_signatures (document_id) where signer_id is null;
+  check (signed_via is null or signed_via in ('app', 'pack'));
 
 alter table public.trust_audits add column if not exists entered_by uuid references public.profiles (id) on delete set null;
 alter table public.trust_audits add column if not exists entered_by_name text;
@@ -73,22 +49,22 @@ alter table public.trust_audits add column if not exists confirmed_name text;
 alter table public.trust_audits add column if not exists confirmed_via text;
 alter table public.trust_audits drop constraint if exists trust_audits_confirmed_via_check;
 alter table public.trust_audits add constraint trust_audits_confirmed_via_check
-  check (confirmed_via is null or confirmed_via in ('app', 'link', 'pack'));
+  check (confirmed_via is null or confirmed_via in ('app', 'pack'));
 
 alter table public.training_plans add column if not exists principal_signed_via text;
 alter table public.training_plans drop constraint if exists training_plans_principal_signed_via_check;
 alter table public.training_plans add constraint training_plans_principal_signed_via_check
-  check (principal_signed_via is null or principal_signed_via in ('app', 'link', 'pack'));
+  check (principal_signed_via is null or principal_signed_via in ('app', 'pack'));
 
 alter table public.complaints add column if not exists signed_off_via text;
 alter table public.complaints drop constraint if exists complaints_signed_off_via_check;
 alter table public.complaints add constraint complaints_signed_off_via_check
-  check (signed_off_via is null or signed_off_via in ('app', 'link', 'pack'));
+  check (signed_off_via is null or signed_off_via in ('app', 'pack'));
 
 alter table public.gifts add column if not exists reviewed_via text;
 alter table public.gifts drop constraint if exists gifts_reviewed_via_check;
 alter table public.gifts add constraint gifts_reviewed_via_check
-  check (reviewed_via is null or reviewed_via in ('app', 'link', 'pack'));
+  check (reviewed_via is null or reviewed_via in ('app', 'pack'));
 
 -- The trust audit: entered by the office manager or the licensee, confirmed
 -- by the licensee (Adam, 3 Nov 2026). Runs as the caller, so current_user
@@ -185,6 +161,13 @@ begin
   if exists (select 1 from public.agencies where id = public.current_agency_id() and left(plan, 6) = 'agent_') then
     raise exception 'An agent on their own plan signs as items come in.' using errcode = 'P0001';
   end if;
+  -- The pack is signed in the app, so the licensee needs a login (Master,
+  -- 4 Nov 2026). Until then their files keep going to them by email as before.
+  if p_mode = 'monthly' and not exists (
+       select 1 from public.profiles p
+        where p.agency_id = public.current_agency_id() and p.is_licensee_in_charge and p.archived_at is null) then
+    raise exception 'Your licensee needs to be on RealComply to sign a monthly pack.' using errcode = 'P0001';
+  end if;
   select coalesce(nullif(btrim(full_name), ''), email) into v_name from public.profiles where id = auth.uid();
   update public.agencies
      set licensee_signoff_mode = p_mode, licensee_signoff_mode_set_by_name = v_name, licensee_signoff_mode_set_at = now()
@@ -206,7 +189,7 @@ create table if not exists public.signoff_packs (
   signed_at     timestamptz,
   signed_by     uuid references public.profiles (id) on delete set null,
   signed_name   text,
-  signed_via    text check (signed_via is null or signed_via in ('app', 'link')),
+  signed_via    text check (signed_via is null or signed_via = 'app'),
   -- The signed PDF, filed in Sign-offs too.
   signed_file_path text,
   signed_file_name text,
@@ -269,72 +252,16 @@ drop policy if exists "signoff_item_notes: the office reads its notes" on public
 create policy "signoff_item_notes: the office reads its notes" on public.signoff_item_notes
   for select using (agency_id = public.current_agency_id() and public.runs_office());
 
--- ── 4. Links: one item, or the month's pack ──────────────────────────
-create table if not exists public.licensee_links (
-  id            uuid primary key default gen_random_uuid(),
-  agency_id     uuid not null references public.agencies (id) on delete cascade,
-  token         uuid not null default gen_random_uuid() unique,
-  purpose       text not null check (purpose in ('item', 'pack')),
-  item_type     text check (item_type is null or item_type in
-                  ('trust_reconciliation', 'trust_audit', 'sg_manual', 'training_plan', 'complaint', 'gift')),
-  item_id       uuid,
-  pack_id       uuid references public.signoff_packs (id) on delete cascade,
-  sent_to       text not null,
-  licensee_name text,
-  created_by    uuid references public.profiles (id) on delete set null,
-  created_at    timestamptz not null default now(),
-  expires_at    timestamptz not null default (now() + interval '30 days'),
-  email_sent_at timestamptz,
-  email_attempts integer not null default 0,
-  email_error   text,
-  opened_at     timestamptz,
-  used_at       timestamptz,
-  used_name     text,
-  revoked_at    timestamptz,
-  check ((purpose = 'item' and item_type is not null and item_id is not null and pack_id is null)
-      or (purpose = 'pack' and pack_id is not null and item_type is null and item_id is null))
-);
-create index if not exists licensee_links_agency on public.licensee_links (agency_id, purpose);
-create unique index if not exists licensee_links_one_live_per_item on public.licensee_links (item_type, item_id)
-  where purpose = 'item' and used_at is null and revoked_at is null;
-create unique index if not exists licensee_links_one_live_per_pack on public.licensee_links (pack_id)
-  where purpose = 'pack' and used_at is null and revoked_at is null;
-
-create table if not exists public.licensee_link_copies (
-  id            uuid primary key default gen_random_uuid(),
-  link_id       uuid not null references public.licensee_links (id) on delete cascade,
-  agency_id     uuid not null references public.agencies (id) on delete cascade,
-  copied_by     uuid references public.profiles (id) on delete set null,
-  copied_by_name text not null,
-  copied_at     timestamptz not null default now()
-);
-create index if not exists licensee_link_copies_link on public.licensee_link_copies (link_id, copied_at);
-
-alter table public.licensee_links enable row level security;
-alter table public.licensee_link_copies enable row level security;
-drop policy if exists "licensee_links: the office reads its links" on public.licensee_links;
-create policy "licensee_links: the office reads its links" on public.licensee_links
-  for select using (agency_id = public.current_agency_id() and public.runs_office());
-drop policy if exists "licensee_link_copies: the office reads them" on public.licensee_link_copies;
-create policy "licensee_link_copies: the office reads them" on public.licensee_link_copies
-  for select using (agency_id = public.current_agency_id() and public.runs_office());
-
 -- Data API grants. The office reads; RealComply's own code (the functions
--- below and the server's key) writes. The token is never readable.
+-- below and the server's key) writes.
 revoke all on table public.signoff_packs from public, anon, authenticated;
 revoke all on table public.signoff_pack_items from public, anon, authenticated;
 revoke all on table public.signoff_item_notes from public, anon, authenticated;
-revoke all on table public.licensee_links from public, anon, authenticated;
-revoke all on table public.licensee_link_copies from public, anon, authenticated;
 grant select on public.signoff_packs to authenticated;
 grant select on public.signoff_pack_items to authenticated;
 grant select on public.signoff_item_notes to authenticated;
-grant select (id, agency_id, purpose, item_type, item_id, pack_id, sent_to, licensee_name, created_by, created_at,
-              expires_at, email_sent_at, email_attempts, email_error, opened_at, used_at, used_name, revoked_at)
-  on public.licensee_links to authenticated;
-grant select on public.licensee_link_copies to authenticated;
-grant select, insert, update, delete on public.signoff_packs, public.signoff_pack_items, public.signoff_item_notes,
-  public.licensee_links, public.licensee_link_copies to service_role;
+grant select, insert, update, delete on public.signoff_packs, public.signoff_pack_items, public.signoff_item_notes
+  to service_role;
 grant select (signed_via) on public.signoff_signatures to authenticated;
 grant select (entered_by, entered_by_name, entered_at, confirmed_name, confirmed_via) on public.trust_audits to authenticated;
 grant select (principal_signed_via) on public.training_plans to authenticated;
@@ -397,9 +324,9 @@ revoke execute on function public.licensee_item_waiting(uuid, text, uuid) from p
 grant execute on function public.licensee_item_waiting(uuid, text, uuid) to service_role;
 
 -- Signs one item exactly as signing it on its own does, plus how it was
--- signed. p_signer is the licensee's profile, or null for a licensee with no
--- login (then p_name is the name they typed). Returns true if it signed it
--- now, false if it was no longer waiting. Never called by the browser.
+-- signed. p_signer is the licensee's profile: always a login (a licensee with
+-- no login signs nothing here). Returns true if it signed it now, false if it
+-- was no longer waiting. Never called by the browser.
 create or replace function public.licensee_sign_item(
   p_agency uuid, p_type text, p_id uuid, p_signer uuid, p_name text, p_via text, p_pack uuid default null)
 returns boolean
@@ -413,7 +340,10 @@ declare
   v_req public.property_signoff_requests%rowtype;
   v_rows integer;
 begin
-  if v_name = '' or char_length(v_name) > 200 or p_via not in ('app', 'link', 'pack') then
+  if p_signer is null then
+    raise exception 'Only the licensee in charge, logged in, signs here.' using errcode = '42501';
+  end if;
+  if v_name = '' or char_length(v_name) > 200 or p_via not in ('app', 'pack') then
     raise exception 'A name is needed to sign.' using errcode = 'P0001';
   end if;
   if not public.licensee_item_waiting(p_agency, p_type, p_id) then
@@ -439,19 +369,14 @@ begin
           event_date = case when public.property_items.status = 'done' then public.property_items.event_date end;
 
   elsif p_type in ('trust_reconciliation', 'sg_manual') then
-    if p_signer is not null then
-      update public.signoff_signatures
-         set signed_at = now(), typed_name = v_name, signed_via = p_via
-       where document_id = p_id and signer_id = p_signer and signed_at is null;
-      get diagnostics v_rows = row_count;
-      if v_rows = 0 then
-        insert into public.signoff_signatures (document_id, agency_id, signer_id, typed_name, signed_at, signed_via)
-        values (p_id, p_agency, p_signer, v_name, now(), p_via)
-        on conflict (document_id, signer_id) do nothing;
-      end if;
-    else
+    update public.signoff_signatures
+       set signed_at = now(), typed_name = v_name, signed_via = p_via
+     where document_id = p_id and signer_id = p_signer and signed_at is null;
+    get diagnostics v_rows = row_count;
+    if v_rows = 0 then
       insert into public.signoff_signatures (document_id, agency_id, signer_id, typed_name, signed_at, signed_via)
-      values (p_id, p_agency, null, v_name, now(), p_via);
+      values (p_id, p_agency, p_signer, v_name, now(), p_via)
+      on conflict (document_id, signer_id) do nothing;
     end if;
 
   elsif p_type = 'trust_audit' then
@@ -500,6 +425,9 @@ declare
   v_held integer := 0;
   v_skipped integer := 0;
 begin
+  if p_signer is null or p_via is distinct from 'app' then
+    raise exception 'Only the licensee in charge, logged in, signs the pack.' using errcode = '42501';
+  end if;
   select * into v_pack from public.signoff_packs where id = p_pack for update;
   if v_pack.id is null or v_pack.sent_at is null then
     raise exception 'That pack hasn''t been sent yet.' using errcode = 'P0001';
@@ -517,7 +445,7 @@ begin
       update public.signoff_pack_items set held_back_at = now(), held_back_note = left(v_note, 500) where id = v_item.id;
       v_held := v_held + 1;
     elsif public.licensee_sign_item(v_item.agency_id, v_item.item_type, v_item.item_id, p_signer, p_name,
-                                     case when p_via = 'link' then 'link' else 'pack' end, p_pack) then
+                                     'pack', p_pack) then
       update public.signoff_pack_items set signed_at = now() where id = v_item.id;
       v_signed := v_signed + 1;
     else
@@ -534,70 +462,17 @@ $$;
 revoke execute on function public.licensee_sign_pack(uuid, uuid, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.licensee_sign_pack(uuid, uuid, text, text, jsonb) to service_role;
 
--- A person opened a licensee link in a browser (as 0107): the first open
--- counts, not someone signed in to the same office, not once it has expired.
-create or replace function public.note_licensee_link_opened(p_token uuid)
-returns void
-language plpgsql
-volatile
-security definer
-set search_path = public
-as $$
-declare
-  v_viewer_agency uuid := case when auth.uid() is null then null else public.current_agency_id() end;
-begin
-  update public.licensee_links
-     set opened_at = now()
-   where token = p_token and opened_at is null and revoked_at is null and expires_at > now()
-     and agency_id is distinct from v_viewer_agency;
-end
-$$;
-revoke execute on function public.note_licensee_link_opened(uuid) from public;
-grant execute on function public.note_licensee_link_opened(uuid) to anon, authenticated, service_role;
-
--- Copy link (as 0107): the office manager or the licensee, recorded, then the token.
-create or replace function public.copy_licensee_link(p_link_id uuid)
-returns uuid
-language plpgsql
-volatile
-security definer
-set search_path = public
-as $$
-declare
-  v_link public.licensee_links%rowtype;
-  v_name text;
-begin
-  if auth.uid() is null or not public.runs_office() then
-    raise exception 'Only the licensee in charge or the office manager can copy this link.' using errcode = '42501';
-  end if;
-  select * into v_link from public.licensee_links where id = p_link_id and agency_id = public.current_agency_id();
-  if v_link.id is null then
-    raise exception 'That link isn''t one of your office''s.' using errcode = '42501';
-  end if;
-  if v_link.used_at is not null or v_link.revoked_at is not null or v_link.expires_at <= now() then
-    raise exception 'That link can''t be used any more. Send a new one.' using errcode = 'P0001';
-  end if;
-  select coalesce(nullif(btrim(full_name), ''), email) into v_name from public.profiles where id = auth.uid();
-  insert into public.licensee_link_copies (link_id, agency_id, copied_by, copied_by_name)
-  values (v_link.id, v_link.agency_id, auth.uid(), coalesce(v_name, 'Someone in the office'));
-  return v_link.token;
-end
-$$;
-revoke execute on function public.copy_licensee_link(uuid) from public, anon;
-grant execute on function public.copy_licensee_link(uuid) to authenticated, service_role;
-
 commit;
 
 -- ── Check ──────────────────────────────────────────────────────────────
 -- One row, every value true.
 select
-  (select is_nullable = 'YES' from information_schema.columns
-    where table_schema = 'public' and table_name = 'signoff_signatures' and column_name = 'signer_id') as signs_without_login,
+  (select is_nullable = 'NO' from information_schema.columns
+    where table_schema = 'public' and table_name = 'signoff_signatures' and column_name = 'signer_id') as signs_with_a_login,
   to_regclass('public.signoff_packs') is not null and to_regclass('public.signoff_pack_items') is not null
     and to_regclass('public.signoff_item_notes') is not null as pack_tables,
-  to_regclass('public.licensee_links') is not null
-    and not has_column_privilege('authenticated', 'public.licensee_links', 'token', 'select')
-    and not has_table_privilege('anon', 'public.licensee_links', 'select') as links_token_hidden,
+  position('needs to be on RealComply' in pg_get_functiondef('public.set_licensee_signoff_mode(text)'::regprocedure)) > 0
+    as monthly_needs_a_login,
   not has_function_privilege('authenticated', 'public.licensee_sign_item(uuid, text, uuid, uuid, text, text, uuid)', 'execute')
     and not has_function_privilege('anon', 'public.licensee_sign_pack(uuid, uuid, text, text, jsonb)', 'execute')
     as signing_server_only,

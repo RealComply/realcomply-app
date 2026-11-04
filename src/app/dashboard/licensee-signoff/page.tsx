@@ -14,10 +14,8 @@ import {
   preparedLine,
   type ItemType,
 } from "@/lib/licensee-signoff/model";
-import { openedLine, sentLine, unopenedNudgeDue } from "@/lib/links/delivery";
 import { PackReview, type ReviewItem } from "@/components/licensee-signoff/PackReview";
 import { PackSigned } from "@/components/licensee-signoff/PackSigned";
-import { PackLinkStatus } from "@/components/licensee-signoff/PackLinkStatus";
 import { PrepareItemRow, type PrepareItem } from "@/components/licensee-signoff/PrepareItemRow";
 import { SendPack } from "@/components/licensee-signoff/SendPack";
 
@@ -25,9 +23,10 @@ import { SendPack } from "@/components/licensee-signoff/SendPack";
 // licensee in charge and the office manager. It builds itself from
 // everything waiting for the licensee's signature: the office manager
 // prepares the month's pack and sends it; the licensee reviews and signs it
-// here (or through the emailed link); then the signed result. With no
-// office manager, the licensee prepares it and signs it themselves. It works
-// whichever way the office has set "How your licensee signs off".
+// here, logged in; then the signed result. With no office manager, the
+// licensee prepares it and signs it themselves. It works whichever way the
+// office has set "How your licensee signs off". A licensee with no login
+// can't be sent a pack yet (Master, 4 Nov 2026: their links come later).
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +88,6 @@ export default async function LicenseeSignoffPage() {
         <main className="mx-auto w-full max-w-4xl flex-1 space-y-6 px-4 py-10">
           {signedBlock}
           <PackReview
-            via="app"
             packId={packs.open.id}
             monthLabel={monthName(packs.open.month)}
             sentLine={sent}
@@ -97,28 +95,11 @@ export default async function LicenseeSignoffPage() {
             items={reviewItems}
             licenseeName={office.licensee.name}
             todayLabel={today}
-            agencyName={office.name}
           />
         </main>
       );
     }
     // The office manager: where the pack is up to, and what's in it.
-    const { data: links } = await supabase
-      .from("licensee_links")
-      .select("id, created_at, email_sent_at, email_attempts, opened_at, used_at, revoked_at")
-      .eq("agency_id", profile.agency_id)
-      .eq("pack_id", packs.open.id)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    const link = ((links ?? []) as Array<Record<string, string | number | null>>)[0] ?? null;
-    const delivery = link
-      ? {
-          emailSentAt: (link.email_sent_at as string | null) ?? null,
-          createdAt: String(link.created_at),
-          openedAt: (link.opened_at as string | null) ?? null,
-          doneAt: (link.used_at as string | null) ?? null,
-        }
-      : null;
     return (
       <main className="mx-auto w-full max-w-4xl flex-1 space-y-6 px-4 py-10">
         {signedBlock}
@@ -129,19 +110,6 @@ export default async function LicenseeSignoffPage() {
             {monthName(nextOf(packs.open.month))}&apos;s pack.
           </p>
         </div>
-        <PackLinkStatus
-          linkId={link && !link.used_at && !link.revoked_at ? String(link.id) : null}
-          licenseeName={office.licensee.name}
-          sentLine={delivery ? sentLine(delivery) : null}
-          openedLine={delivery ? openedLine(delivery) : null}
-          nudge={
-            delivery && unopenedNudgeDue(delivery)
-              ? // "No one uses that word" (Adam, 3 Nov 2026): spam or junk folder, not quarantine.
-                `${office.licensee.name} hasn't opened the pack yet. Copy the link and send it yourself, or ask them to check their spam or junk folder.`
-              : null
-          }
-          emailFailed={Boolean(link && !link.email_sent_at && Number(link.email_attempts) > 0)}
-        />
         <ItemsCard items={items.map((i) => toPrepare(i, hrefs))} canNote={false} />
       </main>
     );
@@ -188,13 +156,14 @@ export default async function LicenseeSignoffPage() {
           <SendPack
             month={month}
             label={isLicensee ? "Review and sign" : "Send to licensee"}
-            disabled={items.length === 0 || (!isLicensee && !office.licensee.email)}
+            disabled={items.length === 0 || (!isLicensee && !office.licensee.profileId)}
           />
         </div>
       </div>
-      {!isLicensee && !office.licensee.email && (
+      {!isLicensee && !office.licensee.profileId && (
         <p role="alert" className="text-sm text-rc-amber-deep">
-          There&apos;s no email for your licensee in charge. Email admin@realcomply.com.au and we&apos;ll add it.
+          {office.licensee.name} isn&apos;t on RealComply yet, so they can&apos;t sign a pack. Their files keep going to them
+          by email.
         </p>
       )}
       <ItemsCard items={prepare} canNote />

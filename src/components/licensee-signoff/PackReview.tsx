@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
-import { signByLink, signPackInApp, type PackActionState } from "@/lib/actions/licensee-signoff";
+import { signPackInApp, type PackActionState } from "@/lib/actions/licensee-signoff";
 import {
   GROUP_HEADINGS,
   GROUP_ORDER,
@@ -13,11 +13,9 @@ import {
 } from "@/lib/licensee-signoff/model";
 
 // The licensee reviews and signs the month's pack (Adam, 3 Nov 2026; the
-// approved mockup, view 3). In the app for a licensee with a login; through
-// the emailed link for one without, who also types their name and confirms
-// they are the licensee in charge, signing for themselves (the email job's
-// rule). Flagged items first; everything else by group, folded; any item
-// can be held back with a short note; one tick, then "Sign [n] items".
+// approved mockup, view 3), in the app, logged in. Flagged items first;
+// everything else by group, folded; any item can be held back with a short
+// note; one tick, then "Sign [n] items".
 
 export type ReviewItem = {
   id: string;
@@ -34,36 +32,28 @@ export type ReviewItem = {
 };
 
 export function PackReview({
-  via,
   packId,
-  token,
   monthLabel,
   sentLine,
   pdfHref,
   items,
   licenseeName,
   todayLabel,
-  agencyName,
 }: {
-  via: "app" | "link";
-  packId?: string;
-  token?: string;
+  packId: string;
   monthLabel: string;
   sentLine: string | null;
   pdfHref: string;
   items: ReviewItem[];
   licenseeName: string;
   todayLabel: string;
-  agencyName: string;
 }) {
-  const action = via === "app" ? signPackInApp : signByLink.bind(null, token ?? "");
-  const [state, formAction, pending] = useActionState<PackActionState, FormData>(action, { error: null });
+  const [state, formAction, pending] = useActionState<PackActionState, FormData>(signPackInApp, { error: null });
   const [held, setHeld] = useState<Record<string, string>>({});
   const [holding, setHolding] = useState<string | null>(null);
   const [draftNote, setDraftNote] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [ticked, setTicked] = useState(false);
-  const [typedName, setTypedName] = useState("");
 
   const counts = useMemo(() => {
     const c: Record<Group, number> = { sales: 0, pm: 0, trust: 0, office: 0 };
@@ -74,7 +64,7 @@ export function PackReview({
   const rest = items.filter((i) => !i.flagged && !(i.id in held));
   const heldItems = items.filter((i) => i.id in held);
   const toSign = items.length - heldItems.length;
-  const signerName = via === "link" ? typedName.trim() || licenseeName : licenseeName;
+  const signerName = licenseeName;
 
   if (state.done) {
     return (
@@ -167,7 +157,6 @@ export function PackReview({
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-rc-ink">{monthLabel} sign-off pack</h1>
           {sentLine && <p className="mt-1 text-sm text-rc-muted">{sentLine}</p>}
-          {via === "link" && <p className="text-sm text-rc-muted">{agencyName}</p>}
         </div>
         <a
           href={pdfHref}
@@ -187,7 +176,7 @@ export function PackReview({
       </div>
 
       <form action={formAction} className="space-y-4 rounded-card border border-rc-border bg-white p-4 shadow-card sm:p-5">
-        {packId && <input type="hidden" name="packId" value={packId} />}
+        <input type="hidden" name="packId" value={packId} />
         <input type="hidden" name="holds" value={JSON.stringify(Object.entries(held).map(([id, note]) => ({ id, note })))} />
 
         {flagged.length > 0 && (
@@ -260,27 +249,6 @@ export function PackReview({
               </p>
             ))}
           </section>
-        )}
-
-        {via === "link" && (
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-rc-ink" htmlFor="typedName">
-              Your full name
-            </label>
-            <input
-              id="typedName"
-              name="typedName"
-              required
-              autoComplete="name"
-              value={typedName}
-              onChange={(e) => setTypedName(e.target.value)}
-              className="w-full max-w-sm rounded-lg border border-rc-border px-3 py-2 text-sm"
-            />
-            <label className="flex items-start gap-2 text-sm text-rc-ink">
-              <input type="checkbox" name="confirmSelf" value="yes" required className="mt-0.5 h-4 w-4" />
-              <span>I am the licensee in charge of {agencyName}, and I am signing for myself.</span>
-            </label>
-          </div>
         )}
 
         <label className="flex items-start gap-2.5 rounded-xl border-[1.5px] border-rc-green-deep bg-rc-green-soft px-3.5 py-3 text-sm font-semibold text-rc-ink">

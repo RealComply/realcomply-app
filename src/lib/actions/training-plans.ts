@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
-import { offerItemLink } from "@/lib/licensee-signoff/server";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { isInFolder, planItemFolder, storedFileProblem } from "@/lib/storage/evidence";
 import type { LicenceType, TrainingPlan, TrainingPlanItem } from "@/lib/types";
@@ -425,11 +424,6 @@ export async function signTrainingPlan(
 
   const { error } = await supabase.from("training_plans").update({ ...patch, updated_at: now }).eq("id", planId);
   if (error) return { error: "Couldn't record the signature — try again." };
-
-  // Accepted by the staff member: a licensee with no login, in an office that
-  // signs as items come in, gets an email link to approve it (Adam, 3 Nov
-  // 2026; 0109).
-  if (side === "staff") await offerItemLink(profile.agency_id, "training_plan", planId, profile.id);
 
   revalidate();
   return ok;
