@@ -2,7 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   CONFIRM_FIRST_NOTE,
+  CONFIRMED_NOTE,
   licenseeEmailLine,
+  licenseeEmailNote,
   licenseeEmailState,
   linkSendLines,
   waitingSentLine,
@@ -78,6 +80,15 @@ describe("where the licensee email stands (Master, 4 Nov 2026)", () => {
 
   it("puts the responsibility with the office (Adam, 4 Nov 2026)", () => {
     assert.ok(CONFIRM_FIRST_NOTE.includes("Your office is responsible for it being your licensee's address."));
+    assert.ok(CONFIRMED_NOTE.startsWith("Your office is responsible for this being your licensee's address."));
+  });
+
+  it("says links wait only while it waits, and what a change does once confirmed", () => {
+    const email = "lee@example.invalid";
+    assert.equal(licenseeEmailNote({ kind: "none" }), null);
+    assert.equal(licenseeEmailNote({ kind: "waiting", email, lastSentAt: null, sendError: null }), CONFIRM_FIRST_NOTE);
+    assert.equal(licenseeEmailNote({ kind: "confirmed", email, confirmedAt: "2026-11-04T02:00:00Z" }), CONFIRMED_NOTE);
+    assert.equal(licenseeEmailNote({ kind: "login", email }), CONFIRMED_NOTE);
   });
 });
 
@@ -100,6 +111,6 @@ describe("last sent to [address] on [date]", () => {
   });
 
   it("has no em dashes", () => {
-    for (const line of [CONFIRM_FIRST_NOTE]) assert.ok(!line.includes("—"));
+    for (const line of [CONFIRM_FIRST_NOTE, CONFIRMED_NOTE]) assert.ok(!line.includes("—"));
   });
 });

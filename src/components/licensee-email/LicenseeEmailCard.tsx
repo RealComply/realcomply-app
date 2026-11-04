@@ -1,7 +1,7 @@
 import { formatAuTimestamp } from "@/lib/format-date";
 import {
-  CONFIRM_FIRST_NOTE,
   licenseeEmailLine,
+  licenseeEmailNote,
   linkSendLines,
   waitingSentLine,
   type LicenseeEmailState,
@@ -17,6 +17,7 @@ import { SendConfirmButton } from "./SendConfirmButton";
 export function LicenseeEmailCard({ state, sends }: { state: LicenseeEmailState; sends: LinkSend[] }) {
   const lines = linkSendLines(sends, formatAuTimestamp);
   const waiting = state.kind === "waiting";
+  const note = licenseeEmailNote(state);
   return (
     <div
       className={`rounded-card border bg-white p-4 text-sm shadow-card ${waiting ? "border-rc-amber/40" : "border-rc-border"}`}
@@ -31,7 +32,7 @@ export function LicenseeEmailCard({ state, sends }: { state: LicenseeEmailState;
           <SendConfirmButton label={state.lastSentAt ? "Send again" : "Send the confirm email"} />
         </>
       )}
-      {state.kind !== "none" && <p className="mt-2 text-xs leading-relaxed text-rc-muted">{CONFIRM_FIRST_NOTE}</p>}
+      {note && <p className="mt-2 text-xs leading-relaxed text-rc-muted">{note}</p>}
       {lines.length > 0 && (
         <div className="mt-3 border-t border-rc-border pt-3">
           <p className="text-xs font-semibold text-rc-ink">Sent to your licensee</p>

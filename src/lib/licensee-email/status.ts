@@ -58,9 +58,19 @@ export function waitingSentLine(state: Extract<LicenseeEmailState, { kind: "wait
   return `Confirm email last sent on ${formatDate(state.lastSentAt)}. If it hasn't arrived, ask them to check their spam or junk folder.`;
 }
 
-/** What approval, invite and sign-off links wait for, said once on the page. */
+/** While it waits: what approval, invite and sign-off links wait for. */
 export const CONFIRM_FIRST_NOTE =
   "No approval, invite or sign-off link goes to your licensee until this address confirms. Your office is responsible for it being your licensee's address.";
+
+/** Once it is accepted: the same responsibility, and what a change does. */
+export const CONFIRMED_NOTE =
+  "Your office is responsible for this being your licensee's address. If you change it, the new address confirms first, and nothing goes to it until then.";
+
+/** The note under the line, or none when there is no address. */
+export function licenseeEmailNote(state: LicenseeEmailState): string | null {
+  if (state.kind === "none") return null;
+  return state.kind === "waiting" ? CONFIRM_FIRST_NOTE : CONFIRMED_NOTE;
+}
 
 export type LinkSend = { kind: string; sent_to: string; sent_at: string };
 
