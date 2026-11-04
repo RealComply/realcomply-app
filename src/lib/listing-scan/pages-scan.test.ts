@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { checkListingsPages, findListingPage, pageCache } from "@/lib/listing-scan/pages-scan";
+import { checkListingsPages, decodeHref, findListingPage, linksFrom, pageCache } from "@/lib/listing-scan/pages-scan";
 import { groupWarning, pageCheckFrom } from "@/lib/listings-pages";
 
 // The 7am check's page-finding with stand-in pages and a stand-in reader (Adam,
@@ -84,12 +84,13 @@ const page = (paths: string[]) => paths.map((p) => `<a href="${p}">${p}</a>`).jo
 /** Stand-in pages; a page not listed is turned away, like a website refusing the check. */
 function fakeWeb(pages: Record<string, string>) {
   const fetched: string[] = [];
+  const logged: string[] = [];
   const fetch = async (url: string) => {
     fetched.push(url);
     if (!(url in pages)) throw new Error("The page returned 403.");
     return { url: new URL(url), html: pages[url] };
   };
-  return { fetchPage: pageCache(fetch), fetched };
+  return { fetchPage: pageCache(fetch, (line) => logged.push(line)), fetched, logged };
 }
 
 const AGENCY = "agency-1";
@@ -192,4 +193,29 @@ test("each listings page is counted every morning; the group-page warning; an un
   assert.deepEqual(refused, { pagesChecked: 2, pagesRefused: 2, pagesFailed: 0 });
   const ended = await checkListingsPages(db, anthropic, fakeWeb(web).fetchPage, live, new Set([AGENCY]));
   assert.deepEqual(ended, { pagesChecked: 0, pagesRefused: 0, pagesFailed: 0 });
+});
+
+test("a link's &amp; and &#038; are read as the browser reads them", () => {
+  assert.equal(decodeHref("/listings/?saleOrRental=Sale&#038;order=dateListed-desc"), "/listings/?saleOrRental=Sale&order=dateListed-desc");
+  assert.equal(decodeHref("/sale?a=1&amp;b=2&#x26;c=3"), "/sale?a=1&b=2&c=3");
+  assert.equal(decodeHref("/fish&chips"), "/fish&chips", "a bare & is left alone");
+  assert.equal(decodeHref("/x&#0;y"), "/x&#0;y", "a reference to nothing is left alone");
+
+  const links = linksFrom(
+    `<a href="/listings/?saleOrRental=Sale&#038;order=dateListed-desc">For sale</a>` +
+      `<a href="/listings/?saleOrRental=Sale&amp;order=dateListed-desc">For sale again</a>`,
+    new URL(`${SITE}/listings`),
+  );
+  assert.deepEqual(
+    links.map((l) => l.href),
+    [`${SITE}/listings/?saleOrRental=Sale&order=dateListed-desc`],
+    "the whole address kept, not cut at the #, and the two spellings are one link",
+  );
+});
+
+test("a page turned away is logged once with why, naming the website only", async () => {
+  const { fetchPage, logged } = fakeWeb({});
+  await assert.rejects(fetchPage(`${SITE}/agents/jo-citizen`));
+  await assert.rejects(fetchPage(`${SITE}/agents/jo-citizen`));
+  assert.deepEqual(logged, ["listing-scan: www.example-agency.invalid turned the check away: The page returned 403."]);
 });

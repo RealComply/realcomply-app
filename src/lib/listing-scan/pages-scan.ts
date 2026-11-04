@@ -43,6 +43,23 @@ export type ListingCandidate = { url: string; label: string; why: string };
 
 const LINK_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 
+const NAMED: Record<string, string> = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" };
+
+/**
+ * An href as the browser reads it: character references decoded. A page
+ * writes "&" in a link as "&amp;", or "&#038;" as WordPress does (an
+ * office's listings page, 4 Nov 2026). Read raw, "?saleOrRental=Sale&#038;order=..." turned
+ * everything after the "#" into a fragment, which was then dropped, so the
+ * check followed a link that wasn't the page's own.
+ */
+export function decodeHref(raw: string): string {
+  return raw.replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|(amp|quot|apos|lt|gt));/gi, (whole, dec, hex, name) => {
+    if (name) return NAMED[name.toLowerCase()];
+    const code = dec ? Number(dec) : parseInt(hex, 16);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
+}
+
 /** Same-host links with their anchor text, deduplicated, capped. */
 export function linksFrom(html: string, base: URL): Array<{ href: string; text: string }> {
   const seen = new Set<string>();
@@ -52,7 +69,7 @@ export function linksFrom(html: string, base: URL): Array<{ href: string; text: 
   while ((m = LINK_RE.exec(html)) !== null) {
     let abs: URL;
     try {
-      abs = new URL(m[1], base);
+      abs = new URL(decodeHref(m[1]), base);
     } catch {
       continue;
     }
@@ -97,18 +114,42 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
   },
 };
 
-/** Reads a page once per run, however many listings look at it. A refusal is remembered too. */
+/**
+ * Reads a page once per run, however many listings look at it. A refusal is
+ * remembered too, and logged once with why.
+ *
+ * WHY A PAGE WAS TURNED AWAY GOES IN THE LOG (4 Nov 2026). The listing and
+ * listings_page_checks only say "refused", so the 7am run on 4 Nov showed 11
+ * pages refused with nothing to say why. They were: a "checking your
+ * browser" screen, which returns 403 to anything that isn't a person in a
+ * browser; website addresses that don't exist; and a website whose https is
+ * broken. One line per page, with the website's name
+ * only, never the rest of the address: an agent's own page can carry their
+ * name.
+ */
 export type FetchPage = (url: string) => Promise<{ url: URL; html: string }>;
-export function pageCache(fetch: (url: string) => Promise<{ url: URL; html: string }> = fetchPublicPage): FetchPage {
+export function pageCache(
+  fetch: (url: string) => Promise<{ url: URL; html: string }> = fetchPublicPage,
+  log: (line: string) => void = console.log,
+): FetchPage {
   const seen = new Map<string, Promise<{ url: URL; html: string }>>();
   return (url) => {
     let page = seen.get(url);
     if (!page) {
       page = fetch(url);
+      page.catch((err: unknown) => log(`listing-scan: ${websiteOf(url)} turned the check away: ${err instanceof Error ? err.message : String(err)}`));
       seen.set(url, page);
     }
     return page;
   };
+}
+
+function websiteOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "an address that isn't valid";
+  }
 }
 
 /**
