@@ -2,7 +2,9 @@
 // the same "what's pending sign-off / flagged / due this stage" rollup per
 // property, computed the same way, so it lives in one place rather than
 // being reimplemented twice and drifting.
-import { allItemsFor, type ComplianceItem } from "@/lib/rules/nsw-sales";
+import { allItemsFor, itemsForStage, type ComplianceItem } from "@/lib/rules/nsw-sales";
+import { stageHold } from "@/lib/rules/stage-hold";
+import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import type { Property, PropertyItem } from "@/lib/types";
 
 export type PropertyDigest = {
@@ -20,7 +22,17 @@ export type PropertyDigest = {
   // open forever with nothing ever mentioning it again.
   awaiting: ComplianceItem[];
   lastActivityAt: string | null;
+  /**
+   * The On market stage is complete: the file is worked at a stage after it,
+   * by the same rule the listing page uses (lib/rules/stage-hold.ts), so a
+   * file held back at an earlier stage is not complete. The weekly digest
+   * stops reminding about these (Adam, 5 Nov 2026).
+   */
+  onMarketComplete: boolean;
 };
+
+/** On market, as stored on properties.stage. */
+export const ON_MARKET_STAGE = 2;
 
 // Files an assistant has handed to an agent and that the agent has not yet
 // signed. Not a compliance state — nothing is wrong with these files — but it
@@ -29,6 +41,16 @@ export type PropertyDigest = {
 // has to review it. A licensee should be able to see how long it has sat.
 export function awaitingAgentReview(properties: Property[]): Property[] {
   return properties.filter((p) => Boolean(p.review_requested_at));
+}
+
+/**
+ * The listings the weekly digest still reminds about (Adam, 5 Nov 2026):
+ * every one whose On market stage is not complete. Past On market, its cards,
+ * flags and weekly-review line stop going out; they stay on the listing in
+ * the app and in the audit pack.
+ */
+export function stillReminded(digests: PropertyDigest[]): PropertyDigest[] {
+  return digests.filter((d) => !d.onMarketComplete);
 }
 
 export function computePropertyDigests(
@@ -43,15 +65,18 @@ export function computePropertyDigests(
   // the send step. That is the safe direction: it counts a hand-off as still
   // pending rather than quietly assuming the file needs no further sign-off.
   licenseeIds: Set<string> = new Set(),
+  // Live ads per property (property_market_listings with no as_at). Given, the
+  // ESP reasoning card counts by its rule when deciding where the file is
+  // held, exactly as on the listing page. Left out, its stored status is used.
+  onMarketCounts?: Map<string, number>,
 ): PropertyDigest[] {
   return properties.map((property) => {
     const rows = itemsByProperty.get(property.id) ?? new Map<string, PropertyItem>();
+    const ctx = { agentIsLicensee: licenseeIds.has(property.created_by) };
     // Only items in stages the file has actually reached — anything further
     // out hasn't been started yet, so it's not meaningfully "pending" or
     // "flagged," it just hasn't come up.
-    const reached = allItemsFor(property, Object.fromEntries(rows), {
-      agentIsLicensee: licenseeIds.has(property.created_by),
-    }).filter((i) => i.stage <= property.stage);
+    const reached = allItemsFor(property, Object.fromEntries(rows), ctx).filter((i) => i.stage <= property.stage);
 
     const pendingSignoff = reached.filter((i) => i.licenseeOnly && rows.get(i.key)?.status !== "done");
     const flagged = reached.filter((i) => rows.get(i.key)?.status === "flagged");
@@ -68,6 +93,22 @@ export function computePropertyDigests(
       if (!lastActivityAt || row.recorded_at > lastActivityAt) lastActivityAt = row.recorded_at;
     }
 
+    // Where the file is worked now: the first stage at or below its stored
+    // stage with a required card not complete (the listing page's rule).
+    const stored = Object.fromEntries(rows);
+    const effective = onMarketCounts
+      ? withEffectiveEspStatus(stored, { onMarketCount: onMarketCounts.get(property.id) ?? 0 })
+      : stored;
+    const hold = stageHold({
+      storedStage: property.stage,
+      testMode: property.test_mode,
+      signedOff: stored["sign_licensee"]?.status === "done",
+      incompleteRequired: (s) =>
+        itemsForStage(s, property, effective, ctx)
+          .filter((i) => i.requiredForStageCompletion && effective[i.key]?.status !== "done")
+          .map((i) => i.label),
+    });
+
     return {
       property,
       pendingSignoff,
@@ -76,6 +117,7 @@ export function computePropertyDigests(
       doneCurrentStage,
       awaiting,
       lastActivityAt,
+      onMarketComplete: hold.stage > ON_MARKET_STAGE,
     };
   });
 }

@@ -13,6 +13,7 @@ import {
   computePropertyDigests,
   daysSinceActivity,
   awaitingAgentReview,
+  stillReminded,
   type PropertyDigest,
 } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
@@ -42,9 +43,16 @@ const TRAINING_REMINDER_DAYS = 90;
 // (src/app/dashboard/portfolio/page.tsx) — the Monday email is meant to be
 // the same picture, just pushed instead of pulled, so it deliberately
 // doesn't invent a different notion of "needs attention."
+//
+// One difference, on purpose (Adam, 5 Nov 2026): once a listing's On market
+// stage is complete, the email stops reminding about it. No cards, flags or
+// weekly-review line for it, and it isn't counted. Office overview, the
+// listing and the audit pack still show everything. Licence, insurance, CPD
+// and trust reminders are not listings and are unchanged.
 
 type AgencyBundle = {
   agency: Agency;
+  /** The listings the email still reminds about (see stillReminded). */
   properties: Property[];
   /** Everyone, removed people included: only for putting a name to an id. */
   profiles: Profile[];
@@ -99,12 +107,25 @@ async function loadAgencyBundle(
     .eq("is_licensee_in_charge", true);
   const licenseeIds = new Set(((licenseeRows ?? []) as { id: string }[]).map((r) => r.id));
 
-  const digests = computePropertyDigests(propertyList, itemsByProperty, licenseeIds);
+  // Live ads per listing, so the ESP reasoning card counts by its rule when
+  // working out whether On market is complete, as on the listing page.
+  const { data: liveAds } =
+    propertyIds.length > 0
+      ? await supabase.from("property_market_listings").select("property_id").in("property_id", propertyIds).is("as_at", null)
+      : { data: [] as { property_id: string }[] };
+  const onMarketCounts = new Map<string, number>();
+  for (const ad of (liveAds ?? []) as { property_id: string }[]) {
+    onMarketCounts.set(ad.property_id, (onMarketCounts.get(ad.property_id) ?? 0) + 1);
+  }
+
+  // Only listings whose On market stage isn't complete (Adam, 5 Nov 2026).
+  const digests = stillReminded(computePropertyDigests(propertyList, itemsByProperty, licenseeIds, onMarketCounts));
+  const remindedIds = new Set(digests.map((d) => d.property.id));
   const lastTrainingSessionDate = ((trainingSessions as Pick<TrainingSession, "session_date">[] | null) ?? [])[0]?.session_date ?? null;
 
   return {
     agency,
-    properties: propertyList,
+    properties: propertyList.filter((p) => remindedIds.has(p.id)),
     profiles: profileList,
     // Removing someone sets archived_at and leaves their role flags alone, so
     // a removed licensee was still emailed the whole agency's digest every
