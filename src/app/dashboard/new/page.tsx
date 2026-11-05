@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NewPropertyForm } from "@/components/property/NewPropertyForm";
 import type { Profile } from "@/lib/types";
 
-// Creating a listing now reads all three documents before it redirects (see
+// Creating a listing now reads its documents before it redirects (see
 // createProperty), so this route needs room to do it. Three document reads on
 // a long contract can take a minute or more, and Vercel's default ceiling
 // would cut the request off mid-read — leaving a created listing whose cards

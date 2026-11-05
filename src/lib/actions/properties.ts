@@ -33,9 +33,15 @@ import type { ActionState } from "@/lib/actions/auth";
 // ever sees the resulting staged path + original filename as plain
 // strings, then moves the object to its permanent, property-scoped path
 // once the property row exists.
+//
+// REVERSAL (Adam, 5 Nov 2026; raised by a user). Was: the contract for sale
+// (b1) was required here, so the file couldn't start without it. Now: the
+// agency agreement and the comparable sales report only. The contract is
+// uploaded on its own card in Pre-market and read the moment it's attached;
+// completeStage refuses On market until it's there. Why: agents often list
+// and organise marketing while still waiting on the contract.
 const SETUP_EVIDENCE_FIELDS: Array<{ field: string; itemKey: string; label: string }> = [
   { field: "agencyAgreementFile", itemKey: "a3", label: "Agency agreement" }, // Agency agreement signed; copy served within 48 hours
-  { field: "contractFile", itemKey: "b1", label: "Contract for sale" }, // Contract of sale prepared with prescribed documents
   { field: "comparableSalesFile", itemKey: "a4", label: "Comparable sales report" }, // Attached to the ESP card (a4b merged in, 22 Aug 2026)
 ];
 
@@ -138,7 +144,7 @@ export async function createProperty(
   }
 
   // Documents are mandatory at setup — NewPropertyForm.tsx uploads each
-  // file to Storage itself and only submits here once all three succeed,
+  // file to Storage itself and only submits here once both succeed,
   // but re-check that every staged path actually arrived, since a Server
   // Action is a real POST endpoint a bare form submission could bypass.
   const staged: Array<{ field: string; itemKey: string; path: string; fileName: string }> = [];
@@ -147,7 +153,7 @@ export async function createProperty(
     const fileName = String(formData.get(`${field}FileName`) ?? "").trim();
     if (!path || !fileName) {
       return {
-        error: "Attach all three documents (agency agreement, contract for sale, comparable sales report) to create a property file.",
+        error: "Attach both documents (the agency agreement and the comparable sales report) to create the listing.",
       };
     }
     staged.push({ field, itemKey, path, fileName });
@@ -297,14 +303,15 @@ export async function createProperty(
     });
   }
 
-  // READ THE THREE DOCUMENTS BEFORE THE AGENT EVER SEES THE FILE.
+  // READ THE DOCUMENTS BEFORE THE AGENT EVER SEES THE FILE. Two since 5 Nov
+  // 2026: the contract is read later, the moment it's attached in Pre-market.
   //
   // Adam, 7 Sep 2026: "hitting Create listing should double as document
   // extraction function so that by the time you get to listing set up, the
   // information has already been populated in the relevant cards."
   //
   // Until now the read happened per document on attach, which is right when a
-  // file is added later and wrong here: at set-up all three arrive at once,
+  // file is added later and wrong here: at set-up they arrive at once,
   // seconds before the agent lands on a page full of empty cards. They then
   // had to notice a button at the top and press it. The work was always going
   // to happen; the only question was whether the agent had to ask for it.
