@@ -244,6 +244,17 @@ export function licenseeOfficeManagerHome(input: {
 }
 
 /**
+ * How an approval was given, in a sentence: "in Team", "by email link", or,
+ * where the address is known, "through a link emailed to [address]"
+ * (Master, 4 Nov 2026: every signature through a link records it).
+ */
+export function approvedHow(via: "team" | "email_link", emailedTo: string | null | undefined): string {
+  if (via !== "email_link") return "in Team";
+  const to = (emailedTo ?? "").trim().toLowerCase();
+  return to ? `through a link emailed to ${to}` : "by email link";
+}
+
+/**
  * Said wherever the office manager role is chosen: the team invite, "Make
  * office manager" in Team, and the approval page and email for a licensee
  * with no login (Legal, 3 Nov 2026, via Master; word for word).

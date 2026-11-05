@@ -38,6 +38,9 @@ begin
   insert into public.agencies (id, name, plan, status, licensee_name, licensee_email) values
     (o1, 'OMR Office One (made up)', 'office_2', 'active', 'Lee Licensee', 'omr-lee-own@example.invalid'),
     (o2, 'OMR Office Two (made up)', 'office_2', 'active', 'Xan Licensee', 'omr-xan-own@example.invalid');
+  -- The licensee email has confirmed (0112), so links can go to it.
+  insert into public.licensee_email_confirmations (agency_id, email, confirmed_at) values
+    (o1, 'omr-lee-own@example.invalid', now()), (o2, 'omr-xan-own@example.invalid', now());
   insert into public.profiles (id, agency_id, full_name, email, is_agent, is_licensee_in_charge, is_assistant) values
     (l, o1, 'Lee Licensee', 'omr-l@example.invalid', true, true, false),
     (m, o1, 'Max Manager', 'omr-m@example.invalid', true, false, false),

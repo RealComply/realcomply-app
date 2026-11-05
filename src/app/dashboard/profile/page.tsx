@@ -6,6 +6,8 @@ import { pmAgencySettings } from "@/lib/data/pm";
 import { agencyLogoUrl } from "@/lib/storage/evidence";
 import { AgencyLogoForm } from "@/components/team/AgencyLogoForm";
 import { LicenseeEmailForm } from "@/components/team/LicenseeEmailForm";
+import { LicenseeEmailCard } from "@/components/licensee-email/LicenseeEmailCard";
+import { licenseeEmailCard } from "@/lib/data/licensee-email";
 import { OfficeDetailsForm, OfficeNamesReadOnly } from "@/components/profile/OfficeDetailsForm";
 import { LogoMark } from "@/components/Logo";
 import { roleLabel } from "@/components/UserBar";
@@ -121,6 +123,9 @@ export default async function ProfileSettingsPage() {
   }
 
   const licensee = access.isAgentPlan ? null : await licenseeCard(supabase, profile, access.officeLicensee);
+  // Where the licensee email stands, and where each link last went (0112;
+  // Master, 4 Nov 2026). Everyone in the office.
+  const licenseeEmail = await licenseeEmailCard(supabase, profile.agency_id, agency?.licensee_email ?? null);
 
   // Listings pages for the daily price check (Adam, 2 Nov 2026; 0105): each
   // lister's own page, and what this morning's check found on every page.
@@ -231,6 +236,7 @@ export default async function ProfileSettingsPage() {
           ) : (
             <OfficeNamesReadOnly tradingName={agencyName} licensedEntityName={entityName} />
           )}
+          <LicenseeEmailCard state={licenseeEmail.state} sends={licenseeEmail.sends} />
           {licensee && <LicenseeInChargeCard {...licensee} />}
         </div>
       </section>

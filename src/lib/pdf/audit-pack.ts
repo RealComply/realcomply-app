@@ -173,6 +173,23 @@ export async function buildAuditPack(
   // record". Both halves of that are now fixed, and the filename matters most
   // of the two — a file attached to an email is judged by its name long before
   // anybody opens page one.
+  // Signed through the link RealComply emailed: the address it went to, on
+  // the record (Master, 4 Nov 2026; 0112).
+  const emailedTo = async (): Promise<string | null> => {
+    const data = byKey["sign_licensee"]?.data as { signoffRequestId?: unknown; signedVia?: unknown } | undefined;
+    const requestId = data?.signoffRequestId;
+    if (data?.signedVia !== "link" || typeof requestId !== "string" || !requestId) return null;
+    const { data: request } = await supabase
+      .from("property_signoff_requests")
+      .select("sent_to")
+      .eq("id", requestId)
+      .eq("agency_id", agencyId)
+      .eq("item_key", "sign_licensee")
+      .maybeSingle();
+    const sentTo = (request as { sent_to?: string | null } | null)?.sent_to?.trim();
+    return sentTo || null;
+  };
+
   const agentSignature = await signatureOf("sign_agent");
   const licenseeSigned = await signatureOf("sign_licensee");
   // Signed through a link someone copied to send by hand (option 2, Adam
@@ -185,7 +202,7 @@ export async function buildAuditPack(
     return ((data as { month?: string } | null)?.month as string | undefined) ?? null;
   };
   const licenseeSignature = licenseeSigned
-    ? { ...licenseeSigned, copiedLink: await copiedBeforeSigning(licenseeSigned.signedAt), packMonth: await packMonth() }
+    ? { ...licenseeSigned, copiedLink: await copiedBeforeSigning(licenseeSigned.signedAt), emailedTo: await emailedTo(), packMonth: await packMonth() }
     : null;
   const isDraft = !agentSignature || !licenseeSignature;
 

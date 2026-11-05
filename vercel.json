@@ -42,6 +42,10 @@
       "schedule": "45 * * * *"
     },
     {
+      "path": "/api/cron/licensee-confirm",
+      "schedule": "5 22 * * *"
+    },
+    {
       "path": "/api/cron/licensee-signoff",
       "schedule": "55 21 * * *"
     }
