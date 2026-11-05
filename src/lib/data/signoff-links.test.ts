@@ -23,6 +23,7 @@ const link = (over: Partial<SignoffLink>): SignoffLink => ({
   openedAt: null,
   copies: [],
   licenseeName: "Lee Licensee",
+    inMonthlyPack: false,
   ...over,
 });
 

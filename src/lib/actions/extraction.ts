@@ -558,6 +558,126 @@ export async function extractInsuranceCertificate(
   }
 }
 
+// ── The trust account audit report ─────────────────────────────────────────
+//
+// Adam, 3 Nov 2026: "The office manager uploads the trust audit report and
+// enters its details (or RealComply reads them from the report, as for other
+// uploads). The licensee only confirms and signs." Read like the insurance
+// certificate above: never writes, returns the raw answer for
+// lib/trust-audit-read.ts to decide what to show.
+const TRUST_AUDIT_TOOL: Anthropic.Tool = {
+  name: "record_trust_audit_report",
+  description:
+    "Record the auditor, the audit period and the report date from an auditor's report on a NSW real estate agency's trust account (s111 and s112, Property and Stock Agents Act 2002).",
+  input_schema: {
+    type: "object",
+    properties: {
+      documentIs: {
+        type: "string",
+        enum: ["trust_account_audit_report", "other"],
+        description:
+          "ALWAYS set this first, from what the document actually is, not from the filename. " +
+          "'trust_account_audit_report': an auditor's report on the audit of an agency's trust account or trust " +
+          "accounts for a period. 'other': anything else (a monthly reconciliation, a bank statement, an invoice " +
+          "from the auditor on its own, a letter of engagement, a blank page).",
+      },
+      auditor: {
+        type: "string",
+        description:
+          "The auditor who signed the report: their name, and their firm if printed, as printed (for example " +
+          "'Jane Smith, Smith & Co Auditors'). Never the agency or the licensee.",
+      },
+      periodEnd: {
+        type: "string",
+        description:
+          "The last day of the period the audit covers, as YYYY-MM-DD (usually 30 June: 'for the year ended " +
+          "30 June 2026' is 2026-06-30). Australian documents write dates day first. Never the report date.",
+      },
+      reportDate: {
+        type: "string",
+        description: "The date the auditor signed or dated the report, as YYYY-MM-DD. Never the period end.",
+      },
+      unreadableFields: {
+        type: "array",
+        items: { type: "string", enum: ["auditor", "periodEnd", "reportDate"] },
+        description:
+          "Every field that appears on the document but cannot be read with confidence: blurred, cut off, " +
+          "covered by glare, or ambiguous.",
+      },
+    },
+    required: ["documentIs"],
+  },
+};
+
+/**
+ * Reads an uploaded trust account audit report. Never writes; returns the raw
+ * tool input for lib/trust-audit-read.ts. An error means nothing was read.
+ */
+export async function extractTrustAuditReport(
+  path: string,
+  fileName: string,
+): Promise<{ error: string | null; raw?: unknown }> {
+  const { supabase, profile } = await requireAuthContext();
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { error: "Reading documents isn't set up yet, so the details need typing in for now." };
+  }
+
+  const where = { reader: "trust_audit_report", card: "Trust account audit", fileName, agencyId: profile.agency_id } as const;
+  const failed = (why: ReadFailureWhy, error?: unknown) => noteRead(supabase, { ...where, outcome: "failed", why, error });
+
+  const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
+  if (error || !blob) {
+    await failed("file");
+    return { error: "Couldn't open the uploaded file to read it." };
+  }
+  const unreadable = await downloadedFileProblem(blob, fileName);
+  if (unreadable) {
+    await failed("file");
+    return { error: unreadable };
+  }
+
+  const prepared = await prepareRead(blob, fileName);
+  if (!prepared.ok) {
+    await failed(prepared.problem === "too_large" ? "too_large" : "unsupported");
+    return prepared.problem === "too_large"
+      ? { error: TOO_LARGE_TO_READ }
+      : { error: `That file type can't be read (${prepared.contentType}). Upload a PDF or a photo instead.` };
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  try {
+    const answers = await askParts(anthropic, prepared.parts, {
+      maxTokens: 1024,
+      system:
+        "You are reading a document uploaded as the annual trust account audit report of a NSW real estate agency " +
+        "(RealComply). Record only what the document explicitly and literally states. A photo may be skewed, partly " +
+        "covered or blurred: if any character of a name or date is uncertain, leave that field out and list it in " +
+        "unreadableFields. A wrong period is worse than none. You must call record_trust_audit_report exactly once; " +
+        "leaving fields out is a normal, successful outcome.",
+      text:
+        `This was uploaded as "${fileName}". FIRST set documentIs from what the document actually is. ` +
+        "THEN record the auditor, the end of the period audited and the date of the report as printed.",
+      tool: TRUST_AUDIT_TOOL,
+    });
+    const raw = mergeReads(answers) as { documentIs?: unknown };
+    await noteRead(supabase, { ...where, outcome: raw.documentIs === "trust_account_audit_report" ? "read" : "wrong_document" });
+    return { error: null, raw };
+  } catch (e) {
+    const why = readFailureWhy(e);
+    await failed(why, e);
+    return {
+      error: failedReadSentence(
+        why,
+        "the report",
+        "Type the details in, or upload it again.",
+        "Couldn't read the report just now, so type the details in.",
+      ),
+    };
+  }
+}
+
 // ── The revised-ESP notice ─────────────────────────────────────────────────
 //
 // Adam, 22 Aug 2026: "in the campaign stage, [the last question] should ask if

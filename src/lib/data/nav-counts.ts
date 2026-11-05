@@ -178,6 +178,12 @@ export const EMPTY_NAV_COUNTS: NavCounts = {
 export const navCountsFor = cache(async function navCountsFor(
   supabase: SupabaseClient,
   profile: Profile,
+  /**
+   * An office manager reads every listing in the office (Adam, 3 Nov 2026;
+   * 0108), but their counts and to-dos stay their own work: pass their id to
+   * count only the listings they created (lib/data/listing-access.ts).
+   */
+  onlyOwnOf: string | null = null,
 ): Promise<NavCounts> {
   // Read once, so every deadline below is measured against the same instant.
   const today = new Date();
@@ -190,7 +196,9 @@ export const navCountsFor = cache(async function navCountsFor(
   // Test listings are excluded everywhere here. Adam runs files in test mode
   // to try things out, and a sidebar that counts his sandbox is a sidebar he
   // learns to ignore.
-  const properties = ((propertyRows ?? []) as Property[]).filter((p) => !p.test_mode);
+  const properties = ((propertyRows ?? []) as Property[]).filter(
+    (p) => !p.test_mode && (onlyOwnOf === null || p.created_by === onlyOwnOf),
+  );
   const propertyIds = properties.map((p) => p.id);
 
   // Everything the sidebar needs, in one parallel batch. The extra register

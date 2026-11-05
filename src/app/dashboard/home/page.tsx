@@ -88,6 +88,7 @@ export default async function HomeDashboardPage({
       <AgentHome
         supabase={supabase}
         profile={profile}
+        access={access}
         sgReadShows={sgReadShows}
         officeManager={officeManager}
         setup={setup}

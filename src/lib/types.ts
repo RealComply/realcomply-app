@@ -207,6 +207,12 @@ export type Gift = {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  /** Who marked it reviewed and when (0108). Null for reviews before 0108, and before 0108 is run. */
+  reviewed_by?: string | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+  /** How it was reviewed: in the app, by link or in a monthly pack (0109). */
+  reviewed_via?: string | null;
 };
 
 export type ComplaintStatus = "open" | "under_review" | "resolved";
@@ -224,6 +230,18 @@ export type Complaint = {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  /** Who moved it on and when, and the licensee's sign-off once resolved (0108). Null before 0108. */
+  under_review_by?: string | null;
+  under_review_by_name?: string | null;
+  under_review_at?: string | null;
+  resolved_by?: string | null;
+  resolved_by_name?: string | null;
+  resolved_at?: string | null;
+  signed_off_by?: string | null;
+  signed_off_name?: string | null;
+  signed_off_at?: string | null;
+  /** How it was signed off: in the app, by link or in a monthly pack (0109). */
+  signed_off_via?: string | null;
 };
 
 /**
@@ -529,6 +547,11 @@ export type TrustAudit = {
    *  a tick with nobody's name against it is not a record of anything. */
   confirmed_by: string | null;
   confirmed_at: string | null;
+  /** Who entered the details and when; the confirmer's name and how (0109). Absent before 0109. */
+  entered_by_name?: string | null;
+  entered_at?: string | null;
+  confirmed_name?: string | null;
+  confirmed_via?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

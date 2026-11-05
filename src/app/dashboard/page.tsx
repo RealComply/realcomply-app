@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Check, Home as HomeIcon, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
+import { ownWork, readsBeyondOwnWork } from "@/lib/data/listing-access";
 import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
 import { ListingLockCard } from "@/components/annexure/ListingLockCard";
 import { licenseeChangeStatus } from "@/lib/data/licensee-change";
@@ -37,8 +38,12 @@ export default async function DashboardPage() {
   // when deciding which file to open. Free: the dashboard layout has already
   // called this in the same request and navCountsFor is cached, so this is a
   // map lookup rather than a second set of queries.
-  const { listingRows } = await navCountsFor(supabase, profile);
+  const { listingRows } = await navCountsFor(supabase, profile, readsBeyondOwnWork(access) ? profile.id : null);
   const statusById = new Map(listingRows.map((l) => [l.id, l]));
+  // An office manager sees every listing in the office (Adam, 3 Nov 2026;
+  // 0108), to read: another agent's opens as its read-only record.
+  const ownIds = new Set(ownWork(list, access, profile.id).map((p) => p.id));
+  const viewOnly = (id: string) => readsBeyondOwnWork(access) && !ownIds.has(id);
 
   return (
     <>
@@ -99,7 +104,7 @@ export default async function DashboardPage() {
             {list.map((property) => (
               <li key={property.id}>
                 <Link
-                  href={`/dashboard/${property.id}`}
+                  href={viewOnly(property.id) ? `/dashboard/${property.id}/summary` : `/dashboard/${property.id}`}
                   // On a phone the pills go under the address and the address
                   // wraps (10 Oct 2026): beside the pills it was cut to about ten
                   // characters. From sm up, one row as before.
@@ -126,6 +131,11 @@ export default async function DashboardPage() {
                     {/* What this file still needs, in the stage it is in.
                         Absent on a test listing, which is deliberately not
                         counted anywhere — see nav-counts.ts. */}
+                    {viewOnly(property.id) && (
+                      <span className="rounded-full bg-rc-bg-alt px-2.5 py-1 text-xs font-semibold text-rc-muted">
+                        View only
+                      </span>
+                    )}
                     {(() => {
                       const s = statusById.get(property.id);
                       if (!s) return null;

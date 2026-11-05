@@ -92,6 +92,7 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
         setError(result.error);
         return;
       }
+      if (result.inPack) return; // "Monthly pack" (0109): it's in the pack, nothing was emailed.
       if (result.emailed === false) {
         setError("The link was created but the email couldn't be sent. Press Send again in a moment.");
         return;
@@ -193,6 +194,12 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
               </p>
             </>
           ) : (
+            live.inMonthlyPack ? (
+              // "Monthly pack" (0109): no email for single items.
+              <p className="text-[11px] font-semibold text-rc-ink">
+                In this month&apos;s licensee sign-off pack. It goes to {live.licenseeName} when the pack is sent.
+              </p>
+            ) : (
             <>
               <p className="text-[11px] font-semibold text-rc-ink">
                 Sent to {live.sentTo} on {formatAuTimestamp(live.emailSentAt ?? live.createdAt)}
@@ -207,6 +214,7 @@ export function SignoffLinkPanel({ propertyId, links }: { propertyId: string; li
                 </p>
               )}
             </>
+            )
           )}
 
           <div className="mt-2 flex flex-wrap items-center gap-2">

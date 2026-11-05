@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { History } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
+import { worksOnPmProperty } from "@/lib/data/listing-access";
 import { loadPmProperty, loadPmRecords, pmAgencySettings, pmItemDetail, pmPeople, type PmRecordRow } from "@/lib/data/pm";
 import { formatAuDate } from "@/lib/format-date";
 import {
@@ -80,6 +81,13 @@ export default async function PmPropertyPage({ params }: { params: Promise<{ id:
     loadPmRecords(supabase, id),
   ]);
   if (!loaded) notFound();
+
+  // An office manager reads every property under management but works on
+  // their own (Adam, 3 Nov 2026; 0108): another manager's opens as its
+  // read-only history.
+  if (!(await worksOnPmProperty(supabase, access, profile.id, loaded.property))) {
+    redirect(`/dashboard/pm/${id}/history`);
+  }
 
   const { property, input, tenancy, tenancies, states } = loaded;
   const nameOf = new Map(people.map((p) => [p.id, p.name]));

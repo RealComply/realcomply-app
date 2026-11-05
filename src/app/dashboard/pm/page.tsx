@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
+import { readsBeyondOwnWork } from "@/lib/data/listing-access";
 import { loadPmCards, pmAgencySettings, pmPeople, type PmPropertyRow } from "@/lib/data/pm";
 import { PM_GROUPS, isPmGroup, type PmGroup } from "@/lib/rules/nsw-pm";
 import { pmCardSummary } from "@/lib/rules/pm-engine";
@@ -190,7 +191,13 @@ export default async function PmDashboardPage({
                     return (
                       <li key={p.id} className="min-w-0">
                         <Link
-                          href={`/dashboard/pm/${p.id}`}
+                          // Another manager's property, for an office manager:
+                          // its read-only history (0108).
+                          href={
+                            readsBeyondOwnWork(access) && p.manager_id !== profile.id
+                              ? `/dashboard/pm/${p.id}/history`
+                              : `/dashboard/pm/${p.id}`
+                          }
                           aria-label={`${p.address}, ${nameOf.get(p.manager_id) ?? ""}. ${pmCardSpoken(summary)}`}
                           className="block rounded-xl border border-rc-border bg-white px-4 py-3.5 shadow-card transition hover:border-rc-green-deep"
                         >

@@ -1,9 +1,10 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { agencyPeople } from "@/lib/data/people";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { EditPropertyDetails } from "@/components/property/EditPropertyDetails";
 import { requireAccess } from "@/lib/data/current-profile";
+import { worksOnListing } from "@/lib/data/listing-access";
 import { ItemCard } from "@/components/compliance/ItemCard";
 import { CompleteStageButton, ExtractDocumentsButton, TestModeToggle } from "@/components/compliance/StageActions";
 import { TransferListingSection } from "@/components/compliance/TransferListingSection";
@@ -77,6 +78,13 @@ export default async function PropertyPage({
   }
 
   const p = property as Property;
+
+  // An office manager reads every listing in the office but works on their
+  // own (Adam, 3 Nov 2026; 0108): another agent's opens as its read-only
+  // record, where the audit pack downloads too.
+  if (!(await worksOnListing(supabase, access, profile.id, p))) {
+    redirect(`/dashboard/${p.id}/summary`);
+  }
 
   const [{ data: propertyItemRows }, { data: agencyRow }, peopleRows, signoffLinks, comparables, marketListings] = await Promise.all([
     supabase.from("property_items").select("*").eq("property_id", id),

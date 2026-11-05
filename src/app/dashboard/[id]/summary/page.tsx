@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { SaveAuditPack } from "@/components/compliance/SaveAuditPack";
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/data/current-profile";
+import { requireAccess, requireProfile } from "@/lib/data/current-profile";
+import { worksOnListing } from "@/lib/data/listing-access";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
@@ -62,12 +63,20 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
     signed("sign_licensee") ? null : "the licensee in charge",
   ].filter((s): s is string => s !== null);
   const isDraft = missingSignatures.length > 0;
+  const { access } = await requireAccess();
+  const worksOn = await worksOnListing(supabase, access, profile.id, p);
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 print:px-0">
       <div className="flex items-center justify-between print:hidden">
-        <Link href={`/dashboard/${p.id}`} className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
-          <RoofMark back />Back to file
+        {/* An office manager reading another agent's listing (0108) has no
+            working file to go back to: back to Listings instead. */}
+        <Link
+          href={worksOn ? `/dashboard/${p.id}` : "/dashboard"}
+          className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep"
+        >
+          <RoofMark back />
+          {worksOn ? "Back to file" : "Back to listings"}
         </Link>
         {/* One button (Adam, 2 Nov 2026): the pack now holds every document on
             the listing, so it takes a moment to build. It says "Preparing your

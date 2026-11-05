@@ -185,14 +185,22 @@ describe("who each complaint action lets through", () => {
     assert.match(body(registers, "addComplaint"), /status: "open",/);
   });
 
-  it("Review, Resolve, removing a file and removing a complaint: the licensee in charge only", () => {
-    for (const fn of [
-      body(registers, "updateComplaintStatus"),
-      body(registers, "deleteComplaint"),
-      body(filesActions, "removeComplaintFile"),
-    ]) {
+  it("removing a file and removing a complaint: the licensee in charge only", () => {
+    for (const fn of [body(registers, "deleteComplaint"), body(filesActions, "removeComplaintFile")]) {
       assert.match(fn, /if \(!access\.officeLicensee\) return/);
       assert.doesNotMatch(fn, /seesComplaints/);
     }
+  });
+
+  // REVERSAL (Adam, 3 Nov 2026; 0108). Was: Review and Resolve were the
+  // licensee in charge's only. Now an office manager marks a complaint Under
+  // review or Resolved too; only the licensee takes one back to open, and only
+  // the licensee signs a resolved complaint off.
+  it("Under review and Resolved: the licensee in charge or an office manager; reopening and signing off: the licensee", () => {
+    assert.match(
+      body(registers, "updateComplaintStatus"),
+      /if \(!access\.officeLicensee && !\(access\.isOfficeManager && status !== "open"\)\) return/,
+    );
+    assert.match(body(registers, "signOffComplaint"), /if \(!access\.officeLicensee\) return \{ error:/);
   });
 });

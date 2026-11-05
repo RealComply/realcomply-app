@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { grantOfficeManager, withdrawOfficeManager, type TeamOfficeManagerState } from "@/lib/actions/office-manager";
 import { formatAuTimestamp } from "@/lib/format-date";
+import { OFFICE_MANAGER_SEES } from "@/lib/office-manager/card";
 
 // Make office manager / Withdraw, on a staff row in Team, for the licensee in
 // charge only (0093; mockup approved by Adam, 26 Oct 2026). The database
@@ -99,6 +100,7 @@ export function TeamOfficeManagerControls({
             billing. File sign-offs, annexure adoption, changing the licensee in charge and deleting compliance records
             stay with you.
           </p>
+          <p className="mt-1.5 text-xs font-semibold leading-relaxed text-rc-ink">{OFFICE_MANAGER_SEES}</p>
           <label className="mt-2 flex items-start gap-2 text-sm font-semibold text-rc-ink">
             <input
               type="checkbox"

@@ -131,24 +131,41 @@ begin
   exception when others then
     if sqlerrm like 'FAIL%' then raise; end if;
   end;
+  -- REVERSAL (Adam, 3 Nov 2026; 0108): an office manager now sees every
+  -- listing in the office, so a complaint they log can name any of them.
+  -- Was (0102): only a listing they could open, which was only their own.
+  -- (Tried and rolled back, so the counts below are unchanged.)
   begin
     insert into public.complaints (agency_id, received_date, complainant, nature, property_id, status, created_by)
     values (o1, date '2026-10-30', 'Made up', 'x', pa, 'open', m);
-    raise exception 'FAIL 2g: the office manager linked a complaint to a listing they can''t open';
+    raise exception 'OK 2g';
+  exception when others then
+    if sqlerrm <> 'OK 2g' then
+      raise exception 'FAIL 2g: the office manager couldn''t link a complaint to a listing in their office (0108): %', sqlerrm;
+    end if;
+  end;
+
+  -- 3. REVERSAL (Adam, 3 Nov 2026; 0108). Was (0102): an office manager
+  --    couldn't Review or Resolve. Now they can mark a complaint Under review
+  --    or Resolved, recording who and when. They still can't edit or remove
+  --    one. (Tried and rolled back, so the later steps are unchanged.)
+  begin
+    update public.complaints set status = 'under_review' where id = c1;
+    get diagnostics n = row_count;
+    if n <> 1 then raise exception 'FAIL 3: the office manager couldn''t mark a complaint Under review'; end if;
+    update public.complaints set status = 'resolved' where id = c1;
+    get diagnostics n = row_count;
+    if n <> 1 then raise exception 'FAIL 3b: the office manager couldn''t resolve a complaint'; end if;
+    raise exception 'OK 3';
+  exception when others then
+    if sqlerrm <> 'OK 3' then raise; end if;
+  end;
+  begin
+    update public.complaints set nature = 'Changed' where id = c2;
+    raise exception 'FAIL 3c: the office manager edited a complaint';
   exception when others then
     if sqlerrm like 'FAIL%' then raise; end if;
   end;
-
-  -- 3. Can't Review, Resolve or Remove a complaint, theirs included.
-  update public.complaints set status = 'under_review' where id in (c1, cm);
-  get diagnostics n = row_count;
-  if n <> 0 then raise exception 'FAIL 3: the office manager changed % complaints', n; end if;
-  update public.complaints set status = 'resolved', resolved_date = current_date where id in (c1, cm);
-  get diagnostics n = row_count;
-  if n <> 0 then raise exception 'FAIL 3b: the office manager resolved % complaints', n; end if;
-  update public.complaints set nature = 'Changed' where id = c2;
-  get diagnostics n = row_count;
-  if n <> 0 then raise exception 'FAIL 3c: the office manager edited a complaint'; end if;
   delete from public.complaints where id in (c1, c2, cm);
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL 3d: the office manager deleted % complaints', n; end if;

@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
-import { storedFileProblem } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, isInFolder, storedFileProblem } from "@/lib/storage/evidence";
+import { extractTrustAuditReport } from "@/lib/actions/extraction";
+import { trustAuditReadOutcome, type TrustAuditRead } from "@/lib/trust-audit-read";
 import { daysUntil, sydneyToday } from "@/lib/trust-account";
 
 export type ActionState = { error: string | null; saved?: boolean };
@@ -109,10 +111,13 @@ export async function setTrustAccountArchived(
 // The annual trust account audit — s111 and s112, Property and Stock Agents
 // Act 2002 (NSW).
 //
-// LICENSEE ONLY, and unlike the monthly reconciliation there is no exception
-// for an assistant. Uploading a reconciliation is clerical; asserting that the
-// agency's trust account has been audited is the licensee's own statement, and
-// s111 puts the obligation on the licensee personally.
+// REVERSAL (Adam, 3 Nov 2026; 0109). Was: the licensee only filled this in
+// and confirmed it in one step. Now the office manager (or the licensee)
+// uploads the report and enters its details, and the licensee in charge
+// confirms them: in the app, on its own or in the monthly pack. The database records who entered the details and who confirmed
+// (0109), and details changed after a confirmation need confirming again.
+// Asserting that the trust account has been audited stays the licensee's own
+// statement: s111 puts the obligation on the licensee personally.
 //
 // ONE ROW PER ACCOUNT PER PERIOD (Adam, 25 Aug 2026: "annual audit is 1
 // per account"). Updated in place when it exists, because this is a
@@ -146,7 +151,8 @@ export async function saveTrustAudit(
   const filePath = String(formData.get("filePath") ?? "").trim() || null;
   const fileName = String(formData.get("fileName") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  const confirmed = formData.get("confirmed") === "yes";
+  // Only the licensee in charge confirms (0109); the database ignores anyone else's tick too.
+  const confirmed = profile.is_licensee_in_charge && formData.get("confirmed") === "yes";
 
   // Read first, so a save that only carries the auditor's name doesn't wipe a
   // confirmation already given, and so un-ticking is a deliberate act rather
@@ -202,4 +208,35 @@ export async function saveTrustAudit(
 
   revalidatePath("/dashboard/trust");
   return { error: null, saved: true };
+}
+
+export type TrustAuditReadResult = { error: string | null; read?: TrustAuditRead };
+
+/**
+ * Reads the auditor's report just uploaded for the audit for the year ended
+ * `periodEnd` (Adam, 3 Nov 2026: "or RealComply reads them from the report,
+ * as for other uploads"). Saves nothing: the form fills in what was read and
+ * whoever saves checks it. Not an audit report, or one for another year: the
+ * upload is removed and the form says why. A read that fails keeps the file;
+ * the details are typed in.
+ */
+export async function readTrustAuditReport(path: string, fileName: string, periodEnd: string): Promise<TrustAuditReadResult> {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!(profile.is_licensee_in_charge || access.isOfficeManager)) {
+    return { error: "Only the licensee in charge or the office manager can record the trust account audit." };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) return { error: "Reload the page and try again." };
+  // Only a report just put in the office's own audit folder.
+  if (!isInFolder(path, `${profile.agency_id}/_signoffs/trust_audit`)) return { error: "Upload the report again." };
+  const empty = await storedFileProblem(supabase, path);
+  if (empty) return { error: empty };
+
+  const { error, raw } = await extractTrustAuditReport(path, fileName.trim() || "report");
+  if (error) return { error };
+  const read = trustAuditReadOutcome(raw as Parameters<typeof trustAuditReadOutcome>[0], periodEnd);
+  if (read.outcome !== "read") {
+    const { error: removeError } = await supabase.storage.from(EVIDENCE_BUCKET).remove([path]);
+    if (removeError) console.error("refused trust audit upload not deleted:", path.split("/").slice(0, 3).join("/"), removeError.message);
+  }
+  return { error: null, read };
 }
