@@ -2,16 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
+import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { appBaseUrl } from "@/lib/site-url";
 import { createPack, draftItems, draftMonth, packsFor, signPack } from "@/lib/licensee-signoff/pack";
-import { emailPack, officeFor } from "@/lib/licensee-signoff/server";
+import { afterSigning, emailPack, licenseeLinkByToken, linkIsLive, officeFor } from "@/lib/licensee-signoff/server";
 import { monthName } from "@/lib/licensee-signoff/model";
 
-// The licensee's sign-off (Adam, 3 Nov 2026; 0109): the month's pack, signed
-// in the app by the licensee in charge. Who may do what is checked here; the
-// writes go through the database's own functions (0109) with the server's
-// key. A licensee with no login has no pack yet (Master, 4 Nov 2026: their
-// links are a separate change), so their files keep going to them by email.
+// The licensee's sign-off (Adam, 3 Nov 2026; 0109): the month's pack, and
+// the licensee's emailed links. Who may do what is checked here; the writes
+// go through the database's own functions (0109) with the server's key, so
+// a licensee with no login can sign.
 
 export type PackActionState = { error: string | null; done?: string | null };
 
@@ -60,8 +61,7 @@ export async function saveItemNote(itemType: string, itemId: string, _prev: Pack
 
 /**
  * Sends the month's pack to the licensee (Adam, 3 Nov 2026). Fixed once sent.
- * The licensee with a login sending it to themselves just starts signing. A
- * licensee with no login can't sign a pack yet, so it isn't sent.
+ * The licensee with a login sending it to themselves just starts signing.
  */
 export async function sendPackToLicensee(_prev: PackActionState, formData: FormData): Promise<PackActionState> {
   const { supabase, profile, access } = await requireAuthContext();
@@ -69,9 +69,6 @@ export async function sendPackToLicensee(_prev: PackActionState, formData: FormD
   const service = createServiceClient();
   const office = await officeFor(service, profile.agency_id);
   if (!office) return { error: "Couldn't find your office. Reload the page." };
-  if (!office.licensee.profileId) {
-    return { error: `${office.licensee.name} isn't on RealComply yet, so they can't sign a pack. Their files keep going to them by email.` };
-  }
   const packs = await packsFor(supabase, profile.agency_id);
   if (packs.open) return { error: `${monthName(packs.open.month)}'s pack is still waiting for the licensee's signature.` };
   const month = draftMonth(packs.sentMonths);
@@ -94,13 +91,31 @@ export async function sendPackToLicensee(_prev: PackActionState, formData: FormD
     month,
     senderName: nameOf(profile),
     senderEmail: profile.email ?? null,
+    createdBy: profile.id,
   });
   return sent.sent
     ? { error: null, done: `Sent to ${office.licensee.name}.` }
-    : {
-        error: null,
-        done: `The pack is fixed, but the email to ${office.licensee.name} didn't send. Let them know it's waiting for them in RealComply.`,
-      };
+    : { error: null, done: `The pack is fixed, but the email to ${office.licensee.name} didn't send. Use Send again or Copy link.` };
+}
+
+/** Sends the open pack's email again, with a fresh link. */
+export async function resendPack(): Promise<PackActionState> {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.runsOffice || access.isAgentPlan) return { error: "Only the office manager or the licensee in charge can send the pack." };
+  const service = createServiceClient();
+  const office = await officeFor(service, profile.agency_id);
+  const packs = await packsFor(supabase, profile.agency_id);
+  if (!office || !packs.open) return { error: "There's no pack waiting to be signed." };
+  const sent = await emailPack(service, {
+    office,
+    packId: packs.open.id,
+    month: packs.open.month,
+    senderName: nameOf(profile),
+    senderEmail: profile.email ?? null,
+    createdBy: profile.id,
+  });
+  revalidatePath(PAGE);
+  return sent.sent ? { error: null, done: `Sent again to ${office.licensee.name}.` } : { error: "The email didn't send. Try again, or use Copy link." };
 }
 
 /** The licensee in charge signs the open pack in the app. */
@@ -127,6 +142,96 @@ export async function signPackInApp(_prev: PackActionState, formData: FormData):
     return { error: null, done: `Signed ${r.signed}.` };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't sign the pack just now. Try again." };
+  }
+}
+
+/** A licensee signs through their emailed link: the month's pack, or one item. No login. */
+export async function signByLink(token: string, _prev: PackActionState, formData: FormData): Promise<PackActionState> {
+  const name = String(formData.get("typedName") ?? "").trim().replace(/\s+/g, " ");
+  if (!name) return { error: "Type your full name to sign." };
+  if (name.length > 200) return { error: "That name is too long." };
+  if (formData.get("confirmSelf") !== "yes") {
+    return { error: "Tick the box to confirm you are the licensee in charge, signing for yourself." };
+  }
+  if (formData.get("reviewed") !== "yes") return { error: "Tick the box to confirm you've reviewed it." };
+  const service = createServiceClient();
+  const link = await licenseeLinkByToken(service, token);
+  if (!link || !linkIsLive(link)) return { error: "This link can't be used any more. Ask the office to send a new one." };
+  const agencyId = String(link.agency_id);
+  const office = await officeFor(service, agencyId);
+  if (!office) return { error: "This link can't be used any more. Ask the office to send a new one." };
+
+  // Claim the link first, so it signs once however many times it is pressed.
+  const { data: claimed } = await service
+    .from("licensee_links")
+    .update({ used_at: new Date().toISOString(), used_name: name })
+    .eq("id", String(link.id))
+    .is("used_at", null)
+    .is("revoked_at", null)
+    .select("id")
+    .maybeSingle();
+  if (!claimed) return { error: "This link has already been used." };
+
+  try {
+    if (link.purpose === "pack") {
+      const { data: pack } = await service
+        .from("signoff_packs")
+        .select("id, month, sent_at, sent_by_name, signed_at, signed_name, signed_via, signed_file_path, signed_file_name")
+        .eq("id", String(link.pack_id))
+        .eq("agency_id", agencyId)
+        .maybeSingle();
+      if (!pack) throw new Error("This pack can't be found. Ask the office to send it again.");
+      await signPack(service, {
+        office,
+        pack: pack as Parameters<typeof signPack>[1]["pack"],
+        signerId: null,
+        name,
+        via: "link",
+        holds: holdsFrom(formData),
+      });
+    } else {
+      const { data: signed, error } = await service.rpc("licensee_sign_item", {
+        p_agency: agencyId,
+        p_type: String(link.item_type),
+        p_id: String(link.item_id),
+        p_signer: null,
+        p_name: name,
+        p_via: "link",
+        p_pack: null,
+      });
+      if (error) throw new Error(error.code === "P0001" ? error.message : "Couldn't sign it just now. Try again.");
+      if (signed !== true) throw new Error("This has already been signed.");
+      await afterSigning(service, agencyId, [{ type: String(link.item_type), id: String(link.item_id) }]);
+    }
+  } catch (err) {
+    // Give the link back so they can try again.
+    await service.from("licensee_links").update({ used_at: null, used_name: null }).eq("id", String(link.id));
+    return { error: err instanceof Error ? err.message : "Couldn't sign it just now. Try again." };
+  }
+  revalidateAll();
+  return { error: null, done: "Signed." };
+}
+
+/** Copy link (as the email job, 0107): recorded, then the link. */
+export async function copyLicenseeLink(linkId: string): Promise<{ url: string | null; error: string | null }> {
+  const { supabase } = await requireAuthContext();
+  const { data, error } = await supabase.rpc("copy_licensee_link", { p_link_id: linkId });
+  if (error || typeof data !== "string") {
+    const said = error && (error.code === "P0001" || error.code === "42501") && error.message;
+    return { url: null, error: said || "Couldn't copy the link just now. Try again." };
+  }
+  revalidatePath(PAGE);
+  return { url: `${appBaseUrl()}/licensee/${data}`, error: null };
+}
+
+/** A person opened their link in a browser (OpenedBeacon). Never throws. */
+export async function noteLicenseeLinkOpened(token: string): Promise<void> {
+  if (!/^[0-9a-f-]{36}$/i.test(token)) return;
+  try {
+    const supabase = await createClient();
+    await supabase.rpc("note_licensee_link_opened", { p_token: token });
+  } catch {
+    // An open not recorded only means "Not opened yet" a little longer.
   }
 }
 
