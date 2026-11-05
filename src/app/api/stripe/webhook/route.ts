@@ -11,6 +11,7 @@ import { sendTrialEndingEmail } from "@/lib/email/trial-ending";
 import { handleTrialWillEnd, willCancelAtTrialEnd } from "@/lib/billing/trial-reminder";
 import type { Plan } from "@/lib/billing/entitlement";
 import { sendEndedEmail } from "@/lib/subscription-end/emails";
+import { sendCancellationAlert } from "@/lib/email/cancellation-alert";
 import { onNewOfficeTrialStarted } from "@/lib/sg-annexure/new-office";
 
 // Stripe's side of the conversation.
@@ -86,6 +87,12 @@ type StripeSubscription = {
   cancel_at_period_end?: boolean;
   /** Epoch seconds. Set when the subscriber picked a cancellation date. */
   cancel_at?: number | null;
+  /** Epoch seconds: when it was cancelled, and when it actually ended. */
+  canceled_at?: number | null;
+  ended_at?: number | null;
+  livemode?: boolean;
+  /** What the person picked and typed on Stripe's cancel screen. */
+  cancellation_details?: { comment?: string | null; feedback?: string | null; reason?: string | null } | null;
   metadata?: Record<string, string> | null;
   items?: { data?: Array<{ price?: { lookup_key?: string | null } | null }> } | null;
 };
@@ -275,12 +282,17 @@ async function applySubscription(
   // is still the one read above (writeIfStillCurrent).
   let onFile = agency.stripe_subscription_id;
   let update = billingUpdateFor(first);
+  let latest = first;
+  // This request is the one that ended the office (see writeIfStillCurrent).
+  let endedHere = false;
   for (let round = 1; ; round++) {
-    await writeIfStillCurrent(supabase, agencyId, onFile, update);
+    const { becameCanceled } = await writeIfStillCurrent(supabase, agencyId, onFile, update);
+    endedHere ||= becameCanceled;
     onFile = first.id;
 
     const again = await subscriptionNow(first.id);
     if (!again) break;
+    latest = again;
     const next = billingUpdateFor(again);
     if (JSON.stringify(next) === JSON.stringify(update)) break;
     if (round === 3) throw new Error(`subscription ${first.id} kept changing while it was being recorded`);
@@ -326,6 +338,15 @@ async function applySubscription(
       console.error("Stripe webhook: day 0 email failed", agencyId, e instanceof Error ? e.message : e);
     }
   }
+
+  // An office cancelled: Adam is told, once (brief, 3 Nov 2026). Only by the
+  // request that moved it to canceled, so a message Stripe sends again is
+  // not told twice; never for a comped office, which is left alone above.
+  // sendCancellationAlert never throws: a failed email is logged and Stripe
+  // still gets its 200.
+  if (endedHere) {
+    await sendCancellationAlert(supabase, agencyId, latest);
+  }
 }
 
 /** What Stripe's copy of the subscription means for the agency row. */
@@ -347,24 +368,37 @@ function billingUpdateFor(subscription: StripeSubscription): Record<string, unkn
  * and the office is not comped. If either changed since it was read (another
  * message, or a person switching the office to free), nothing is written and
  * this throws: Stripe sends the message again, and it is judged afresh.
+ *
+ * becameCanceled: this write is the one that moved the office to canceled
+ * (3 Nov 2026, for Adam's cancellation email). Asked of the database, not
+ * worked out from what was read before: of two copies of the same message
+ * handled at once, only one write can find the office not yet canceled.
  */
 async function writeIfStillCurrent(
   supabase: ReturnType<typeof createServiceClient>,
   agencyId: string,
   onFile: string | null,
   update: Record<string, unknown>,
-): Promise<void> {
-  const query = supabase.from("agencies").update(update).eq("id", agencyId).neq("status", "comped");
-  const { data, error } = await (onFile
-    ? query.eq("stripe_subscription_id", onFile)
-    : query.is("stripe_subscription_id", null)
-  ).select("id");
+): Promise<{ becameCanceled: boolean }> {
+  const scoped = () => {
+    const query = supabase.from("agencies").update(update).eq("id", agencyId).neq("status", "comped");
+    return onFile ? query.eq("stripe_subscription_id", onFile) : query.is("stripe_subscription_id", null);
+  };
+  if (update.status === "canceled") {
+    const { data, error } = await scoped().neq("status", "canceled").select("id");
+    if (error) {
+      throw new Error(`agencies update failed: ${error.message}`);
+    }
+    if (data && data.length > 0) return { becameCanceled: true };
+  }
+  const { data, error } = await scoped().select("id");
   if (error) {
     throw new Error(`agencies update failed: ${error.message}`);
   }
   if (!data || data.length === 0) {
     throw new Error(`agency ${agencyId} changed while a Stripe message was being handled; Stripe will send it again`);
   }
+  return { becameCanceled: false };
 }
 
 async function readAgencyBilling(
