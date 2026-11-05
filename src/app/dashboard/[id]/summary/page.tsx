@@ -17,6 +17,7 @@ import { earlierApprovalLine, tickedLine } from "@/lib/rules/price-statement";
 import { priceApprovalFor } from "@/lib/data/price-approval";
 import { saleRecordLines } from "@/lib/rules/sale-price";
 import { RoofMark } from "@/components/RoofMark";
+import { LegalReference } from "@/components/LegalReference";
 
 
 
@@ -130,7 +131,11 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                             : (current?.status ?? "open")}
                         {current?.event_date ? ` · ${formatAuDate(current.event_date)}` : ""}
                       </span>
-                      {item.legalBasis && <span className="ml-1 text-xs text-rc-faint">({item.legalBasis})</span>}
+                      {item.legalBasis && (
+                        <span className="ml-1 text-xs text-rc-faint">
+                          (<LegalReference text={item.legalBasis} />)
+                        </span>
+                      )}
                       {/* The Power of Attorney answer, tick and upload, with who and when (15 Oct 2026). */}
                       {questionAndDocumentRecordLines(item, current, (iso) => formatAuTimestamp(iso)).map((line) => (
                         <p key={line} className="mt-0.5 text-xs text-rc-muted">

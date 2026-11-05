@@ -11,6 +11,7 @@ import {
   type PmWaterAnswers,
 } from "@/lib/rules/nsw-pm";
 import { PmChoicePills } from "@/components/pm/PmChoicePills";
+import { LegalReference } from "@/components/LegalReference";
 
 // Water usage, in Money and move-in (brief B5). Up to three questions, asked
 // one at a time, each with Yes and No and a Confirm. "No" to the first or
@@ -98,7 +99,11 @@ export function PmWaterRow({
           </button>
         </div>
         {!done && <p className="text-[13px] text-rc-muted">{item.help}</p>}
-        {showRef && <p className="mt-0.5 text-xs text-rc-faint">Legal basis: {item.reference}</p>}
+        {showRef && (
+          <p className="mt-0.5 text-xs text-rc-faint">
+            Legal basis: <LegalReference text={item.reference} />
+          </p>
+        )}
 
         {hasEnd && !asking && savedResult?.line && (
           <p className={`mt-0.5 text-[13px] ${saved?.state === "done" ? "text-rc-ink" : "font-semibold text-rc-amber-deep"}`}>

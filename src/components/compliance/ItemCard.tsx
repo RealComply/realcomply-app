@@ -85,6 +85,7 @@ import {
 import { isAiReadItem } from "@/lib/documents/ai-read-items";
 import { idScreenNote } from "@/lib/documents/id-screen-note";
 import { contractReadNote, contractReadOf } from "@/lib/documents/contract-read";
+import { LegalReference } from "@/components/LegalReference";
 import { CONTRACT_KEY } from "@/lib/rules/contract-before-market";
 import { ContractNeededNote } from "@/components/compliance/ContractNeededNote";
 import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
@@ -358,7 +359,12 @@ function ItemShell({
             // Reading the explainer is not a reason to fold the card.
             <div onClick={(e) => e.stopPropagation()}>
               <p className="mt-1 text-sm text-rc-muted">{item.description}</p>
-              {item.legalBasis && <p className="mt-1 text-xs text-rc-faint">{item.legalBasis}</p>}
+              {item.legalBasis && (
+                <p className="mt-1 text-xs text-rc-faint">
+                  {/* Each section linked to the law (Adam, 5 Nov 2026). */}
+                  <LegalReference text={item.legalBasis} />
+                </p>
+              )}
             </div>
           )}
         </div>
