@@ -8,6 +8,13 @@
 // The text the agent reads doesn't change: joining the pieces gives back the
 // reference exactly.
 //
+// ONLY A SPECIFIC PLACE IS LINKED (Adam, 5 Nov 2026, after trying them: "I
+// don't think we need to include the Sch 1 r16 - it just links to the act
+// generally. the specific clause is enough"). A section or clause links to
+// that section. A Schedule, a law named with no section, and the
+// Commonwealth Acts would only open a whole law at the top, so their words
+// stay plain text.
+//
 // WHAT'S LINKED, AND HOW SURE WE ARE.
 //   * The document ids come from the official copies this repo already
 //     holds (src/lib/legislation: act-2002-066, act-1919-006, sl20220501,
@@ -15,11 +22,11 @@
 //     Residential Tenancies Act 2010 (No 42, act-2010-042) and the AML/CTF
 //     Act 2006 (C2006A00169).
 //   * "#sec.63" is the form Master gave for section 63 (5 Nov 2026), used for
-//     every section and Regulation section. "#sch.2" for a Schedule.
+//     every section and Regulation section.
 //   * Not linked, deliberately: the Residential Tenancies Regulation 2019 and
 //     the Swimming Pools Act 1992 (no official id in this repo to link to), and
 //     anything this can't place. Those stay plain text, never a guessed link.
-//   * Commonwealth laws link to the Act, not a section.
+//   * Commonwealth laws aren't linked: their links would open the whole Act.
 
 export type ReferencePiece = { text: string; href?: string };
 
@@ -108,16 +115,20 @@ const SCHEDULE = new RegExp(String.raw`\bSch\s?(\d+)(?:\s?(?:rr?|cll?|s)\s?${NUM
 const SECTION = new RegExp(String.raw`\b(?:ss?|cll?|Reg)\s?(${NUM})`, "g");
 const LIST_ITEM = new RegExp(String.raw`^(\s?(?:,|&|and|/|to)\s?)(?:ss?\s?)?(\d+[A-Z]{0,2})((?:\([0-9a-z]+\))*)`);
 
-type Hit = { start: number; end: number; href: string };
+/** A cited place. Without an href it's kept as plain text (a Schedule). */
+type Hit = { start: number; end: number; href?: string };
 
-function anchor(i: Instrument, number: string): string {
-  return i.anchors ? `${i.url}#sec.${number}` : i.url;
+/** The link to a section, or none where the law has no section anchors. */
+function anchor(i: Instrument, number: string): string | undefined {
+  return i.anchors ? `${i.url}#sec.${number}` : undefined;
 }
 
 function hitsIn(part: string, i: Instrument): Hit[] {
   const hits: Hit[] = [];
+  // Found so its rules and clauses aren't read as sections, but not linked:
+  // a Schedule link only opens the law at the top (Adam, 5 Nov 2026).
   for (const m of part.matchAll(SCHEDULE)) {
-    hits.push({ start: m.index!, end: m.index! + m[0].length, href: i.anchors ? `${i.url}#sch.${m[1]}` : i.url });
+    hits.push({ start: m.index!, end: m.index! + m[0].length });
   }
   const taken = (at: number) => hits.some((h) => at >= h.start && at < h.end);
   for (const m of part.matchAll(SECTION)) {
@@ -152,12 +163,7 @@ export function legalReferenceLinks(text: string): ReferencePiece[] {
       continue;
     }
     const instrument = named(part) ?? inferred(part, text);
-    let hits = hitsIn(part, instrument);
-    // A reference that names a law and cites no section: link the name.
-    if (hits.length === 0) {
-      const m = instrument.names.exec(part);
-      if (m) hits = [{ start: m.index, end: m.index + m[0].length, href: instrument.url }];
-    }
+    const hits = hitsIn(part, instrument);
     let at = 0;
     for (const h of hits) {
       push(part.slice(at, h.start));
