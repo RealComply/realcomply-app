@@ -114,21 +114,30 @@ export type OfficeManagerEntry = OfficeManagerRecord & {
   wording: string;
   withdrawn_by_name: string | null;
   person_name: string;
+  /** Approved by email link: the address the link went to, where the viewer may read it (0112). */
+  emailed_to: string | null;
 };
 
 /** Every office manager approval in the office, newest first, with the person's name. */
 export async function officeManagersOf(supabase: SupabaseClient, agencyId: string): Promise<OfficeManagerEntry[]> {
   const { data, error } = await supabase
     .from("office_managers")
-    .select(`profile_id, approved_by, wording, ${RECORD_COLUMNS}`)
+    .select(`profile_id, approved_by, wording, request_id, ${RECORD_COLUMNS}`)
     .eq("agency_id", agencyId)
     .order("approved_at", { ascending: false });
   if (error || !data) return [];
-  const rows = data as Omit<OfficeManagerEntry, "person_name">[];
+  const rows = data as Array<Omit<OfficeManagerEntry, "person_name" | "emailed_to"> & { request_id: string | null }>;
   const ids = [...new Set(rows.map((r) => r.profile_id))];
-  const { data: people } = ids.length
-    ? await supabase.from("profiles").select("id, full_name, email").in("id", ids)
-    : { data: [] };
+  const requestIds = [...new Set(rows.map((r) => r.request_id).filter((id): id is string => Boolean(id)))];
+  const [{ data: people }, { data: requests }] = await Promise.all([
+    ids.length ? supabase.from("profiles").select("id, full_name, email").in("id", ids) : Promise.resolve({ data: [] }),
+    // The address each approval link went to (Master, 4 Nov 2026). Read as
+    // the viewer: whoever runs the office sees it; anyone else, no address.
+    requestIds.length
+      ? supabase.from("office_manager_requests").select("id, sent_to").in("id", requestIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const sentTo = new Map(((requests ?? []) as { id: string; sent_to: string }[]).map((q) => [q.id, q.sent_to]));
   const nameOf = new Map(
     ((people ?? []) as { id: string; full_name: string | null; email: string }[]).map((p) => [
       p.id,
@@ -137,8 +146,9 @@ export async function officeManagersOf(supabase: SupabaseClient, agencyId: strin
   );
   // A person the viewer can't read (an agent viewing Team never does) still
   // has a line: their name comes from the wording.
-  return rows.map((r) => ({
+  return rows.map(({ request_id, ...r }) => ({
     ...r,
     person_name: nameOf.get(r.profile_id) ?? r.wording.replace(/^I authorise (.+?) to manage .*$/, "$1"),
+    emailed_to: (request_id && sentTo.get(request_id)) || null,
   }));
 }

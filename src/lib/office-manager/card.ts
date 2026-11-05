@@ -243,6 +243,17 @@ export function licenseeOfficeManagerHome(input: {
   return { cards, lines };
 }
 
+/**
+ * How an approval was given, in a sentence: "in Team", "by email link", or,
+ * where the address is known, "through a link emailed to [address]"
+ * (Master, 4 Nov 2026: every signature through a link records it).
+ */
+export function approvedHow(via: "team" | "email_link", emailedTo: string | null | undefined): string {
+  if (via !== "email_link") return "in Team";
+  const to = (emailedTo ?? "").trim().toLowerCase();
+  return to ? `through a link emailed to ${to}` : "by email link";
+}
+
 /** The words the licensee approves. The same as office_manager_wording() in 0093. */
 export function officeManagerWording(person: string, office: string): string {
   return `I authorise ${person.trim()} to manage ${office.trim()}'s RealComply account as office manager.`;

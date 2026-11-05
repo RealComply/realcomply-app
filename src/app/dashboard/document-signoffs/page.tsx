@@ -9,6 +9,7 @@ import { SgReadConfirmationsCard } from "@/components/registers/SgReadConfirmati
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { documentsWaitingOn, notAskedToSign } from "@/lib/signoff/awaiting";
 import { officeManagersOf } from "@/lib/data/office-manager";
+import { approvedHow } from "@/lib/office-manager/card";
 import { formatAuTimestamp } from "@/lib/format-date";
 import type {
   AgentAcknowledgement,
@@ -203,7 +204,7 @@ export default async function DocumentSignoffsPage() {
                   </div>
                   <p className="mt-2 break-words text-rc-ink">&ldquo;{m.wording}&rdquo;</p>
                   <p className="mt-2 text-xs text-rc-muted">
-                    Approved by {m.approved_by_name}, {m.approved_via === "email_link" ? "by email link" : "in Team"},{" "}
+                    Approved by {m.approved_by_name}, {approvedHow(m.approved_via, m.emailed_to)},{" "}
                     {formatAuTimestamp(m.approved_at)}.
                     {m.withdrawn_at
                       ? m.withdrawn_via === "left_office"

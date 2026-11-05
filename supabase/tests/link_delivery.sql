@@ -34,6 +34,9 @@ begin
   insert into public.agencies (id, name, plan, status, licensee_name, licensee_email) values
     (o1, 'LD Office One (made up)', 'office_1', 'active', 'Lou Licensee', 'ld-lou@example.invalid'),
     (o2, 'LD Office Two (made up)', 'office_1', 'active', 'Other Licensee', 'ld-other@example.invalid');
+  -- The licensee email has confirmed (0112), so links can go to it.
+  insert into public.licensee_email_confirmations (agency_id, email, confirmed_at) values
+    (o1, 'ld-lou@example.invalid', now()), (o2, 'ld-other@example.invalid', now());
   insert into public.profiles (id, agency_id, full_name, email, is_agent, is_licensee_in_charge, is_assistant, created_at) values
     (f, o1, 'Fran Founder', 'ld-f@example.invalid', true, false, false, now() - interval '2 days'),
     (a, o1, 'Ana Agent', 'ld-a@example.invalid', true, false, false, now() - interval '1 day'),
