@@ -51,6 +51,9 @@ begin
     (o2, 'IR Office Two', 'office_1', 'active', null, null),
     (o3, 'IR Own Plan', 'agent_1', 'active', 'Pat Made-Up', 'ir-pat@example.invalid'),
     (o4, 'IR Office Four', 'office_1', 'active', 'Kim Made-Up', 'ir-kim@example.invalid');
+  -- The licensee email has confirmed (0112), so links can go to it.
+  insert into public.licensee_email_confirmations (agency_id, email, confirmed_at) values
+    (o1, 'ir-jordan@example.invalid', now()), (o4, 'ir-kim@example.invalid', now());
   insert into public.profiles (id, agency_id, full_name, email, is_agent, is_licensee_in_charge, is_assistant, created_at) values
     (f, o1, 'Sam Founder', 'ir-f@example.invalid', true, false, false, now() - interval '2 days'),
     (a, o1, 'Alex Agent', 'ir-a@example.invalid', true, false, false, now() - interval '1 day'),

@@ -3,7 +3,7 @@ import { Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireOfficePage } from "@/lib/data/current-profile";
 import { officeManagersOf } from "@/lib/data/office-manager";
-import { officeManagerWording } from "@/lib/office-manager/card";
+import { approvedHow, officeManagerWording } from "@/lib/office-manager/card";
 import { TeamOfficeManagerControls } from "@/components/office-manager/TeamOfficeManagerControls";
 import { formatAuTimestamp } from "@/lib/format-date";
 import { InviteAgentForm } from "@/components/team/InviteAgentForm";
@@ -229,9 +229,10 @@ export default async function TeamPage() {
                   {
                     key: `${m.id}-a`,
                     at: m.approved_at,
-                    text: `${m.person_name} made office manager by ${m.approved_by_name}, ${
-                      m.approved_via === "email_link" ? "by email link" : "in Team"
-                    }: “${m.wording}”`,
+                    text: `${m.person_name} made office manager by ${m.approved_by_name}, ${approvedHow(
+                      m.approved_via,
+                      m.emailed_to,
+                    )}: “${m.wording}”`,
                   },
                 ];
                 if (m.withdrawn_at) {

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { SendEmailInput } from "@/lib/email/send";
-import { onFreeOfficeCreated, onNewOfficeTrialStarted } from "./new-office";
+import { onFreeOfficeCreated, onNewOfficeTrialStarted, sendAnnexureAfterConfirm } from "./new-office";
 
 // What a new office gets when its trial starts (brief, 14 Oct 2026; Adam,
 // 14 Oct 2026): the welcome with the annexure box for an early access office
@@ -80,7 +80,14 @@ function office(opts: {
   personalInvite?: boolean;
   plan?: string;
   licenseeEmail?: string | null;
+  /** Whether the licensee email has confirmed (0112). Yes unless said otherwise. */
+  licenseeConfirmed?: boolean;
 }) {
+  const licenseeEmail = opts.founderIsLicensee
+    ? null
+    : opts.licenseeEmail === undefined
+      ? "getadamc3+licensee@gmail.com"
+      : opts.licenseeEmail;
   return fakeDb({
     agencies: [
       {
@@ -88,7 +95,7 @@ function office(opts: {
         name: "Harbour Realty",
         plan: opts.plan ?? "office_1",
         licensee_name: opts.founderIsLicensee ? null : "Lee Licensee",
-        licensee_email: opts.founderIsLicensee ? null : opts.licenseeEmail === undefined ? "getadamc3+licensee@gmail.com" : opts.licenseeEmail,
+        licensee_email: licenseeEmail,
         corporation_licence_number: null,
         annexure_download_token: "7f9c1d2e-0000-4000-8000-000000000001",
       },
@@ -125,6 +132,10 @@ function office(opts: {
       : [],
     sg_annexure_adoptions: [],
     sg_annexure_links: [],
+    licensee_email_confirmations:
+      licenseeEmail && opts.licenseeConfirmed !== false
+        ? [{ id: "c1", agency_id: "ag1", email: licenseeEmail, confirmed_at: "2026-10-14T00:30:00Z", superseded_at: null }]
+        : [],
   });
 }
 
@@ -329,6 +340,63 @@ describe("a new office's annexure request", () => {
 
 // A free office (0098) has no card, so Stripe never calls. The same emails go
 // when sign-up finishes instead (Adam, 27 Oct 2026).
+describe("the licensee email confirms first (0112; Master, 4 Nov 2026)", () => {
+  it("signed up by someone else, address not confirmed: the welcome says so, the confirm email goes, no annexure link", async () => {
+    const db = office({ founderIsLicensee: false, earlyAccess: true, licenseeConfirmed: false });
+    const r = recorder();
+    const confirmed: string[] = [];
+    const out = await onNewOfficeTrialStarted(db, "ag1", {
+      send: r.send,
+      env: ON,
+      now: NOW,
+      confirm: async (id) => (confirmed.push(id), "sent"),
+    });
+    assert.deepEqual(out, { welcome: "sent", annexure: "awaiting_confirm" });
+    assert.equal(r.sent.length, 1, "the welcome only");
+    assert.ok(
+      r.sent[0].text.includes(
+        "We've asked Lee Licensee to confirm their email address first. Once they do, we'll send them the annexure to sign.",
+      ),
+    );
+    assert.deepEqual(confirmed, ["ag1"]);
+    assert.equal(links(db).length, 0, "no annexure link to an address that hasn't confirmed");
+  });
+
+  it("after the click, the waiting request goes once", async () => {
+    const db = office({ founderIsLicensee: false, earlyAccess: false });
+    db.tables.licensee_email_confirmations[0].annexure_waiting = true;
+    const r = recorder();
+    const out = await sendAnnexureAfterConfirm(db, "ag1", { send: r.send, env: ON, now: NOW });
+    assert.equal(out, "emailed");
+    assert.equal(r.sent.length, 1);
+    assert.equal(r.sent[0].to, "getadamc3+licensee@gmail.com");
+    assert.ok(r.sent[0].text.includes(`/annexure/${links(db)[0].token}`));
+    assert.equal(db.tables.licensee_email_confirmations[0].annexure_waiting, false);
+    assert.equal(await sendAnnexureAfterConfirm(db, "ag1", { send: r.send, env: ON, now: NOW }), "not_waiting");
+    assert.equal(r.sent.length, 1, "not again");
+  });
+
+  it("an office whose request wasn't waiting gets nothing new when its address confirms", async () => {
+    const db = office({ founderIsLicensee: false, earlyAccess: false });
+    const r = recorder();
+    assert.equal(await sendAnnexureAfterConfirm(db, "ag1", { send: r.send, env: ON, now: NOW }), "not_waiting");
+    assert.equal(r.sent.length, 0);
+    assert.equal(links(db).length, 0);
+  });
+
+  it("the licensee who signed up needs no confirming", async () => {
+    const db = office({ founderIsLicensee: true, earlyAccess: true, licenseeConfirmed: false });
+    const r = recorder();
+    const out = await onNewOfficeTrialStarted(db, "ag1", {
+      send: r.send,
+      env: ON,
+      now: NOW,
+      confirm: async () => assert.fail("no confirm email for the licensee's own login"),
+    });
+    assert.deepEqual(out, { welcome: "sent", annexure: "in_welcome" });
+  });
+});
+
 describe("a free office's emails at sign-up", () => {
   /** The office above, set up with a free invite and so a free account. */
   function freeOffice(opts: Parameters<typeof office>[0]) {

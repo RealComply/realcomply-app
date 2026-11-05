@@ -55,6 +55,7 @@ const SIGNED_OUT_OK = [
   "/licensee/x",
   "/licensee/x/open/x",
   "/licensee/x/pdf",
+  "/licensee-confirm/x", // the licensee email confirms first (0112)
   "/annexure/x/pdf",
   // The annexure an agent on their own plan gives their licensee (14 Oct 2026),
   // and the same with their office's names on the Agency line (0070).
@@ -65,6 +66,7 @@ const SIGNED_OUT_OK = [
   "/api/cron/backup-storage",
   "/api/cron/cpd-reminders",
   "/api/cron/licence-reminders",
+  "/api/cron/licensee-confirm", // the licensee email confirm emails (0112): CRON_SECRET, like every job
   "/api/cron/licensee-signoff", // the monthly pack's reminders: CRON_SECRET, like every job
   "/api/cron/listing-scan",
   "/api/cron/pm-retention",

@@ -57,6 +57,10 @@ begin
     (office, 'Price statement test office', 'office_1', 'active', 'Outside Licensee', 'ps-outside-lic@example.invalid'),
     (solo, 'Price statement test solo', 'agent_1', 'active', 'Solo Licensee', 'ps-solo-lic@example.invalid'),
     (lo, 'Price statement test licensee office', 'office_1', 'active', 'Test Licensee', 'ps-l-lic@example.invalid');
+  -- The licensee email has confirmed (0112), so links can go to it.
+  insert into public.licensee_email_confirmations (agency_id, email, confirmed_at) values
+    (office, 'ps-outside-lic@example.invalid', now()), (solo, 'ps-solo-lic@example.invalid', now()),
+    (lo, 'ps-l-lic@example.invalid', now());
   insert into public.profiles (id, agency_id, full_name, email, is_licensee_in_charge, is_assistant, is_agent, archived_at) values
     (nf, office, 'PS Founder', 'ps-founder@example.invalid', false, false, true, null),
     (nm, office, 'PS Member', 'ps-nm@example.invalid', false, false, true, null),

@@ -43,6 +43,11 @@ export function isPublicPath(pathname: string): boolean {
     // an email, often with no login. The token is the credential; the server
     // checks it before reading or signing anything.
     pathname.startsWith("/licensee/") ||
+    // /licensee-confirm/<token> is public for the same reason (0112, 4 Nov
+    // 2026): the licensee email confirms it is the licensee in charge's,
+    // with no login. The token is the credential; the page reads and writes
+    // only through 0112's functions.
+    pathname.startsWith("/licensee-confirm/") ||
     // The legal documents are public for the same kind of reason: a privacy
     // policy only account holders can read is not published, and the Stripe
     // customer portal and Meta's app review both link to them signed out.

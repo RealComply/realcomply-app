@@ -195,7 +195,10 @@ begin
   if n <> 1 then raise exception 'FAIL 7: the document waiting on the previous licensee does not wait on Pat'; end if;
   select count(*) into n from public.signoff_signatures where document_id = doc and signer_id = lic;
   if n <> 0 then raise exception 'FAIL 7: the previous licensee still has a slot on a licensee-only document'; end if;
-  if (r ->> 'links_withdrawn')::int <> 1 or (r ->> 'documents_moved')::int <> 1 then
+  -- The links are withdrawn (checked above). Since 0112 the new licensee
+  -- email withdraws them a moment before this function counts them, so its
+  -- links_withdrawn count is 0; nothing reads that count.
+  if (r ->> 'documents_moved')::int <> 1 then
     raise exception 'FAIL 7: the change reported %', r;
   end if;
 

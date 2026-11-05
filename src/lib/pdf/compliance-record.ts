@@ -14,7 +14,7 @@ import { checkedPdf } from "@/lib/pdf/checked-pdf";
 import { fileTypeLabel, type PackDocument } from "@/lib/pdf/pack-documents";
 import type { EspPackRow } from "@/lib/esp-history";
 import { sydneyDate } from "@/lib/subscription-end/dates";
-import { copiedLinkLine } from "@/lib/links/delivery";
+import { copiedLinkLine, emailedLinkLine } from "@/lib/links/delivery";
 import { signedInPackLine } from "@/lib/licensee-signoff/model";
 
 /** The answer, tick or upload under a question or document card, with who and when (Sydney). */
@@ -363,6 +363,8 @@ export type ComplianceRecordInput = {
       typedName: string;
       signedAt: string | null;
       copiedLink?: { by: string; at: string } | null;
+      /** Signed through the emailed link: the address it went to (Master, 4 Nov 2026). */
+      emailedTo?: string | null;
       /** Signed in a monthly sign-off pack (0109): its month, "2026-10-01". */
       packMonth?: string | null;
     } | null;
@@ -805,6 +807,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         typedName: string;
         signedAt: string | null;
         copiedLink?: { by: string; at: string } | null;
+        emailedTo?: string | null;
         packMonth?: string | null;
       } | null,
     ) => {
@@ -841,6 +844,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       if (sig.signedAt) {
         c.text(`Signed ${formatSignedAt(sig.signedAt)} (Sydney time)`, { size: 9, color: MUTED });
       }
+      if (sig.emailedTo) c.text(emailedLinkLine(sig.emailedTo), { size: 8.5, color: MUTED });
       if (sig.copiedLink) c.text(copiedLinkLine(sig.copiedLink), { size: 8.5, color: MUTED });
       // Adam, 3 Nov 2026: "Signed by [name], [date], in the [Month] pack".
       if (sig.packMonth && sig.signedAt) {

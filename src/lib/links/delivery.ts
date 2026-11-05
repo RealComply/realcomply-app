@@ -108,6 +108,15 @@ export function copiedLinkLine(copy: { by: string; at: string }): string {
   return `Signed through a link ${copy.by} copied on ${formatAuDate(sydneyDate(new Date(copy.at)))} and sent outside RealComply's email.`;
 }
 
+/**
+ * On the record, for any signature made through a link RealComply emailed
+ * (Master, 4 Nov 2026): the address it went to. The office is responsible for
+ * that address being its licensee's (0112).
+ */
+export function emailedLinkLine(address: string): string {
+  return `Signed through a link emailed to ${address.trim().toLowerCase()}.`;
+}
+
 /** The copies that came before the signature: the trail is about those. */
 export function copiesBeforeSigning<T extends { at: string }>(copies: T[], signedAt: string | null): T[] {
   const signed = signedAt ? Date.parse(signedAt) : NaN;
