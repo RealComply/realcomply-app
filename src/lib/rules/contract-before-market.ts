@@ -25,17 +25,23 @@ export const CONTRACT_KEY = "b1";
 /** Pre-market, as stored on properties.stage: completing it puts the listing On market. */
 export const PRE_MARKET_STAGE = 1;
 
-/** Word for word from the brief (Master, 5 Nov 2026). */
-export const CONTRACT_BEFORE_MARKET =
-  "Upload the contract before the property goes on the market. In NSW a property can't be offered for sale until the contract is available for inspection.";
+/**
+ * What the agent sees: the title and the link, nothing more (Master, 5 Nov
+ * 2026, final). The section's own words stay in this file's comment above.
+ */
+export const CONTRACT_NEEDED = "Contract needed before the property goes on the market.";
+export const S63_LABEL_ACT = "Property and Stock Agents Act 2002 (NSW),";
+export const S63_LABEL_SECTION = "section 63";
+export const S63_URL = "https://legislation.nsw.gov.au/view/html/inforce/current/act-2002-066#sec.63";
 
 /** Marking the contract card done with no contract on it. */
 export const CONTRACT_NOT_ATTACHED = "Upload the contract before marking this done.";
 
 /**
- * Why "Complete stage" is refused, or null when it isn't. `incomplete` is the
- * stage's required cards that aren't complete. When the contract card is one
- * of them on Pre-market, the message says so first.
+ * Why "Continue to On market" is refused, or null when it isn't. `incomplete`
+ * is the stage's required cards that aren't complete. When the contract card
+ * is one of them on Pre-market, the message is CONTRACT_NEEDED first, and the
+ * page shows the Act's link under it (ContractNeededNote).
  */
 export function completeStageRefusal(input: {
   stage: number;
@@ -45,7 +51,16 @@ export function completeStageRefusal(input: {
     input.stage === PRE_MARKET_STAGE && input.incomplete.some((i) => i.key === CONTRACT_KEY);
   const others = input.incomplete.filter((i) => !(contractMissing && i.key === CONTRACT_KEY)).map((i) => i.label);
   if (contractMissing) {
-    return others.length > 0 ? `${CONTRACT_BEFORE_MARKET} Also complete: ${others.join(", ")}.` : CONTRACT_BEFORE_MARKET;
+    return others.length > 0 ? `${CONTRACT_NEEDED} ${alsoComplete(others)}` : CONTRACT_NEEDED;
   }
   return others.length > 0 ? `Complete these first: ${others.join(", ")}.` : null;
+}
+
+const alsoComplete = (labels: string[]) => `Also complete: ${labels.join(", ")}.`;
+
+/** A refusal for the contract, split for the page: the rest after the title, or null. */
+export function contractRefusalParts(error: string | null | undefined): { also: string | null } | null {
+  if (!error || !error.startsWith(CONTRACT_NEEDED)) return null;
+  const rest = error.slice(CONTRACT_NEEDED.length).trim();
+  return { also: rest || null };
 }

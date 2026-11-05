@@ -85,6 +85,8 @@ import {
 import { isAiReadItem } from "@/lib/documents/ai-read-items";
 import { idScreenNote } from "@/lib/documents/id-screen-note";
 import { contractReadNote, contractReadOf } from "@/lib/documents/contract-read";
+import { CONTRACT_KEY } from "@/lib/rules/contract-before-market";
+import { ContractNeededNote } from "@/components/compliance/ContractNeededNote";
 import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
@@ -1124,6 +1126,9 @@ function ChecklistItem({
               idScreenNote(current?.data, current?.evidence_path)
       }
     >
+      {/* The contract card, until it's done (Master, 5 Nov 2026): the title
+          and the Act's link. */}
+      {item.key === CONTRACT_KEY && !isDone && <ContractNeededNote className="mb-3" />}
       {/* Offered on an open card only, so nothing already answered changes. */}
       {item.notApplicable &&
         !isDone &&
