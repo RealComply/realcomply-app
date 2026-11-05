@@ -6,6 +6,7 @@ import { setPmItem } from "@/lib/actions/pm";
 import { formatAuDateTimeShort } from "@/lib/format-date";
 import type { PmResolvedItem } from "@/lib/rules/nsw-pm";
 import type { PmTickState } from "@/lib/rules/pm-engine";
+import { LegalReference } from "@/components/LegalReference";
 
 // One PM item: a tick box, the title, and one help line (brief A6).
 //
@@ -107,7 +108,11 @@ export function PmItemRow({
             {item.naAllowed ? " (only if it applies)" : ""}
           </p>
         )}
-        {showRef && <p className="mt-0.5 text-xs text-rc-faint">Legal basis: {item.reference}</p>}
+        {showRef && (
+          <p className="mt-0.5 text-xs text-rc-faint">
+            Legal basis: <LegalReference text={item.reference} />
+          </p>
+        )}
         {optimistic && done && (
           <p className="mt-0.5 text-[12.5px] font-semibold text-rc-green-deep">
             ✓ {optimistic.byName} · {formatAuDateTimeShort(optimistic.at)}
