@@ -174,8 +174,8 @@ export type ComplianceItem = {
   // it would mean identity documents landing in storage.
   evidenceWarning?: string;
   // Offer Replace instead of Remove on an already-attached file. Set on the
-  // three documents collected at listing setup (a3, b1, a4), which are
-  // mandatory there: a listing cannot be created without them, so allowing
+  // documents a listing must have (a3 and a4 at listing setup; b1, the
+  // contract, in Pre-market since 5 Nov 2026), so allowing
   // them to be removed to nothing afterwards puts the file in a state the
   // setup form would have refused. Swapping one is a correction; deleting one
   // is a hole. Adam, 22 Aug 2026, on the merged ESP card: "there's no card
@@ -698,8 +698,14 @@ const items: ComplianceItem[] = [
     // from Sch 1 Pt 1 of the Conveyancing (Sale of Land) Regulation 2022 and
     // varied by whether the listing is strata. Not repeated here: naming three
     // of them in this description was how the list quietly stayed at three.
+    // REVERSAL (Adam, 5 Nov 2026; raised by a user). Was: the contract was
+    // uploaded at Add a listing and arrived here already attached. Now: it's
+    // uploaded here, in Pre-market, read the moment it's attached, and the
+    // listing can't go on the market until this card is done with it
+    // (lib/rules/contract-before-market.ts). Why: agents often list and
+    // organise marketing while still waiting on the contract.
     description:
-      "Contract available before marketing, with the s52A prescribed documents attached. Attach the contract and the documents are checked off one by one.",
+      "Contract available before marketing, with the s52A prescribed documents attached. Attach the contract and the documents are checked off one by one. The listing can't go on the market until it's here.",
     legalBasis: "s52A, Conveyancing Act 1919 (NSW); Conveyancing (Sale of Land) Regulation 2022, Sch 1",
     // NO DATE HERE, and no findings box (Adam, 14 Sep 2026).
     //
@@ -727,6 +733,9 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: true,
     hideNote: true,
     evidenceReplaceOnly: true,
+    // Where the contract goes, said on the upload (5 Nov 2026): it no longer
+    // arrives from Add a listing.
+    evidenceLabel: "Contract for sale",
   },
   // ── Auction, before the day ───────────────────────────────────────────
   // Two items, both plain. Adam's steer, 18 Aug 2026: keep it to tick boxes.

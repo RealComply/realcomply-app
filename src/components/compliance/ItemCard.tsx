@@ -84,6 +84,7 @@ import {
 } from "@/lib/actions/extraction";
 import { isAiReadItem } from "@/lib/documents/ai-read-items";
 import { idScreenNote } from "@/lib/documents/id-screen-note";
+import { contractReadNote, contractReadOf } from "@/lib/documents/contract-read";
 import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
@@ -1116,8 +1117,11 @@ function ChecklistItem({
       evidenceReadNote={
         item.key === "a4"
           ? reportReadNote(reportRead, "report")
-          : // A file that went on without the ID check (1 Nov 2026).
-            idScreenNote(current?.data, current?.evidence_path)
+          : item.key === "b1"
+            ? // A contract that couldn't be read says so (5 Nov 2026).
+              contractReadNote(contractReadOf(current?.data, current?.evidence_path))
+            : // A file that went on without the ID check (1 Nov 2026).
+              idScreenNote(current?.data, current?.evidence_path)
       }
     >
       {/* Offered on an open card only, so nothing already answered changes. */}

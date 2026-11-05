@@ -16,6 +16,7 @@ import { redirect } from "next/navigation";
 import { accessFrom } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
+import { CONTRACT_KEY, CONTRACT_NOT_ATTACHED, completeStageRefusal } from "@/lib/rules/contract-before-market";
 import {
   applyAnswer,
   applyTick,
@@ -77,11 +78,13 @@ function assistantBlocked(itemKey: string, profile: { is_assistant?: boolean }):
 //   a4 reportRead — what the last read of the comparable-sales report came
 //      to (lib/documents/report-read). Mark done would otherwise erase the
 //      card's only word that a read failed or found nothing (30 Oct 2026).
+//   b1 contractRead: the same for the contract (lib/documents/contract-read;
+//      5 Nov 2026).
 const CARRIED_BY_ITEM: Record<string, string[]> = {
   f4: ["entries", "loggedElsewhere", "loggedElsewhereWhere"],
   c1: ["websiteScan"],
   a3: ["aiDraft"],
-  b1: ["aiDraft"],
+  b1: ["aiDraft", "contractRead"],
   a4: ["reportRead"],
 };
 
@@ -282,6 +285,23 @@ export async function setItemStatus(
   // to stay possible, or a mistake becomes unfixable.
   if (status === "done" && rule?.requiresDate && !eventDate) {
     return { error: "Enter the date this happened before marking it done." };
+  }
+
+  // The contract card can't be newly done without the contract (Adam, 5 Nov
+  // 2026). Until then it always had one, from Add a listing; now it starts
+  // empty in Pre-market. A card already done is left alone: nothing already
+  // done changes. See lib/rules/contract-before-market.ts.
+  if (status === "done" && itemKey === CONTRACT_KEY) {
+    const { data: attached } = await supabase
+      .from("property_items")
+      .select("evidence_path, status")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+    const row = attached as { evidence_path?: string | null; status?: string } | null;
+    if (row?.status !== "done" && !row?.evidence_path) {
+      return { error: CONTRACT_NOT_ATTACHED };
+    }
   }
 
   // Same reasoning as the date above, for items where the NOTE is the record.
@@ -2630,11 +2650,12 @@ export async function completeStage(
 
     const incomplete = required.filter((r) => !isComplete(r.key));
 
-    if (incomplete.length > 0) {
-      const labels = incomplete.map((i) => i.label);
-      return {
-        error: `Complete these first: ${labels.join(", ")}.`,
-      };
+    // Pre-market can't finish without the contract (Adam, 5 Nov 2026): the
+    // listing would go on the market without one. Said first when it's the
+    // reason. lib/rules/contract-before-market.ts.
+    const refusal = completeStageRefusal({ stage: property.stage, incomplete });
+    if (refusal) {
+      return { error: refusal };
     }
   }
 

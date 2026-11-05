@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 
-// What the agent looks at while their three documents are read.
+// What the agent looks at while their documents are read.
 //
 // Adam, 8 Sep 2026: "we should have a little box display telling the user that
 // the documents are being read and have an approximate time bar showing the
 // progress so they can see what's going on."
 //
 // THE BAR IS AN ESTIMATE AND SAYS SO. There is no real progress to report: the
-// read is one awaited server call, and nothing comes back until all three
+// read is one awaited server call, and nothing comes back until every one
 // documents are done. So this measures elapsed time against a typical run
 // rather than pretending to know how far through it is.
 //
@@ -28,10 +28,12 @@ import { useEffect, useState } from "react";
 /** Where the bar stops. Never 100 — see above. */
 const CEILING = 92;
 
-/** How long a typical three-document read takes. Not a promise. */
+/** How long a typical read of the set-up documents takes. Not a promise. */
 const TYPICAL_MS = 70_000;
 
-const DOCUMENTS = ["Agency agreement", "Contract for sale", "Comparable sales report"];
+// The contract isn't uploaded here any more (Adam, 5 Nov 2026): it's read on
+// its own card in Pre-market.
+const DOCUMENTS = ["Agency agreement", "Comparable sales report"];
 
 export function ExtractionProgress() {
   const [elapsed, setElapsed] = useState(0);
@@ -58,7 +60,7 @@ export function ExtractionProgress() {
       <div className="w-full max-w-sm rounded-card border border-rc-border bg-white p-6 shadow-card">
         <p className="text-base font-bold tracking-tight text-rc-ink">Reading your documents</p>
         <p className="mt-1 text-sm leading-relaxed text-rc-muted">
-          Your listing has been created. We&rsquo;re reading the three documents now so the file is already
+          Your listing has been created. We&rsquo;re reading the documents now so the file is already
           filled in when you get there.
         </p>
 
