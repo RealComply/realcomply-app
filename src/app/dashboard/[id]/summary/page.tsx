@@ -3,7 +3,14 @@ import Link from "next/link";
 import { SaveAuditPack } from "@/components/compliance/SaveAuditPack";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { NOT_ON_THIS_FILE, addedAfterSignOffLine, allItemsFor } from "@/lib/rules/nsw-sales";
+import {
+  NOT_ON_THIS_FILE,
+  ORDER_ON_AGENT_KEY,
+  SETTLEMENT_DATE_LABEL,
+  addedAfterSignOffLine,
+  allItemsFor,
+  settlementDateOf,
+} from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
@@ -147,6 +154,12 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                       {/* A card added after the file was signed off, and when (6 Nov 2026). */}
                       {item.notOnThisFile && item.addedAt && (
                         <p className="mt-0.5 text-xs text-rc-muted">{addedAfterSignOffLine(item.addedAt)}</p>
+                      )}
+                      {/* The settlement date, on the order on the agent card (6 Nov 2026). */}
+                      {item.key === ORDER_ON_AGENT_KEY && settlementDateOf(current) && (
+                        <p className="mt-0.5 text-xs text-rc-muted">
+                          {SETTLEMENT_DATE_LABEL}: {formatAuDate(settlementDateOf(current) as string)}
+                        </p>
                       )}
                       {/* "Not applicable", with who and when (f4, 17 Oct 2026). */}
                       {naRecordLines(item, current, (iso) => formatAuTimestamp(iso)).map((line) => (

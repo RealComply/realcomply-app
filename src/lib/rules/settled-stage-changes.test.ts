@@ -259,3 +259,60 @@ describe("the finalised compliance file", () => {
     at("This card was added on 7 November 2026, after this file was signed off.");
   });
 });
+
+describe("the settlement date, on the order on the agent card (Adam, 6 Nov 2026)", () => {
+  it("is read only as a real YYYY-MM-DD day", async () => {
+    const { readSettlementDate, settlementDateOf } = await import("./nsw-sales");
+    assert.equal(readSettlementDate("2026-10-30"), "2026-10-30");
+    assert.equal(readSettlementDate(" 2026-10-30 "), "2026-10-30");
+    assert.equal(readSettlementDate("2026-02-30"), null);
+    assert.equal(readSettlementDate("30/10/2026"), null);
+    assert.equal(readSettlementDate(""), null);
+    assert.equal(readSettlementDate(null), null);
+    assert.equal(settlementDateOf(row("f5", { data: { settlementDate: "2026-10-30" } })), "2026-10-30");
+    assert.equal(settlementDateOf(row("f5")), null);
+    assert.equal(settlementDateOf(undefined), null);
+  });
+
+  it("is needed to mark the card done, in plain words", async () => {
+    const { SETTLEMENT_DATE_LABEL, SETTLEMENT_DATE_NEEDED } = await import("./nsw-sales");
+    assert.equal(SETTLEMENT_DATE_LABEL, "Settlement date");
+    assert.equal(SETTLEMENT_DATE_NEEDED, "Enter the settlement date before marking this done.");
+  });
+
+  it("prints on the finalised compliance file", async () => {
+    const { buildComplianceRecordPdf } = await import("@/lib/pdf/compliance-record");
+    const { pdfText } = await import("@/lib/testing/pdf-text");
+    const done = Object.fromEntries(
+      ["f0", "e1", "amp", "b5", "ampc", "sign_agent", "send_licensee", "f2"].map((k) => [k, row(k)]),
+    );
+    const byKey = {
+      ...earlierDone(),
+      ...done,
+      f5: row("f5", { event_date: "2026-10-30", data: { settlementDate: "2026-10-30" } }),
+      sign_licensee: signedOff("2026-11-08T02:00:00.000Z"),
+    };
+    const p = { ...listing(5), address: "1 Example Street, Testville NSW 2000 (made up)", created_at: "2026-08-01" } as Property;
+    const text = pdfText(
+      await buildComplianceRecordPdf({
+        property: p,
+        agencyName: "Example Realty (made up)",
+        agentName: "Alex Example",
+        logo: null,
+        items: allItemsFor(p, byKey),
+        byKey,
+        espReasoning: null,
+        comparables: [],
+        signatures: {
+          agent: { typedName: "Alex Example", signedAt: "2026-11-08T01:00:00Z" },
+          licensee: { typedName: "Lee Example", signedAt: "2026-11-08T02:00:00Z" },
+        },
+        rulesetVersion: "test",
+        preparedFor: "test",
+        generatedAt: new Date("2026-11-08T03:00:00Z"),
+      }),
+    ).replace(/\s+/g, " ");
+    const { formatAuDate } = await import("@/lib/format-date");
+    assert.ok(text.includes(`Settlement date: ${formatAuDate("2026-10-30")}`));
+  });
+});

@@ -13,7 +13,14 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
-import { NOT_ON_THIS_FILE, addedAfterSignOffLine, selfManaged } from "@/lib/rules/nsw-sales";
+import {
+  NOT_ON_THIS_FILE,
+  ORDER_ON_AGENT_KEY,
+  SETTLEMENT_DATE_LABEL,
+  addedAfterSignOffLine,
+  selfManaged,
+  settlementDateOf,
+} from "@/lib/rules/nsw-sales";
 import {
   PERMISSION_RULE_TEXT,
   PHOTO_NOTICE_DAYS,
@@ -1485,6 +1492,22 @@ function ChecklistItem({
                 </span>
               </p>
             )}
+          </div>
+        )}
+        {/* The settlement date, on the same card as the order on the agent
+            (Adam, 6 Nov 2026). The card's own date is when the order came in. */}
+        {item.key === ORDER_ON_AGENT_KEY && (
+          <div>
+            <label className="block text-xs text-rc-muted" htmlFor="settlement-date">
+              {SETTLEMENT_DATE_LABEL}
+            </label>
+            <input
+              id="settlement-date"
+              type="date"
+              name="settlementDate"
+              defaultValue={settlementDateOf(current) ?? ""}
+              className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+            />
           </div>
         )}
         {item.requiresDate && item.key !== "t5" && (
