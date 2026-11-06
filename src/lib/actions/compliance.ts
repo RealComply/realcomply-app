@@ -15,7 +15,14 @@ import { marketListingsFor } from "@/lib/data/market-listings";
 import { redirect } from "next/navigation";
 import { accessFrom } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import { ORDER_NOT_ATTACHED, ORDER_ON_AGENT_KEY, getItem, itemsForStage } from "@/lib/rules/nsw-sales";
+import {
+  ORDER_NOT_ATTACHED,
+  ORDER_ON_AGENT_KEY,
+  SETTLEMENT_DATE_NEEDED,
+  getItem,
+  itemsForStage,
+  readSettlementDate,
+} from "@/lib/rules/nsw-sales";
 import { CONTRACT_KEY, CONTRACT_NOT_ATTACHED, completeStageRefusal } from "@/lib/rules/contract-before-market";
 import {
   applyAnswer,
@@ -86,6 +93,8 @@ const CARRIED_BY_ITEM: Record<string, string[]> = {
   a3: ["aiDraft"],
   b1: ["aiDraft", "contractRead"],
   a4: ["reportRead"],
+  // The settlement date, kept when a save doesn't send it (a reopen, say).
+  f5: ["settlementDate"],
 };
 
 // Kept on every card: the attached file's name. The file itself (evidence_path)
@@ -552,6 +561,21 @@ export async function setItemStatus(
     if (answer === "yes" || answer === "no") {
       data.materialFactDisclosed = answer === "yes";
     }
+  }
+
+  // f5, the order on the agent: the settlement date, on the same card (Adam,
+  // 6 Nov 2026). Needed to mark it done, like the date received and the
+  // order; the Settled list shows it. Only "done" is blocked, as above.
+  if (itemKey === ORDER_ON_AGENT_KEY) {
+    // From the form when it sends one; otherwise the one already saved.
+    const settlement = readSettlementDate(
+      formData.has("settlementDate") ? formData.get("settlementDate") : data.settlementDate,
+    );
+    if (status === "done" && !settlement) {
+      return { error: SETTLEMENT_DATE_NEEDED };
+    }
+    if (settlement) data.settlementDate = settlement;
+    else delete data.settlementDate;
   }
 
   // t1. Whether this agency also manages the property, in which case Sch 2 r7

@@ -305,6 +305,26 @@ export const F5_ADDED_AT = "2026-11-06T13:00:00.000Z";
 export const ORDER_ON_AGENT_KEY = "f5";
 export const ORDER_NOT_ATTACHED = "Upload the order on the agent before marking this done.";
 
+// The settlement date, on the same card as the order (Adam, 6 Nov 2026).
+// Nothing else in the app records it, and the Settled list shows it. Kept in
+// the card's data (settlementDate, YYYY-MM-DD); the card's own date stays the
+// date the order was received.
+export const SETTLEMENT_DATE_LABEL = "Settlement date";
+export const SETTLEMENT_DATE_NEEDED = "Enter the settlement date before marking this done.";
+
+/** A date as the form sends it (YYYY-MM-DD, a real day), or null. */
+export function readSettlementDate(value: unknown): string | null {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const day = new Date(`${text}T00:00:00Z`);
+  return Number.isFinite(day.getTime()) && day.toISOString().slice(0, 10) === text ? text : null;
+}
+
+/** The settlement date saved on the order on the agent card, or null. */
+export function settlementDateOf(row: Pick<PropertyItem, "data"> | null | undefined): string | null {
+  return readSettlementDate((row?.data as { settlementDate?: unknown } | null | undefined)?.settlementDate);
+}
+
 // REVERSAL 15 Oct 2026 (Adam): these were Campaign cards; moved to Did you know because every ad already carries the agency's details and marketing approval is covered by Vendor approved all marketing and the price guide checks.
 //
 // c2 ("Advertising identifies the licensed agent/agency", s50) and c3
