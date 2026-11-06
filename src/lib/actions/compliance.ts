@@ -15,7 +15,7 @@ import { marketListingsFor } from "@/lib/data/market-listings";
 import { redirect } from "next/navigation";
 import { accessFrom } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
+import { ORDER_NOT_ATTACHED, ORDER_ON_AGENT_KEY, getItem, itemsForStage } from "@/lib/rules/nsw-sales";
 import { CONTRACT_KEY, CONTRACT_NOT_ATTACHED, completeStageRefusal } from "@/lib/rules/contract-before-market";
 import {
   applyAnswer,
@@ -29,7 +29,7 @@ import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/
 import { COVERING_LETTER_KEY, afterAgentSave } from "@/lib/documents/covering-letter";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { checkSalePrice } from "@/lib/rules/sale-price";
-import { stageHold } from "@/lib/rules/stage-hold";
+import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
@@ -301,6 +301,22 @@ export async function setItemStatus(
     const row = attached as { evidence_path?: string | null; status?: string } | null;
     if (row?.status !== "done" && !row?.evidence_path) {
       return { error: CONTRACT_NOT_ATTACHED };
+    }
+  }
+
+  // The order on the agent (f5, Adam's OK, 6 Nov 2026): the date it came in
+  // (checked above, requiresDate) and a copy of the order, both needed. The
+  // copy goes up in its own request first, as on every card.
+  if (status === "done" && itemKey === ORDER_ON_AGENT_KEY) {
+    const { data: attached } = await supabase
+      .from("property_items")
+      .select("evidence_path, status")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+    const row = attached as { evidence_path?: string | null; status?: string } | null;
+    if (row?.status !== "done" && !row?.evidence_path) {
+      return { error: ORDER_NOT_ATTACHED };
     }
   }
 
@@ -2639,7 +2655,7 @@ export async function completeStage(
       signedOff: byKey.get("sign_licensee")?.status === "done",
       incompleteRequired: (s) =>
         itemsForStage(s, property, allItems, ctx)
-          .filter((i) => i.requiredForStageCompletion && !isComplete(i.key))
+          .filter((i) => i.requiredForStageCompletion && holdsBack(i.key, s, property.stage) && !isComplete(i.key))
           .map((i) => i.label),
     });
     if (hold.stage !== property.stage) {

@@ -112,6 +112,7 @@ export const DOCUMENT_TITLE: Record<string, string> = {
   ampc: "Purchaser AML/KYC result",
   b5: "Record of price quotes",
   f0: "Sale price record",
+  f5: "Order on the agent",
   d3: "ESP revision notice",
   f4: "Record of property reports disclosed",
 };

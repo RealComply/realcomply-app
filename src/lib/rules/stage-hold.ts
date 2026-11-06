@@ -25,6 +25,21 @@ import type { PropertyStage } from "@/lib/types";
 // because something changed afterwards would make the signature read as
 // covering something it never saw (same reasoning as esp-reasoning-gate.ts).
 
+// FINAL SALE PRICE, MOVED FROM SETTLED TO SOLD (Adam, 6 Nov 2026). A file
+// can't continue from Sold without it, like every required Sold card. But a
+// file already in Settled isn't held back at Sold for it: before the move it
+// was a Settled card, and a Settled file without a sale price stayed in
+// Settled (nothing already done reopens). So for a file in Settled it works
+// exactly as before: an open card to finish, with nothing locked.
+const MOVED_TO_SOLD = "f0";
+const SOLD = 4;
+const SETTLED = 5;
+
+/** Whether a required card that isn't complete holds the file at its stage. */
+export function holdsBack(key: string, cardStage: PropertyStage, storedStage: PropertyStage): boolean {
+  return !(key === MOVED_TO_SOLD && cardStage === SOLD && storedStage === SETTLED);
+}
+
 export type StageHold = {
   /** The stage the file is worked at now. */
   stage: PropertyStage;

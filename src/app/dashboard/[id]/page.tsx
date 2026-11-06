@@ -19,7 +19,7 @@ import { reopenHistoryFor } from "@/lib/data/reopen";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
-import { stageHold } from "@/lib/rules/stage-hold";
+import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
 import { stageProgress } from "@/lib/rules/stage-progress";
 import { StageProgressBar } from "@/components/compliance/StageProgressBar";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
@@ -152,7 +152,9 @@ export default async function PropertyPage({
     signedOff: allItems["sign_licensee"]?.status === "done",
     incompleteRequired: (s) =>
       itemsForStage(s, p, allItems, ruleCtx)
-        .filter((i) => i.requiredForStageCompletion && allItems[i.key]?.status !== "done")
+        .filter(
+          (i) => i.requiredForStageCompletion && holdsBack(i.key, s, p.stage) && allItems[i.key]?.status !== "done",
+        )
         .map((i) => i.label),
   });
   const held = hold.stage !== p.stage;
@@ -178,9 +180,10 @@ export default async function PropertyPage({
     reachable: s <= maxViewable,
     // An optional upload card (the Power of Attorney copy, 15 Oct 2026)
     // counts once something is on it, never against the stage while empty.
+    // A card that's "Not on this file" (added after sign-off) never counts.
     ...stageProgress(
       itemsForStage(s, p, allItems, ruleCtx)
-        .filter((i) => i.kind !== "document" || allItems[i.key]?.status === "done")
+        .filter((i) => !i.notOnThisFile && (i.kind !== "document" || allItems[i.key]?.status === "done"))
         .map((i) => allItems[i.key]?.status),
     ),
   }));

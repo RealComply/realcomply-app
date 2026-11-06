@@ -1,7 +1,7 @@
 import type { EffectiveEsp } from "@/lib/data/effective-esp";
 import { espRangeText } from "./price-statement";
 
-// f0, the Final sale price card (Settled stage).
+// f0, the Final sale price card (Sold stage since 6 Nov 2026; it was in Settled).
 //
 // REVERSAL (Adam, 26 Oct 2026). Found live on a Cass Property listing: the
 // agency agreement's ESP was $1.40m to $1.45m, the ESP revision card revised
