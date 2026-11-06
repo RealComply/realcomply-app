@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { withdrawnPropertyIds } from "@/lib/data/withdrawals";
 import { accessFrom } from "@/lib/access";
 import { agencyPeople } from "@/lib/data/people";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -190,7 +191,10 @@ export const navCountsFor = cache(async function navCountsFor(
   // Test listings are excluded everywhere here. Adam runs files in test mode
   // to try things out, and a sidebar that counts his sandbox is a sidebar he
   // learns to ignore.
-  const properties = ((propertyRows ?? []) as Property[]).filter((p) => !p.test_mode);
+  // Nor a listing withdrawn from sale (Job B, 0114): nothing on it is to do
+  // until it is put back on the market.
+  const withdrawn = await withdrawnPropertyIds(supabase);
+  const properties = ((propertyRows ?? []) as Property[]).filter((p) => !p.test_mode && !withdrawn.has(p.id));
   const propertyIds = properties.map((p) => p.id);
 
   // Everything the sidebar needs, in one parallel batch. The extra register

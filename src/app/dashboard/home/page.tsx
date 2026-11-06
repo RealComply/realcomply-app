@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { withdrawnPropertyIds } from "@/lib/data/withdrawals";
 import { Building2, FileWarning, ShieldCheck, MessageSquareWarning, Gift as GiftIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
@@ -160,7 +161,10 @@ export default async function HomeDashboardPage({
   }
 
   const { data: properties } = await supabase.from("properties").select("*").order("created_at", { ascending: false });
-  const propertyList = (properties ?? []) as Property[];
+  // A listing withdrawn from sale is off the market and needs nothing until
+  // it is put back (Job B, 0114), so it isn't counted or listed here.
+  const withdrawn = await withdrawnPropertyIds(supabase);
+  const propertyList = ((properties ?? []) as Property[]).filter((p) => !withdrawn.has(p.id));
 
   // Files an assistant has handed to THIS person. Scoped to the reader: a
   // licensee sees the ones on their own listings here, and the office-wide

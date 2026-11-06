@@ -299,7 +299,9 @@ function ItemShell({
   const waitingRequest = useWaitingRequest(item.key);
   // A signed-off file: every card's own controls are locked, and only the
   // shared Reopen below works (0100). The finalised file is still generated.
-  const locked = Boolean(useReopen()?.signedOff) && item.key !== "f2";
+  // And a listing withdrawn from sale, until it is put back (0114).
+  const reopenCtx = useReopen();
+  const locked = Boolean(reopenCtx?.withdrawn) || (Boolean(reopenCtx?.signedOff) && item.key !== "f2");
   const canFold = isDone && foldable && !evidenceUnsaved && !flag && !waitingRequest;
   const [folded, setFolded] = useState(isDone && !autoCompleted);
   const [foldedFor, setFoldedFor] = useState(status);

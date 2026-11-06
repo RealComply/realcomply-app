@@ -15,6 +15,8 @@ import { PAGE_IS_DATA, checkListingsPages, findListingPage, pageCache } from "@/
 import { READER_MODEL, logReadFailure, readFailureWhy, type ReadFailureWhy } from "@/lib/documents/read-core";
 import { UnfinishedAnswer, toolAnswer, unfinishedMessage } from "@/lib/documents/reader-answer";
 import type { PropertyItem } from "@/lib/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { withdrawnPropertyIds } from "@/lib/data/withdrawals";
 
 // The advertised-price check.
 //
@@ -616,6 +618,10 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
     .maybeSingle();
 
   if (!property) return { error: "Couldn't find that property." };
+  // Withdrawn from sale (0114): nothing to check until it is back on the market.
+  if ((await withdrawnPropertyIds(supabase)).has(propertyId)) {
+    return { error: "This listing is withdrawn from sale, so its price isn't checked. Put it back on the market first." };
+  }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const p = property as { id: string; agency_id: string; address: string; listing_url: string | null; created_by: string | null };
@@ -703,6 +709,9 @@ export async function runDailyListingScan(): Promise<{
   // and AI features are off for it.
   const { data: endedRows } = await supabase.from("agencies").select("id").not("ended_at", "is", null);
   const ended = new Set(((endedRows ?? []) as Array<{ id: string }>).map((a) => a.id));
+  // Nor for a listing withdrawn from sale (Job B, 0114): its price check and
+  // emails stop until it is put back on the market.
+  const withdrawn = await withdrawnPropertyIds(supabase as unknown as SupabaseClient);
 
   const properties = ((rows ?? []) as Array<{
     id: string;
@@ -710,7 +719,7 @@ export async function runDailyListingScan(): Promise<{
     address: string;
     listing_url: string | null;
     created_by: string | null;
-  }>).filter((p) => !ended.has(p.agency_id));
+  }>).filter((p) => !ended.has(p.agency_id) && !withdrawn.has(p.id));
 
   const db = supabase as unknown as Db;
   // Each page is fetched once this morning, however many listings use it.
