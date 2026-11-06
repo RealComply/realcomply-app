@@ -108,7 +108,7 @@ export function ConfirmPlanChangeForm(props: ConfirmPlanChangeProps) {
           {pending ? "Working…" : props.buttonLabel}
         </button>
         <Link
-          href={`/dashboard/billing/change?interval=${encodeURIComponent(props.hidden.interval ?? "monthly")}`}
+          href={`/dashboard/billing/change?ladder=${(props.hidden.plan ?? "").startsWith("agent_") ? "agent" : "office"}&interval=${encodeURIComponent(props.hidden.interval ?? "monthly")}`}
           className="inline-flex min-h-11 items-center rounded-full border border-rc-border bg-white px-5 py-2.5 text-sm font-semibold text-rc-ink transition hover:border-rc-green-deep"
         >
           Back

@@ -49,7 +49,7 @@ export default async function ConfirmPlanChangePage({
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold tracking-tight text-rc-ink">{title}</h1>
         <Link
-          href={`/dashboard/billing/change?interval=${interval}`}
+          href={`/dashboard/billing/change?ladder=${plan.startsWith("agent_") ? "agent" : "office"}&interval=${interval}`}
           className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep"
         >
           <RoofMark back />
