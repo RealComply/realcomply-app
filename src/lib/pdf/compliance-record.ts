@@ -366,6 +366,11 @@ export type ComplianceRecordInput = {
       emailedTo?: string | null;
     } | null;
   };
+  /**
+   * Withdrawn from sale, and put back, oldest first, one line each (Job B,
+   * 0114): "Withdrawn on 21 October 2026 by Marcus Tran. Reason: ...".
+   */
+  withdrawalLines?: string[];
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
   loadDocument?: (doc: PackDocument) => Promise<LoadedDocument>;
@@ -583,6 +588,15 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         for (const r of reasons) c.text(r, { size: 8.5, color: MUTED, indent: 16 });
       }
     }
+    c.rule(10, 14);
+  }
+
+  // Withdrawn from sale, and every put-back (Job B, 0114).
+  if (input.withdrawalLines && input.withdrawalLines.length > 0) {
+    c.need(46);
+    c.text("Withdrawn from sale", { size: 11, bold: true, gap: 2 });
+    c.rule(2, 8);
+    for (const line of input.withdrawalLines) c.text(line, { size: 9, indent: 4 });
     c.rule(10, 14);
   }
 

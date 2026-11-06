@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { withdrawalHistory } from "@/lib/data/withdrawals";
+import { withdrawalRecordLines } from "@/lib/rules/listing-tabs";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import {
@@ -228,6 +230,31 @@ export async function buildAuditPack(
   );
   const documents = packDocumentsFor(items, byKey, listingFolder(agencyId, id), uploads);
 
+  // Withdrawn from sale, and put back (Job B, 0114): a line each in the
+  // record, and any evidence in the pack.
+  const withdrawals = await withdrawalHistory(supabase as never, id);
+  const withdrawalNames = new Map<string, string>();
+  if (withdrawals.length > 0) {
+    const { data: who } = await supabase.from("profiles").select("id, full_name, email").eq("agency_id", agencyId);
+    for (const x of (who ?? []) as Array<{ id: string; full_name: string | null; email: string }>) {
+      withdrawalNames.set(x.id, x.full_name ?? x.email);
+    }
+  }
+  const withdrawalLines = withdrawalRecordLines(withdrawals, (pid) => (pid && withdrawalNames.get(pid)) || "a team member");
+  for (const w of withdrawals) {
+    if (!w.evidence_path || !isInFolder(w.evidence_path, `${listingFolder(agencyId, id)}withdrawal/`)) continue;
+    const fileName = w.evidence_file_name ?? "Withdrawal evidence";
+    documents.push({
+      stage: "Withdrawn from sale",
+      cardTitle: "Withdrawal evidence",
+      fileName,
+      path: w.evidence_path,
+      kind: packDocKind(fileName),
+      uploadedBy: (w.withdrawn_by && withdrawalNames.get(w.withdrawn_by)) || null,
+      uploadedAt: w.withdrawn_at,
+    });
+  }
+
   // EVERY ESP REVISION, WITH ITS NOTICE (Adam, 3 Nov 2026; 0110). The card
   // names the latest notice only; each earlier revision's notice goes in just
   // before it, oldest first, so every version's evidence is in the pack. The
@@ -273,6 +300,7 @@ export async function buildAuditPack(
     items,
     byKey,
     espReasoning: noteOf("a4c"),
+    withdrawalLines,
     // Where the agent said the reasoning lives, if they said it lives outside
     // RealComply. Without this the section simply vanishes from the record,
     // which reads as "no reasoning was recorded" — the worst thing a file can

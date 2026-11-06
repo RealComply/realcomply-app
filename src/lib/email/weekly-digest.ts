@@ -1,4 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { withdrawnPropertyIds } from "@/lib/data/withdrawals";
 import { sendEmail } from "@/lib/email/send";
 import {
   renderEmailHtml,
@@ -84,7 +86,10 @@ async function loadAgencyBundle(
       .eq("cpd_year_start", currentCpdYear().start),
   ]);
 
-  const propertyList = (properties ?? []) as Property[];
+  // A listing withdrawn from sale isn't reminded about (Job B, 0114): it
+  // drops out of the whole email until it is put back on the market.
+  const withdrawn = await withdrawnPropertyIds(supabase as unknown as SupabaseClient);
+  const propertyList = ((properties ?? []) as Property[]).filter((p) => !withdrawn.has(p.id));
   const profileList = (profiles ?? []) as Profile[];
   const propertyIds = propertyList.map((p) => p.id);
 

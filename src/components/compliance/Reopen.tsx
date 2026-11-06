@@ -31,6 +31,11 @@ export type ReopenPage = {
   propertyId: string;
   /** The licensee has signed the file off: nothing on it changes until they reopen a card. */
   signedOff: boolean;
+  /**
+   * Withdrawn from sale (0114): read only until it is put back on the market,
+   * and no card offers Reopen meanwhile.
+   */
+  withdrawn?: boolean;
   viewer: { id: string; isLicensee: boolean };
   names: Record<string, string>;
   /** Card titles by key, for "because … was reopened". */
@@ -90,7 +95,7 @@ export function CardReopenArea({
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
-  if (!ctx) return null;
+  if (!ctx || ctx.withdrawn) return null;
 
   const name = (id: string | null | undefined) => (id && ctx.names[id]) || "a team member";
   const title = (key: string) => ctx.titles[key] ?? key;
