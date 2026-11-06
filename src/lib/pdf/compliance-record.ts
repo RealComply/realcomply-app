@@ -4,7 +4,14 @@ import { formatSignedAt } from "./sign-stamp";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { pdfText } from "./text";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
-import { NOT_ON_THIS_FILE, addedAfterSignOffLine, type ComplianceItem } from "@/lib/rules/nsw-sales";
+import {
+  NOT_ON_THIS_FILE,
+  ORDER_ON_AGENT_KEY,
+  SETTLEMENT_DATE_LABEL,
+  addedAfterSignOffLine,
+  settlementDateOf,
+  type ComplianceItem,
+} from "@/lib/rules/nsw-sales";
 import { earlierApprovalLine, tickedLine, type PriceApproval } from "@/lib/rules/price-statement";
 import { saleRecordLines } from "@/lib/rules/sale-price";
 import { formatAuDate } from "@/lib/format-date";
@@ -632,6 +639,14 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       }
       if (item.notOnThisFile && item.addedAt) {
         c.text(addedAfterSignOffLine(item.addedAt), { size: 8.5, color: MUTED, indent: 12 });
+      }
+      // The settlement date, kept on the order on the agent card (6 Nov 2026).
+      if (item.key === ORDER_ON_AGENT_KEY && settlementDateOf(current)) {
+        c.text(`${SETTLEMENT_DATE_LABEL}: ${formatAuDate(settlementDateOf(current) as string)}`, {
+          size: 8.5,
+          color: MUTED,
+          indent: 12,
+        });
       }
       for (const line of notApplicableLines(item, current)) {
         c.text(line, { size: 8.5, color: MUTED, indent: 12 });
