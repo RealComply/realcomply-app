@@ -3,7 +3,7 @@ import Link from "next/link";
 import { SaveAuditPack } from "@/components/compliance/SaveAuditPack";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/data/current-profile";
-import { allItemsFor } from "@/lib/rules/nsw-sales";
+import { NOT_ON_THIS_FILE, addedAfterSignOffLine, allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
@@ -124,7 +124,9 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                       <span className="font-medium text-rc-ink">{item.label}</span>{" "}
                       <span className={current?.status === "flagged" ? "font-medium text-rc-amber-deep" : "text-rc-muted"}>
                         —{" "}
-                        {item.kind === "document" && current?.status !== "done"
+                        {item.notOnThisFile
+                          ? NOT_ON_THIS_FILE.toLowerCase()
+                          : item.kind === "document" && current?.status !== "done"
                           ? "optional"
                           : item.notApplicable && current?.status === "done" && readNa(current.data).notApplicable
                             ? "not applicable"
@@ -142,6 +144,10 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                           {line}
                         </p>
                       ))}
+                      {/* A card added after the file was signed off, and when (6 Nov 2026). */}
+                      {item.notOnThisFile && item.addedAt && (
+                        <p className="mt-0.5 text-xs text-rc-muted">{addedAfterSignOffLine(item.addedAt)}</p>
+                      )}
                       {/* "Not applicable", with who and when (f4, 17 Oct 2026). */}
                       {naRecordLines(item, current, (iso) => formatAuTimestamp(iso)).map((line) => (
                         <p key={line} className="mt-0.5 text-xs text-rc-muted">

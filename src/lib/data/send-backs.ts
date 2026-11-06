@@ -136,7 +136,8 @@ export async function reviewCardsFor(
   const byKey = Object.fromEntries(rows.map((i) => [i.item_key, i]));
   const items = allItemsFor(property, byKey, await ruleContextFor(supabase, property));
   return items
-    .filter((i) => !NOT_FLAGGABLE.has(i.key))
+    // Nor a card that's "Not on this file" (added after the file was signed off).
+    .filter((i) => !NOT_FLAGGABLE.has(i.key) && !i.notOnThisFile)
     .map((i) => ({ key: i.key, label: i.label, stage: i.stage }))
     .sort((a, b) => a.stage - b.stage);
 }

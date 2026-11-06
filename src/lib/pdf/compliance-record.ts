@@ -4,7 +4,7 @@ import { formatSignedAt } from "./sign-stamp";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { pdfText } from "./text";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
-import type { ComplianceItem } from "@/lib/rules/nsw-sales";
+import { NOT_ON_THIS_FILE, addedAfterSignOffLine, type ComplianceItem } from "@/lib/rules/nsw-sales";
 import { earlierApprovalLine, tickedLine, type PriceApproval } from "@/lib/rules/price-statement";
 import { saleRecordLines } from "@/lib/rules/sale-price";
 import { formatAuDate } from "@/lib/format-date";
@@ -612,8 +612,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       // An optional upload card with nothing on it is optional, not "open"
       // (the Power of Attorney copy, 15 Oct 2026).
       // A card marked "Not applicable" says so rather than "done" (f4, 17 Oct 2026).
-      const shownStatus =
-        item.kind === "document" && status !== "done"
+      // A card added after the file was signed off says so (6 Nov 2026).
+      const shownStatus = item.notOnThisFile
+        ? NOT_ON_THIS_FILE.toLowerCase()
+        : item.kind === "document" && status !== "done"
           ? "optional"
           : item.notApplicable && status === "done" && readNa(current?.data).notApplicable
             ? "not applicable"
@@ -627,6 +629,9 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       // who and when; and its document card: the upload, who and when.
       for (const line of questionAndDocumentLines(item, current)) {
         c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+      }
+      if (item.notOnThisFile && item.addedAt) {
+        c.text(addedAfterSignOffLine(item.addedAt), { size: 8.5, color: MUTED, indent: 12 });
       }
       for (const line of notApplicableLines(item, current)) {
         c.text(line, { size: 8.5, color: MUTED, indent: 12 });

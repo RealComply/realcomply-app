@@ -13,7 +13,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
-import { selfManaged } from "@/lib/rules/nsw-sales";
+import { NOT_ON_THIS_FILE, addedAfterSignOffLine, selfManaged } from "@/lib/rules/nsw-sales";
 import {
   PERMISSION_RULE_TEXT,
   PHOTO_NOTICE_DAYS,
@@ -4137,6 +4137,21 @@ function AuctionOutcomeItem({
   );
 }
 
+/** "Not on this file": a card added after the file was signed off (lib/rules/nsw-sales.ts, addedAt). */
+function NotOnThisFileItem({ item }: { item: ComplianceItem }) {
+  return (
+    <div id={`card-${item.key}`} className="rounded-card border border-rc-border bg-white px-4 py-3 shadow-card">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-rc-muted">{item.label}</h3>
+        <span className="shrink-0 rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-rc-muted">
+          {NOT_ON_THIS_FILE}
+        </span>
+      </div>
+      {item.addedAt && <p className="mt-1 text-xs text-rc-faint">{addedAfterSignOffLine(item.addedAt)}</p>}
+    </div>
+  );
+}
+
 // b4 holding the licensee's own approval from before 2 Nov 2026. An agent
 // ticks this card now (REVERSAL, Adam 2 Nov 2026: lib/rules/nsw-sales.ts),
 // and an approval the licensee gave before then reads exactly as it did: who
@@ -4236,6 +4251,12 @@ function ItemCardBody({
   b4Approval = null,
   espHistory,
 }: ItemCardProps) {
+  // A card added after this file was signed off (the order on the agent,
+  // 6 Nov 2026) was never asked for here: it says so, with nothing to do.
+  if (item.notOnThisFile) {
+    return <NotOnThisFileItem item={item} />;
+  }
+
   // b4 with the licensee's own approval from before 2 Nov 2026: as it read
   // then. A tick from then on is an ordinary checklist card below.
   if (item.key === "b4" && current?.status === "done" && b4Approval && b4Approval.via !== "tick") {

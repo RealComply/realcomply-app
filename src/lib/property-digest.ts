@@ -3,7 +3,7 @@
 // property, computed the same way, so it lives in one place rather than
 // being reimplemented twice and drifting.
 import { allItemsFor, itemsForStage, type ComplianceItem } from "@/lib/rules/nsw-sales";
-import { stageHold } from "@/lib/rules/stage-hold";
+import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import type { Property, PropertyItem } from "@/lib/types";
 
@@ -105,7 +105,12 @@ export function computePropertyDigests(
       signedOff: stored["sign_licensee"]?.status === "done",
       incompleteRequired: (s) =>
         itemsForStage(s, property, effective, ctx)
-          .filter((i) => i.requiredForStageCompletion && effective[i.key]?.status !== "done")
+          .filter(
+            (i) =>
+              i.requiredForStageCompletion &&
+              holdsBack(i.key, s, property.stage) &&
+              effective[i.key]?.status !== "done",
+          )
           .map((i) => i.label),
     });
 
