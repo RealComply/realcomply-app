@@ -2,6 +2,7 @@ import type { createClient } from "@/lib/supabase/server";
 import { agencyPeople } from "@/lib/data/people";
 import { openWithdrawals, type Withdrawal } from "@/lib/data/withdrawals";
 import { fileProgress, tabFor, type ListingTab } from "@/lib/rules/listing-tabs";
+import { ORDER_ON_AGENT_KEY, settlementDateOf } from "@/lib/rules/nsw-sales";
 import type { Property, PropertyItem } from "@/lib/types";
 
 // Every listing the viewer can see, with its tab and what its row says
@@ -21,12 +22,6 @@ export type ListingTabRow = {
   signedOffAt: string | null;
   withdrawal: Withdrawal | null;
 };
-
-/** The settlement date on the Order on the agent card, if recorded. */
-function settlementDateFrom(row: PropertyItem | undefined): string | null {
-  const v = (row?.data as { settlementDate?: unknown } | null | undefined)?.settlementDate;
-  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
-}
 
 /** When the licensee signed off, as the sign card records it. */
 function signedOffAtFrom(row: PropertyItem | undefined): string | null {
@@ -73,7 +68,7 @@ export async function listingTabRowsFor(
       agentName: names.get(property.created_by) ?? null,
       cardsLeft: progress.cardsLeft,
       signedOff: progress.signedOff,
-      settlementDate: settlementDateFrom(allItems.f5),
+      settlementDate: settlementDateOf(allItems[ORDER_ON_AGENT_KEY]),
       signedOffAt: signedOffAtFrom(allItems.sign_licensee),
       withdrawal,
     };
