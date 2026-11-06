@@ -4,7 +4,6 @@ import type { Plan } from "@/lib/billing/entitlement";
 import { stripeConfigured, type Interval } from "@/lib/billing/stripe";
 import { bookedChange, readSubscription, type SubscriptionView } from "@/lib/billing/subscription-change";
 import { isAccountHolder } from "@/lib/subscription-end/access";
-import { createServiceClient } from "@/lib/supabase/service";
 import { formatAuDate } from "@/lib/format-date";
 import type { Profile } from "@/lib/types";
 
@@ -28,7 +27,6 @@ export type PlanChangeContext =
       agency: PlanChangeAgency;
       sub: SubscriptionView;
       listingCount: number;
-      activePeople: number;
       /** A change already booked for the next billing date. */
       booked: { plan: Plan; interval: Interval; at: string } | null;
     }
@@ -92,14 +90,8 @@ export async function planChangeContext(supabase: SupabaseClient, profile: Profi
     };
   }
 
-  const service = createServiceClient();
-  const [{ data: count }, { count: people }, booked] = await Promise.all([
+  const [{ data: count }, booked] = await Promise.all([
     supabase.rpc("agency_listing_count", { p_agency_id: agency.id }),
-    service
-      .from("profiles")
-      .select("id", { count: "exact", head: true })
-      .eq("agency_id", agency.id)
-      .is("archived_at", null),
     sub.scheduleId ? bookedChange(sub.scheduleId).catch(() => null) : Promise.resolve(null),
   ]);
 
@@ -108,7 +100,6 @@ export async function planChangeContext(supabase: SupabaseClient, profile: Profi
     agency,
     sub,
     listingCount: typeof count === "number" ? count : 0,
-    activePeople: typeof people === "number" ? people : 1,
     booked,
   };
 }

@@ -32,6 +32,7 @@ const raw = {
   cancel_at_period_end: false,
   cancel_at: null,
   schedule: null,
+  start_date: 1791945250,
   items: {
     data: [
       {
@@ -60,6 +61,7 @@ describe("Stripe's subscription, as a plan change reads it", () => {
       trialEnd: null,
       endsAt: null,
       scheduleId: null,
+      startedAt: new Date(1791945250 * 1000).toISOString(),
     });
   });
 

@@ -35,7 +35,8 @@ export type JobCheck =
   | "subscription-end"
   | "reader-check"
   | "audit-packs"
-  | "licensee-confirm";
+  | "licensee-confirm"
+  | "plan-move-down";
 
 export type Check = JobCheck | "email";
 
@@ -87,6 +88,7 @@ const LABELS: Record<JobCheck, string> = {
   "reader-check": "daily reader check",
   "audit-packs": "hourly clean-up of finished audit packs",
   "licensee-confirm": "licensee email confirmations",
+  "plan-move-down": "automatic plan move-down",
 };
 
 /**

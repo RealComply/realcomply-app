@@ -24,6 +24,7 @@ type RawSubscription = {
   cancel_at?: number | null;
   schedule?: string | { id?: string } | null;
   current_period_end?: number | null;
+  start_date?: number | null;
   items?: { data?: Array<{ id?: string; price?: RawPrice; current_period_end?: number | null }> } | null;
 };
 
@@ -44,6 +45,8 @@ export type SubscriptionView = {
   endsAt: string | null;
   /** A schedule is attached: a change booked for the next billing date. */
   scheduleId: string | null;
+  /** When the subscription started (ISO): its first 12 months are never moved down (Adam, 6 Nov 2026). */
+  startedAt: string | null;
 };
 
 const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
@@ -80,6 +83,7 @@ export function subscriptionViewFrom(raw: RawSubscription, now: Date = new Date(
     trialEnd,
     endsAt,
     scheduleId: schedule,
+    startedAt: raw.start_date ? iso(raw.start_date) : null,
   };
 }
 
