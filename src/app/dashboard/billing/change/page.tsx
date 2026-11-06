@@ -5,7 +5,7 @@ import { requireAccess } from "@/lib/data/current-profile";
 import { mayChangePlan, planChangeContext } from "@/lib/data/plan-change";
 import { PLANS } from "@/lib/billing/entitlement";
 import type { Interval } from "@/lib/billing/stripe";
-import { intervalWord, ladderRows, perWord, startingFloor } from "@/lib/billing/plan-change";
+import { intervalWord, ladderRows, perWord } from "@/lib/billing/plan-change";
 import { PlanLadder } from "@/components/billing/PlanChangeParts";
 import { KeepPlanButton } from "@/components/billing/KeepPlanButton";
 import { formatAuDate } from "@/lib/format-date";
@@ -56,8 +56,6 @@ function ChangePlanBody({
     current: { plan: ctx.sub.plan, interval: ctx.sub.interval },
     interval: shown,
     listingCount: ctx.listingCount,
-    activePeople: ctx.activePeople,
-    floor: startingFloor(),
   });
   const segment = (interval: Interval, label: string) => (
     <Link
@@ -103,8 +101,9 @@ function ChangePlanBody({
         <PlanLadder agent={rows.agent} office={rows.office} per={perWord(shown)} />
         <p className="mt-3 text-xs text-rc-muted">
           Prices include GST. You&rsquo;ve listed {ctx.listingCount}{" "}
-          {ctx.listingCount === 1 ? "property" : "properties"} in the last 12 months. Upgrades start straight away; a
-          cheaper plan, or a switch between monthly and yearly, starts on your next billing date.
+          {ctx.listingCount === 1 ? "property" : "properties"} in the last 12 months. Upgrades start straight away. A
+          switch between monthly and yearly starts on your next billing date. You don&rsquo;t need to choose a cheaper
+          plan: after your first 12 months, we move you down at a billing date whenever your listings fit one.
         </p>
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <button

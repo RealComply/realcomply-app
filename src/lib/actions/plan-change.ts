@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { PLANS, type Plan } from "@/lib/billing/entitlement";
 import { priceIdFor, type Interval } from "@/lib/billing/stripe";
-import { decideChange, isAgentToOffice, priceCents, startingFloor, unavailableReason } from "@/lib/billing/plan-change";
+import { decideChange, isAgentToOffice, priceCents, unavailableReason } from "@/lib/billing/plan-change";
 import {
   applyNow,
   bookedChange,
@@ -71,8 +71,6 @@ export async function confirmPlanChange(_prev: PlanChangeState, formData: FormDa
       current,
       interval: toInterval,
       listingCount: ctx.listingCount,
-      activePeople: ctx.activePeople,
-      floor: startingFloor(),
     },
     toPlan,
   );

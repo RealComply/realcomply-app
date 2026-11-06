@@ -204,6 +204,10 @@ export default async function BillingPage({
         <p className="mt-1 text-sm text-rc-muted">
           Counts every listing added in the last 12 months, whether it sold or not.
         </p>
+        {/* Moving down is automatic (Adam, 6 Nov 2026; Terms cl 7.2). */}
+        <p className="mt-1 text-sm text-rc-muted">
+          After your first 12 months, if your listings fit a cheaper plan at a billing date, we move you down to it.
+        </p>
 
         {usedPercent !== null && (
           <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-rc-bg-alt">

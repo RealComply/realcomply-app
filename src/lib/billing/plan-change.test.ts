@@ -107,7 +107,6 @@ describe("the ladder on Change plan", () => {
     current: { plan: "agent_1" as const, interval: "monthly" as const },
     interval: "monthly" as const,
     listingCount: 19,
-    activePeople: 1,
   };
 
   it("shows both ladders with the mockup's prices and bands, the current plan marked", () => {
@@ -145,38 +144,49 @@ describe("the ladder on Change plan", () => {
     assert.equal(bandLine("office_5"), "401 or more listings a year");
   });
 
-  it("greys out a plan below the listings used in the last 12 months, with the reason", () => {
-    const rows = ladderRows({ ...base, current: { plan: "office_3", interval: "monthly" }, listingCount: 162 });
-    const office2 = rows.office.find((r) => r.plan === "office_2")!;
-    assert.equal(office2.available, false);
-    assert.equal(office2.reason, "Not available: you've listed 162 properties in the last 12 months.");
+  it("a cheaper plan can't be picked: it says they'll be moved down automatically (Adam, 6 Nov 2026)", () => {
+    const rows = ladderRows({ ...base, current: { plan: "office_3", interval: "monthly" }, listingCount: 30 });
+    for (const plan of ["office_1", "office_2"]) {
+      const row = rows.office.find((r) => r.plan === plan)!;
+      assert.equal(row.available, false);
+      assert.equal(row.reason, "We'll move you down automatically when your listings fit this plan.");
+    }
     assert.equal(rows.office.find((r) => r.plan === "office_4")!.available, true);
   });
 
-  it("offers an agent plan to an office only when it has one person (mockup note 5)", () => {
-    const team = ladderRows({ ...base, current: { plan: "office_1", interval: "monthly" }, activePeople: 3 });
-    assert.equal(team.agent[0].available, false);
-    assert.equal(team.agent[0].reason, "Not available: an agent plan is for one person, and your office has 3 people.");
-    const solo = ladderRows({ ...base, current: { plan: "office_1", interval: "monthly" }, activePeople: 1 });
-    assert.equal(solo.agent[0].available, true);
+  it("an office can't pick an agent plan: that's by email", () => {
+    const rows = ladderRows({ ...base, current: { plan: "office_1", interval: "monthly" }, listingCount: 3 });
+    assert.deepEqual(
+      rows.agent.map((r) => [r.available, r.reason]),
+      [
+        [false, "To move to an agent plan, email admin@realcomply.com.au."],
+        [false, "To move to an agent plan, email admin@realcomply.com.au."],
+        [false, "To move to an agent plan, email admin@realcomply.com.au."],
+      ],
+    );
   });
 
-  it("has the starting plan hook, off unless a floor is given", () => {
+  it("an upgrade already too small for the listings is greyed with the count", () => {
+    const rows = ladderRows({ ...base, current: { plan: "agent_3", interval: "monthly" }, listingCount: 80 });
+    assert.equal(rows.office[0].reason, "Not available: you've listed 80 properties in the last 12 months.");
+    assert.equal(rows.office[1].available, true);
+  });
+
+  it("the same plan, monthly or yearly, can still be switched", () => {
     const rows = ladderRows({
       ...base,
-      current: { plan: "office_3", interval: "monthly" },
-      listingCount: 10,
-      floor: { plan: "office_2", until: "2027-03-14T00:00:00Z" },
+      current: { plan: "office_2", interval: "monthly" },
+      interval: "annual",
+      listingCount: 60,
     });
-    assert.equal(rows.office[0].reason, "Not available until 14 March 2027: your starting plan holds for 12 months.");
-    assert.equal(rows.office[1].available, true);
+    assert.equal(rows.office.find((r) => r.plan === "office_2")!.available, true);
   });
 
   it("the server asks the same question before charging", () => {
     assert.equal(unavailableReason(base, "agent_1"), "That's your plan already.");
     assert.equal(unavailableReason(base, "office_1"), null);
     const office2 = { ...base, current: { plan: "office_2" as const, interval: "monthly" as const }, listingCount: 60 };
-    assert.match(unavailableReason(office2, "office_1") ?? "", /listed 60 properties/);
+    assert.match(unavailableReason(office2, "office_1") ?? "", /move you down automatically/);
   });
 });
 

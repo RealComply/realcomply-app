@@ -15,8 +15,6 @@ export type ConfirmPlanChangeProps = {
   buttonLabel: string;
   /** Agent to office: "Provides access to" and the licensee question. */
   agentToOffice: { payerName: string; accessLines: string[]; defaultName: string; defaultEmail: string } | null;
-  /** Office to agent: what closes, and from when. */
-  officeToAgentLine: string | null;
 };
 
 const BUTTON =
@@ -103,12 +101,6 @@ export function ConfirmPlanChangeForm(props: ConfirmPlanChangeProps) {
             </p>
           </fieldset>
         </section>
-      )}
-
-      {props.officeToAgentLine && (
-        <p className="rounded-2xl border border-rc-amber/40 bg-rc-amber/10 px-4 py-3 text-sm text-rc-ink">
-          {props.officeToAgentLine}
-        </p>
       )}
 
       <div className="flex flex-wrap items-center gap-3">

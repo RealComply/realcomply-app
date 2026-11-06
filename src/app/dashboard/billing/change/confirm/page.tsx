@@ -13,9 +13,7 @@ import {
   daysLeft,
   decideChange,
   isAgentToOffice,
-  isOfficeToAgent,
   paySummaryRows,
-  startingFloor,
   unavailableReason,
 } from "@/lib/billing/plan-change";
 import { PaySummary } from "@/components/billing/PlanChangeParts";
@@ -67,10 +65,7 @@ export default async function ConfirmPlanChangePage({
   if (ctx.state === "blocked") return blocked(ctx.message);
   const { sub } = ctx;
   const current = { plan: sub.plan, interval: sub.interval };
-  const reason = unavailableReason(
-    { current, interval, listingCount: ctx.listingCount, activePeople: ctx.activePeople, floor: startingFloor() },
-    plan,
-  );
+  const reason = unavailableReason({ current, interval, listingCount: ctx.listingCount }, plan);
   if (reason) return blocked(reason);
   const decision = decideChange({ from: current, to: { plan, interval }, trialing: sub.trialEnd !== null });
   if (decision.kind === "none") return blocked("That's your plan already.");
@@ -142,11 +137,6 @@ export default async function ConfirmPlanChangePage({
                 defaultName: recordedIsPayer ? "" : (ctx.agency.licensee_name ?? ""),
                 defaultEmail: recordedIsPayer ? "" : recorded,
               }
-            : null
-        }
-        officeToAgentLine={
-          isOfficeToAgent(sub.plan, plan)
-            ? `From ${periodEnd}, Team, Registers, Office profile and the office's supervision guidelines close. Your listings, CPD and records stay exactly as they are.`
             : null
         }
       />

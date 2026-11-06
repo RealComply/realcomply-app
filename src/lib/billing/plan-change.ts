@@ -16,13 +16,15 @@ import type { Interval } from "./stripe";
 //   - During the free trial nothing has been paid: any change is now, and the
 //     first payment at the end of the trial is the new price.
 //
-// WHAT CAN'T BE PICKED, and why (shown greyed, with the reason)
-//   - A plan whose band is below the listings already used in the last 12
+// WHAT CAN'T BE PICKED (Adam, 6 Nov 2026: "a page that shows all the options
+// so they can upgrade if they need to"; moving down is automatic, Terms cl
+// 7.2, see move-down.ts). Shown, greyed, with the reason:
+//   - a cheaper plan on the same ladder: "We'll move you down automatically
+//     when your listings fit this plan";
+//   - an agent plan, for an office: by email to admin@realcomply.com.au;
+//   - a plan whose band is below the listings already used in the last 12
 //     months.
-//   - An agent plan, while the office has more than one person.
-//   - Below the starting plan in its first 12 months: a hook only, not
-//     switched on (startingFloor is always null for now; the starting plan
-//     job, merge held for the terms, switches it on).
+// A switch between monthly and yearly on the same plan can still be picked.
 
 export type PlanChoice = { plan: Plan; interval: Interval };
 
@@ -111,15 +113,10 @@ export function bandLine(plan: Plan): string {
   return `${below + 1} to ${max} listings a year`;
 }
 
-export type StartingFloor = { plan: Plan; until: string } | null;
-
-/**
- * The starting plan's 12-month floor (mockup, row "Not available until …").
- * A hook only: always null until the starting plan job switches it on.
- */
-export function startingFloor(): StartingFloor {
-  return null;
-}
+/** Shown on every cheaper plan on the same ladder (Adam, 6 Nov 2026: no self-serve downgrades). */
+export const MOVE_DOWN_LINE = "We'll move you down automatically when your listings fit this plan.";
+/** Shown on the agent plans to an office: that's a conversation, not a button. */
+export const OFFICE_TO_AGENT_LINE = "To move to an agent plan, email admin@realcomply.com.au.";
 
 export type LadderRow = {
   plan: Plan;
@@ -135,43 +132,22 @@ export type LadderRow = {
   reason: string | null;
 };
 
-const FLOOR_DATE = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "Australia/Sydney",
-  });
-
 export function ladderRows(input: {
   current: PlanChoice;
   /** The interval being shown (the Monthly or Yearly switch). */
   interval: Interval;
   /** Listings in the last 12 months (agency_listing_count). */
   listingCount: number;
-  /** Active people in the office, the payer included. */
-  activePeople: number;
-  floor?: StartingFloor;
 }): { agent: LadderRow[]; office: LadderRow[] } {
   const row = (plan: Plan): LadderRow => {
     const spec = PLANS[plan];
     const current = plan === input.current.plan && input.interval === input.current.interval;
     let reason: string | null = null;
     if (!current) {
-      if (spec.maxListings !== null && input.listingCount > spec.maxListings) {
+      if (planDirection(input.current.plan, plan) === "down") {
+        reason = planFamily(plan) === planFamily(input.current.plan) ? MOVE_DOWN_LINE : OFFICE_TO_AGENT_LINE;
+      } else if (spec.maxListings !== null && input.listingCount > spec.maxListings) {
         reason = `Not available: you've listed ${input.listingCount} properties in the last 12 months.`;
-      } else if (
-        planFamily(plan) === "agent" &&
-        planFamily(input.current.plan) === "office" &&
-        input.activePeople > 1
-      ) {
-        reason = `Not available: an agent plan is for one person, and your office has ${input.activePeople} people.`;
-      } else if (
-        input.floor &&
-        planFamily(plan) === planFamily(input.floor.plan) &&
-        PLANS[plan].price < PLANS[input.floor.plan].price
-      ) {
-        reason = `Not available until ${FLOOR_DATE(input.floor.until)}: your starting plan holds for 12 months.`;
       }
     }
     return {
