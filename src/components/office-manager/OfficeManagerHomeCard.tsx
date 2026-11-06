@@ -23,6 +23,15 @@ const OFFICE_SIDE = "Team, Office profile, registers, CPD, training, trust recor
 const LICENSEE_KEEPS =
   "File sign-offs, annexure adoption, changing the licensee in charge and deleting compliance records";
 
+/** Kept until the licensee approves (Adam, 6 Nov 2026; 0115). */
+function KeepsAccessLine({ first }: { first: string }) {
+  return (
+    <p className="text-sm leading-relaxed text-rc-ink">
+      Until {first} approves, you keep the office side of your account: {OFFICE_SIDE}.
+    </p>
+  );
+}
+
 function Chip({ tone, children }: { tone: "green" | "amber" | "grey"; children: React.ReactNode }) {
   const cls =
     tone === "green"
@@ -89,6 +98,7 @@ export function OfficeManagerHomeCard({ card }: { card: OfficeManagerCard }) {
               {card.licenseeName}, your licensee in charge, isn&rsquo;t on RealComply. The office side of your account (
               {OFFICE_SIDE}) is overseen by the licensee or an approved office manager.
             </p>
+            {card.keepsAccess && <KeepsAccessLine first={first} />}
             {card.licenseeEmail ? (
               <>
                 <p className="text-sm leading-relaxed text-rc-muted">
@@ -135,6 +145,7 @@ export function OfficeManagerHomeCard({ card }: { card: OfficeManagerCard }) {
               </>
             )}
           </dl>
+          {card.keepsAccess && <KeepsAccessLine first={first} />}
           {card.nudge && (
             <p role="status" className="text-sm font-semibold leading-relaxed text-rc-amber-deep">
               {card.nudge}

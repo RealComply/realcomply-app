@@ -28,7 +28,27 @@ describe("the office manager card on Home", () => {
       kind: "ask",
       licenseeName: "Jordan Blake",
       licenseeEmail: "jordan@example.invalid",
+      keepsAccess: false,
     });
+  });
+
+  // Adam, 6 Nov 2026 (0115): an agent who moved to an office plan keeps the
+  // office side until the licensee approves. The card still asks, and says so.
+  it("still asks someone keeping the office side until the licensee approves, and says so", () => {
+    const ask = officeManagerCard({ ...base, keepsOfficeAccess: true });
+    assert.equal(ask?.kind === "ask" && ask.keepsAccess, true);
+    const waiting = officeManagerCard({
+      ...base,
+      keepsOfficeAccess: true,
+      openRequest: {
+        id: "r1",
+        sent_to: "jordan@example.invalid",
+        email_sent_at: "2026-10-26T22:41:00Z",
+        email_attempts: 1,
+        expires_at: "2026-11-25T22:41:00Z",
+      },
+    });
+    assert.equal(waiting?.kind === "waiting" && waiting.keepsAccess, true);
   });
 
   it("shows nothing on an agent plan, to a licensee, or to someone who isn't the account holder", () => {
@@ -46,6 +66,7 @@ describe("the office manager card on Home", () => {
       kind: "ask",
       licenseeName: "Jordan Blake",
       licenseeEmail: null,
+      keepsAccess: false,
     });
   });
 
@@ -65,6 +86,7 @@ describe("the office manager card on Home", () => {
       emailFailed: false,
       openedLine: "Not opened yet",
       nudge: null,
+      keepsAccess: false,
     });
     const failed = officeManagerCard({ ...base, openRequest: { ...openRequest, email_sent_at: null } });
     assert.equal(failed?.kind === "waiting" && failed.emailFailed, true);

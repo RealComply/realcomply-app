@@ -28,6 +28,14 @@
 // files, logs complaints and adds files (seesComplaints). Review, Resolve,
 // removing a file and deleting a complaint stay with the licensee in charge
 // (officeLicensee), as does the resolution target.
+//
+// UNTIL THE LICENSEE APPROVES (Adam, 6 Nov 2026; 0115). An agent who moved
+// their account from an agent plan to an office plan keeps the office side
+// until their licensee in charge approves them as office manager or joins
+// RealComply ("A, agent keeps access until licensee joins"). They count as an
+// office manager (isOfficeManager, is_office_manager() in the database), with
+// nothing more, but aren't called one (keepsOfficeAccess), and can still ask
+// to be approved.
 
 export type Access = {
   /** Licensee in charge, or the agent on an agent plan. Office overview, Team, Trust, deletes, agency details. */
@@ -46,14 +54,23 @@ export type Access = {
   isAgentPlan: boolean;
   /** The licensee's side of the office, or an office manager's (0093). Team, registers, trust, billing. */
   runsOffice: boolean;
-  /** Approved by the licensee in charge as office manager (0093). Never on an agent plan. */
+  /**
+   * Approved by the licensee in charge as office manager (0093), or keeping
+   * the office side until the licensee approves (0115). Never on an agent plan.
+   */
   isOfficeManager: boolean;
+  /**
+   * Keeping the office side until the licensee approves (0115): counted in
+   * isOfficeManager, but not an office manager yet. Never shown as one.
+   */
+  keepsOfficeAccess: boolean;
 };
 
 export function accessFrom(
   profile: { is_licensee_in_charge: boolean | null; is_assistant: boolean | null; archived_at?: string | null },
   plan: string | null | undefined,
   officeManager = false,
+  keepsOfficeAccess = false,
 ): Access {
   const active = !profile.archived_at;
   const isAgentPlan = typeof plan === "string" && plan.startsWith("agent_");
@@ -61,8 +78,11 @@ export function accessFrom(
   // Not an assistant on an agent plan: the agent is the licensee for their
   // own account, the person helping them is not (0059).
   const actsAsLicensee = licensee || (active && isAgentPlan && profile.is_assistant !== true);
-  // Same as is_office_manager(): approved, still in the office, an office plan.
-  const isOfficeManager = active && !isAgentPlan && officeManager;
+  // Same as keeps_office_access() (0115): never the licensee or an assistant.
+  const keeps = active && !isAgentPlan && keepsOfficeAccess && !licensee && profile.is_assistant !== true;
+  // Same as is_office_manager(): approved, still in the office, an office plan;
+  // or keeping the office side until the licensee approves.
+  const isOfficeManager = active && !isAgentPlan && (officeManager || keeps);
   const officeLicensee = licensee && !isAgentPlan;
   return {
     actsAsLicensee,
@@ -72,5 +92,6 @@ export function accessFrom(
     isAgentPlan,
     runsOffice: actsAsLicensee || isOfficeManager,
     isOfficeManager,
+    keepsOfficeAccess: keeps,
   };
 }
