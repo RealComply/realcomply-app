@@ -1,6 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
+import { councilAreaFrom } from "@/lib/rules/council-area";
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
@@ -1531,6 +1532,28 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
 
     if (Object.keys(update).length > 0) {
       await supabase.from("properties").update(update).eq("id", propertyId);
+    }
+  }
+
+  // The council area, off the planning certificate in the contract (Reg
+  // s12A, metro or non-metro; 0118). Also writes to the PROPERTY, with its
+  // own rule: it fills a blank, or follows a newer certificate, but never
+  // replaces one a person chose. A name that isn't one of the 128 NSW
+  // council areas is left out, and the agent is asked on the comparables card.
+  const council = councilAreaFrom(patches.find((p) => p.itemKey === "b1" && p.councilArea)?.councilArea);
+  if (council) {
+    const { data: current } = await supabase
+      .from("properties")
+      .select("council_area, council_area_from")
+      .eq("id", propertyId)
+      .maybeSingle();
+    const row = current as { council_area?: string | null; council_area_from?: string | null } | null;
+    // No row back (0118 not run yet, or the listing can't be seen): nothing written.
+    if (row && row.council_area_from !== "agent" && row.council_area !== council) {
+      await supabase
+        .from("properties")
+        .update({ council_area: council, council_area_from: "planning_certificate" })
+        .eq("id", propertyId);
     }
   }
 

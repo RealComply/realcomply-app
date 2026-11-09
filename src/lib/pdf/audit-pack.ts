@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { withdrawalHistory } from "@/lib/data/withdrawals";
 import { withdrawalRecordLines } from "@/lib/rules/listing-tabs";
 import { keepUntilLineFor } from "@/lib/rules/agreement-keep-until";
+import { councilAreaRecordLines } from "@/lib/rules/council-area";
+import { espGivenApplies } from "@/lib/rules/esp-given-before-signing";
 import { feedbackRecordLine, feedbackRecordLines } from "@/lib/rules/market-feedback";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
@@ -35,7 +37,7 @@ import { copiesBeforeSigning } from "@/lib/links/delivery";
 import { readableBytes } from "@/lib/documents/readable-bytes";
 import { EMPTY_FILE_MESSAGE, downloadedFileProblem } from "@/lib/storage/file-check";
 import { addedLine, complaintFilesFor, removedLine } from "@/lib/complaint-files";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import type { Complaint, ComplaintFile, Property, PropertyItem } from "@/lib/types";
 import { formalAgencyName, namesAsAt, type AgencyNames, type NameChange } from "@/lib/agency-names";
 
@@ -299,6 +301,26 @@ export async function buildAuditPack(
   };
   const included: string[] = [];
 
+  // The council area (Reg s12A; 0118): who chose it, when one was chosen.
+  let councilSetBy: string | null = null;
+  if (p.council_area && p.council_area_from === "agent" && p.council_area_set_by) {
+    const { data: who } = await supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("agency_id", agencyId)
+      .eq("id", p.council_area_set_by)
+      .maybeSingle();
+    const row = who as { full_name: string | null; email: string } | null;
+    councilSetBy = row ? (row.full_name ?? row.email) : null;
+    // An agent can't read everyone's profile (0058): the office's names, as the listing page uses.
+    if (!councilSetBy) {
+      const { data: people } = await supabase.rpc("agency_people");
+      councilSetBy =
+        ((people ?? []) as Array<{ id: string; full_name: string | null }>).find((x) => x.id === p.council_area_set_by)
+          ?.full_name ?? null;
+    }
+  }
+
   const generatedAt = new Date();
   const pdf = await buildComplianceRecordPdf({
     property: p,
@@ -314,6 +336,19 @@ export async function buildAuditPack(
       ...(r.marketFeedbackRecord ? feedbackRecordLines(r.no, r.marketFeedbackRecord, r.recordedByName) : []),
     ]),
     withdrawalLines,
+    // "Not recorded" only where the 17 November rules apply to the agreement.
+    councilAreaLines:
+      p.council_area || espGivenApplies(byKey["a3"]?.event_date, generatedAt)
+        ? councilAreaRecordLines(
+            {
+              council: p.council_area,
+              from: p.council_area_from,
+              setByName: councilSetBy,
+              setOn: p.council_area_set_at ? formatAuTimestamp(p.council_area_set_at) : null,
+            },
+            generatedAt,
+          )
+        : undefined,
     agreementKeepUntil: keepUntilLineFor(
       { a3: byKey["a3"], d3: byKey["d3"], f5: byKey["f5"] },
       withdrawals.find((w) => !w.put_back_at)?.withdrawn_on ?? null,

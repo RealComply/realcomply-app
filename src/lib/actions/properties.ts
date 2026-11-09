@@ -21,6 +21,7 @@ import {
   EVIDENCE_BUCKET,
 } from "@/lib/storage/evidence";
 import { normaliseWebsiteUrl } from "@/lib/normalise-url";
+import { councilAreaChange } from "@/lib/rules/council-area-form";
 import { SEEDED_AT_CREATION } from "@/lib/rules/nsw-sales";
 import type { ActionState } from "@/lib/actions/auth";
 
@@ -564,6 +565,16 @@ export async function updatePropertyDetails(
 
   const sale = readSaleMethod(formData);
 
+  // The council area (Reg s12A; 0118), only when it was changed here, so a
+  // listing's "read from the planning certificate" isn't lost to a save of
+  // something else.
+  const council = formData.has("councilArea")
+    ? councilAreaChange(formData.get("councilArea"), String(formData.get("councilAreaWas") ?? "") || null)
+    : { update: null };
+  if ("error" in council) {
+    return { error: council.error };
+  }
+
   const { error } = await supabase
     .from("properties")
     .update({
@@ -586,6 +597,7 @@ export async function updatePropertyDetails(
       auction_time: sale.auctionTime,
       auction_venue: sale.auctionVenue,
       test_mode: formData.get("testMode") === "yes",
+      ...(council.update ?? {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", propertyId);

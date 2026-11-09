@@ -135,6 +135,13 @@ export type DraftPatch = {
   materialFactDisclosed?: boolean;
   prescribedDocs?: PrescribedDocVerdict[];
   /**
+   * b1 only. The council that issued the planning certificate in the
+   * contract, as the certificate names it ("Hornsby Shire Council"). The app
+   * matches it to a NSW council area for metro or non-metro (Reg s12A; 0118)
+   * and asks the agent when it can't. Applied to the PROPERTY row, never a card.
+   */
+  councilArea?: string;
+  /**
    * Set on a b1 patch when the uploaded file is not a contract for sale at
    * all, so the card can say so plainly instead of showing a document
    * checklist run against the wrong document.
@@ -319,6 +326,11 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
                 required: ["key", "found"],
               },
             },
+            councilArea: {
+              type: "string",
+              description:
+                "Item b1 only, and only when the document really is a contract for sale of land. The name of the council that issued the PLANNING CERTIFICATE attached to the contract (the certificate under section 10.7 of the Environmental Planning and Assessment Act 1979), exactly as the certificate names that council, for example 'Hornsby Shire Council' or 'City of Parramatta Council'. The council's name only: no address, ABN, certificate number or department. Take it from the planning certificate itself, normally its heading or letterhead. Never from the property's address or suburb, the vendor's or solicitor's address, a rates notice, a sewer diagram or the List of Documents. Omit it if no planning certificate is attached or it does not name the council.",
+            },
             materialFactDisclosed: {
               type: "boolean",
               description:
@@ -440,7 +452,11 @@ export function prescribedDocsPrompt(docs: PrescribedDoc[]): string {
     "on seeing the actual document, not on its name appearing in a List of Documents index. Do not write a " +
     "note describing which ones you found or did not find — the prescribedDocs array carries all of that and " +
     "the agent is shown it as a list. Leave note empty unless there is something genuinely odd that the " +
-    "found/not-found answers cannot express, such as a certificate that is visibly for a different property."
+    "found/not-found answers cannot express, such as a certificate that is visibly for a different property.\n" +
+    "  ALSO on the b1 patch: where a planning certificate is attached, set councilArea to the name of the " +
+    "council that issued it, exactly as the certificate names that council. It decides which comparable sales " +
+    "the agent must consider (metropolitan or not), so take it only from the planning certificate itself and " +
+    "omit it if there is none. Write no note about it."
   );
 }
 
@@ -734,8 +750,10 @@ export async function readListingDocument(args: {
     // The rule this file exists to enforce. A document only speaks to the
     // items it can actually evidence, whatever the model chose to return.
     .filter((p) => SOURCE_TARGETS[source].has(p.itemKey))
-    // prescribedDocs is a b1 answer and only a b1 answer.
-    .map((p) => (source === "b1" ? p : { ...p, prescribedDocs: undefined, notAContract: undefined }))
+    // prescribedDocs is a b1 answer and only a b1 answer, and so is the
+    // council area: an agency agreement's or a report's mention of a council
+    // is not the planning certificate.
+    .map((p) => (source === "b1" ? p : { ...p, prescribedDocs: undefined, notAContract: undefined, councilArea: undefined }))
     // materialFactDisclosed is the vendor's declaration in the agency
     // agreement. Nothing else may set it — a wrong "none disclosed" writes a
     // record the vendor never made and silently removes e2 later in the file.

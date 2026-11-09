@@ -386,6 +386,8 @@ export type ComplianceRecordInput = {
   agreementKeepUntil?: string | null;
   /** Under the ESP revision card: the market feedback each revision responded to (Reg s12G(1)(f)). */
   espFeedbackLines?: string[];
+  /** Under the comparables card: the council area, metro or non-metro, and where to look (Reg s12A, s12D; 0118). */
+  councilAreaLines?: string[];
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
   loadDocument?: (doc: PackDocument) => Promise<LoadedDocument>;
@@ -673,6 +675,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       // The market feedback each ESP revision responded to (Reg s12G(1)(f)).
       if (item.key === "d3" && input.espFeedbackLines) {
         for (const line of input.espFeedbackLines) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+      }
+      // The council area and where to look for comparable sales (Reg s12A and s12D; 0118).
+      if (item.key === "a4c" && input.councilAreaLines) {
+        for (const line of input.councilAreaLines) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
       }
       // How long to keep the agreement (Reg s8A, from 17 Nov 2026).
       if (item.key === "a3" && input.agreementKeepUntil) {
