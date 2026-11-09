@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  adsUpdateProblem,
   belowLowestPrice,
+  deadlineState,
+  fixOnlineAdsLine,
+  onlineAdsDeadline,
   elsewhereAnswerProblem,
   highestPriceOnlyRejection,
   lowestAdvertisedPrice,
@@ -105,6 +109,7 @@ describe("lowestAdvertisedPrice", () => {
       floor: null,
       source: null,
       why: "",
+      since: null,
     });
   });
 
@@ -181,5 +186,52 @@ describe("offerSummary", () => {
       "rejected · vendor informed · in writing, price only · conditions: subject to finance · rejected 19 November 2026",
     );
     assert.ok(!/[—–]/.test(line));
+  });
+});
+
+describe("the relevant event and the 1 business day deadline (s73(3))", () => {
+  it("carries the date of the event that set the lowest price", () => {
+    const offer = lowestAdvertisedPrice({
+      espLow: 1_200_000,
+      espRevisedOn: "2026-11-18",
+      passInBid: 1_220_000,
+      passInOn: "2026-11-21",
+      rejectedOffer: { amount: 1_250_000, rejectedOn: "2026-11-19" },
+      now: AFTER,
+    });
+    assert.equal(offer.source, "offer");
+    assert.equal(offer.since, "2026-11-19");
+    const passIn = lowestAdvertisedPrice({ espLow: 1_200_000, passInBid: 1_220_000, passInOn: "2026-11-21", rejectedOffer: null, now: AFTER });
+    assert.equal(passIn.since, "2026-11-21");
+    const revised = lowestAdvertisedPrice({ espLow: 1_100_000, espRevisedOn: "2026-11-18", passInBid: null, rejectedOffer: null, now: AFTER });
+    assert.equal(revised.since, "2026-11-18");
+  });
+
+  it("the ESP as first given, and anything before 17 Nov, has no event", () => {
+    assert.equal(lowestAdvertisedPrice({ espLow: 1_200_000, passInBid: null, rejectedOffer: null, now: AFTER }).since, null);
+    assert.equal(
+      lowestAdvertisedPrice({ espLow: 1_200_000, espRevisedOn: "2026-11-10", passInBid: null, rejectedOffer: null, now: BEFORE }).since,
+      null,
+    );
+  });
+
+  it("1 NSW business day after, skipping weekends and public holidays", () => {
+    assert.equal(onlineAdsDeadline("2026-11-19"), "2026-11-20"); // Thursday to Friday
+    assert.equal(onlineAdsDeadline("2026-11-20"), "2026-11-23"); // Friday to Monday
+    assert.equal(onlineAdsDeadline("2026-12-24"), "2026-12-29"); // Christmas, Boxing Day and the additional day
+    assert.equal(fixOnlineAdsLine(1_250_000, "2026-11-20"), "Update your online ads to start at $1,250,000 or more by 20 November 2026.");
+  });
+
+  it("is late only after the deadline day", () => {
+    assert.deepEqual(deadlineState("2026-11-19", "2026-11-20"), { deadline: "2026-11-20", late: false });
+    assert.deepEqual(deadlineState("2026-11-19", "2026-11-21"), { deadline: "2026-11-20", late: true });
+    assert.equal(deadlineState(null, "2026-11-21"), null);
+  });
+
+  it("Online ads updated needs the date and the steps taken", () => {
+    assert.equal(adsUpdateProblem({ updated: false, on: null, steps: "" }), null);
+    assert.equal(adsUpdateProblem({ updated: true, on: null, steps: "x" }), "Enter the date the online ads were updated.");
+    assert.equal(adsUpdateProblem({ updated: true, on: "2026-11-20", steps: " " }), "Say what steps were taken to update the ads.");
+    assert.equal(adsUpdateProblem({ updated: true, on: "2026-11-20", steps: "Changed our website" }), null);
   });
 });

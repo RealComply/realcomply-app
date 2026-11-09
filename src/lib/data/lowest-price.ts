@@ -26,10 +26,17 @@ export function lowestPriceFromItems(
   return lowestAdvertisedPrice({
     espLow: esp.low,
     espName: espLabel(esp),
+    espRevisedOn: esp.revised ? esp.revisedOn : null,
     passInBid: registeredPassInBid(items.x8 as Parameters<typeof registeredPassInBid>[0]),
+    // Recorded with the pass-in from 9 Nov 2026 (recordAuctionOutcome).
+    passInOn: dateOnly((items.x8 as { passedInOn?: unknown } | null | undefined)?.passedInOn),
     rejectedOffer: highestPriceOnlyRejection(d2.entries ?? [], d2.elsewhereOffer ?? null),
     now,
   });
+}
+
+function dateOnly(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
 }
 
 /** The same, read from the database: the price card, the offers log and the daily website check. */

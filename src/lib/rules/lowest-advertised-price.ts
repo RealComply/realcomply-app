@@ -1,4 +1,5 @@
 import { formatAuDate } from "@/lib/format-date";
+import { addNswBusinessDays } from "@/lib/licensee-history";
 import { reformsInForce } from "./underquoting-reforms";
 
 // The lowest price a listing's advertising can start at, and the written
@@ -119,6 +120,13 @@ export type LowestPrice = {
   source: "esp" | "pass_in" | "offer" | null;
   /** Plain words for the card: what the figure is made of. Empty with no floor. */
   why: string;
+  /**
+   * From 17 Nov 2026, the date of the "relevant event" that set this figure
+   * (s73(4)): the ESP revised, the pass-in, or the written offer rejected on
+   * price only. Null for the ESP as first given, which was never anything
+   * else, and before 17 Nov. YYYY-MM-DD.
+   */
+  since: string | null;
 };
 
 /**
@@ -130,7 +138,11 @@ export function lowestAdvertisedPrice(input: {
   espLow: number | null;
   /** "ESP", or "revised ESP" once a revision is on the file. */
   espName?: string;
+  /** When the ESP was revised (the notice), if it was. YYYY-MM-DD. */
+  espRevisedOn?: string | null;
   passInBid: number | null;
+  /** The auction date the property was passed in. YYYY-MM-DD. */
+  passInOn?: string | null;
   rejectedOffer: RaisingOffer | null;
   now?: Date;
 }): LowestPrice {
@@ -138,16 +150,19 @@ export function lowestAdvertisedPrice(input: {
   const esp = input.espLow != null && input.espLow > 0 ? input.espLow : null;
   if (!reformsInForce(input.now)) {
     return esp == null
-      ? { floor: null, source: null, why: "" }
-      : { floor: esp, source: "esp", why: `Your ${espName} (${money(esp)}).` };
+      ? { floor: null, source: null, why: "", since: null }
+      : { floor: esp, source: "esp", why: `Your ${espName} (${money(esp)}).`, since: null };
   }
-  const parts: { source: "esp" | "pass_in" | "offer"; amount: number; words: string }[] = [];
-  if (esp != null) parts.push({ source: "esp", amount: esp, words: `your ${espName} (${money(esp)})` });
+  const parts: { source: "esp" | "pass_in" | "offer"; amount: number; words: string; since: string | null }[] = [];
+  if (esp != null) {
+    parts.push({ source: "esp", amount: esp, words: `your ${espName} (${money(esp)})`, since: input.espRevisedOn ?? null });
+  }
   if (input.passInBid != null && input.passInBid > 0) {
     parts.push({
       source: "pass_in",
       amount: input.passInBid,
       words: `the registered bidder's highest bid when it passed in (${money(input.passInBid)})`,
+      since: input.passInOn ?? null,
     });
   }
   if (input.rejectedOffer && input.rejectedOffer.amount > 0) {
@@ -156,9 +171,10 @@ export function lowestAdvertisedPrice(input: {
       source: "offer",
       amount: input.rejectedOffer.amount,
       words: `the written offer the vendor rejected on price only (${money(input.rejectedOffer.amount)}${on})`,
+      since: input.rejectedOffer.rejectedOn ?? null,
     });
   }
-  if (parts.length === 0) return { floor: null, source: null, why: "" };
+  if (parts.length === 0) return { floor: null, source: null, why: "", since: null };
   // Highest wins; on a tie the earlier part (ESP, then pass-in) is named.
   const top = parts.reduce((best, p) => (p.amount > best.amount ? p : best));
   const words = parts.map((p) => p.words);
@@ -166,7 +182,47 @@ export function lowestAdvertisedPrice(input: {
     parts.length === 1
       ? `${capitalise(words[0])}.`
       : `The ${parts.length === 2 ? "higher" : "highest"} of ${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}.`;
-  return { floor: top.amount, source: top.source, why };
+  return { floor: top.amount, source: top.source, why, since: top.since };
+}
+
+/**
+ * s73(3), from 17 Nov 2026: after a relevant event, an online ad that starts
+ * below the lowest price has to be fixed or taken down within 1 business day
+ * of the agent becoming aware of it; other ads as soon as practicable. The
+ * event's date is taken as when the agent knew. YYYY-MM-DD.
+ */
+export function onlineAdsDeadline(since: string): string {
+  return addNswBusinessDays(since, 1);
+}
+
+/** "Update your online ads to start at $1,250,000 or more by 20 November 2026." */
+export function fixOnlineAdsLine(floor: number, deadline: string): string {
+  return `Update your online ads to start at ${money(floor)} or more by ${formatAuDate(deadline)}.`;
+}
+
+export const OTHER_ADS_LINE = "Other ads as soon as practicable (s73(3)).";
+export const ADS_UPDATED_LABEL = "Online ads updated";
+export const STEPS_TAKEN_LABEL = "Steps taken";
+export const STEPS_TAKEN_HINT =
+  "For example: changed the price on our website, and asked realestate.com.au and Domain to change theirs.";
+
+/** What's missing from "Online ads updated", or null. */
+export function adsUpdateProblem(input: { updated: boolean; on: string | null; steps: string }): string | null {
+  if (!input.updated) return null;
+  if (!input.on) return "Enter the date the online ads were updated.";
+  if (!input.steps.trim()) return "Say what steps were taken to update the ads.";
+  return null;
+}
+
+/**
+ * Where the live ad stands against the deadline on a given day: before it,
+ * the ad still has time; after it, it is late. Null when there's no deadline
+ * (no relevant event, or before 17 Nov).
+ */
+export function deadlineState(since: string | null, today: string): { deadline: string; late: boolean } | null {
+  if (!since) return null;
+  const deadline = onlineAdsDeadline(since);
+  return { deadline, late: today > deadline };
 }
 
 /** "Your advertised price can't start below $1,250,000." */

@@ -8,7 +8,9 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { lowestPriceFor } from "@/lib/data/lowest-price";
-import { belowLowestPrice } from "@/lib/rules/lowest-advertised-price";
+import { belowLowestPrice, deadlineState } from "@/lib/rules/lowest-advertised-price";
+import { formatAuDate } from "@/lib/format-date";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 import { reopenStaleNoRevision } from "@/lib/data/no-revision-reask";
 import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import { PRICE_CHECK_FROM, scanModeAt } from "@/lib/listing-scan-schedule";
@@ -425,19 +427,42 @@ async function assess(
     redFlags.push({ kind: "no_price", text });
   }
 
+  // From 17 Nov 2026, after a relevant event (the ESP revised, a pass-in, a
+  // written offer rejected on price only) online ads have 1 business day to
+  // be fixed (s73(3)). Until the deadline the finding says by when, and is
+  // not a red flag; after it, it is (Adam, 9 Nov 2026: "daily check
+  // red-flags after deadline"). With no event (the ESP as first given) the
+  // ad was never allowed below it, so it is a red flag straight away.
+  const reforms = reformsInForce(new Date(base.checkedAt));
+  const today = sydneyDate(new Date(base.checkedAt));
+  const againstDeadline = (text: string, since: string | null): { text: string; redFlag: boolean } => {
+    const state = reforms ? deadlineState(since, today) : null;
+    if (!state) return { text, redFlag: true };
+    return state.late
+      ? { text: `${text} The 1 business day to fix online ads ended on ${formatAuDate(state.deadline)} (s73(3)).`, redFlag: true }
+      : { text: `${text} Update the online ads by ${formatAuDate(state.deadline)} (s73(3)).`, redFlag: false };
+  };
+
   // Arithmetic, not judgement.
   if (read.priceLow != null && esp.low != null && read.priceLow < esp.low) {
-    const text =
-      `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the ${espLabel(esp)} of $${esp.low.toLocaleString("en-AU")} on this file (s73(1)).` +
-        (esp.revised
-          ? ` The price was revised${esp.revisedOn ? ` on ${esp.revisedOn}` : ""}, and ${
-              reformsInForce(new Date(base.checkedAt))
-                ? "s73(3) requires online ads to be fixed or taken down within 1 business day of that, and other ads as soon as practicable."
-                : "s73(3) requires the advertising to be amended or retracted as soon as practicable after that."
-            }`
-          : " If the ESP has been revised, record the notice on the file so this checks against the right figure.");
+    const below = `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the ${espLabel(esp)} of $${esp.low.toLocaleString("en-AU")} on this file (s73(1)).`;
+    const { text, redFlag } =
+      reforms && esp.revised && esp.revisedOn
+        ? againstDeadline(`${below} The ESP was revised on ${formatAuDate(esp.revisedOn)}.`, esp.revisedOn)
+        : {
+            text:
+              below +
+              (esp.revised
+                ? ` The price was revised${esp.revisedOn ? ` on ${formatAuDate(esp.revisedOn)}` : ""}, and ${
+                    reforms
+                      ? "s73(3) requires online ads to be fixed or taken down within 1 business day of that, and other ads as soon as practicable."
+                      : "s73(3) requires the advertising to be amended or retracted as soon as practicable after that."
+                  }`
+                : " If the ESP has been revised, record the notice on the file so this checks against the right figure."),
+            redFlag: true,
+          };
     issues.push(text);
-    if (marketing) redFlags.push({ kind: "below_esp", text });
+    if (marketing && redFlag) redFlags.push({ kind: "below_esp", text });
   }
   // From 17 Nov 2026 the ad can't start below a registered bidder's pass-in
   // bid or a written offer the vendor rejected on price only either (s73(1);
@@ -445,10 +470,11 @@ async function assess(
   // is the finding above.
   if (read.priceLow != null && reformsInForce(new Date(base.checkedAt)) && !(esp.low != null && read.priceLow < esp.low)) {
     const lowest = await lowestPriceFor(supabase, propertyId, new Date(base.checkedAt));
-    const text = lowest.source !== "esp" ? belowLowestPrice(read.priceLow, lowest) : null;
-    if (text) {
+    const below = lowest.source !== "esp" ? belowLowestPrice(read.priceLow, lowest) : null;
+    if (below) {
+      const { text, redFlag } = againstDeadline(below, lowest.since);
       issues.push(text);
-      if (marketing) redFlags.push({ kind: "below_lowest", text });
+      if (marketing && redFlag) redFlags.push({ kind: "below_lowest", text });
     }
   }
   if (read.priceLow != null && read.priceHigh != null && read.priceLow > 0) {

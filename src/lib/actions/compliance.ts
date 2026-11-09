@@ -41,7 +41,9 @@ import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { bannedPriceWording, reformsInForce } from "@/lib/rules/underquoting-reforms";
 import {
   NEEDS_REVISION_TELL_VENDOR,
+  adsUpdateProblem,
   belowLowestPrice,
+  onlineAdsDeadline,
   elsewhereAnswerProblem,
   lowestPriceLine,
   offerProblem,
@@ -54,6 +56,7 @@ import { lowestPriceFor } from "@/lib/data/lowest-price";
 import { advertisedPriceProblem } from "@/lib/rules/advertised-price";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 import { CANCELS_SIGNOFF, MARK_DONE_AGAIN_KEYS, ONLY_LICENSEE_SIGNOFF } from "@/lib/rules/reopen";
 import { cardFileRemovable, finalizeEvidenceRecord, storedFileProblem, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import type {
@@ -103,7 +106,8 @@ function assistantBlocked(itemKey: string, profile: { is_assistant?: boolean }):
 //      5 Nov 2026).
 const CARRIED_BY_ITEM: Record<string, string[]> = {
   f4: ["entries", "loggedElsewhere", "loggedElsewhereWhere"],
-  c1: ["websiteScan"],
+  // adsUpdates: each "Online ads updated" with its date and steps (s73(3); Adam, 9 Nov 2026).
+  c1: ["websiteScan", "adsUpdates"],
   a3: ["aiDraft"],
   b1: ["aiDraft", "contractRead"],
   a4: ["reportRead"],
@@ -769,6 +773,32 @@ export async function setItemStatus(
     // only (s73(1); Adam, 9 Nov 2026). Before then it is the ESP, as here.
     const lowest = reformsInForce() ? await lowestPriceFor(supabase, propertyId) : null;
     const belowLowest = lowest ? belowLowestPrice(guideLow, lowest) : null;
+
+    // "Online ads updated", with the date and the steps taken (s73(3); Adam,
+    // 9 Nov 2026): after a relevant event, the online ads have 1 business
+    // day. Each one is kept, with the deadline it was measured against.
+    const adsUpdated = formData.get("adsUpdated") === "yes";
+    const adsUpdatedOn = String(formData.get("adsUpdatedOn") ?? "").trim();
+    const adsSteps = String(formData.get("adsSteps") ?? "").trim().slice(0, 500);
+    const adsProblem = adsUpdateProblem({
+      updated: adsUpdated,
+      on: /^\d{4}-\d{2}-\d{2}$/.test(adsUpdatedOn) ? adsUpdatedOn : null,
+      steps: adsSteps,
+    });
+    if (adsProblem) return { error: adsProblem };
+    if (adsUpdated) {
+      const earlier = Array.isArray(data.adsUpdates) ? (data.adsUpdates as unknown[]) : [];
+      data.adsUpdates = [
+        ...earlier,
+        {
+          on: adsUpdatedOn,
+          steps: adsSteps,
+          floor: lowest?.floor ?? null,
+          deadline: lowest?.since ? onlineAdsDeadline(lowest.since) : null,
+          recordedAt: new Date().toISOString(),
+        },
+      ];
+    }
     const belowEsp = !lowest && esp.low != null && guideLow != null && guideLow < esp.low;
     const spreadPct = guideLow && guideHigh ? ((guideHigh - guideLow) / guideLow) * 100 : 0;
 
@@ -2192,6 +2222,13 @@ export async function recordAuctionOutcome(
     data.highestBid = money("highestBid");
     data.bidderNumber = String(formData.get("bidderNumber") ?? "").trim() || null;
     data.vendorBid = formData.get("vendorBid") === "on";
+    // The day it was passed in: a relevant event from 17 Nov 2026, and the
+    // start of the 1 business day to fix online ads (s73(3); 9 Nov 2026).
+    // The auction date when it is set and not in the future, else today.
+    const today = sydneyDate(new Date());
+    const { data: prop } = await supabase.from("properties").select("auction_date").eq("id", propertyId).maybeSingle();
+    const auctionDate = (prop as { auction_date?: string | null } | null)?.auction_date ?? null;
+    data.passedInOn = auctionDate && auctionDate <= today ? auctionDate : today;
   } else {
     const reason = String(formData.get("reason") ?? "").trim();
     if (!reason) return { error: "Record why the property was withdrawn." };
