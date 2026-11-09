@@ -254,9 +254,10 @@ export function vendorMustBeTold(o: Pick<OfferRecord, "vendorInformed" | "belowF
  * rejected needs the reason and the date (Reg s12F(1)(d)); an offer below the
  * vendor's instruction needs the ESP question answered (Sch 2 s5(1A)).
  */
-export function offerProblem(o: OfferRecord): string | null {
+export function offerProblem(o: OfferRecord, now: Date = new Date()): string | null {
   if (!(o.amount > 0)) return "Enter the offer amount.";
-  if (o.belowFloor && o.needsEspRevision == null) return `Answer: ${NEEDS_REVISION_QUESTION}`;
+  // Sch 2 s5(1A) starts on 17 November: not asked before then (Master, 10 Nov 2026).
+  if (o.belowFloor && o.needsEspRevision == null && reformsInForce(now)) return `Answer: ${NEEDS_REVISION_QUESTION}`;
   if (o.inWriting && o.outcome === "rejected") {
     if (!o.rejectedFor) return `Answer: ${WHY_REJECTED_LABEL}`;
     if (!o.rejectedOn) return "Enter the date the vendor rejected it.";
