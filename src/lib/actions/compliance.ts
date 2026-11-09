@@ -58,7 +58,13 @@ import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-prec
 import { formatAuDate } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { CANCELS_SIGNOFF, MARK_DONE_AGAIN_KEYS, ONLY_LICENSEE_SIGNOFF } from "@/lib/rules/reopen";
-import { cardFileRemovable, finalizeEvidenceRecord, storedFileProblem, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import { cardFileRemovable, finalizeEvidenceRecord, isInFolder, storedFileProblem, EVIDENCE_BUCKET } from "@/lib/storage/evidence";
+import {
+  ESP_GIVEN_AFTER_SIGNING,
+  espGivenAfterSigning,
+  espGivenMissing,
+  espGivenOf,
+} from "@/lib/rules/esp-given-before-signing";
 import type {
   AuctionOutcomeData,
   AuctionOutcomeKind,
@@ -110,7 +116,8 @@ const CARRIED_BY_ITEM: Record<string, string[]> = {
   c1: ["websiteScan", "adsUpdates"],
   a3: ["aiDraft"],
   b1: ["aiDraft", "contractRead"],
-  a4: ["reportRead"],
+  // espGivenOn and the ESP notice: s72A(2), from 17 Nov 2026 (Adam, 9 Nov 2026).
+  a4: ["reportRead", "espGivenOn", "espNoticePath", "espNoticeFileName"],
   // The settlement date, kept when a save doesn't send it (a reopen, say).
   f5: ["settlementDate"],
 };
@@ -690,6 +697,8 @@ export async function setItemStatus(
 
   // Set by the a4 branch below, acted on after the save succeeds.
   let espChanged = false;
+  // a4: the ESP and evidence dated after the agreement was signed (s72A(2)).
+  let espGivenLate: string | null = null;
 
   // a4 (ESP) carries structured figures alongside the generic note, since
   // the live underquoting checks (c1, offers floor, final-sale diff) need
@@ -715,6 +724,27 @@ export async function setItemStatus(
     };
     espChanged =
       (previous.espLow ?? null) !== espLow || (previous.espHigh ?? null) !== espHigh;
+
+    // The date the ESP and evidence were given to the vendor (s72A(2), from
+    // 17 Nov 2026; Adam, 9 Nov 2026: "on the ESP card"). Kept as it was when
+    // the form doesn't show it. Missing: Mark done is refused. After the
+    // signing date: flagged, like the inspection after the agreement (b6).
+    if (formData.has("espGivenOn")) {
+      data.espGivenOn = String(formData.get("espGivenOn") ?? "").trim() || null;
+    }
+    if (status === "done") {
+      const { data: agreementRow } = await supabase
+        .from("property_items")
+        .select("event_date")
+        .eq("property_id", propertyId)
+        .eq("item_key", "a3")
+        .maybeSingle();
+      const signed = (agreementRow as { event_date?: string | null } | null)?.event_date ?? null;
+      const givenOn = typeof data.espGivenOn === "string" ? data.espGivenOn : null;
+      const missing = espGivenMissing(givenOn, signed);
+      if (missing) return { error: missing };
+      espGivenLate = espGivenAfterSigning(givenOn, signed);
+    }
 
     data.espLow = espLow;
     data.espHigh = espHigh;
@@ -831,6 +861,11 @@ export async function setItemStatus(
   // Worded for whichever card the agent is standing on, so the message names
   // the date in front of them rather than making them work out which of the
   // two is the problem.
+  if (espGivenLate) {
+    data.flagReason = espGivenLate;
+  }
+  const flaggedByDate = inspectionAfterAgreement || contractAfterLaunch || Boolean(espGivenLate);
+
   if (contractAfterLaunch) {
     data.flagReason =
       itemKey === "b1a"
@@ -842,13 +877,13 @@ export async function setItemStatus(
     agencyId: profile.agency_id,
     propertyId,
     itemKey,
-    status: inspectionAfterAgreement || contractAfterLaunch ? "flagged" : status,
+    status: flaggedByDate ? "flagged" : status,
     data,
     eventDate,
     // A flagged item is not a completed one, so it does not carry a
     // completed_by. Otherwise the file would show a person as having
     // finished something the app is still objecting to.
-    completedBy: status === "done" && !inspectionAfterAgreement && !contractAfterLaunch ? user.id : null,
+    completedBy: status === "done" && !flaggedByDate ? user.id : null,
   });
 
   if (!error && itemKey === "a4") {
@@ -857,6 +892,9 @@ export async function setItemStatus(
 
   if (!error && itemKey === "a3") {
     await revokePreCommencementIfAgreementIsNew(supabase, propertyId, eventDate);
+    // Either date can be entered second, so the ESP card is checked again
+    // against the signing date (s72A(2), from 17 Nov 2026).
+    await recheckEspGivenBeforeSigning(supabase, profile.agency_id, user.id, propertyId, eventDate);
   }
 
   // The launch date is half of t5's permission check, and either card can be
@@ -868,6 +906,110 @@ export async function setItemStatus(
 
   revalidatePath(`/dashboard/${propertyId}`);
   return error ? { error: error.message } : ok;
+}
+
+// The ESP card against the agreement's signing date, when the agreement card
+// is saved (s72A(2), from 17 Nov 2026). Flags a done card whose date is after
+// the signing date, and puts one this check flagged back to done once it
+// isn't. A card flagged for anything else (the 10% spread) is left alone.
+async function recheckEspGivenBeforeSigning(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  agencyId: string,
+  userId: string,
+  propertyId: string,
+  agreementDate: string | null,
+) {
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("status, data, event_date, completed_by")
+    .eq("property_id", propertyId)
+    .eq("item_key", "a4")
+    .maybeSingle();
+  const a4 = row as {
+    status?: "open" | "done" | "flagged";
+    data?: Record<string, unknown> | null;
+    event_date?: string | null;
+    completed_by?: string | null;
+  } | null;
+  if (!a4 || a4.status === "open") return;
+  const data = { ...(a4.data ?? {}) };
+  const ours = data.flagReason === ESP_GIVEN_AFTER_SIGNING;
+  if (a4.status === "flagged" && !ours) return;
+
+  const late = espGivenAfterSigning(espGivenOf({ data }), agreementDate);
+  if (late && a4.status === "done") {
+    await upsertItem(supabase, {
+      agencyId,
+      propertyId,
+      itemKey: "a4",
+      status: "flagged",
+      data: { ...data, flagReason: late },
+      eventDate: a4.event_date ?? null,
+      completedBy: null,
+    });
+  } else if (!late && ours) {
+    delete data.flagReason;
+    await upsertItem(supabase, {
+      agencyId,
+      propertyId,
+      itemKey: "a4",
+      status: "done",
+      data,
+      eventDate: a4.event_date ?? null,
+      completedBy: a4.completed_by ?? userId,
+    });
+  }
+}
+
+/**
+ * The ESP notice on the ESP card, when it isn't part of the comparable sales
+ * report (s72A(2), from 17 Nov 2026). The file goes up to the card's own
+ * folder first, as every card's does; this records it on the card, or takes
+ * it off with null. The rest of the card stays as it is.
+ */
+export async function setEspNotice(
+  propertyId: string,
+  file: { path: string; name: string } | null,
+): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+  if (file) {
+    if (!isInFolder(file.path, `${profile.agency_id}/${propertyId}/a4`)) {
+      return { error: "That upload isn't in this listing's folder. Try again." };
+    }
+    const empty = await storedFileProblem(supabase, file.path);
+    if (empty) return { error: empty };
+  }
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("status, data, event_date, completed_by")
+    .eq("property_id", propertyId)
+    .eq("item_key", "a4")
+    .maybeSingle();
+  const existing = row as {
+    status?: "open" | "done" | "flagged";
+    data?: Record<string, unknown> | null;
+    event_date?: string | null;
+    completed_by?: string | null;
+  } | null;
+  const data = { ...(existing?.data ?? {}) };
+  if (file) {
+    data.espNoticePath = file.path;
+    data.espNoticeFileName = file.name.trim() || null;
+  } else {
+    delete data.espNoticePath;
+    delete data.espNoticeFileName;
+  }
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "a4",
+    status: existing?.status ?? "open",
+    data,
+    eventDate: existing?.event_date ?? null,
+    completedBy: existing?.completed_by ?? null,
+  });
+  revalidatePath(`/dashboard/${propertyId}`);
+  return error ? { error: "Couldn't save the ESP notice just now. Try again." } : ok;
 }
 
 // The "Listing launch date" card (c0): the day the property was first

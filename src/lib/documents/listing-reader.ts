@@ -112,6 +112,12 @@ export type DraftPatch = {
   note?: string;
   espLow?: number;
   espHigh?: number;
+  /**
+   * a4 only. The date the written ESP and the evidence of its reasonableness
+   * were given to the vendor, where the document states it (s72A(2), from
+   * 17 Nov 2026). Offered on the ESP card; never saved for the agent.
+   */
+  espGivenOn?: string;
   /** a3 only. The private-treaty offering price, verbatim from the agreement. */
   offerPrice?: string;
   eventDate?: string;
@@ -271,6 +277,11 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
             espHigh: {
               type: "number",
               description: "Item a4 only — high end, only if explicitly stated.",
+            },
+            espGivenOn: {
+              type: "string",
+              description:
+                "Item a4 only. The date the vendor was given the written estimated selling price and the evidence that it is reasonable (comparable sales), before the agency agreement was signed. Set it ONLY where the document explicitly states that date, for example a vendor's signed and dated acknowledgement of receiving the ESP and the comparable sales, or a dated ESP notice addressed to the vendor. Never use the agreement's signing date, the report's preparation date or any other date in its place. Format YYYY-MM-DD. Omit it otherwise.",
             },
             offerPrice: {
               type: "string",
@@ -494,7 +505,9 @@ export const AGENCY_AGREEMENT_PROMPT =
   "auction date is normal at signing; omit the field rather than inventing one. Write no note about " +
   "any of this — it fills in fields the agent would otherwise re-key, and saying so adds nothing), " +
   "a4 (the ESP figures, only if explicitly stated in this " +
-  "document — put them in espLow and espHigh and write NO note whatsoever. Do not describe the " +
+  "document — put them in espLow and espHigh and write NO note whatsoever. Where the document states " +
+  "the date the vendor was given the ESP and the evidence for it, put that date in espGivenOn. " +
+  "Do not describe the " +
   "figures, and above all do not characterise where they came from or what kind of estimate they " +
   "are: you cannot tell an agent's own appraisal from an automated valuation by looking at a number, " +
   "and guessing wrong puts a false claim about provenance beside a figure the agent has to defend " +
