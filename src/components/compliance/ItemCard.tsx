@@ -2606,8 +2606,12 @@ function OfferFields({ defaults }: { defaults?: LoggedOffer }) {
       </label>
       {/* Sch 2 s5(1A), from 17 Nov 2026 (Master, 9 Nov 2026, addition 2):
           even below the instruction, an offer that means the ESP needs
-          revising goes to the vendor. */}
-      {belowFloor && (
+          revising goes to the vendor. Not asked before then (Master, 10 Nov
+          2026); an answer already saved is carried through. */}
+      {!reformsInForce() && defaults?.needsEspRevision != null && (
+        <input type="hidden" name="needsEspRevision" value={defaults.needsEspRevision ? "yes" : "no"} />
+      )}
+      {reformsInForce() && belowFloor && (
         <YesNo
           name="needsEspRevision"
           question={NEEDS_REVISION_QUESTION}

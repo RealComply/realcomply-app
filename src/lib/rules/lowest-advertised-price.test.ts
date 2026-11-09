@@ -153,7 +153,13 @@ describe("offerProblem", () => {
     assert.equal(offerProblem(offer({ inWriting: true })), "Answer: Why did the vendor reject it?");
     assert.equal(offerProblem(offer({ inWriting: true, rejectedFor: "price" })), "Enter the date the vendor rejected it.");
     assert.equal(offerProblem(offer({ inWriting: true, rejectedFor: "price", rejectedOn: "2026-11-19" })), null);
-    assert.equal(offerProblem(offer({ belowFloor: true })), "Answer: Does this offer mean the ESP needs revising?");
+    const after17 = new Date("2026-11-17T09:00:00+11:00");
+    assert.equal(offerProblem(offer({ belowFloor: true }), after17), "Answer: Does this offer mean the ESP needs revising?");
+    assert.equal(
+      offerProblem(offer({ belowFloor: true }), new Date("2026-11-16T23:59:00+11:00")),
+      null,
+      "Sch 2 s5(1A) isn't asked before 17 November",
+    );
     assert.equal(offerProblem(offer({ belowFloor: true, needsEspRevision: false })), null);
     assert.equal(offerProblem(offer({ outcome: "pending", inWriting: true })), null);
   });
