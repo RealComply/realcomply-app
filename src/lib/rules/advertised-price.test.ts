@@ -33,8 +33,8 @@ describe("advertisedPriceProblem", () => {
     assert.equal(advertisedPriceProblem({ low: 900_000, inAllMarketing: true, now: after }), null);
   });
 
-  it("before 17 November a price is optional, but an entered price needs the tick", () => {
+  it("before 17 November a price is optional, and the marketing tick isn't asked (s72D starts then)", () => {
     assert.equal(advertisedPriceProblem({ low: null, inAllMarketing: false, now: before }), null);
-    assert.equal(advertisedPriceProblem({ low: 900_000, inAllMarketing: false, now: before }), TICK_MARKETING);
+    assert.equal(advertisedPriceProblem({ low: 900_000, inAllMarketing: false, now: before }), null);
   });
 });

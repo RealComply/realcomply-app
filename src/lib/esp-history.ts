@@ -410,8 +410,13 @@ export const PREVIOUS_ESP_MISSING =
 export const EVIDENCE_MISSING =
   "Attach the evidence of the revised ESP you gave the seller, or tick that it is part of the notice (s72A).";
 
-/** Whether a notice given on this date (yyyy-mm-dd) falls under the 17 November rules. No date: today. */
+/**
+ * Whether a notice given on this date (yyyy-mm-dd) falls under the 17 November
+ * rules. No date: today. Never before midnight Sydney on 17 November 2026,
+ * whatever date was typed (Master, 10 Nov 2026).
+ */
 export function noticeUnderReforms(givenOn: string | null, now: Date = new Date()): boolean {
+  if (!reformsInForce(now)) return false;
   return reformsInForce(givenOn && /^\d{4}-\d{2}-\d{2}$/.test(givenOn) ? new Date(`${givenOn}T12:00:00+11:00`) : now);
 }
 

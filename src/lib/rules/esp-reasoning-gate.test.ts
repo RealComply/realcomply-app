@@ -26,11 +26,8 @@ describe("isRealReasoning", () => {
 });
 
 describe("espReasoningMissing", () => {
-  it("asks for both when the card is empty (the Summerhaze case)", () => {
-    assert.deepEqual(espReasoningMissing({ data: {}, onMarketCount: 0, signedOff: false }), [
-      MISSING_REASONING,
-      MISSING_ON_MARKET,
-    ]);
+  it("asks for the reasoning when the card is empty (the Summerhaze case)", () => {
+    assert.deepEqual(espReasoningMissing({ data: {}, onMarketCount: 0, signedOff: false }), [MISSING_REASONING]);
   });
   it("counts N/A as no reasoning", () => {
     const m = espReasoningMissing({ data: { note: "N/A", noneOnMarket: NONE }, onMarketCount: 0, signedOff: false });
@@ -45,10 +42,9 @@ describe("espReasoningMissing", () => {
       [],
     );
   });
-  it("still asks for on-market with reasoning but no listings and no confirmation", () => {
-    assert.deepEqual(espReasoningMissing({ data: { note: REASONING }, onMarketCount: 0, signedOff: false }), [
-      MISSING_ON_MARKET,
-    ]);
+  it("no longer asks what was on the market at signing (REVERSAL, 10 Nov 2026)", () => {
+    assert.deepEqual(espReasoningMissing({ data: { note: REASONING }, onMarketCount: 0, signedOff: false }), []);
+    assert.ok(MISSING_ON_MARKET.length > 0, "the old words are kept for anything that still names them");
   });
   it("does not count a legacy 'recorded elsewhere' tick on an unsigned file", () => {
     const m = espReasoningMissing({ data: { loggedElsewhere: true }, onMarketCount: 1, signedOff: false });

@@ -33,6 +33,7 @@ import {
   approvalLines,
   cancelledBecause,
   espPackRows,
+  noticeUnderReforms,
   revisionsOrCard,
   type ApprovalEvent,
   type EspPackRow,
@@ -345,13 +346,10 @@ export async function buildAuditPack(
   });
   const comparablesRecord = comparablesRecordOf(byKey["a4c"]?.data);
   const mostComparableCount = comparables.filter((c) => c.mostComparable).length;
-  const comparablesLines =
-    comparablesRulesApply(byKey["a3"]?.event_date, generatedAt) ||
-    mostComparableCount > 0 ||
-    comparablesRecord.informationUsed ||
-    comparablesRecord.fewerThanThreeReason
-      ? comparablesRecordLines(comparablesRecord, mostComparableCount)
-      : undefined;
+  // Only where the 17 November rules apply to the listing's ESP, and never
+  // before then (Master, 10 Nov 2026). Anything recorded is kept on the file.
+  const comparablesApply = comparablesRulesApply(byKey["a3"]?.event_date, generatedAt);
+  const comparablesLines = comparablesApply ? comparablesRecordLines(comparablesRecord, mostComparableCount) : undefined;
 
   const pdf = await buildComplianceRecordPdf({
     property: p,
@@ -364,15 +362,18 @@ export async function buildAuditPack(
     espReasoning: noteOf("a4c"),
     // Under the ESP revision card, each revision's market feedback (Reg
     // s12G(1)(f)) and its own comparable sales (Reg s12G(1)(a), (c), (d); 0120).
-    espFeedbackLines: revisions.flatMap((r) => [
+    // Only for a revision whose notice falls under the 17 November rules.
+    espFeedbackLines: revisions.filter((r) => noticeUnderReforms(r.givenOn, generatedAt)).flatMap((r) => [
       ...(r.marketFeedback ?? []).map((f) => feedbackRecordLine(r.no, f)),
       ...(r.marketFeedbackRecord ? feedbackRecordLines(r.no, r.marketFeedbackRecord, r.recordedByName) : []),
       ...revisionComparablesLines(r.no, r),
     ]),
     withdrawalLines,
-    // "Not recorded" only where the 17 November rules apply to the agreement.
+    // Only where the 17 November rules apply to the listing's ESP: set (the
+    // agreement signed) or revised from then (Master, 10 Nov 2026). A council
+    // area read off a planning certificate on an earlier listing isn't printed.
     councilAreaLines:
-      p.council_area || espGivenApplies(byKey["a3"]?.event_date, generatedAt)
+      espGivenApplies(byKey["a3"]?.event_date, generatedAt) || revisions.some((r) => noticeUnderReforms(r.givenOn, generatedAt))
         ? councilAreaRecordLines(
             {
               council: p.council_area,
@@ -405,7 +406,7 @@ export async function buildAuditPack(
       saleDate: c.saleDate,
       weighting: c.weighting,
       agentNote: c.agentNote,
-      ruleLines: saleRecordLines(c, comparablesKind, comparablesAsAt),
+      ruleLines: comparablesApply ? saleRecordLines(c, comparablesKind, comparablesAsAt) : [],
     })),
     comparablesLines,
     // The competition, as at the agency agreement date (29 Sep 2026).

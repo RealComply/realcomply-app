@@ -25,7 +25,10 @@ import { stageProgress } from "@/lib/rules/stage-progress";
 import { StageProgressBar } from "@/components/compliance/StageProgressBar";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
-import { espHistoryFor } from "@/lib/data/esp-revisions";
+import { espHistoryFor, espRevisionsFor } from "@/lib/data/esp-revisions";
+import { noticeUnderReforms } from "@/lib/esp-history";
+import { espGivenApplies } from "@/lib/rules/esp-given-before-signing";
+import { reformsInForce } from "@/lib/rules/underquoting-reforms";
 import { withdrawalHistory, type Withdrawal } from "@/lib/data/withdrawals";
 import { WithdrawFromMarket, WithdrawnBanner } from "@/components/property/WithdrawListing";
 import { canOfferWithdraw, reasonLabel, withdrawalRecordLines } from "@/lib/rules/listing-tabs";
@@ -224,7 +227,14 @@ export default async function PropertyPage({
   );
   const mayWithdraw = !profile.is_assistant && (profile.id === p.created_by || access.actsAsLicensee);
   const nameOf = (pid: string | null) => people.find((x) => x.id === pid)?.full_name ?? "a team member";
-  // The council area, for metro or non-metro (Reg s12A; 0118): on the comparables card.
+  // The council area, for metro or non-metro (Reg s12A; 0118): on the
+  // comparables card and in Edit listing. A 17 November step: only where the
+  // listing's ESP was set (the agreement signed) or revised from then, and
+  // never before midnight Sydney on 17 November 2026 (Master, 10 Nov 2026).
+  // A council area already saved is kept either way.
+  const councilAreaShows =
+    espGivenApplies(allItems["a3"]?.event_date ?? null) ||
+    (reformsInForce() && (await espRevisionsFor(supabase, p.agency_id, p.id)).some((r) => noticeUnderReforms(r.givenOn)));
   const councilArea: CouncilAreaView = {
     council: p.council_area ?? null,
     from: p.council_area_from ?? null,
@@ -338,7 +348,7 @@ export default async function PropertyPage({
                   think it should be up the top somewhere, not in a crowded
                   position." Beside the audit-pack button is the only other
                   uncrowded spot on the page. */}
-              <EditPropertyDetails property={p} canDelete={access.actsAsLicensee} />
+              <EditPropertyDetails property={p} canDelete={access.actsAsLicensee} showCouncilArea={councilAreaShows} />
               <Link
                 href={`/dashboard/${p.id}/summary`}
                 className="rounded-full border border-rc-border bg-white px-3 py-1.5 text-xs font-medium text-rc-muted shadow-card transition hover:border-rc-green-deep/40 hover:text-rc-green-deep"
@@ -471,7 +481,7 @@ export default async function PropertyPage({
                   b4Approval={b4Approval}
                   espHistory={espHistory}
                   agreementKeepUntil={agreementKeepUntil}
-                  councilArea={councilArea}
+                  councilArea={councilAreaShows ? councilArea : undefined}
                   comparablesArea={comparablesArea}
                 />
               ))}
@@ -497,7 +507,7 @@ export default async function PropertyPage({
               b4Approval={b4Approval}
               espHistory={espHistory}
               agreementKeepUntil={agreementKeepUntil}
-              councilArea={councilArea}
+              councilArea={councilAreaShows ? councilArea : undefined}
               comparablesArea={comparablesArea}
               />
           ))}

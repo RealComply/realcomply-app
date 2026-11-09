@@ -145,10 +145,10 @@ describe("a refused save keeps the box, so the card is never stuck", () => {
     assert.equal(retried.data.note, DRAFT);
   });
 
-  it("a refusal for another reason (nothing on the market yet) keeps the tick and the draft, and saves once that is fixed", () => {
-    assert.deepEqual(serverSave(posted({ ticked: true }), 0), { error: MISSING_ON_MARKET });
-    const retried = serverSave(posted({ ticked: true }), 1);
-    assert.ok("data" in retried);
-    assert.equal((retried.data.reasoningAdoption as ReasoningAdoptionRecord).changed, false);
+  it("nothing on the market at signing is no longer a reason to refuse (REVERSAL, 10 Nov 2026)", () => {
+    const saved = serverSave(posted({ ticked: true }), 0);
+    assert.ok("data" in saved, `refused with ${JSON.stringify(saved)}`);
+    assert.equal((saved.data.reasoningAdoption as ReasoningAdoptionRecord).changed, false);
+    assert.notDeepEqual(saved, { error: MISSING_ON_MARKET });
   });
 });

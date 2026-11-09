@@ -398,10 +398,12 @@ function marketParagraph(input: EspDraftInput, quote: (note: string | null) => s
   const when = longDate(input.agreementDate);
   const at = when ? `at the agreement date (${when})` : "at the agreement date";
 
+  // Nothing said when nothing was recorded: the card no longer asks (Adam,
+  // through Master, 10 Nov 2026; lib/rules/esp-reasoning-gate.ts).
   if (input.listings.length === 0) {
     return input.noneOnMarketConfirmed
       ? `I checked what was on the market ${at}, and there were no comparable properties for sale.`
-      : `No properties on the market ${at} are recorded in this file.`;
+      : "";
   }
 
   const described = input.listings.map((l) => {

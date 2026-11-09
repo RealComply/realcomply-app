@@ -33,8 +33,14 @@ export const ESP_GIVEN_AFTER_SIGNING =
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const isoDate = (v: unknown): string | null => (typeof v === "string" && ISO_DATE.test(v) ? v : null);
 
-/** Whether the agreement falls under the 17 November rule. No signing date yet: today. */
+/**
+ * Whether the agreement falls under the 17 November rule. No signing date yet:
+ * today. Never before midnight Sydney on 17 November 2026, whatever date was
+ * typed (Master, 10 Nov 2026: nothing from the 17 Nov work shows before its
+ * date), so a date typed ahead can't switch anything on early.
+ */
 export function espGivenApplies(agreementDate: string | null | undefined, now: Date = new Date()): boolean {
+  if (!reformsInForce(now)) return false;
   const signed = isoDate(agreementDate);
   return reformsInForce(signed ? new Date(`${signed}T12:00:00+11:00`) : now);
 }

@@ -32,11 +32,14 @@ const sydneyToday = (now: Date) =>
 /**
  * Whether s8A covers the agreement: signed from 17 November, or amended from
  * then (an ESP revision notice). No signing date on the file yet: from today.
+ * Never before midnight Sydney on 17 November 2026, whatever date was typed
+ * (Master, 10 Nov 2026).
  */
 export function s8aApplies(
   input: { signedOn: string | null; lastAmendedOn: string | null },
   now: Date = new Date(),
 ): boolean {
+  if (sydneyToday(now) < S8A_FROM) return false;
   const signed = isoDate(input.signedOn) ?? sydneyToday(now);
   const amended = isoDate(input.lastAmendedOn);
   return signed >= S8A_FROM || (amended !== null && amended >= S8A_FROM);
