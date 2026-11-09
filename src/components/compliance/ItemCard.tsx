@@ -3357,6 +3357,7 @@ function ReductionItem({
     evidenceProvidedBeforeNotice?: boolean;
     advertisingUpdated?: boolean;
     outstanding?: string[];
+    noticeProblems?: string[];
   };
   const pending = pendingFrom(current?.data);
   const latestNo = espHistory?.latestNo ?? null;
@@ -3421,6 +3422,10 @@ function ReductionItem({
   }
 
   const outstanding = current?.status === "open" && hasRevisions && !pending ? (data.outstanding ?? []) : [];
+  // What only a new notice fixes (0117): no ticks for it, so with the ticks
+  // done it shows on its own, without a Save that can't clear it.
+  const noticeProblems = Array.isArray(data.noticeProblems) ? data.noticeProblems : [];
+  const tickable = outstanding.filter((o) => !noticeProblems.includes(o));
 
   return (
     // foldable={false}: answered Yes, the card never folds away when done, so
@@ -3454,6 +3459,7 @@ function ReductionItem({
             pending={pending}
             latestNo={latestNo}
             fileUrl={espHistory?.fileUrls[pending.path] ?? null}
+            currentEsp={espHistory?.currentEsp ?? null}
             // "Upload a PDF" under a notice that can't be read: the draft goes
             // and the upload box comes back (Adam, 3 Nov 2026).
             onUploadPdf={() => setAdding(true)}
@@ -3468,7 +3474,17 @@ function ReductionItem({
           <>
             {/* The two things the latest notice can't prove about itself, while
                 either is still outstanding. Its figures don't change here. */}
-            {outstanding.length > 0 && (
+            {tickable.length === 0 && outstanding.length > 0 && (
+              <div className="rounded-lg bg-rc-amber/10 px-2.5 py-2">
+                {outstanding.map((o) => (
+                  <p key={o} className="flex items-start gap-1.5 text-xs text-rc-amber-deep">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                    <span>{o}</span>
+                  </p>
+                ))}
+              </div>
+            )}
+            {tickable.length > 0 && (
               <form action={confirmFormAction} className="space-y-2">
                 <div className="divide-y divide-rc-border rounded-md border border-rc-border">
                   <label className="flex items-start gap-2.5 px-3 py-2.5">

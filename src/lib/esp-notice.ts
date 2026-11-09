@@ -56,6 +56,10 @@ export async function readNoticeIntoPending(
     pending.methodOfService = f.methodOfService ?? null;
     pending.reason = f.reason ?? null;
     pending.evidenceProvidedBeforeNotice = typeof f.evidenceProvidedBeforeNotice === "boolean" ? f.evidenceProvidedBeforeNotice : null;
+    // The ESP before the revision, both figures or neither (s72A(5)(b)(i); 9 Nov 2026).
+    const before = f.previousEspLow != null && f.previousEspHigh != null;
+    pending.previousLow = before ? Number(f.previousEspLow) : null;
+    pending.previousHigh = before ? Number(f.previousEspHigh) : null;
     if (!both) {
       pending.readFailed =
         "The notice was read, but the new price couldn't be made out. If it's handwritten or the photo is unclear, type the figures from it.";
