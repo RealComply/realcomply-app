@@ -1,3 +1,4 @@
+import { OFFICE_MANAGER_SEES } from "@/lib/office-manager/card";
 import { renderEmailHtml, renderEmailText, DILIGENCE_LINE, type EmailDocument } from "./layout";
 
 // The office manager emails (0093; Adam, 26 Oct 2026; mockup approved 26 Oct).
@@ -69,6 +70,7 @@ export function officeManagerRequestDocument(input: OfficeManagerRequestEmail): 
       list(OFFICE_MANAGER_CAN),
       { kind: "label", text: "These stay with you" },
       list(LICENSEE_KEEPS),
+      { kind: "paragraph", text: OFFICE_MANAGER_SEES },
       {
         kind: "paragraph",
         text: "The link opens this wording. You approve by typing your name. You don't need an account or a password.",

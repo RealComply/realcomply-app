@@ -5,8 +5,9 @@ import { AlertTriangle, Check, FileText } from "lucide-react";
 import { FileDropZone } from "@/components/FileDropZone";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { uploadEvidenceObject, buildSignoffDocPath } from "@/lib/storage/evidence";
-import { saveTrustAudit, type ActionState } from "@/lib/actions/trust-account";
+import { readTrustAuditReport, saveTrustAudit, type ActionState } from "@/lib/actions/trust-account";
 import { formatAuDate } from "@/lib/format-date";
+import { monthName } from "@/lib/licensee-signoff/model";
 import type { TrustAudit } from "@/lib/types";
 
 // The annual trust account audit — s111 and s112, Property and Stock Agents
@@ -32,6 +33,9 @@ export function TrustAuditForm({
   audit,
   confirmedByName,
   canEdit,
+  canConfirm = canEdit,
+  licenseeName = "the licensee in charge",
+  packMonth = null,
 }: {
   agencyId: string;
   trustAccountId: string;
@@ -41,18 +45,31 @@ export function TrustAuditForm({
   daysToDue: number;
   audit: TrustAudit | null;
   confirmedByName: string | null;
+  /** Enter the details and the report: the licensee or the office manager (0109). */
   canEdit: boolean;
+  /** Confirm them: the licensee in charge only (Adam, 3 Nov 2026; 0109). */
+  canConfirm?: boolean;
+  licenseeName?: string;
+  /** Confirmed in a monthly licensee sign-off pack (0109): its month. */
+  packMonth?: string | null;
 }) {
   const [state, action, pending] = useActionState(saveTrustAudit, initial);
+  const inPack = packMonth ? `, in the ${monthName(packMonth)} sign-off pack` : "";
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [filePath, setFilePath] = useState(audit?.file_path ?? "");
   const [fileName, setFileName] = useState(audit?.file_name ?? "");
   const [confirmed, setConfirmed] = useState(Boolean(audit?.confirmed_at));
+  const [auditor, setAuditor] = useState(audit?.auditor_name ?? "");
+  const [reading, setReading] = useState(false);
+  // What reading the report found (Adam, 3 Nov 2026: "or RealComply reads
+  // them from the report, as for other uploads"). Nothing is saved until Save.
+  const [readNote, setReadNote] = useState<{ text: string; refused: boolean } | null>(null);
 
   async function handleChoose(chosen: File | null) {
     setUploadError(null);
+    setReadNote(null);
     setFile(chosen);
     if (!chosen) return;
 
@@ -67,6 +84,28 @@ export function TrustAuditForm({
     }
     setFilePath(path);
     setFileName(stored.name);
+
+    setReading(true);
+    try {
+      const result = await readTrustAuditReport(path, stored.name, periodEnd);
+      if (result.error || !result.read) {
+        // Kept attached; the details are typed in.
+        setReadNote({ text: result.error ?? "Couldn't read the report just now, so type the details in.", refused: false });
+      } else if (result.read.outcome !== "read") {
+        // Not this year's audit report: taken off, and the form says why.
+        setFilePath("");
+        setFileName("");
+        setFile(null);
+        setReadNote({ text: result.read.message, refused: true });
+      } else {
+        if (result.read.auditor) setAuditor(result.read.auditor);
+        setReadNote({ text: result.read.message, refused: false });
+      }
+    } catch {
+      setReadNote({ text: "Couldn't read the report just now, so type the details in.", refused: false });
+    } finally {
+      setReading(false);
+    }
   }
 
   const overdue = daysToDue < 0;
@@ -126,7 +165,8 @@ export function TrustAuditForm({
           Auditor
           <input
             name="auditorName"
-            defaultValue={audit?.auditor_name ?? ""}
+            value={auditor}
+            onChange={(e) => setAuditor(e.target.value)}
             disabled={!canEdit}
             placeholder="Name and firm"
             className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm text-rc-ink outline-none focus:border-rc-green-deep disabled:bg-rc-bg-alt"
@@ -155,6 +195,7 @@ export function TrustAuditForm({
                 setFilePath("");
                 setFileName("");
                 setFile(null);
+                setReadNote(null);
               }}
               className="ml-auto shrink-0 text-rc-faint transition hover:text-rc-amber-deep hover:underline"
             >
@@ -169,14 +210,30 @@ export function TrustAuditForm({
               compact
               file={file}
               onFile={handleChoose}
-              disabled={uploading}
+              disabled={uploading || reading}
               label="Drag the auditor&rsquo;s report here, or click to browse"
             />
           </div>
         )
       )}
 
-      {canEdit && (
+      {reading && <p className="mt-2 text-xs text-rc-muted">Reading the report&hellip;</p>}
+      {readNote && !reading && (
+        <p
+          role={readNote.refused ? "alert" : "status"}
+          className={`mt-2 text-xs ${readNote.refused ? "font-semibold text-rc-amber-deep" : "text-rc-muted"}`}
+        >
+          {readNote.text}
+        </p>
+      )}
+
+      {audit?.entered_by_name && audit?.entered_at && (
+        <p className="mt-3 text-xs text-rc-muted">
+          Details entered by {audit.entered_by_name}, {formatAuDate(audit.entered_at.slice(0, 10))}.
+        </p>
+      )}
+
+      {canConfirm && (
         <button
           type="button"
           onClick={() => setConfirmed((v) => !v)}
@@ -198,18 +255,20 @@ export function TrustAuditForm({
             </span>
             <span className={`mt-0.5 block text-xs ${confirmed ? "text-rc-green-deep" : "text-rc-muted"}`}>
               {confirmed && audit?.confirmed_at && confirmedByName
-                ? `${confirmedByName}, ${formatAuDate(audit.confirmed_at.slice(0, 10))}`
+                ? `${confirmedByName}, ${formatAuDate(audit.confirmed_at.slice(0, 10))}${inPack}`
                 : "Your name and the date are recorded against this confirmation."}
             </span>
           </span>
         </button>
       )}
 
-      {!canEdit && (
+      {!canConfirm && (
         <p className="mt-4 rounded-xl border border-rc-border bg-rc-bg-alt px-4 py-3 text-xs text-rc-muted">
-          {confirmed && confirmedByName && audit?.confirmed_at
-            ? `Confirmed by ${confirmedByName} on ${formatAuDate(audit.confirmed_at.slice(0, 10))}.`
-            : "Only the licensee in charge can record this."}
+          {confirmed && (confirmedByName || audit?.confirmed_name) && audit?.confirmed_at
+            ? `Confirmed by ${confirmedByName ?? audit.confirmed_name} on ${formatAuDate(audit.confirmed_at.slice(0, 10))}${inPack}.`
+            : canEdit
+              ? `Enter the details and attach the report, then save. ${licenseeName} confirms them.`
+              : "Only the licensee in charge can record this."}
         </p>
       )}
 
@@ -229,10 +288,10 @@ export function TrustAuditForm({
       {canEdit && (
         <button
           type="submit"
-          disabled={pending || uploading}
+          disabled={pending || uploading || reading}
           className="mt-4 rounded-full bg-rc-green-deep px-5 py-2 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
-          {uploading ? "Uploading…" : pending ? "Saving…" : "Save"}
+          {uploading ? "Uploading…" : reading ? "Reading…" : pending ? "Saving…" : "Save"}
         </button>
       )}
 

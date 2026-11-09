@@ -196,8 +196,15 @@ export async function buildAuditPack(
   const licenseeSigned = await signatureOf("sign_licensee");
   // Signed through a link someone copied to send by hand (option 2, Adam
   // 3 Nov 2026; 0107): the first copy before the signature goes on the record.
+  // Signed in a monthly sign-off pack (0109): which month, for its line.
+  const packMonth = async (): Promise<string | null> => {
+    const packId = (byKey["sign_licensee"]?.data as { packId?: unknown } | undefined)?.packId;
+    if (typeof packId !== "string") return null;
+    const { data } = await supabase.from("signoff_packs").select("month").eq("agency_id", agencyId).eq("id", packId).maybeSingle();
+    return ((data as { month?: string } | null)?.month as string | undefined) ?? null;
+  };
   const licenseeSignature = licenseeSigned
-    ? { ...licenseeSigned, copiedLink: await copiedBeforeSigning(licenseeSigned.signedAt), emailedTo: await emailedTo() }
+    ? { ...licenseeSigned, copiedLink: await copiedBeforeSigning(licenseeSigned.signedAt), emailedTo: await emailedTo(), packMonth: await packMonth() }
     : null;
   const isDraft = !agentSignature || !licenseeSignature;
 

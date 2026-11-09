@@ -7,6 +7,7 @@ import { UserBar } from "@/components/UserBar";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { hasAcceptedCurrentLegal } from "@/lib/legal/acceptance";
+import { readsBeyondOwnWork } from "@/lib/data/listing-access";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { pmAgencySettings } from "@/lib/data/pm";
 import { endedStateFor } from "@/lib/subscription-end/access";
@@ -124,7 +125,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // the number is correct in the first paint — a count that appears a second
   // late reads as the page changing its mind.
   const [counts, pm, accountHolder, logoUrl] = await Promise.all([
-    navCountsFor(supabase, profile),
+    navCountsFor(supabase, profile, readsBeyondOwnWork(access) ? profile.id : null),
     // Whether this agency has property management (on for office plans,
     // 0086), for the "Property management" entry beside sales.
     pmAgencySettings(supabase, profile.agency_id),

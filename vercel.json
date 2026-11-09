@@ -46,6 +46,10 @@
       "schedule": "5 22 * * *"
     },
     {
+      "path": "/api/cron/licensee-signoff",
+      "schedule": "55 21 * * *"
+    },
+    {
       "path": "/api/cron/plan-move-down",
       "schedule": "25 22 * * *"
     }

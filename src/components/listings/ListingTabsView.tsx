@@ -15,17 +15,24 @@ export function ListingTabsView({
   tab,
   query,
   status,
+  viewOnlyIds = [],
 }: {
   rows: ListingTabRow[];
   tab: ListingTab;
   query: string;
   /** What each listing still needs in its stage, as the sidebar counts it (none on a test listing). */
   status: Record<string, { flagged: number; outstanding: number }>;
+  /**
+   * Another agent's listings, for an office manager (0108, Adam 3 Nov 2026):
+   * they open as the read-only record and say "View only".
+   */
+  viewOnlyIds?: string[];
 }) {
   const countFor = (key: ListingTab) => rows.filter((r) => r.tab === key).length;
   const searchable = tab === "settled" || tab === "withdrawn";
   const shown = rows.filter((r) => r.tab === tab && (!searchable || matchesAddress(r.property.address, query)));
   const statusById = new Map(Object.entries(status));
+  const viewOnly = new Set(viewOnlyIds);
   return (
     <>
       <nav aria-label="Listings" className="mt-6 flex flex-wrap gap-1.5">
@@ -78,7 +85,10 @@ export function ListingTabsView({
                 // wraps (10 Oct 2026). From sm up, one row as before.
                 className="flex flex-col gap-2 px-4 py-4 transition hover:bg-rc-bg-alt sm:flex-row sm:items-center sm:justify-between sm:gap-3"
               >
-                <Link href={`/dashboard/${property.id}`} className="flex min-w-0 items-center gap-3">
+                <Link
+                  href={viewOnly.has(property.id) ? `/dashboard/${property.id}/summary` : `/dashboard/${property.id}`}
+                  className="flex min-w-0 items-center gap-3"
+                >
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-rc-green-deep ring-1 ring-inset ring-white/70"
                     style={{ background: "var(--rc-badge-grad-green)" }}
@@ -91,6 +101,11 @@ export function ListingTabsView({
                   </div>
                 </Link>
                 <div className="flex flex-wrap items-center gap-2 pl-12 sm:shrink-0 sm:flex-nowrap sm:pl-0">
+                  {viewOnly.has(property.id) && (
+                    <span className="rounded-full bg-rc-bg-alt px-2.5 py-1 text-xs font-semibold text-rc-muted">
+                      View only
+                    </span>
+                  )}
                   {row.tab === "market" && (
                     <>
                       {/* What this file still needs, in the stage it is in.

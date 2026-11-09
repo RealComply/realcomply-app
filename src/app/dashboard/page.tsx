@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
+import { ownWork, readsBeyondOwnWork } from "@/lib/data/listing-access";
 import { licenseeNameFor, listingGate } from "@/lib/data/listing-gate";
 import { ListingLockCard } from "@/components/annexure/ListingLockCard";
 import { licenseeChangeStatus } from "@/lib/data/licensee-change";
@@ -44,7 +45,14 @@ export default async function DashboardPage({
   // when deciding which file to open. Free: the dashboard layout has already
   // called this in the same request and navCountsFor is cached, so this is a
   // map lookup rather than a second set of queries.
-  const { listingRows } = await navCountsFor(supabase, profile);
+  const { listingRows } = await navCountsFor(supabase, profile, readsBeyondOwnWork(access) ? profile.id : null);
+  // An office manager sees every listing in the office (Adam, 3 Nov 2026;
+  // 0108), to read: another agent's opens as its read-only record, marked
+  // "View only" on the tabs (Job B, 5 Nov 2026).
+  const ownIds = new Set(ownWork(rows.map((r) => r.property), access, profile.id).map((p) => p.id));
+  const viewOnlyIds = readsBeyondOwnWork(access)
+    ? rows.map((r) => r.property.id).filter((id) => !ownIds.has(id))
+    : [];
 
   return (
     <>
@@ -106,6 +114,7 @@ export default async function DashboardPage({
             tab={tab}
             query={query}
             status={Object.fromEntries(listingRows.map((l) => [l.id, { flagged: l.flagged, outstanding: l.outstanding }]))}
+            viewOnlyIds={viewOnlyIds}
           />
         )}
       </main>

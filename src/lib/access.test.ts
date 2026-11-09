@@ -107,15 +107,17 @@ describe("an office manager (0093)", () => {
     assert.equal(accessFrom({ is_licensee_in_charge: true, is_assistant: false }, "office_1").runsOffice, true);
   });
 
-  it("gets the licensee's menu, without Office overview", () => {
+  // REVERSAL (Adam, 3 Nov 2026; 0108): was "without Office overview". Now an
+  // office manager sees every listing in the office, Office overview included.
+  it("gets the licensee's menu, Office overview included", () => {
     const menu = NAV_LINKS.filter((l) =>
       visibleNavLink(l, { actsAsLicensee: false, runsOffice: true, pmEnabled: true }),
     ).map((l) => l.label);
     const licensee = NAV_LINKS.filter((l) => visibleNavLink(l, { actsAsLicensee: true, pmEnabled: true })).map(
       (l) => l.label,
     );
-    assert.deepEqual(menu, licensee.filter((label) => label !== "Office overview"));
-    for (const label of ["Team", "Registers", "Trust accounts", "SG Manual", "Billing", "Training", "CPD"]) {
+    assert.deepEqual(menu, licensee);
+    for (const label of ["Office overview", "Team", "Registers", "Trust accounts", "SG Manual", "Billing", "Training", "CPD"]) {
       assert.ok(menu.includes(label), label);
     }
   });

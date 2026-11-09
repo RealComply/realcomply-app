@@ -36,6 +36,7 @@ export type JobCheck =
   | "reader-check"
   | "audit-packs"
   | "licensee-confirm"
+  | "licensee-signoff"
   | "plan-move-down";
 
 export type Check = JobCheck | "email";
@@ -88,6 +89,7 @@ const LABELS: Record<JobCheck, string> = {
   "reader-check": "daily reader check",
   "audit-packs": "hourly clean-up of finished audit packs",
   "licensee-confirm": "licensee email confirmations",
+  "licensee-signoff": "monthly licensee sign-off pack reminders",
   "plan-move-down": "automatic plan move-down",
 };
 

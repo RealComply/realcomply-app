@@ -161,8 +161,14 @@ begin
   delete from public.cpd_records where profile_id = a;
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL 5g: an office manager deleted a compliance record'; end if;
+  -- REVERSAL (Adam, 3 Nov 2026; 0108): was "not decided yet", so an office
+  -- manager saw no other agent's listing. Now they see every listing in the
+  -- office, to read only.
   select count(*) into n from public.properties where agency_id = o1;
-  if n <> 0 then raise exception 'FAIL 5h: saw another agent''s listing (not decided yet)'; end if;
+  if n = 0 then raise exception 'FAIL 5h: the office manager can''t see the office''s listings (0108)'; end if;
+  update public.properties set address = 'Changed by the office manager' where agency_id = o1;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL 5h2: the office manager changed % listings', n; end if;
   begin
     update public.profiles set is_licensee_in_charge = true where id = a;
     raise exception 'FAIL 5i: an office manager made someone licensee in charge';

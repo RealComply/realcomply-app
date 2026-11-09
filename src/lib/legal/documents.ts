@@ -601,9 +601,16 @@ If this policy changes materially we will publish a new version and record your 
 // currentLegalVersions() and changing it does not prompt anyone to re-accept.
 // Natalie Melia (Business Depot Legal) final of 23 Sep 2026, with in-house amendments of 2 to 9 Oct 2026 approved by Adam Castelnuovo. The amended clauses were not drafted by a lawyer. See claude/RealComply-legal-documents-register-9-Oct.md.
 //
+// 3 Nov 2026: clause 4.2's second bullet replaced, word for word as Legal
+// gave it after checking office manager access (Legal's privacy check of
+// 3 Nov 2026, claude/RealComply-office-manager-access-privacy-check-3-Nov.md,
+// via Master). It used to say agency-wide records are restricted to the
+// licensee in charge, which stopped being true when office managers could
+// see every listing, property and the complaints register (0102, 0108).
+//
 // Verbatim. Do not edit a word, a clause number or a cross-reference here:
 // documents.test.ts checks this text against the brief, character for
-// character.
+// character, with only that bullet replaced.
 const DPA_BODY = `
 # Data Processing Agreement
 
@@ -644,7 +651,7 @@ RealComply will handle Subscriber Data only to provide, maintain, secure and sup
 RealComply will maintain reasonable technical and organisational measures to protect Subscriber Data, including:
 
 - Tenant isolation enforced at the database layer, not only in application code, so that one subscriber's records are not reachable from another subscriber's session.
-- Role-based access within a subscriber's own account, so that an ordinary agent sees only their own listings while agency-wide records are restricted to the licensee in charge.
+- Role-based access within a subscriber's own account. Agents see their own listings. The licensee in charge sees all of the Subscriber's records. An office manager the Subscriber appoints can see the Subscriber's listings, properties and complaints register, and can change only what their role allows.
 - Encryption of data in transit.
 - Restriction of RealComply personnel access to those who require it, under written confidentiality obligations.
 
@@ -769,8 +776,10 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentKey, LegalDocument> = {
     key: "dpa",
     path: "/dpa",
     title: "Data Processing Agreement",
-    version: "2026-10-09",
-    effective: "9 October 2026",
+    // 2026-11-03: clause 4.2, office managers (Legal, 3 Nov 2026). No
+    // acceptance checkbox of its own, so nobody is asked to accept again.
+    version: "2026-11-03",
+    effective: "3 November 2026",
     reviewed: true,
     body: DPA_BODY,
   },

@@ -42,6 +42,14 @@ The home page also uses the Meta pixel, to measure our advertising.
 
 Neither is used inside the product.`;
 
+// Clause 4.2 of the DPA, the role-based access bullet: as published 9 Oct
+// 2026, and as Legal replaced it on 3 Nov 2026 after checking office manager
+// access (via Master, word for word).
+const DPA_4_2_BULLET_9_OCT =
+  "- Role-based access within a subscriber's own account, so that an ordinary agent sees only their own listings while agency-wide records are restricted to the licensee in charge.";
+const DPA_4_2_BULLET_3_NOV =
+  "- Role-based access within a subscriber's own account. Agents see their own listings. The licensee in charge sees all of the Subscriber's records. An office manager the Subscriber appoints can see the Subscriber's listings, properties and complaints register, and can change only what their role allows.";
+
 describe("published legal documents", () => {
   it("terms are Part B of the brief, verbatim", () => {
     assert.equal(LEGAL_DOCUMENTS.terms.body, part("## PART B: Terms and Conditions (final text)", "## PART C:"));
@@ -83,8 +91,15 @@ describe("published legal documents", () => {
     );
   });
 
-  it("DPA is Part D of the brief, verbatim", () => {
-    assert.equal(LEGAL_DOCUMENTS.dpa.body, part("## PART D: Data Processing Agreement (final text)", null));
+  it("DPA is Part D of the brief, verbatim, with only clause 4.2's role-based access bullet replaced (Legal, 3 Nov 2026)", () => {
+    const nineOct = part("## PART D: Data Processing Agreement (final text)", null);
+    assert.ok(nineOct.includes(DPA_4_2_BULLET_9_OCT));
+    const body = LEGAL_DOCUMENTS.dpa.body;
+    assert.ok(!body.includes("agency-wide records are restricted to the licensee in charge"));
+    assert.ok(body.includes(DPA_4_2_BULLET_3_NOV));
+    assert.equal(body, nineOct.replace(DPA_4_2_BULLET_9_OCT, DPA_4_2_BULLET_3_NOV));
+    assert.equal(LEGAL_DOCUMENTS.dpa.version, "2026-11-03");
+    assert.equal(LEGAL_DOCUMENTS.dpa.effective, "3 November 2026");
   });
 
   it("all three are reviewed, so acceptances are no longer stamped as drafts", () => {

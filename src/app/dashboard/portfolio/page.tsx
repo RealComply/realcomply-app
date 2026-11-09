@@ -2,7 +2,7 @@ import Link from "next/link";
 import { withdrawnPropertyIds } from "@/lib/data/withdrawals";
 import { Building2, ClipboardCheck, Flag, ShieldCheck, MessageSquareWarning } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requireLicenseePage } from "@/lib/data/current-profile";
+import { requireOfficePage } from "@/lib/data/current-profile";
 import { StatTile } from "@/components/home/WidgetCard";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
 import { expiryStatus } from "@/lib/expiry-status";
@@ -22,7 +22,9 @@ import { RoofMark } from "@/components/RoofMark";
 export default async function PortfolioPage() {
   // Licensee only (Adam, 7 Oct 2026): a typed address refuses, not just a
   // hidden link.
-  const { profile } = await requireLicenseePage();
+  // The licensee, or an office manager to read (REVERSAL, Adam, 3 Nov 2026;
+  // 0108; was the licensee's only).
+  const { profile } = await requireOfficePage();
   const supabase = await createClient();
 
   const { data: properties } = await supabase.from("properties").select("*").order("created_at", { ascending: false });

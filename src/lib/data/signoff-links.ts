@@ -60,6 +60,8 @@ export type SignoffLink = {
   copies: Array<{ by: string; at: string }>;
   /** The licensee in charge it went to, by name where the office has one (for the nudge). */
   licenseeName: string;
+  /** Never emailed because the office signs off in a monthly pack (0109): it's in the pack. */
+  inMonthlyPack: boolean;
 };
 
 const numberOrNull = (v: unknown): number | null => {
@@ -98,6 +100,11 @@ export async function signoffLinksFor(
       ? supabase.from("agencies").select("licensee_name").eq("id", agencyId).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
+  // The office's setting (0109), read on its own so the panel loads before it.
+  const { data: modeRow } = agencyId
+    ? await supabase.from("agencies").select("licensee_signoff_mode").eq("id", agencyId).maybeSingle()
+    : { data: null };
+  const monthly = (modeRow as { licensee_signoff_mode?: string } | null)?.licensee_signoff_mode === "monthly";
   const copiesOf = new Map<string, Array<{ by: string; at: string }>>();
   for (const c of (copyRows ?? []) as Array<{ request_id: string; copied_by_name: string; copied_at: string }>) {
     copiesOf.set(c.request_id, [...(copiesOf.get(c.request_id) ?? []), { by: c.copied_by_name, at: c.copied_at }]);
@@ -127,6 +134,7 @@ export async function signoffLinksFor(
       openedAt: (row.opened_at as string | null | undefined) ?? null,
       copies: copiesOf.get(String(row.id)) ?? [],
       licenseeName: licenseeName || String(row.sent_to ?? ""),
+      inMonthlyPack: monthly && Number(row.email_attempts ?? 0) === 0 && !row.email_sent_at,
     });
   }
   return links;

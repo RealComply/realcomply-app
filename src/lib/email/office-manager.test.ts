@@ -1,4 +1,5 @@
 import { describe, it } from "node:test";
+import { OFFICE_MANAGER_SEES } from "@/lib/office-manager/card";
 import assert from "node:assert/strict";
 import {
   buildOfficeManagerApprovedEmail,
@@ -35,6 +36,15 @@ describe("the office manager request email", () => {
     }
     assert.ok(email.text.includes("https://www.realcomply.com.au/office-manager/"));
     assert.ok(email.html.includes("https://www.realcomply.com.au/office-manager/"));
+  });
+
+  it("says what an office manager sees and that only the licensee signs off, in Legal's words (3 Nov 2026)", () => {
+    assert.equal(
+      OFFICE_MANAGER_SEES,
+      "Office managers can see every listing and property in the office and the complaints register. Only the licensee signs off.",
+    );
+    assert.ok(email.text.includes(OFFICE_MANAGER_SEES));
+    assert.ok(email.html.includes("Office managers can see every listing and property in the office"));
   });
 
   it("says what to do if it's not wanted, and when the link stops working", () => {

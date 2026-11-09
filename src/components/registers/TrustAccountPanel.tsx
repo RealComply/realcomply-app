@@ -41,6 +41,7 @@ export function TrustAccountPanel({
   accountName,
   canUpload,
   canSign,
+  canEnterAudit = false,
   signerName,
   auditPeriodEnd,
   auditDueOn,
@@ -50,6 +51,8 @@ export function TrustAccountPanel({
   auditYearLabel,
   auditIsOwed = true,
   openedOn = null,
+  auditPackMonth = null,
+  licenseeName,
 }: {
   months: ReconciliationMonth[];
   agencyId: string;
@@ -58,6 +61,8 @@ export function TrustAccountPanel({
   accountName: string;
   canUpload: boolean;
   canSign: boolean;
+  /** The office manager enters the audit's details for the licensee to confirm (Adam, 3 Nov 2026; 0109). */
+  canEnterAudit?: boolean;
   signerName: string;
   auditPeriodEnd: string;
   auditDueOn: string;
@@ -69,6 +74,9 @@ export function TrustAccountPanel({
   auditIsOwed?: boolean;
   /** trust_accounts.opened_on, for saying why nothing is owed. */
   openedOn?: string | null;
+  /** The audit was confirmed in a monthly licensee sign-off pack (0109): its month. */
+  auditPackMonth?: string | null;
+  licenseeName?: string;
 }) {
   // Everything that has come due and is not signed, worst first. Plus the most
   // recent signed month, so a clean register still shows something rather than
@@ -207,7 +215,10 @@ export function TrustAccountPanel({
           daysToDue={auditDaysToDue}
           audit={audit}
           confirmedByName={auditConfirmedByName}
-          canEdit={canSign}
+          canEdit={canSign || canEnterAudit}
+          canConfirm={canSign}
+          packMonth={auditPackMonth}
+          licenseeName={licenseeName}
         />
       )}
     </div>

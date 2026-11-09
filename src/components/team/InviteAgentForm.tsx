@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { Copy, Check, UserPlus } from "lucide-react";
 import { inviteAgent } from "@/lib/actions/team";
-import { officeManagerWording } from "@/lib/office-manager/card";
+import { OFFICE_MANAGER_SEES, officeManagerWording } from "@/lib/office-manager/card";
 import type { InviteOption, InviteRole } from "@/lib/team/invite-options";
 import type { Profile } from "@/lib/types";
 
@@ -207,6 +207,7 @@ export function InviteAgentForm({
               SG Manual and billing. File sign-offs, annexure adoption, changing the licensee in charge and deleting
               compliance records stay with you.
             </p>
+            <p className="mt-1.5 text-xs font-semibold leading-relaxed text-rc-ink">{OFFICE_MANAGER_SEES}</p>
             <label className="mt-2 flex items-start gap-2 text-sm font-semibold text-rc-ink">
               <input
                 type="checkbox"

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Building2, ClipboardCheck, FileWarning, IdCard, PenLine } from "lucide-react";
 import type { createClient } from "@/lib/supabase/server";
 import { navCountsFor } from "@/lib/data/nav-counts";
+import { ownWork, readsBeyondOwnWork } from "@/lib/data/listing-access";
+import type { Access } from "@/lib/access";
 import { agencyPeople } from "@/lib/data/people";
 import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
@@ -34,12 +36,15 @@ import { STAGE_LABELS, type Gift, type Profile, type Property, type TrainingSess
 export async function AgentHome({
   supabase,
   profile,
+  access,
   sgReadShows = false,
   officeManager = null,
   setup = null,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   profile: Profile;
+  /** For an office manager, who reads every listing but whose Home is their own work (0108). */
+  access: Access;
   /** An agent in an office who has not yet confirmed reading the adopted annexure and the SG (brief, 14 Oct 2026). */
   sgReadShows?: boolean;
   /** Asking to be office manager, or where that is up to (0093). */
@@ -62,7 +67,7 @@ export async function AgentHome({
     signoffNudges,
     annexureLink,
   ] = await Promise.all([
-      navCountsFor(supabase, profile),
+      navCountsFor(supabase, profile, readsBeyondOwnWork(access) ? profile.id : null),
       agencyPeople(supabase),
       supabase.from("properties").select("*").order("created_at", { ascending: false }),
       // Their tick for the year (14 Oct 2026: that tick is the CPD).
@@ -80,7 +85,9 @@ export async function AgentHome({
       annexureLinkFor(supabase),
     ]);
 
-  const properties = (propertyRows ?? []) as Property[];
+  // Their own work: an office manager reads every listing in the office
+  // (0108), but their Home counts only theirs.
+  const properties = ownWork((propertyRows ?? []) as Property[], access, profile.id);
   const byId = new Map(properties.map((p) => [p.id, p]));
   const nameOf = (id: string | null) => people.find((x) => x.id === id)?.full_name ?? "Unknown";
 

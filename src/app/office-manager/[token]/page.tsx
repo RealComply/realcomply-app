@@ -4,6 +4,7 @@ import { Logo } from "@/components/Logo";
 import { createClient } from "@/lib/supabase/server";
 import { ApproveOfficeManagerForm } from "@/components/office-manager/ApproveOfficeManagerForm";
 import { LICENSEE_KEEPS, OFFICE_MANAGER_CAN } from "@/lib/email/office-manager";
+import { OFFICE_MANAGER_SEES } from "@/lib/office-manager/card";
 
 // The licensee's page for approving an office manager (0093; mockup approved
 // by Adam, 26 Oct 2026). Opened from an email by a licensee in charge with no
@@ -91,6 +92,7 @@ export default async function OfficeManagerApprovalPage({ params }: { params: Pr
           </ul>
         </section>
       </div>
+      <p className="mt-4 text-sm font-semibold leading-relaxed text-rc-ink">{OFFICE_MANAGER_SEES}</p>
 
       <ApproveOfficeManagerForm
         token={token}
