@@ -16,7 +16,8 @@ const STATUS_STYLES: Record<string, string> = {
 };
 const STATUS_LABELS: Record<string, string> = {
   recorded: "Recorded",
-  flagged: "Review — over threshold",
+  // No dashes in what people read (Adam, 9 Nov 2026).
+  flagged: "Over threshold, to review",
   reviewed: "Flagged · reviewed",
 };
 
