@@ -141,7 +141,6 @@ import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
 import { CouncilAreaPanel, type CouncilAreaView } from "@/components/property/CouncilArea";
 import type { ComparablesArea } from "@/components/comparables/MostComparable";
 import { comparablesRecordOf } from "@/lib/rules/comparables-rules";
-import { MarketListingsPanel } from "@/components/comparables/MarketListingsPanel";
 import type { MarketListing } from "@/lib/data/market-listings";
 import { fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
 import type { EspDraftInput } from "@/lib/data/esp-draft";
@@ -1243,15 +1242,11 @@ function ChecklistItem({
             area={comparablesArea ?? null}
             record={comparablesRecordOf(current?.data)}
           />
-          {/* The competition, under the sales (Stephen Borg, 28 Sep
-              2026; mockup v2 approved by Adam). */}
-          <MarketListingsPanel
-            propertyId={propertyId}
-            subject={subject}
-            listings={marketListings}
-            agreementDate={agreementDate}
-            noneOnMarket={Boolean(data.noneOnMarket)}
-          />
+          {/* REVERSAL, 10 Nov 2026 (Adam, through Master): the on-market
+              list under the sales (28 Sep 2026) is off the card. Adam took
+              it off on 1 Nov "until the laws change"; the 17 November law
+              doesn't ask for it. What was saved stays on the file and in
+              the compliance record (lib/rules/esp-reasoning-gate.ts). */}
         </div>
       )}
       <form
@@ -2196,16 +2191,23 @@ function GuideItem({
             />
           </label>
         </div>
-        <label className="flex items-start gap-2 text-sm text-rc-ink">
-          <input
-            type="checkbox"
-            name="priceInAllMarketing"
-            value="yes"
-            defaultChecked={data.priceInAllMarketing === true}
-            className="mt-0.5 shrink-0 accent-rc-green-deep"
-          />
-          <span>This price is shown in all the required marketing material</span>
-        </label>
+        {/* A price in every ad is a 17 November rule (s72D): the tick waits
+            for it (Master, 10 Nov 2026). Before then a tick already saved is
+            carried through unchanged. */}
+        {reformsInForce() ? (
+          <label className="flex items-start gap-2 text-sm text-rc-ink">
+            <input
+              type="checkbox"
+              name="priceInAllMarketing"
+              value="yes"
+              defaultChecked={data.priceInAllMarketing === true}
+              className="mt-0.5 shrink-0 accent-rc-green-deep"
+            />
+            <span>This price is shown in all the required marketing material</span>
+          </label>
+        ) : (
+          data.priceInAllMarketing === true && <input type="hidden" name="priceInAllMarketing" value="yes" />
+        )}
         {/* After a relevant event, once per event (s73(3); Adam, 9 Nov 2026). */}
         {deadline && !updatedForThisEvent && (
           <div className="space-y-2">
@@ -2410,7 +2412,8 @@ function OffersLogItem({
       />
 
       {/* Offers kept in the agent's own system: one question (Adam, 9 Nov 2026). */}
-      {(data.loggedElsewhere || data.elsewhereOffer) && (
+      {/* A 17 November question (s73(1)): not before then (Master, 10 Nov 2026). */}
+      {reformsInForce() && (data.loggedElsewhere || data.elsewhereOffer) && (
         <ElsewhereOfferQuestion propertyId={propertyId} answer={data.elsewhereOffer ?? null} advertisedLow={advertisedLow} />
       )}
 
@@ -2611,13 +2614,25 @@ function OfferFields({ defaults }: { defaults?: LoggedOffer }) {
           defaultValue={defaults?.needsEspRevision == null ? null : defaults.needsEspRevision ? "yes" : "no"}
         />
       )}
-      <label className="flex items-center gap-2 text-xs text-rc-muted">
-        <input type="checkbox" name="inWriting" checked={inWriting} onChange={(e) => setInWriting(e.target.checked)} />{" "}
-        {IN_WRITING_LABEL}
-      </label>
       {/* A written offer's record (Reg s12F(1)(d), 12G(1)(e); Master, 9 Nov
-          2026, addition 3): its conditions, and when rejected, why and when. */}
-      {inWriting && (
+          2026, addition 3): its conditions, and when rejected, why and when.
+          17 November rules: not on the form before then (Master, 10 Nov
+          2026); what an entry already has is carried through unchanged. */}
+      {!reformsInForce() && defaults?.inWriting && (
+        <>
+          <input type="hidden" name="inWriting" value="on" />
+          <input type="hidden" name="conditions" value={defaults.conditions ?? ""} />
+          <input type="hidden" name="rejectedFor" value={defaults.rejectedFor ?? ""} />
+          <input type="hidden" name="rejectedOn" value={defaults.rejectedOn ?? ""} />
+        </>
+      )}
+      {reformsInForce() && (
+        <label className="flex items-center gap-2 text-xs text-rc-muted">
+          <input type="checkbox" name="inWriting" checked={inWriting} onChange={(e) => setInWriting(e.target.checked)} />{" "}
+          {IN_WRITING_LABEL}
+        </label>
+      )}
+      {reformsInForce() && inWriting && (
         <div className="space-y-2 border-l-2 border-rc-green-deep/30 pl-3">
           <label className="block text-xs font-semibold text-rc-ink">
             Conditions of the offer <span className="font-normal text-rc-faint">(if any)</span>

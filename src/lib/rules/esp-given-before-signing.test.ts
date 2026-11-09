@@ -18,7 +18,8 @@ const row = (data: Record<string, unknown>) => ({ data }) as Pick<PropertyItem, 
 describe("the ESP and evidence given before signing (s72A(2), from 17 Nov 2026)", () => {
   it("applies to agreements signed from 17 November; with no signing date, from today", () => {
     assert.equal(espGivenApplies("2026-11-16", after17), false, "signed the day before");
-    assert.equal(espGivenApplies("2026-11-17", before17), true, "signed on the day");
+    assert.equal(espGivenApplies("2026-11-17", after17), true, "signed on the day");
+    assert.equal(espGivenApplies("2026-11-17", before17), false, "nothing before midnight on 17 November, whatever date was typed");
     assert.equal(espGivenApplies(null, before17), false);
     assert.equal(espGivenApplies(null, after17), true);
     assert.equal(espGivenApplies("not a date", after17), true, "an unreadable date counts as none");

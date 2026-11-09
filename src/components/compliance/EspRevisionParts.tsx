@@ -460,266 +460,281 @@ export function EspDraftForm({
             />
           </label>
 
-          {/* The old ESP check (s72A; 0117): as the notice states it, against the file. */}
-          <div>
-            <p className="text-xs font-semibold text-rc-ink">{PREVIOUS_ESP_LABEL}</p>
-            <div className="mt-1 grid gap-2.5 sm:grid-cols-2">
-              <input
-                name="previousEspLow"
-                aria-label={`${PREVIOUS_ESP_LABEL}, from`}
-                inputMode="numeric"
-                value={prevLow}
-                onChange={(e) => setPrevLow(e.target.value)}
-                placeholder="From"
-                className="w-full rounded-md border border-rc-border px-2.5 py-2 text-sm tabular-nums focus:border-rc-green-deep focus:outline-none"
-              />
-              <input
-                name="previousEspHigh"
-                aria-label={`${PREVIOUS_ESP_LABEL}, to`}
-                inputMode="numeric"
-                value={prevHigh}
-                onChange={(e) => setPrevHigh(e.target.value)}
-                placeholder="To"
-                className="w-full rounded-md border border-rc-border px-2.5 py-2 text-sm tabular-nums focus:border-rc-green-deep focus:outline-none"
-              />
-            </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-rc-faint">
-              {onFile ? `On file: ${onFile}. ` : ""}
-              {PREVIOUS_ESP_HINT}
-            </p>
-            {differs ? (
-              <p className="mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-amber-deep">
-                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                <span>{differs}</span>
+          {/* 17 November rules (s72A(5); Reg s12G): only for a notice given
+              from then, and never before midnight Sydney on 17 November 2026
+              (Master, 10 Nov 2026). Before then, what the notice was read as
+              saying, and any evidence already attached, are carried through. */}
+          {underReforms ? (
+            <>
+            {/* The old ESP check (s72A; 0117): as the notice states it, against the file. */}
+            <div>
+              <p className="text-xs font-semibold text-rc-ink">{PREVIOUS_ESP_LABEL}</p>
+              <div className="mt-1 grid gap-2.5 sm:grid-cols-2">
+                <input
+                  name="previousEspLow"
+                  aria-label={`${PREVIOUS_ESP_LABEL}, from`}
+                  inputMode="numeric"
+                  value={prevLow}
+                  onChange={(e) => setPrevLow(e.target.value)}
+                  placeholder="From"
+                  className="w-full rounded-md border border-rc-border px-2.5 py-2 text-sm tabular-nums focus:border-rc-green-deep focus:outline-none"
+                />
+                <input
+                  name="previousEspHigh"
+                  aria-label={`${PREVIOUS_ESP_LABEL}, to`}
+                  inputMode="numeric"
+                  value={prevHigh}
+                  onChange={(e) => setPrevHigh(e.target.value)}
+                  placeholder="To"
+                  className="w-full rounded-md border border-rc-border px-2.5 py-2 text-sm tabular-nums focus:border-rc-green-deep focus:outline-none"
+                />
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-rc-faint">
+                {onFile ? `On file: ${onFile}. ` : ""}
+                {PREVIOUS_ESP_HINT}
               </p>
-            ) : (
-              underReforms &&
-              (stated.low === null || stated.high === null) && (
+              {differs ? (
                 <p className="mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-amber-deep">
                   <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                  <span>
-                    If the notice doesn&rsquo;t state it, you can still save. The card stays open until you add a notice
-                    that does.
-                  </span>
+                  <span>{differs}</span>
                 </p>
-              )
-            )}
-          </div>
-
-          {/* The market feedback it responded to (Reg s12G(1)(f); 0117). */}
-          <div className="space-y-2 rounded-md border border-rc-border px-3 py-2.5">
-            <label className="flex items-start gap-2.5">
-              <input
-                type="checkbox"
-                name="marketFeedbackTicked"
-                value="yes"
-                checked={feedbackTicked}
-                onChange={(e) => setFeedbackTicked(e.target.checked)}
-                className="mt-0.5 shrink-0 accent-rc-green-deep"
-              />
-              <span>
-                <span className="block text-sm text-rc-ink">{FEEDBACK_TICK}</span>
-                <span className="block text-[11px] text-rc-faint">{FEEDBACK_HINT}</span>
-              </span>
-            </label>
-            <input type="hidden" name="marketFeedback" value={JSON.stringify(feedbackTicked ? feedback : [])} />
-            {feedbackTicked && (
-              <>
-                {feedback.map((f, i) => (
-                  <div key={i} className="space-y-2 rounded-md bg-rc-bg-alt p-2.5">
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      <label className="text-xs font-semibold text-rc-ink">
-                        {FEEDBACK_LABELS.who}
-                        <input
-                          value={f.who}
-                          onChange={(e) => setRow(i, "who", e.target.value)}
-                          className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
-                        />
-                      </label>
-                      <label className="text-xs font-semibold text-rc-ink">
-                        {FEEDBACK_LABELS.contact}
-                        <input
-                          value={f.contact}
-                          onChange={(e) => setRow(i, "contact", e.target.value)}
-                          className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
-                        />
-                      </label>
-                      <label className="text-xs font-semibold text-rc-ink">
-                        {FEEDBACK_LABELS.on}
-                        <input
-                          type="date"
-                          value={f.on}
-                          onChange={(e) => setRow(i, "on", e.target.value)}
-                          className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
-                        />
-                      </label>
-                    </div>
-                    {(["what", "why", "how"] as const).map((key) => (
-                      <label key={key} className="block text-xs font-semibold text-rc-ink">
-                        {FEEDBACK_LABELS[key]}
-                        <textarea
-                          rows={2}
-                          value={f[key]}
-                          onChange={(e) => setRow(i, key, e.target.value)}
-                          className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
-                        />
-                      </label>
-                    ))}
-                    {feedback.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setFeedback((rows) => rows.filter((_, j) => j !== i))}
-                        className="text-xs text-rc-muted hover:text-rc-ink hover:underline"
-                      >
-                        Remove this feedback
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setFeedback((rows) => [...rows, BLANK_FEEDBACK])}
-                  className="text-xs font-semibold text-rc-green-deep hover:underline"
-                >
-                  + Add more feedback
-                </button>
-
-                {/* Or a record of it attached, or where it's kept (Adam, 9 Nov 2026). */}
-                <div className="space-y-2 border-t border-rc-border pt-2.5">
-                  <div>
-                    <p className="text-xs font-semibold text-rc-ink">{FEEDBACK_FILE_LABEL}</p>
-                    <p className="text-[11px] text-rc-faint">{FEEDBACK_FILE_HINT}</p>
-                  </div>
-                  <input type="hidden" name="feedbackFilePath" value={feedbackFile?.path ?? ""} />
-                  <input type="hidden" name="feedbackFileName" value={feedbackFile?.name ?? ""} />
-                  {feedbackFile ? (
-                    <p className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="inline-flex items-center gap-1 font-semibold text-rc-ink">
-                        <Paperclip size={12} aria-hidden="true" /> {feedbackFile.name}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setFeedbackFile(null)}
-                        disabled={saving}
-                        className="text-rc-green-deep hover:underline disabled:opacity-60"
-                      >
-                        Remove
-                      </button>
-                    </p>
-                  ) : (
-                    <FileDropZone
-                      compact
-                      file={feedbackPicked}
-                      onFile={pickFeedbackFile}
-                      disabled={feedbackBusy || saving}
-                      label={feedbackBusy ? "Uploading…" : "Drag the record here, or click to browse"}
-                    />
-                  )}
-                  {feedbackError && (
-                    <p role="alert" className="text-xs font-medium text-rc-amber-deep">
-                      {feedbackError}
-                    </p>
-                  )}
-                  <label className="flex items-start gap-2.5 pt-1">
-                    <input
-                      type="checkbox"
-                      name="feedbackElsewhere"
-                      value="yes"
-                      checked={feedbackElsewhere}
-                      onChange={(e) => setFeedbackElsewhere(e.target.checked)}
-                      className="mt-0.5 shrink-0 accent-rc-green-deep"
-                    />
+              ) : (
+                underReforms &&
+                (stated.low === null || stated.high === null) && (
+                  <p className="mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-amber-deep">
+                    <AlertTriangle size={12} className="mt-0.5 shrink-0" />
                     <span>
-                      <span className="block text-sm text-rc-ink">{FEEDBACK_ELSEWHERE_LABEL}</span>
-                      <span className="block text-[11px] text-rc-faint">{FEEDBACK_ELSEWHERE_HINT}</span>
+                      If the notice doesn&rsquo;t state it, you can still save. The card stays open until you add a notice
+                      that does.
                     </span>
-                  </label>
-                  {feedbackElsewhere && (
-                    <>
-                      <input
-                        name="feedbackWhere"
-                        aria-label="Where the market feedback is recorded"
-                        placeholder={FEEDBACK_ELSEWHERE_PLACEHOLDER}
-                        className="w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
-                      />
-                      {/* Required with it (Adam, 9 Nov 2026). */}
-                      <label className="flex items-start gap-2.5">
-                        <input
-                          type="checkbox"
-                          name="feedbackElsewhereConfirmed"
-                          value="yes"
-                          className="mt-0.5 shrink-0 accent-rc-green-deep"
-                        />
-                        <span className="text-sm text-rc-ink">{FEEDBACK_ELSEWHERE_CONFIRM}</span>
-                      </label>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Its own comparable sales (Reg s12G(1)(a), (c), (d); 0120). */}
-          <RevisionComparablesFields
-            candidates={revisionComparables?.candidates ?? []}
-            previousAddresses={revisionComparables?.previousAddresses ?? []}
-            kind={areaKind}
-            givenOn={givenOn}
-            underReforms={underReforms}
-          />
-
-          {/* The evidence given to the seller (s72A; 0117): a file, or part of the notice. */}
-          <div className="space-y-2 rounded-md border border-rc-border px-3 py-2.5">
-            <div>
-              <p className="text-sm text-rc-ink">{EVIDENCE_LABEL}</p>
-              <p className="text-[11px] text-rc-faint">{EVIDENCE_HINT}</p>
+                  </p>
+                )
+              )}
             </div>
-            <input type="hidden" name="evidencePath" value={evidence?.path ?? ""} />
-            <input type="hidden" name="evidenceFileName" value={evidence?.name ?? ""} />
-            {evidence ? (
-              <p className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="inline-flex items-center gap-1 font-semibold text-rc-ink">
-                  <Paperclip size={12} aria-hidden="true" /> {evidence.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setEvidence(null)}
-                  disabled={saving}
-                  className="text-rc-green-deep hover:underline disabled:opacity-60"
-                >
-                  Remove
-                </button>
-              </p>
-            ) : (
-              !inNotice && (
-                <FileDropZone
-                  compact
-                  file={evidenceFile}
-                  onFile={pickEvidence}
-                  disabled={evidenceBusy || saving}
-                  label={evidenceBusy ? "Uploading…" : "Drag the evidence here, or click to browse"}
-                />
-              )
-            )}
-            {evidenceError && (
-              <p role="alert" className="text-xs font-medium text-rc-amber-deep">
-                {evidenceError}
-              </p>
-            )}
-            {!evidence && (
+
+            {/* The market feedback it responded to (Reg s12G(1)(f); 0117). */}
+            <div className="space-y-2 rounded-md border border-rc-border px-3 py-2.5">
               <label className="flex items-start gap-2.5">
                 <input
                   type="checkbox"
-                  name="evidenceInNotice"
+                  name="marketFeedbackTicked"
                   value="yes"
-                  checked={inNotice}
-                  onChange={(e) => setInNotice(e.target.checked)}
+                  checked={feedbackTicked}
+                  onChange={(e) => setFeedbackTicked(e.target.checked)}
                   className="mt-0.5 shrink-0 accent-rc-green-deep"
                 />
-                <span className="text-xs text-rc-ink">{EVIDENCE_IN_NOTICE_LABEL}</span>
+                <span>
+                  <span className="block text-sm text-rc-ink">{FEEDBACK_TICK}</span>
+                  <span className="block text-[11px] text-rc-faint">{FEEDBACK_HINT}</span>
+                </span>
               </label>
-            )}
-          </div>
+              <input type="hidden" name="marketFeedback" value={JSON.stringify(feedbackTicked ? feedback : [])} />
+              {feedbackTicked && (
+                <>
+                  {feedback.map((f, i) => (
+                    <div key={i} className="space-y-2 rounded-md bg-rc-bg-alt p-2.5">
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <label className="text-xs font-semibold text-rc-ink">
+                          {FEEDBACK_LABELS.who}
+                          <input
+                            value={f.who}
+                            onChange={(e) => setRow(i, "who", e.target.value)}
+                            className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
+                          />
+                        </label>
+                        <label className="text-xs font-semibold text-rc-ink">
+                          {FEEDBACK_LABELS.contact}
+                          <input
+                            value={f.contact}
+                            onChange={(e) => setRow(i, "contact", e.target.value)}
+                            className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
+                          />
+                        </label>
+                        <label className="text-xs font-semibold text-rc-ink">
+                          {FEEDBACK_LABELS.on}
+                          <input
+                            type="date"
+                            value={f.on}
+                            onChange={(e) => setRow(i, "on", e.target.value)}
+                            className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
+                          />
+                        </label>
+                      </div>
+                      {(["what", "why", "how"] as const).map((key) => (
+                        <label key={key} className="block text-xs font-semibold text-rc-ink">
+                          {FEEDBACK_LABELS[key]}
+                          <textarea
+                            rows={2}
+                            value={f[key]}
+                            onChange={(e) => setRow(i, key, e.target.value)}
+                            className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
+                          />
+                        </label>
+                      ))}
+                      {feedback.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setFeedback((rows) => rows.filter((_, j) => j !== i))}
+                          className="text-xs text-rc-muted hover:text-rc-ink hover:underline"
+                        >
+                          Remove this feedback
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setFeedback((rows) => [...rows, BLANK_FEEDBACK])}
+                    className="text-xs font-semibold text-rc-green-deep hover:underline"
+                  >
+                    + Add more feedback
+                  </button>
+
+                  {/* Or a record of it attached, or where it's kept (Adam, 9 Nov 2026). */}
+                  <div className="space-y-2 border-t border-rc-border pt-2.5">
+                    <div>
+                      <p className="text-xs font-semibold text-rc-ink">{FEEDBACK_FILE_LABEL}</p>
+                      <p className="text-[11px] text-rc-faint">{FEEDBACK_FILE_HINT}</p>
+                    </div>
+                    <input type="hidden" name="feedbackFilePath" value={feedbackFile?.path ?? ""} />
+                    <input type="hidden" name="feedbackFileName" value={feedbackFile?.name ?? ""} />
+                    {feedbackFile ? (
+                      <p className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="inline-flex items-center gap-1 font-semibold text-rc-ink">
+                          <Paperclip size={12} aria-hidden="true" /> {feedbackFile.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setFeedbackFile(null)}
+                          disabled={saving}
+                          className="text-rc-green-deep hover:underline disabled:opacity-60"
+                        >
+                          Remove
+                        </button>
+                      </p>
+                    ) : (
+                      <FileDropZone
+                        compact
+                        file={feedbackPicked}
+                        onFile={pickFeedbackFile}
+                        disabled={feedbackBusy || saving}
+                        label={feedbackBusy ? "Uploading…" : "Drag the record here, or click to browse"}
+                      />
+                    )}
+                    {feedbackError && (
+                      <p role="alert" className="text-xs font-medium text-rc-amber-deep">
+                        {feedbackError}
+                      </p>
+                    )}
+                    <label className="flex items-start gap-2.5 pt-1">
+                      <input
+                        type="checkbox"
+                        name="feedbackElsewhere"
+                        value="yes"
+                        checked={feedbackElsewhere}
+                        onChange={(e) => setFeedbackElsewhere(e.target.checked)}
+                        className="mt-0.5 shrink-0 accent-rc-green-deep"
+                      />
+                      <span>
+                        <span className="block text-sm text-rc-ink">{FEEDBACK_ELSEWHERE_LABEL}</span>
+                        <span className="block text-[11px] text-rc-faint">{FEEDBACK_ELSEWHERE_HINT}</span>
+                      </span>
+                    </label>
+                    {feedbackElsewhere && (
+                      <>
+                        <input
+                          name="feedbackWhere"
+                          aria-label="Where the market feedback is recorded"
+                          placeholder={FEEDBACK_ELSEWHERE_PLACEHOLDER}
+                          className="w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
+                        />
+                        {/* Required with it (Adam, 9 Nov 2026). */}
+                        <label className="flex items-start gap-2.5">
+                          <input
+                            type="checkbox"
+                            name="feedbackElsewhereConfirmed"
+                            value="yes"
+                            className="mt-0.5 shrink-0 accent-rc-green-deep"
+                          />
+                          <span className="text-sm text-rc-ink">{FEEDBACK_ELSEWHERE_CONFIRM}</span>
+                        </label>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Its own comparable sales (Reg s12G(1)(a), (c), (d); 0120). */}
+            <RevisionComparablesFields
+              candidates={revisionComparables?.candidates ?? []}
+              previousAddresses={revisionComparables?.previousAddresses ?? []}
+              kind={areaKind}
+              givenOn={givenOn}
+              underReforms={underReforms}
+            />
+
+            {/* The evidence given to the seller (s72A; 0117): a file, or part of the notice. */}
+            <div className="space-y-2 rounded-md border border-rc-border px-3 py-2.5">
+              <div>
+                <p className="text-sm text-rc-ink">{EVIDENCE_LABEL}</p>
+                <p className="text-[11px] text-rc-faint">{EVIDENCE_HINT}</p>
+              </div>
+              <input type="hidden" name="evidencePath" value={evidence?.path ?? ""} />
+              <input type="hidden" name="evidenceFileName" value={evidence?.name ?? ""} />
+              {evidence ? (
+                <p className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="inline-flex items-center gap-1 font-semibold text-rc-ink">
+                    <Paperclip size={12} aria-hidden="true" /> {evidence.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEvidence(null)}
+                    disabled={saving}
+                    className="text-rc-green-deep hover:underline disabled:opacity-60"
+                  >
+                    Remove
+                  </button>
+                </p>
+              ) : (
+                !inNotice && (
+                  <FileDropZone
+                    compact
+                    file={evidenceFile}
+                    onFile={pickEvidence}
+                    disabled={evidenceBusy || saving}
+                    label={evidenceBusy ? "Uploading…" : "Drag the evidence here, or click to browse"}
+                  />
+                )
+              )}
+              {evidenceError && (
+                <p role="alert" className="text-xs font-medium text-rc-amber-deep">
+                  {evidenceError}
+                </p>
+              )}
+              {!evidence && (
+                <label className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    name="evidenceInNotice"
+                    value="yes"
+                    checked={inNotice}
+                    onChange={(e) => setInNotice(e.target.checked)}
+                    className="mt-0.5 shrink-0 accent-rc-green-deep"
+                  />
+                  <span className="text-xs text-rc-ink">{EVIDENCE_IN_NOTICE_LABEL}</span>
+                </label>
+              )}
+            </div>
+            </>
+          ) : (
+            <>
+              <input type="hidden" name="previousEspLow" value={prevLow} />
+              <input type="hidden" name="previousEspHigh" value={prevHigh} />
+              <input type="hidden" name="evidencePath" value={evidence?.path ?? ""} />
+              <input type="hidden" name="evidenceFileName" value={evidence?.name ?? ""} />
+            </>
+          )}
 
           {/* The two things the notice can't prove about itself: one before it
               (s72A(5)), one after it (s73(3)). */}

@@ -19,7 +19,14 @@ import { getItem } from "@/lib/rules/nsw-sales";
 // off, and are shown and printed as a legacy mark. On any other file the card
 // shows as not complete and asks for the reasoning.
 //
-// THE RULE. Complete only when all three hold:
+// ⚠️ REVERSAL, 10 Nov 2026 (Adam, through Master): rule b is gone. Adam took
+// the on-market question off on 1 Nov 2026 "until the laws change", and the
+// 17 November law doesn't ask for it; the change never reached the code. The
+// card no longer asks what was on the market at signing, and its completion
+// doesn't wait for it. Listings and "none on the market" ticks already saved
+// are kept, and the compliance record still prints them.
+//
+// THE RULE (as it was). Complete only when all three hold:
 //   a. Reasoning is in RealComply: real text, not empty, whitespace or a
 //      placeholder such as "N/A". Since 14 Oct 2026 the agent ticks that it
 //      reflects their own opinion before the card can be marked done, however
@@ -103,9 +110,7 @@ export function espReasoningMissing(input: Omit<EspGateInput, "status"> & { stat
   const legacyElsewhere = data.loggedElsewhere === true && input.signedOff;
   if (!isRealReasoning(data.note) && !legacyElsewhere) missing.push(MISSING_REASONING);
 
-  const noneConfirmed = Boolean(data.noneOnMarket);
-  if (input.onMarketCount === 0 && !noneConfirmed) missing.push(MISSING_ON_MARKET);
-
+  // b. (on the market at signing) no longer asked: see the REVERSAL above.
   return missing;
 }
 

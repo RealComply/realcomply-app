@@ -54,6 +54,6 @@ export function advertisedPriceProblem(input: {
     if (!input.inAllMarketing) return TICK_MARKETING;
     return null;
   }
-  if (input.low != null && !input.inAllMarketing) return TICK_MARKETING;
+  // Before 17 November the tick isn't on the card (s72D starts then).
   return null;
 }

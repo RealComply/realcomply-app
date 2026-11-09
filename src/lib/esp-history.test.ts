@@ -141,12 +141,18 @@ describe("each revision: the ESP before it and the evidence (s72A(5); 0117)", ()
   it("the notice has to state the ESP before the revision from 17 November, and it should match the file", async () => {
     const { previousEspProblem, previousEspDiffers, PREVIOUS_ESP_MISSING } = await import("./esp-history");
     const none = { low: null, high: null };
-    assert.equal(previousEspProblem(none, "2026-11-17"), PREVIOUS_ESP_MISSING);
+    const after = new Date("2026-11-20T09:00:00+11:00");
+    assert.equal(previousEspProblem(none, "2026-11-17", after), PREVIOUS_ESP_MISSING);
     assert.match(PREVIOUS_ESP_MISSING, /\(s72A\)/);
-    assert.equal(previousEspProblem(none, "2026-11-16"), null, "a notice given before 17 November isn't asked for it");
+    assert.equal(previousEspProblem(none, "2026-11-16", after), null, "a notice given before 17 November isn't asked for it");
+    assert.equal(
+      previousEspProblem(none, "2026-11-20", new Date("2026-11-10T09:00:00+11:00")),
+      null,
+      "nothing before midnight on 17 November, whatever date was typed",
+    );
     assert.equal(previousEspProblem(none, null, new Date("2026-11-10T00:00:00+11:00")), null);
     assert.equal(previousEspProblem(none, null, new Date("2026-11-18T00:00:00+11:00")), PREVIOUS_ESP_MISSING);
-    assert.equal(previousEspProblem({ low: 1_400_000, high: 1_450_000 }, "2026-11-18"), null);
+    assert.equal(previousEspProblem({ low: 1_400_000, high: 1_450_000 }, "2026-11-18", after), null);
     const onFile = { low: 1_400_000, high: 1_450_000 };
     assert.equal(previousEspDiffers({ low: 1_400_000, high: 1_450_000 }, onFile), null);
     assert.equal(
@@ -159,10 +165,16 @@ describe("each revision: the ESP before it and the evidence (s72A(5); 0117)", ()
 
   it("the evidence is a file or part of the notice, from 17 November", async () => {
     const { revisionEvidenceProblem, EVIDENCE_MISSING } = await import("./esp-history");
-    assert.equal(revisionEvidenceProblem({ evidencePath: null, inNotice: false, givenOn: "2026-11-17" }), EVIDENCE_MISSING);
-    assert.equal(revisionEvidenceProblem({ evidencePath: "o/p/d3/e.pdf", inNotice: false, givenOn: "2026-11-17" }), null);
-    assert.equal(revisionEvidenceProblem({ evidencePath: null, inNotice: true, givenOn: "2026-11-17" }), null);
-    assert.equal(revisionEvidenceProblem({ evidencePath: null, inNotice: false, givenOn: "2026-11-16" }), null);
+    const after = new Date("2026-11-20T09:00:00+11:00");
+    assert.equal(revisionEvidenceProblem({ evidencePath: null, inNotice: false, givenOn: "2026-11-17" }, after), EVIDENCE_MISSING);
+    assert.equal(revisionEvidenceProblem({ evidencePath: "o/p/d3/e.pdf", inNotice: false, givenOn: "2026-11-17" }, after), null);
+    assert.equal(revisionEvidenceProblem({ evidencePath: null, inNotice: true, givenOn: "2026-11-17" }, after), null);
+    assert.equal(revisionEvidenceProblem({ evidencePath: null, inNotice: false, givenOn: "2026-11-16" }, after), null);
+    assert.equal(
+      revisionEvidenceProblem({ evidencePath: null, inNotice: false, givenOn: "2026-11-20" }, new Date("2026-11-10T09:00:00+11:00")),
+      null,
+      "nothing before midnight on 17 November",
+    );
   });
 
   it("the history shows the ESP before it and the evidence", async () => {

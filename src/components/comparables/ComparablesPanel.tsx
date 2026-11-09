@@ -120,7 +120,10 @@ export function ComparablesPanel({
       ) : (
         <div className="space-y-2">
           <WeighingCounter comparables={comparables} />
-          <MostComparableSummary comparables={comparables} area={area} />
+          {/* The 17 November rules (Reg s12C to s12F; 0119): only on a listing
+              whose ESP falls under them, never before midnight Sydney on 17
+              November 2026 (Master, 10 Nov 2026). What's marked is kept. */}
+          {area?.applies && <MostComparableSummary comparables={comparables} area={area} />}
           {comparables.map((c) => (
             <ComparableRow
               key={c.id}
@@ -147,7 +150,7 @@ export function ComparablesPanel({
         </button>
       )}
 
-      <ComparablesRecordForm propertyId={propertyId} record={record} markedCount={markedCount} />
+      {area?.applies && <ComparablesRecordForm propertyId={propertyId} record={record} markedCount={markedCount} />}
     </div>
   );
 }
@@ -401,7 +404,7 @@ function ComparableRow({
           </span>
           <span className="min-w-0 truncate text-[13px] font-semibold text-rc-ink">{comparable.address}</span>
           <MarkLabel weighting={comparable.weighting} />
-          {comparable.mostComparable && (
+          {area?.applies && comparable.mostComparable && (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-rc-green-deep bg-white px-2 py-0.5 text-[10px] font-bold text-rc-green-deep">
               <Star size={10} className="fill-current" aria-hidden="true" />
               Most comparable
@@ -436,7 +439,7 @@ function ComparableRow({
           {comparable.source === "agent" && (
             <p className="mt-0.5 text-[11px] text-rc-faint">Added by you, not from the report.</p>
           )}
-          <WindowTag comparable={comparable} area={area} />
+          {area?.applies && <WindowTag comparable={comparable} area={area} />}
         </div>
         {/* Only the licensee removes a row (Adam, 9 Oct 2026). */}
         {actsAsLicensee && (
@@ -556,7 +559,7 @@ function ComparableRow({
         )}
       </div>
 
-      <MostComparableMark propertyId={propertyId} comparable={comparable} markedCount={markedCount} />
+      {area?.applies && <MostComparableMark propertyId={propertyId} comparable={comparable} markedCount={markedCount} />}
 
       {comparable.weighting && (
         <div className="mt-2">

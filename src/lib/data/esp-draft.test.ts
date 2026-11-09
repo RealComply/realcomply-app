@@ -203,9 +203,10 @@ describe("Draft my reasoning", () => {
     assert.doesNotMatch(d.sections.market, /estimate/i);
   });
 
-  it("no on-market listings recorded: says none are recorded, claims nothing more", () => {
+  it("no on-market listings recorded: says nothing about the market (the card no longer asks, 10 Nov 2026)", () => {
     const d = draft(input({ listings: [] }));
-    assert.equal(d.sections.market, "No properties on the market at the agreement date (12 August 2026) are recorded in this file.");
+    assert.equal(d.sections.market, "");
+    assert.doesNotMatch(d.text, /on the market/i);
   });
 
   it('"none" confirmed: states the agent checked and there were none', () => {

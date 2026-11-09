@@ -57,7 +57,16 @@ function YesNo({ name, label, value }: { name: string; label: string; value: boo
 // this box since 3 Oct 2026 (it used to be a box at the bottom of the property
 // page — see DeletePropertySection). It sits outside the details <form>
 // because it is a form of its own and forms cannot nest.
-export function EditPropertyDetails({ property, canDelete = false }: { property: Property; canDelete?: boolean }) {
+export function EditPropertyDetails({
+  property,
+  canDelete = false,
+  showCouncilArea = false,
+}: {
+  property: Property;
+  canDelete?: boolean;
+  /** The council area is a 17 November step (Reg s12A): asked only then (Master, 10 Nov 2026). */
+  showCouncilArea?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const action = updatePropertyDetails.bind(null, property.id);
@@ -158,22 +167,29 @@ export function EditPropertyDetails({ property, canDelete = false }: { property:
 
           {/* Metro or non-metro (Reg s12A; 0118). Read off the planning
               certificate when the contract is read; changed here. Only a
-              change is saved, so one read off the certificate stays so. */}
-          <label htmlFor="councilArea" className="mt-3 block text-xs font-medium text-rc-muted">
-            {COUNCIL_AREA_LABEL}
-          </label>
-          <input type="hidden" name="councilAreaWas" value={property.council_area ?? ""} />
-          <CouncilAreaSelect
-            id="councilArea"
-            defaultValue={property.council_area}
-            className="mt-1"
-            emptyLabel="Not chosen yet"
-          />
-          <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-            {councilKind ? `${property.council_area} is ${areaName(councilKind)} (Reg s12A). ` : ""}
-            It&rsquo;s on the planning certificate in the contract, and decides how far, and how far back, to look for
-            comparable sales.
-          </p>
+              change is saved, so one read off the certificate stays so.
+              Only where the 17 November rules apply to the listing's ESP, and
+              never before then (Master, 10 Nov 2026): without the field, a
+              save leaves the council area as it is. */}
+          {showCouncilArea && (
+            <>
+              <label htmlFor="councilArea" className="mt-3 block text-xs font-medium text-rc-muted">
+                {COUNCIL_AREA_LABEL}
+              </label>
+              <input type="hidden" name="councilAreaWas" value={property.council_area ?? ""} />
+              <CouncilAreaSelect
+                id="councilArea"
+                defaultValue={property.council_area}
+                className="mt-1"
+                emptyLabel="Not chosen yet"
+              />
+              <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
+                {councilKind ? `${property.council_area} is ${areaName(councilKind)} (Reg s12A). ` : ""}
+                It&rsquo;s on the planning certificate in the contract, and decides how far, and how far back, to look
+                for comparable sales.
+              </p>
+            </>
+          )}
 
           <div className="mt-4">
             <PropertyFigures
