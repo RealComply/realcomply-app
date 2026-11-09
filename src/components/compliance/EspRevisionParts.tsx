@@ -24,6 +24,7 @@ import {
   type EspVersion,
   type PendingRevision,
 } from "@/lib/esp-history";
+import { FEEDBACK_HINT, FEEDBACK_LABELS, FEEDBACK_TICK, feedbackFrom } from "@/lib/rules/market-feedback";
 
 // The parts of the ESP revision card (Adam, 3 Nov 2026; the approved mockup;
 // 0110): every version, newest first; the notice upload; and the draft, read
@@ -108,6 +109,24 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
             {v.file && <FileLink url={view.fileUrls[v.file.path]} name={v.file.name} />}
             {v.evidence && <FileLink url={view.fileUrls[v.evidence.path]} name={`Evidence: ${v.evidence.name}`} />}
           </span>
+          {/* The market feedback it responded to (Reg s12G(1)(f)). */}
+          {v.feedback && v.feedback.length > 0 && (
+            <div className="col-span-2 mt-1 space-y-2 rounded-lg border border-rc-border bg-white px-2.5 py-2 text-xs">
+              <p className="font-semibold text-rc-ink">Market feedback it responded to</p>
+              {v.feedback.map((f, i) => (
+                <div key={i} className="space-y-0.5 text-rc-muted">
+                  <p className="font-semibold text-rc-ink">{feedbackFrom(f)}</p>
+                  <p>{f.what}</p>
+                  <p>
+                    <span className="font-semibold">Why used:</span> {f.why}
+                  </p>
+                  <p>
+                    <span className="font-semibold">How used:</span> {f.how}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </li>
       ))}
     </ul>
@@ -184,6 +203,10 @@ export function EspNoticeUpload({
 }
 
 const asTyped = (n: number | null) => (n == null ? "" : n.toLocaleString("en-AU"));
+
+/** One piece of market feedback, as typed (Reg s12G(1)(f)). */
+type FeedbackRow = { who: string; contact: string; on: string; what: string; why: string; how: string };
+const BLANK_FEEDBACK: FeedbackRow = { who: "", contact: "", on: "", what: "", why: "", how: "" };
 const typed = (raw: string) => {
   const n = Number(raw.replace(/[^0-9.]/g, ""));
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -242,6 +265,12 @@ export function EspDraftForm({
   const [evidenceBusy, setEvidenceBusy] = useState(false);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [inNotice, setInNotice] = useState(false);
+  // The market feedback it responded to (Reg s12G(1)(f)): entered here, as a
+  // revision can't be changed once recorded.
+  const [feedbackTicked, setFeedbackTicked] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackRow[]>([BLANK_FEEDBACK]);
+  const setRow = (i: number, key: keyof FeedbackRow, value: string) =>
+    setFeedback((rows) => rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
   const pickEvidence = async (file: File | null) => {
     setEvidenceFile(file);
     setEvidenceError(null);
@@ -385,6 +414,87 @@ export function EspDraftForm({
                   </span>
                 </p>
               )
+            )}
+          </div>
+
+          {/* The market feedback it responded to (Reg s12G(1)(f); 0117). */}
+          <div className="space-y-2 rounded-md border border-rc-border px-3 py-2.5">
+            <label className="flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                name="marketFeedbackTicked"
+                value="yes"
+                checked={feedbackTicked}
+                onChange={(e) => setFeedbackTicked(e.target.checked)}
+                className="mt-0.5 shrink-0 accent-rc-green-deep"
+              />
+              <span>
+                <span className="block text-sm text-rc-ink">{FEEDBACK_TICK}</span>
+                <span className="block text-[11px] text-rc-faint">{FEEDBACK_HINT}</span>
+              </span>
+            </label>
+            <input type="hidden" name="marketFeedback" value={JSON.stringify(feedbackTicked ? feedback : [])} />
+            {feedbackTicked && (
+              <>
+                {feedback.map((f, i) => (
+                  <div key={i} className="space-y-2 rounded-md bg-rc-bg-alt p-2.5">
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <label className="text-xs font-semibold text-rc-ink">
+                        {FEEDBACK_LABELS.who}
+                        <input
+                          value={f.who}
+                          onChange={(e) => setRow(i, "who", e.target.value)}
+                          className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
+                        />
+                      </label>
+                      <label className="text-xs font-semibold text-rc-ink">
+                        {FEEDBACK_LABELS.contact}
+                        <input
+                          value={f.contact}
+                          onChange={(e) => setRow(i, "contact", e.target.value)}
+                          className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
+                        />
+                      </label>
+                      <label className="text-xs font-semibold text-rc-ink">
+                        {FEEDBACK_LABELS.on}
+                        <input
+                          type="date"
+                          value={f.on}
+                          onChange={(e) => setRow(i, "on", e.target.value)}
+                          className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
+                        />
+                      </label>
+                    </div>
+                    {(["what", "why", "how"] as const).map((key) => (
+                      <label key={key} className="block text-xs font-semibold text-rc-ink">
+                        {FEEDBACK_LABELS[key]}
+                        <textarea
+                          rows={2}
+                          value={f[key]}
+                          onChange={(e) => setRow(i, key, e.target.value)}
+                          className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"
+                        />
+                      </label>
+                    ))}
+                    {feedback.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setFeedback((rows) => rows.filter((_, j) => j !== i))}
+                        className="text-xs text-rc-muted hover:text-rc-ink hover:underline"
+                      >
+                        Remove this feedback
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setFeedback((rows) => [...rows, BLANK_FEEDBACK])}
+                  className="text-xs font-semibold text-rc-green-deep hover:underline"
+                >
+                  + Add more feedback
+                </button>
+              </>
             )}
           </div>
 

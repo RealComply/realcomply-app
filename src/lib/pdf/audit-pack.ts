@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { withdrawalHistory } from "@/lib/data/withdrawals";
 import { withdrawalRecordLines } from "@/lib/rules/listing-tabs";
 import { keepUntilLineFor } from "@/lib/rules/agreement-keep-until";
+import { feedbackRecordLine } from "@/lib/rules/market-feedback";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import {
@@ -308,6 +309,7 @@ export async function buildAuditPack(
     items,
     byKey,
     espReasoning: noteOf("a4c"),
+    espFeedbackLines: revisions.flatMap((r) => (r.marketFeedback ?? []).map((f) => feedbackRecordLine(r.no, f))),
     withdrawalLines,
     agreementKeepUntil: keepUntilLineFor(
       { a3: byKey["a3"], d3: byKey["d3"], f5: byKey["f5"] },

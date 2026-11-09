@@ -195,3 +195,18 @@ describe("each revision: the ESP before it and the evidence (s72A(5); 0117)", ()
     assert.ok(two.lines.includes("Evidence: in the notice"));
   });
 });
+
+describe("market feedback on a revision (Reg s12G(1)(f))", () => {
+  it("is read off the revision and shown with its version", async () => {
+    const { revisionFrom, espVersions } = await import("./esp-history");
+    const r = revisionFrom({
+      revision_no: 1, esp_low: 1_300_000, esp_high: 1_360_000, notice_given_on: "2026-11-25", notice_path: "o/p/d3/n.pdf",
+      notice_file_name: "Notice.pdf", entered_manually: false, recorded_by_name: "Ana Agent", recorded_at: "2026-11-25T01:00:00Z",
+      market_feedback: [{ who: "Sam Buyer (made up)", contact: null, on: "2026-11-24", what: "Kitchen needs work.", why: "Three buyers said so.", how: "Lowered the top." }],
+    });
+    assert.ok(r);
+    assert.equal(r!.marketFeedback?.length, 1);
+    const [latest] = espVersions({ low: 1_400_000, high: 1_450_000, agreementDate: null, file: null }, [r!]);
+    assert.equal(latest.feedback?.[0].who, "Sam Buyer (made up)");
+  });
+});
