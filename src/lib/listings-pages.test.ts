@@ -57,7 +57,7 @@ test("found nowhere: every look is kept, and the listing says why", async () => 
   const line = searchLine({ at: "2026-11-02T20:00:30Z", tries: result.tries });
   assert.equal(
     line,
-    "This listing's page wasn't found on 3 November 2026. Looked at the agent's own listings page: the page had no links to listings that RealComply could read; the office listings page: the website turned RealComply's check away.",
+    "This listing's page wasn't found on 3 November 2026. Looked at the agent's personal listings page: the page had no links to listings that RealComply could read; the office's listings page: the website turned RealComply's check away.",
   );
   assert.equal(searchLine({ at: "2026-11-02T20:00:30Z", tries: [{ page: "office", result: "found" }] }), null);
   assert.equal(searchLine(null), null);

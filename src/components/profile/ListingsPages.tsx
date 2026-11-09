@@ -2,7 +2,7 @@
 
 import { useActionState, useRef, useState, useTransition } from "react";
 import { keepListingsPage, saveListingsPage, type ListingsPageState } from "@/lib/actions/listings-pages";
-import { AGENTS_PAGES_HELP, MY_LISTINGS_PAGE_HELP, NOT_SET_LINE } from "@/lib/listings-pages";
+import { AGENTS_PAGES_HELP, AGENTS_PAGES_TITLE, NOT_SET_LINE, PERSONAL_PAGE_HELP, PERSONAL_PAGE_LABEL } from "@/lib/listings-pages";
 
 // An agent's own listings page for the daily price check (Adam, 2 Nov 2026;
 // 0105). "My listings page" on Profile settings; "Agents' own listings pages"
@@ -77,7 +77,7 @@ function CheckAndWarning({ state, onUpdate }: { state: PageState; onUpdate: () =
   );
 }
 
-/** "My listings page", in Your details, for anyone who lists properties. */
+/** The personal listings page, in My details, for anyone who lists properties (Adam, 8 Nov 2026: the sign-up's words). */
 export function MyListingsPageField({ current, state }: { current: string | null; state: PageState }) {
   const [result, action, pending] = useActionState<ListingsPageState, FormData>(saveListingsPage, {
     error: null,
@@ -87,9 +87,9 @@ export function MyListingsPageField({ current, state }: { current: string | null
   return (
     <form action={action} className="mt-5 border-t border-rc-border pt-4">
       <label htmlFor="myListingsPage" className="block text-sm font-semibold text-rc-ink">
-        My listings page
+        {PERSONAL_PAGE_LABEL}
       </label>
-      <p className="mt-1 text-xs leading-relaxed text-rc-muted">{MY_LISTINGS_PAGE_HELP}</p>
+      <p className="mt-1 text-xs leading-relaxed text-rc-muted">{PERSONAL_PAGE_HELP}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
           ref={input}
@@ -178,7 +178,7 @@ function AgentRow({ row }: { row: AgentPageRow }) {
         <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
           <input type="hidden" name="profileId" value={row.profileId} />
           <label htmlFor={fieldId} className="sr-only">
-            {row.name}&rsquo;s listings page
+            {row.name}&rsquo;s personal listings page
           </label>
           <input
             id={fieldId}
@@ -215,7 +215,7 @@ function AgentRow({ row }: { row: AgentPageRow }) {
 export function AgentsListingsPagesCard({ rows }: { rows: AgentPageRow[] }) {
   return (
     <div className="rounded-card border border-rc-border bg-white p-4 shadow-card">
-      <h3 className="text-sm font-semibold text-rc-ink">Agents&rsquo; own listings pages</h3>
+      <h3 className="text-sm font-semibold text-rc-ink">{AGENTS_PAGES_TITLE}</h3>
       <p className="mt-1 text-xs leading-relaxed text-rc-muted">{AGENTS_PAGES_HELP}</p>
       {rows.length === 0 ? (
         <p className="mt-3 text-sm text-rc-muted">No agents in the office yet.</p>

@@ -77,7 +77,7 @@ export function ListingScanPanel({
           <p className="text-xs font-medium text-rc-muted">The live ad</p>
           {!finding && notFound && (
             <p className="mt-1 text-[11px] leading-relaxed text-rc-amber-deep">
-              {notFound} Add your own listings page in Profile settings, or paste this listing&rsquo;s link in Edit
+              {notFound} Add your personal listings page in Profile settings, or paste this listing&rsquo;s link in Edit
               listing details.
             </p>
           )}
