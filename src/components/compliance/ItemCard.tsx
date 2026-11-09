@@ -97,6 +97,7 @@ import { CONTRACT_KEY } from "@/lib/rules/contract-before-market";
 import { ContractNeededNote } from "@/components/compliance/ContractNeededNote";
 import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
+import { priceFromText } from "@/lib/rules/advertised-price";
 
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
 import { MarketListingsPanel } from "@/components/comparables/MarketListingsPanel";
@@ -1949,6 +1950,7 @@ function GuideItem({
   current,
   espItem,
   revisionItem,
+  agreementItem,
 }: {
   item: ComplianceItem;
   propertyId: string;
@@ -1956,6 +1958,8 @@ function GuideItem({
   espItem?: PropertyItem;
   /** The ESP revision card (d3): its latest revision is the ESP now (Adam, 3 Nov 2026). */
   revisionItem?: PropertyItem;
+  /** The agency agreement card (a3): the price it says the property is offered at (Adam, 9 Nov 2026). */
+  agreementItem?: PropertyItem;
 }) {
   const boundAction = setItemStatus.bind(null, propertyId, item.key);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
@@ -1971,7 +1975,19 @@ function GuideItem({
     // to the ESP every time the card re-renders.
     guideLow?: number | null;
     guideHigh?: number | null;
+    /** "This price is shown in all the required marketing material" (Adam, 9 Nov 2026). */
+    priceInAllMarketing?: boolean;
   };
+  // The advertised price, read from the agency agreement (Adam, 9 Nov 2026,
+  // for s72D from 17 Nov): pre-filled when the agreement states one, asked
+  // for when it doesn't (usually an auction). REVERSAL: was pre-filled from
+  // the ESP (Adam, 3 Sep 2026). The ESP is still shown above it.
+  const agreementPrice = priceFromText(
+    (agreementItem?.data as { aiDraft?: { offerPrice?: string } } | undefined)?.aiDraft?.offerPrice,
+  );
+  const saved = data.guideLow != null;
+  const startLow = saved ? data.guideLow : (agreementPrice?.low ?? null);
+  const startHigh = saved ? (data.guideHigh ?? data.guideLow) : (agreementPrice?.high ?? null);
   // The latest ESP, the same one the check uses (espFrom): the latest
   // revision when there is one, else the agency agreement's (Adam, 3 Nov
   // 2026: this card showed the original after a revision).
@@ -2000,13 +2016,20 @@ function GuideItem({
           {latestEsp.revised ? "Latest ESP (revised)" : "Recorded ESP"}{" "}
           <span className="font-semibold text-rc-ink">
             ${esp.espLow.toLocaleString()}
-            {esp.espHigh && esp.espHigh !== esp.espLow ? ` – $${esp.espHigh.toLocaleString()}` : ""}
+            {esp.espHigh && esp.espHigh !== esp.espLow ? ` to $${esp.espHigh.toLocaleString()}` : ""}
           </span>
-          . The guide below is pre-filled from it — change it if the ad says something different.
+          . The advertised price can&rsquo;t be below it.
         </p>
       )}
       <form action={formAction} className="mt-2 space-y-3">
-        <div className="flex gap-3">
+        <p className="text-xs text-rc-muted">
+          {saved
+            ? "The advertised price you recorded. Change it if the ads change."
+            : agreementPrice
+              ? "Read from the agency agreement. Change it if the ads say something different."
+              : "The agency agreement doesn’t give a price. Enter the price or price range in the ads."}
+        </p>
+        <div className="flex flex-wrap gap-3">
           {/* PRE-FILLED, not placeholdered. Adam, 3 Sep 2026: "pre load for
               agent to confirm. the light grey text isnt obvious enough. it
               still feel like you have to enter manually."
@@ -2020,23 +2043,37 @@ function GuideItem({
 
               Keyed on the ESP so the default follows a revision rather than
               freezing at whatever was recorded the first time this rendered. */}
-          <input
-            key={`gl-${esp.espLow ?? "none"}`}
-            type="number"
-            name="guideLow"
-            defaultValue={data.guideLow ?? esp.espLow ?? ""}
-            placeholder="Guide low"
-            className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm"
-          />
-          <input
-            key={`gh-${esp.espHigh ?? "none"}`}
-            type="number"
-            name="guideHigh"
-            defaultValue={data.guideHigh ?? esp.espHigh ?? ""}
-            placeholder="Guide high (optional)"
-            className="w-32 rounded-md border border-rc-border px-2 py-1 text-sm"
-          />
+          <label className="block text-xs font-semibold text-rc-ink">
+            Advertised price from
+            <input
+              key={`gl-${startLow ?? "none"}`}
+              type="number"
+              name="guideLow"
+              defaultValue={startLow ?? ""}
+              className="mt-1 block w-36 rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-rc-ink">
+            To <span className="font-normal text-rc-faint">(for a range)</span>
+            <input
+              key={`gh-${startHigh ?? "none"}`}
+              type="number"
+              name="guideHigh"
+              defaultValue={startHigh ?? ""}
+              className="mt-1 block w-36 rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
+            />
+          </label>
         </div>
+        <label className="flex items-start gap-2 text-sm text-rc-ink">
+          <input
+            type="checkbox"
+            name="priceInAllMarketing"
+            value="yes"
+            defaultChecked={data.priceInAllMarketing === true}
+            className="mt-0.5 shrink-0 accent-rc-green-deep"
+          />
+          <span>This price is shown in all the required marketing material</span>
+        </label>
         <DictatableTextarea name="note" defaultValue={data.note ?? ""} placeholder="Exact wording used in the ad" rows={2} className="w-full rounded-md border border-rc-border px-2 py-1 text-sm" />
         {/* Same state-aware treatment as ChecklistItem. This one stays fully
             usable once recorded, because re-recording is a real action here (a
@@ -2054,7 +2091,7 @@ function GuideItem({
                 : "rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
             }
           >
-            Record guide
+            Record advertised price
           </button>
         </div>
       </form>
@@ -4345,6 +4382,7 @@ function ItemCardBody({
           current={current}
           espItem={allItems["a4"]}
           revisionItem={allItems["d3"]}
+          agreementItem={allItems["a3"]}
         />
       );
     case "checklist":
