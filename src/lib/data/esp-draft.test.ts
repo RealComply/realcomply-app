@@ -39,6 +39,9 @@ function sale(over: Partial<Comparable>): Comparable {
     weighting: null,
     agentNote: null,
     position: seq,
+    mostComparable: false,
+    mostComparableReason: null,
+    comparisonFactors: [],
     ...over,
   };
 }

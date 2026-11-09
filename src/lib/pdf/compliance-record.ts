@@ -388,6 +388,8 @@ export type ComplianceRecordInput = {
   espFeedbackLines?: string[];
   /** Under the comparables card: the council area, metro or non-metro, and where to look (Reg s12A, s12D; 0118). */
   councilAreaLines?: string[];
+  /** Under the comparables card: how many are the most comparable, why fewer than 3, the information used (Reg s12C, s12F; 0119). */
+  comparablesLines?: string[];
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
   loadDocument?: (doc: PackDocument) => Promise<LoadedDocument>;
@@ -424,6 +426,8 @@ export type ComparableForRecord = {
   saleDate: string | null;
   weighting: "relied" | "considered" | "not_comparable" | null;
   agentNote: string | null;
+  /** Where it sits against the search area, and why it's one of the 3 most comparable (Reg s12D, s12F; 0119). */
+  ruleLines?: string[];
 };
 
 export type MarketListingForRecord = {
@@ -680,6 +684,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       if (item.key === "a4c" && input.councilAreaLines) {
         for (const line of input.councilAreaLines) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
       }
+      // The 3 most comparable, fewer than 3, and the information used (Reg s12C and s12F; 0119).
+      if (item.key === "a4c" && input.comparablesLines) {
+        for (const line of input.comparablesLines) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+      }
       // How long to keep the agreement (Reg s8A, from 17 Nov 2026).
       if (item.key === "a3" && input.agreementKeepUntil) {
         c.text(input.agreementKeepUntil, { size: 8.5, color: MUTED, indent: 12 });
@@ -758,6 +766,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       if (comp.agentNote?.trim()) {
         c.text(comp.agentNote.trim(), { size: 8.5, color: MUTED, indent: 12 });
       }
+      for (const line of comp.ruleLines ?? []) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
       c.y -= 4;
     }
     c.text(

@@ -2,7 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { withdrawalHistory } from "@/lib/data/withdrawals";
 import { withdrawalRecordLines } from "@/lib/rules/listing-tabs";
 import { keepUntilLineFor } from "@/lib/rules/agreement-keep-until";
-import { councilAreaRecordLines } from "@/lib/rules/council-area";
+import { areaOf, councilAreaRecordLines } from "@/lib/rules/council-area";
+import {
+  comparablesRecordLines,
+  comparablesRecordOf,
+  comparablesRulesApply,
+  espDeterminedOn,
+  saleRecordLines,
+} from "@/lib/rules/comparables-rules";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 import { espGivenApplies } from "@/lib/rules/esp-given-before-signing";
 import { feedbackRecordLine, feedbackRecordLines } from "@/lib/rules/market-feedback";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
@@ -322,6 +330,28 @@ export async function buildAuditPack(
   }
 
   const generatedAt = new Date();
+
+  // The comparable sales against the 17 November rules (Reg s12C to s12F;
+  // 0119): the search area for metro or not, counted back from the date the
+  // ESP was worked out; and on the card, the 3 most comparable, fewer than 3
+  // and the information used, where the rules apply or anything was recorded.
+  const comparables = await comparablesFor(supabase, id);
+  const comparablesKind = areaOf(p.council_area);
+  const comparablesAsAt = espDeterminedOn({
+    espGivenOn: (byKey["a4"]?.data as { espGivenOn?: unknown } | undefined)?.espGivenOn,
+    agreementDate: byKey["a3"]?.event_date,
+    today: sydneyDate(generatedAt),
+  });
+  const comparablesRecord = comparablesRecordOf(byKey["a4c"]?.data);
+  const mostComparableCount = comparables.filter((c) => c.mostComparable).length;
+  const comparablesLines =
+    comparablesRulesApply(byKey["a3"]?.event_date, generatedAt) ||
+    mostComparableCount > 0 ||
+    comparablesRecord.informationUsed ||
+    comparablesRecord.fewerThanThreeReason
+      ? comparablesRecordLines(comparablesRecord, mostComparableCount)
+      : undefined;
+
   const pdf = await buildComplianceRecordPdf({
     property: p,
     agencyName,
@@ -365,13 +395,15 @@ export async function buildAuditPack(
         : null,
     // The sales the agent weighed. Part of the methodology record, not a
     // nicety — see the field note on ComplianceRecordInput.
-    comparables: (await comparablesFor(supabase, id)).map((c) => ({
+    comparables: comparables.map((c) => ({
       address: c.address,
       salePrice: c.salePrice,
       saleDate: c.saleDate,
       weighting: c.weighting,
       agentNote: c.agentNote,
+      ruleLines: saleRecordLines(c, comparablesKind, comparablesAsAt),
     })),
+    comparablesLines,
     // The competition, as at the agency agreement date (29 Sep 2026).
     marketListings: listings.map((l) => ({
       address: l.address,
