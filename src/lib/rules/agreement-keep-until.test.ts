@@ -16,7 +16,12 @@ const none = { signedOn: null, lastAmendedOn: null, settledOn: null, withdrawnOn
 
 describe("keeping the agency agreement (Reg s8A, from 17 Nov 2026)", () => {
   it("covers agreements signed or amended from 17 November; no signing date yet counts from today", () => {
-    assert.equal(s8aApplies({ signedOn: "2026-11-17", lastAmendedOn: null }, before17), true);
+    assert.equal(s8aApplies({ signedOn: "2026-11-17", lastAmendedOn: null }, after17), true);
+    assert.equal(
+      s8aApplies({ signedOn: "2026-11-17", lastAmendedOn: null }, before17),
+      false,
+      "nothing before midnight on 17 November, whatever date was typed",
+    );
     assert.equal(s8aApplies({ signedOn: "2026-11-16", lastAmendedOn: null }, after17), false);
     assert.equal(s8aApplies({ signedOn: "2026-10-01", lastAmendedOn: "2026-11-18" }, after17), true, "an ESP revision amends it");
     assert.equal(s8aApplies({ signedOn: "2026-10-01", lastAmendedOn: "2026-11-10" }, after17), false);
