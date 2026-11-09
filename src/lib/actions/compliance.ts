@@ -39,6 +39,7 @@ import { checkSalePrice } from "@/lib/rules/sale-price";
 import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { bannedPriceWording } from "@/lib/rules/underquoting-reforms";
+import { advertisedPriceProblem } from "@/lib/rules/advertised-price";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
 import { CANCELS_SIGNOFF, MARK_DONE_AGAIN_KEYS, ONLY_LICENSEE_SIGNOFF } from "@/lib/rules/reopen";
@@ -731,6 +732,16 @@ export async function setItemStatus(
     const guideHigh = Number(formData.get("guideHigh") ?? guideLow ?? 0) || guideLow;
     data.guideLow = guideLow;
     data.guideHigh = guideHigh;
+
+    // The advertised price card (Adam, 9 Nov 2026): from 17 Nov the price and
+    // "This price is shown in all the required marketing material" are both
+    // needed (s72D). Only for recording it; reopening stays possible.
+    const priceInAllMarketing = formData.get("priceInAllMarketing") === "yes";
+    data.priceInAllMarketing = priceInAllMarketing;
+    if (status === "done") {
+      const problem = advertisedPriceProblem({ low: guideLow, inAllMarketing: priceInAllMarketing });
+      if (problem) return { error: problem };
+    }
 
     // The price currently on foot, not the one from listing set-up. A
     // campaign where the ESP was revised in week six spent the rest of its

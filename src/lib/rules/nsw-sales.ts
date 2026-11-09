@@ -1227,9 +1227,12 @@ const items: ComplianceItem[] = [
     key: "c1",
     stage: 2,
     kind: "guide",
-    label: "Advertised price guide vs ESP",
+    // Renamed from "Advertised price guide vs ESP" (Adam, 9 Nov 2026): the
+    // price is now read from the agency agreement and confirmed, with a tick
+    // that it is in all the required marketing material (s72D, 17 Nov 2026).
+    label: "Advertised price",
     description:
-      "Record the advertised guide. It must not be below the ESP, must not use banned price wording (\"offers over\", \"O.N.O.\", a plus sign such as \"$900,000+\"), and if it's a range, its top must be no more than 10% above its bottom.",
+      "The price or price range in the ads, read from the agency agreement where it gives one. From 17 November 2026 every ad needs one (s72D). It must not be below the ESP or use banned price wording (\"offers over\", \"O.N.O.\", a plus sign such as \"$900,000+\").",
     legalBasis: "s73 / s73A, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
