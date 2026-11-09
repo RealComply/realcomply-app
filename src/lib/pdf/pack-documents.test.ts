@@ -186,3 +186,32 @@ test("a pack over the holding area's limit is refused before anything is uploade
   await assert.rejects(storeAuditPack(service, { pdf, filename: "x.pdf" }, { agencyId: "a", propertyId: "p" }), /over the holding area's limit/);
   assert.equal(uploads, 0);
 });
+
+test("the ESP notice on the ESP card goes in just after the report (s72A(2), from 17 Nov 2026)", () => {
+  const items = allItemsInRuleset();
+  const docs = packDocumentsFor(
+    items,
+    {
+      a4: row("a4", {
+        evidence_path: `${FOLDER}a4/1760000000000-cma.pdf`,
+        data: {
+          evidenceFileName: "Comparable sales (made up).pdf",
+          espGivenOn: "2026-11-17",
+          espNoticePath: `${FOLDER}a4/1760000000001-esp.pdf`,
+          espNoticeFileName: "ESP notice (made up).pdf",
+        },
+      }),
+    },
+    FOLDER,
+  );
+  assert.deepEqual(
+    docs.map((d) => [d.cardTitle, d.fileName]),
+    [
+      [DOCUMENT_TITLE.a4, "Comparable sales (made up).pdf"],
+      ["ESP notice given to the vendor", "ESP notice (made up).pdf"],
+    ],
+  );
+  // A notice outside the listing's folder is left out, as everywhere.
+  const outside = packDocumentsFor(items, { a4: row("a4", { data: { espNoticePath: "agency-1/another-listing/a4/1-x.pdf" } }) }, FOLDER);
+  assert.equal(outside.length, 0);
+});

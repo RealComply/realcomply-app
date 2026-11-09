@@ -1661,6 +1661,8 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
             note: patch.note,
             espLow: patch.espLow,
             espHigh: patch.espHigh,
+            // a4: the date the ESP and evidence were given to the vendor (s72A(2), from 17 Nov 2026).
+            espGivenOn: patch.espGivenOn,
             // a3 only. Seeds b4's "what the price statement is" note, which
             // extraction never writes to directly: ticking b4 is a person's act
             // (an agent's, since 2 Nov 2026) — so it is parked here on the

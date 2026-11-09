@@ -2,6 +2,7 @@ import { STAGE_LABELS, type PropertyItem, type PropertyStage } from "@/lib/types
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getItem } from "@/lib/rules/nsw-sales";
 import { isInFolder } from "@/lib/storage/evidence";
+import { espNoticeOf } from "@/lib/rules/esp-given-before-signing";
 
 // Every document on a listing, in the order the audit pack puts them (Adam,
 // 2 Nov 2026): the record's own order, stage by stage and card by card, then
@@ -177,6 +178,12 @@ export function packDocumentsFor(
         const name = typeof e.evidenceFileName === "string" && e.evidenceFileName ? e.evidenceFileName : baseName(e.evidencePath);
         add(stage, reportTitle(e), e.evidencePath, name, { at: typeof e.recordedAt === "string" ? e.recordedAt : null });
       }
+    }
+    // The ESP notice on the ESP card, when it isn't part of the report
+    // (s72A(2), from 17 Nov 2026). Just after the report.
+    if (key === "a4") {
+      const notice = espNoticeOf(row);
+      if (notice) add(stage, "ESP notice given to the vendor", notice.path, notice.name);
     }
   };
 

@@ -23,6 +23,7 @@ import type { EspPackRow } from "@/lib/esp-history";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { copiedLinkLine, emailedLinkLine } from "@/lib/links/delivery";
 import { signedInPackLine } from "@/lib/licensee-signoff/model";
+import { ESP_GIVEN_LABEL, espGivenOf } from "@/lib/rules/esp-given-before-signing";
 
 /** The answer, tick or upload under a question or document card, with who and when (Sydney). */
 const questionAndDocumentLines = (item: ComplianceItem, current: PropertyItem | undefined): string[] =>
@@ -660,6 +661,14 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       // The settlement date, kept on the order on the agent card (6 Nov 2026).
       if (item.key === ORDER_ON_AGENT_KEY && settlementDateOf(current)) {
         c.text(`${SETTLEMENT_DATE_LABEL}: ${formatAuDate(settlementDateOf(current) as string)}`, {
+          size: 8.5,
+          color: MUTED,
+          indent: 12,
+        });
+      }
+      // The date the ESP and evidence were given to the vendor (s72A(2), from 17 Nov 2026).
+      if (item.key === "a4" && espGivenOf(current)) {
+        c.text(`${ESP_GIVEN_LABEL}: ${formatAuDate(espGivenOf(current) as string)}`, {
           size: 8.5,
           color: MUTED,
           indent: 12,

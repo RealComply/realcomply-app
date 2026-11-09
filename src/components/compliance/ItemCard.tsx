@@ -48,6 +48,15 @@ import { espText, SALE_PRICE_NOTE_PROMPT, salePriceFlagText, savedSaleCheck } fr
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import { EspDraftForm, EspHistoryList, EspNoticeUpload, type EspHistoryView } from "@/components/compliance/EspRevisionParts";
 import { ADD_REVISION, HISTORY_HELP, pendingFrom } from "@/lib/esp-history";
+import {
+  ESP_GIVEN_HINT,
+  ESP_GIVEN_LABEL,
+  ESP_NOTICE_LABEL,
+  espGivenAfterSigning,
+  espGivenApplies,
+  espGivenOf,
+  espNoticeOf,
+} from "@/lib/rules/esp-given-before-signing";
 import { espFrom } from "@/lib/data/effective-esp";
 import type { SearchTry } from "@/lib/listings-pages";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
@@ -82,6 +91,7 @@ import {
   answerQuestion,
   setQuestionTick,
   setNotApplicable,
+  setEspNotice,
 } from "@/lib/actions/compliance";
 import { readQuestion, type Answer, type UploadRecord } from "@/lib/rules/question-card";
 import { readNa } from "@/lib/rules/not-applicable";
@@ -954,6 +964,8 @@ function ChecklistItem({
       note?: string;
       espLow?: number;
       espHigh?: number;
+      /** a4: the date the ESP and evidence were given to the vendor, as the document states it. */
+      espGivenOn?: string;
       eventDate?: string;
       consumerGuideProvided?: boolean;
       identityVerified?: boolean;
@@ -1518,6 +1530,16 @@ function ChecklistItem({
                   )}
                 </span>
               </p>
+            )}
+            {/* The ESP and evidence given before signing (s72A(2)), for
+                agreements signed from 17 Nov 2026 (Adam, 9 Nov 2026). */}
+            {espGivenApplies(agreementDate) && (
+              <EspGivenFields
+                propertyId={propertyId}
+                current={current}
+                agreementDate={agreementDate}
+                readGivenOn={draft?.espGivenOn ?? null}
+              />
             )}
           </div>
         )}
@@ -2754,6 +2776,136 @@ function ElsewhereOfferQuestion({
       </button>
       <FieldError error={state.error} />
     </form>
+  );
+}
+
+// The ESP card's date the ESP and evidence were given to the vendor, and the
+// ESP notice when it isn't part of the report (s72A(2), from 17 Nov 2026;
+// Adam, 9 Nov 2026: "on the ESP card"). The date is part of the card's form:
+// Mark done needs it, and one after the signing date flags the card
+// (setItemStatus). Filled from the agreement where it states the date, for
+// the agent to check, like the consumer guide's. The notice goes up and onto
+// the card straight away (setEspNotice); taking it off leaves the file in the
+// listing's folder, as on every card.
+function EspGivenFields({
+  propertyId,
+  current,
+  agreementDate,
+  readGivenOn,
+}: {
+  propertyId: string;
+  current?: PropertyItem;
+  agreementDate: string | null;
+  readGivenOn: string | null;
+}) {
+  const saved = espGivenOf(current);
+  const offered = !saved && readGivenOn && /^\d{4}-\d{2}-\d{2}$/.test(readGivenOn) ? readGivenOn : null;
+  const [givenOn, setGivenOn] = useState(saved ?? offered ?? "");
+  const late = espGivenAfterSigning(givenOn || null, agreementDate);
+  // Once saved and flagged for it, the card's own flag says it; not twice.
+  const flaggedForIt =
+    current?.status === "flagged" && (current.data as { flagReason?: unknown } | null)?.flagReason === late && givenOn === saved;
+  const notice = espNoticeOf(current);
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function attach(picked: File | null) {
+    setFile(picked);
+    setError(null);
+    if (!picked) return;
+    setBusy(true);
+    const supabase = createBrowserClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: profile } = user
+      ? await supabase.from("profiles").select("agency_id").eq("id", user.id).maybeSingle()
+      : { data: null };
+    if (!profile?.agency_id) {
+      setBusy(false);
+      setError("Couldn't confirm your agency. Reload the page and try again.");
+      return;
+    }
+    const path = buildEvidencePath(profile.agency_id, propertyId, "a4", picked.name);
+    const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file: picked });
+    const result = uploadError ? { error: uploadError } : await setEspNotice(propertyId, { path, name: stored.name });
+    setBusy(false);
+    setFile(null);
+    if (result.error) setError(result.error);
+  }
+
+  async function takeOff() {
+    setBusy(true);
+    setError(null);
+    const result = await setEspNotice(propertyId, null);
+    setBusy(false);
+    if (result.error) setError(result.error);
+  }
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-rc-border pt-3">
+      <div>
+        <label className="block text-xs text-rc-muted" htmlFor="esp-given-on">
+          {ESP_GIVEN_LABEL}
+        </label>
+        <input
+          id="esp-given-on"
+          type="date"
+          name="espGivenOn"
+          value={givenOn}
+          onChange={(e) => setGivenOn(e.target.value)}
+          className={`mt-1 rounded-md border px-2 py-1 text-sm ${late ? "border-rc-amber-deep" : "border-rc-border"}`}
+        />
+        <p className="mt-1 text-[11px] leading-relaxed text-rc-faint">
+          {ESP_GIVEN_HINT}
+          {agreementDate ? ` The agreement was signed ${formatAuDate(agreementDate)}.` : ""}
+        </p>
+        {offered && givenOn === offered && (
+          <p className="mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-green-deep">
+            <Sparkles size={12} className="mt-0.5 shrink-0" />
+            <span>Read from the agreement. Check it before you save.</span>
+          </p>
+        )}
+        {late && !flaggedForIt && (
+          <p role="alert" className="mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-amber-deep">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            <span>{late}</span>
+          </p>
+        )}
+      </div>
+      <div>
+        <p className="text-xs text-rc-muted">{ESP_NOTICE_LABEL}</p>
+        {notice ? (
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+            <ReportEvidenceLink path={notice.path} fileName={notice.name} />
+            <button
+              type="button"
+              onClick={takeOff}
+              disabled={busy}
+              className="text-rc-muted hover:text-rc-ink hover:underline disabled:opacity-60"
+            >
+              {busy ? "Taking it off…" : "Take off"}
+            </button>
+          </p>
+        ) : (
+          <div className="mt-1">
+            <FileDropZone
+              compact
+              file={file}
+              onFile={attach}
+              disabled={busy}
+              label={busy ? "Uploading…" : "Drag the ESP notice here, or click to browse"}
+            />
+          </div>
+        )}
+        {error && (
+          <p role="alert" className="mt-1 text-xs font-medium text-rc-amber-deep">
+            {error}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
