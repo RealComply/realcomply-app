@@ -799,14 +799,14 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       gap: 2,
     });
     c.text(
-      "The agent recorded their reasoning outside this system and identified where it is held. s72A(5), Property and Stock Agents Act 2002 (NSW).",
+      "The agent recorded their reasoning outside this system and identified where it is held. s72A, Property and Stock Agents Act 2002 (NSW).",
       { size: 8, color: FAINT },
     );
   } else if (espReasoning && espReasoning.trim()) {
     c.rule(6, 10);
     c.text("How the estimated selling price was formed", { size: 11, bold: true, gap: 4 });
     c.text(espReasoning.trim(), { size: 9.5, color: MUTED, gap: 2 });
-    c.text("In the agent's own words. s72A(5), Property and Stock Agents Act 2002 (NSW).", {
+    c.text("In the agent's own words. s72A, Property and Stock Agents Act 2002 (NSW).", {
       size: 8,
       color: FAINT,
     });

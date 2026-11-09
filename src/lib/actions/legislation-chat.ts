@@ -43,6 +43,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { findSections, isWeak, renderSections } from "@/lib/legislation/sections";
+import { storedLegislationOutOfDate } from "@/lib/rules/underquoting-reforms";
 
 export type ChatMessage = {
   role: "user" | "assistant";
@@ -118,12 +119,34 @@ function retrievalQuery(history: ChatMessage[]): string {
  * are the only part that repeats between questions, so they are the only part
  * worth caching. The sections differ every time and never would have.
  */
+// What the stored text is missing, from 17 November 2026. Facts only: which
+// provisions changed, never what they now say, so nothing is answered from
+// memory.
+const REFORMS_NOT_IN_TEXT =
+  "=== Changes not in this copy ===\n\n" +
+  "The Property and Stock Agents Act 2002 and Property and Stock Agents Regulation 2022 text here is the " +
+  "version from before 17 November 2026. On 17 November 2026 the Property and Stock Agents Amendment " +
+  "(Underquoting and Other Agent Conduct) Act 2026 and Regulation 2026 changed sections 3, 55, 72, 72A, 73, " +
+  "73A, 73B and 74 of the Act and added sections 72B and 72D (section 72C follows on 8 February 2027). They " +
+  "also added section 8A, Part 2A (sections 12A to 12G) and Schedule 2 section 5(1A) to the Regulation, and " +
+  "replaced Schedule 13 (penalty notices).\n\n" +
+  "If the question touches any of these, say first, in one sentence, that this copy doesn't include the 17 " +
+  "November 2026 changes, and that they should check the current version on legislation.nsw.gov.au. Then " +
+  "answer only from the text here, saying it is the earlier version. Never describe the new provisions from " +
+  "general knowledge.";
+
 function buildSystemBlocks(query: string): Anthropic.Messages.TextBlockParam[] {
   const hits = findSections(query);
 
   const blocks: Anthropic.Messages.TextBlockParam[] = [
     { type: "text", text: INSTRUCTIONS, cache_control: { type: "ephemeral" as const } },
   ];
+
+  // From 17 Nov 2026 until the new Act and Regulation text is loaded
+  // (lib/rules/underquoting-reforms.ts). The stored copies are from before
+  // the underquoting changes, so an answer on those sections must say so
+  // rather than quote superseded law as current.
+  if (storedLegislationOutOfDate()) blocks.push({ type: "text", text: REFORMS_NOT_IN_TEXT });
 
   if (isWeak(hits)) {
     // Deliberately sent with NO sections attached, even though a handful

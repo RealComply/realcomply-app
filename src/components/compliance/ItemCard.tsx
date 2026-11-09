@@ -96,7 +96,8 @@ import { LegalReference } from "@/components/LegalReference";
 import { CONTRACT_KEY } from "@/lib/rules/contract-before-market";
 import { ContractNeededNote } from "@/components/compliance/ContractNeededNote";
 import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
-import { EspPrompts } from "@/components/compliance/EspPrompts";
+import { EspPrompts } from "@/components/compliance/EspPrompts";import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
+
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
 import { MarketListingsPanel } from "@/components/comparables/MarketListingsPanel";
 import type { MarketListing } from "@/lib/data/market-listings";
@@ -1478,16 +1479,16 @@ function ChecklistItem({
                 <span>
                   {spreadMarginal ? (
                     <>
-                      Just over the 10% limit in s72A(2). The highest this range can go on a $
+                      Just over the 10% limit in s72A. The highest this range can go on a $
                       {lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
                     </>
                   ) : spreadOver ? (
                     <>
-                      {spreadPct.toFixed(1)}% spread. Over the 10% limit in s72A(2). The highest this range can go
+                      {spreadPct.toFixed(1)}% spread. Over the 10% limit in s72A. The highest this range can go
                       on a ${lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
                     </>
                   ) : (
-                    <>{spreadPct.toFixed(1)}% spread. Within the 10% limit in s72A(2).</>
+                    <>{spreadPct.toFixed(1)}% spread. Within the 10% limit in s72A.</>
                   )}
                 </span>
               </p>
@@ -3108,7 +3109,7 @@ function ReductionItem({
                     />
                     <span>
                       <span className="block text-sm text-rc-ink">Vendor was given evidence of the new price before the notice</span>
-                      <span className="block text-[11px] text-rc-faint">s72A(5). Comparable sales, market conditions, buyer feedback.</span>
+                      <span className="block text-[11px] text-rc-faint">s72A. Comparable sales, market conditions, buyer feedback.</span>
                     </span>
                   </label>
                   <label className="flex items-start gap-2.5 px-3 py-2.5">
@@ -3121,9 +3122,7 @@ function ReductionItem({
                     />
                     <span>
                       <span className="block text-sm text-rc-ink">Advertising updated to match the revised price</span>
-                      <span className="block text-[11px] text-rc-faint">
-                        s73(3). Anything showing a lower figure has to be amended or pulled as soon as practicable.
-                      </span>
+                      <span className="block text-[11px] text-rc-faint">{advertisingFixLine()}</span>
                     </span>
                   </label>
                 </div>

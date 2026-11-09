@@ -38,6 +38,7 @@ import { ruleContextFor } from "@/lib/data/rule-context";
 import { checkSalePrice } from "@/lib/rules/sale-price";
 import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
+import { bannedPriceWording } from "@/lib/rules/underquoting-reforms";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
 import { CANCELS_SIGNOFF, MARK_DONE_AGAIN_KEYS, ONLY_LICENSEE_SIGNOFF } from "@/lib/rules/reopen";
@@ -736,16 +737,16 @@ export async function setItemStatus(
     // life being measured against a superseded figure.
     const esp = await effectiveEsp(supabase, propertyId);
 
-    const lowerNote = (data.note as string).toLowerCase();
-    const usesProhibitedTerm = ["offers over", "offers above", "o.n.o", "offers from"].some((t) =>
-      lowerNote.includes(t),
-    );
+    // s73(2), and the price-plus symbol Fair Trading's checklist names
+    // ("$900,000+"): lib/rules/underquoting-reforms.ts.
+    const bannedWording = bannedPriceWording(String(data.note ?? ""));
+    const usesProhibitedTerm = bannedWording.length > 0;
     const belowEsp = esp.low != null && guideLow != null && guideLow < esp.low;
     const spreadPct = guideLow && guideHigh ? ((guideHigh - guideLow) / guideLow) * 100 : 0;
 
     const flagReasons = [
       belowEsp ? `Advertised guide is below the recorded ${espLabel(esp)} (s73).` : null,
-      usesProhibitedTerm ? "Note mentions a prohibited price term." : null,
+      usesProhibitedTerm ? `Note mentions wording s73(2) bans: ${bannedWording.join(", ")}.` : null,
       spreadPct > 10 ? "Guide range spread exceeds 10%." : null,
       esp.low == null ? "No ESP recorded yet to check against — record the ESP first." : null,
     ].filter(Boolean) as string[];
