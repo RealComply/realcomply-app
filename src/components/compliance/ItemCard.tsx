@@ -135,6 +135,7 @@ import {
 import { priceFromText } from "@/lib/rules/advertised-price";
 
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
+import { CouncilAreaPanel, type CouncilAreaView } from "@/components/property/CouncilArea";
 import { MarketListingsPanel } from "@/components/comparables/MarketListingsPanel";
 import type { MarketListing } from "@/lib/data/market-listings";
 import { fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
@@ -884,12 +885,15 @@ function ChecklistItem({
   reportRead = null,
   doneLine = null,
   keepUntil = null,
+  councilArea,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   /** a3: how long to keep the agreement (Reg s8A, from 17 Nov 2026). */
   keepUntil?: string | null;
+  /** a4c: the council area, and where to look for comparable sales (Reg s12A, s12D; 0118). */
+  councilArea?: CouncilAreaView;
   /** a4 and a4c: what the last read of the comparable-sales report on a4 came to. */
   reportRead?: ReportRead | null;
   // The listing's own attributes and its comparable sales. Read once by the
@@ -1209,6 +1213,10 @@ function ChecklistItem({
           sale" and "Add a listing" did nothing, and the page logged a
           hydration error (preview check, 9 Oct 2026). Nothing in the form
           comes before them on a4c, so the card reads the same. */}
+      {/* Metro or non-metro, and where to look for comparable sales (Reg
+          s12A and s12D; 0118), above the sales: asked here when the
+          contract's planning certificate didn't say. */}
+      {item.key === "a4c" && councilArea && <CouncilAreaPanel propertyId={propertyId} view={councilArea} />}
       {item.key === "a4c" && subject && !espElsewhere && !item.showFindings && !item.hideNote && (
         <div className="mb-3">
           {reasoningCantRead ? (
@@ -4800,6 +4808,8 @@ type ItemCardProps = {
   agreementKeepUntil?: string | null;
   /** The ESP revision card (d3): every version, and links to each notice (Adam, 3 Nov 2026; 0110). */
   espHistory?: EspHistoryView;
+  /** The comparables card (a4c): the listing's council area, metro or non-metro (Reg s12A; 0118). */
+  councilArea?: CouncilAreaView;
 };
 
 export function ItemCard(props: ItemCardProps) {
@@ -4821,6 +4831,7 @@ function ItemCardBody({
   b4Approval = null,
   agreementKeepUntil = null,
   espHistory,
+  councilArea,
 }: ItemCardProps) {
   // A card added after this file was signed off (the order on the agent,
   // 6 Nov 2026) was never asked for here: it says so, with nothing to do.
@@ -4970,6 +4981,7 @@ function ItemCardBody({
           // term and the model is told to omit it.
           doneLine={item.key === "b4" && b4Approval?.via === "tick" ? tickedLine(b4Approval) : null}
           keepUntil={item.key === "a3" ? agreementKeepUntil : null}
+          councilArea={item.key === "a4c" ? councilArea : undefined}
           noteSeed={
             item.key === "b4"
               ? (allItems["a3"]?.data as { aiDraft?: { offerPrice?: string } } | undefined)?.aiDraft

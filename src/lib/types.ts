@@ -752,6 +752,14 @@ export type Property = {
   auction_date: string | null;
   auction_time: string | null;
   auction_venue: string | null;
+  // The council area (0118): one of the 128 in lib/rules/council-area.ts, read
+  // off the planning certificate or chosen in the app. Metro or non-metro
+  // (Reg s12A) is worked out from it. Who and when are stamped by the database.
+  // Optional here because a listing read before 0118 ran has none of them.
+  council_area?: string | null;
+  council_area_from?: "planning_certificate" | "agent" | null;
+  council_area_set_by?: string | null;
+  council_area_set_at?: string | null;
   // Set when an assistant hands the file to the agent to review and sign.
   // NOT a sign-off — it records that the assistant finished their part and
   // asked the agent to look. Only the agent's signature attests to the file.

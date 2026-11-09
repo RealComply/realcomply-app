@@ -30,7 +30,8 @@ import { withdrawalHistory, type Withdrawal } from "@/lib/data/withdrawals";
 import { WithdrawFromMarket, WithdrawnBanner } from "@/components/property/WithdrawListing";
 import { canOfferWithdraw, reasonLabel, withdrawalRecordLines } from "@/lib/rules/listing-tabs";
 import { keepUntilLineFor } from "@/lib/rules/agreement-keep-until";
-import { formatAuDate } from "@/lib/format-date";
+import type { CouncilAreaView } from "@/components/property/CouncilArea";
+import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 
 // "Read uploaded documents" and "Read again" run from this page. A large PDF
@@ -220,6 +221,13 @@ export default async function PropertyPage({
   );
   const mayWithdraw = !profile.is_assistant && (profile.id === p.created_by || access.actsAsLicensee);
   const nameOf = (pid: string | null) => people.find((x) => x.id === pid)?.full_name ?? "a team member";
+  // The council area, for metro or non-metro (Reg s12A; 0118): on the comparables card.
+  const councilArea: CouncilAreaView = {
+    council: p.council_area ?? null,
+    from: p.council_area_from ?? null,
+    setByName: p.council_area_set_by ? nameOf(p.council_area_set_by) : null,
+    setOn: p.council_area_set_at ? formatAuTimestamp(p.council_area_set_at) : null,
+  };
   const withdrawnLine = (w: Withdrawal) =>
     `Withdrawn on ${formatAuDate(w.withdrawn_on)} by ${nameOf(w.withdrawn_by)}. Reason: ${reasonLabel(w.reason, w.reason_other)}.`;
   // Earlier withdrawals and put-backs, in the audit pack's words.
@@ -449,6 +457,7 @@ export default async function PropertyPage({
                   b4Approval={b4Approval}
                   espHistory={espHistory}
                   agreementKeepUntil={agreementKeepUntil}
+                  councilArea={councilArea}
                 />
               ))}
             </div>
@@ -473,6 +482,7 @@ export default async function PropertyPage({
               b4Approval={b4Approval}
               espHistory={espHistory}
               agreementKeepUntil={agreementKeepUntil}
+              councilArea={councilArea}
               />
           ))}
         </div>
