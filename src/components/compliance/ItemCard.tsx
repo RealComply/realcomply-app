@@ -100,7 +100,14 @@ import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
 import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { advertisingFixLine, reformsInForce } from "@/lib/rules/underquoting-reforms";
 import { lowestPriceFromItems } from "@/lib/data/lowest-price";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 import {
+  ADS_UPDATED_LABEL,
+  OTHER_ADS_LINE,
+  STEPS_TAKEN_HINT,
+  STEPS_TAKEN_LABEL,
+  fixOnlineAdsLine,
+  onlineAdsDeadline,
   IN_WRITING_LABEL,
   NEEDS_REVISION_QUESTION,
   OFFER_QUESTION,
@@ -1998,6 +2005,8 @@ function GuideItem({
     guideHigh?: number | null;
     /** "This price is shown in all the required marketing material" (Adam, 9 Nov 2026). */
     priceInAllMarketing?: boolean;
+    /** Each "Online ads updated", with its date, the steps taken and the deadline it met or missed (s73(3)). */
+    adsUpdates?: Array<{ on: string; steps: string; floor: number | null; deadline: string | null; recordedAt: string }>;
   };
   // The advertised price, read from the agency agreement (Adam, 9 Nov 2026,
   // for s72D from 17 Nov): pre-filled when the agreement states one, asked
@@ -2015,13 +2024,55 @@ function GuideItem({
   const latestEsp = espFrom(espItem?.data, revisionItem?.data);
   const esp = { espLow: latestEsp.low ?? undefined, espHigh: latestEsp.high ?? undefined };
 
+  // From 17 Nov 2026: after a relevant event (the ESP revised, a pass-in, a
+  // written offer rejected on price only) online ads have 1 business day to
+  // start at the lowest price or more (s73(3); Adam, 9 Nov 2026).
+  const adsUpdates = data.adsUpdates ?? [];
+  const deadline = reformsInForce() && lowest?.since ? onlineAdsDeadline(lowest.since) : null;
+  const needsFixing = deadline != null && lowest?.floor != null && data.guideLow != null && data.guideLow < lowest.floor;
+  const updatedForThisEvent = deadline != null && adsUpdates.some((u) => u.deadline === deadline);
+  const [adsTicked, setAdsTicked] = useState(false);
+
+  const adsRecord =
+    adsUpdates.length > 0 ? (
+      <ul className="mt-3 space-y-1 border-t border-rc-border pt-2 text-xs text-rc-muted">
+        {adsUpdates.map((u) => (
+          <li key={u.recordedAt}>
+            <span className="font-semibold text-rc-ink">
+              {ADS_UPDATED_LABEL} {formatAuDate(u.on)}
+            </span>
+            {u.deadline &&
+              (u.on > u.deadline
+                ? `, after the deadline of ${formatAuDate(u.deadline)}`
+                : `, by the deadline of ${formatAuDate(u.deadline)}`)}
+            . {STEPS_TAKEN_LABEL}: {u.steps}
+          </li>
+        ))}
+      </ul>
+    ) : null;
+
   return (
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       {/* An offer at or above the advertised figure was rejected, so the
           guide itself is now the thing to fix. Sits above the form rather
           than below it, because it is a reason to change what is in the form
           rather than a comment on what is already there. */}
-      {data.rejectionPrompt && (
+      {needsFixing && lowest?.floor != null && deadline && (
+        <div className="mb-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
+          <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>
+              {sydneyDate(new Date()) > deadline
+                ? `The 1 business day to update your online ads ended on ${formatAuDate(deadline)}. Update them to start at $${lowest.floor.toLocaleString("en-AU")} or more now.`
+                : fixOnlineAdsLine(lowest.floor, deadline)}
+            </span>
+          </p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">
+            {OTHER_ADS_LINE} {lowest.why} Then change the advertised price below and tick {ADS_UPDATED_LABEL}.
+          </p>
+        </div>
+      )}
+      {data.rejectionPrompt && !needsFixing && (
         <div className="mb-3 rounded-lg border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2.5">
           <p className="flex items-start gap-1.5 text-xs font-semibold text-rc-amber-deep">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
@@ -2045,8 +2096,12 @@ function GuideItem({
       {/* From 17 Nov 2026: a registered bidder's pass-in bid or a written
           offer the vendor rejected on price only can set it higher (s73(1);
           Adam, 9 Nov 2026). */}
-      {lowest?.floor != null && lowest.source !== "esp" && !data.rejectionPrompt && (
-        <p className="mt-1 text-xs font-semibold text-rc-amber-deep">
+      {lowest?.floor != null && lowest.source !== "esp" && !data.rejectionPrompt && !needsFixing && (
+        <p
+          className={`mt-1 text-xs font-semibold ${
+            data.guideLow != null && data.guideLow >= lowest.floor ? "text-rc-ink" : "text-rc-amber-deep"
+          }`}
+        >
           {lowestPriceLine(lowest.floor)} <span className="font-normal text-rc-muted">{lowest.why}</span>
         </p>
       )}
@@ -2103,6 +2158,44 @@ function GuideItem({
           />
           <span>This price is shown in all the required marketing material</span>
         </label>
+        {/* After a relevant event, once per event (s73(3); Adam, 9 Nov 2026). */}
+        {deadline && !updatedForThisEvent && (
+          <div className="space-y-2">
+            <label className="flex items-start gap-2 text-sm text-rc-ink">
+              <input
+                type="checkbox"
+                name="adsUpdated"
+                value="yes"
+                checked={adsTicked}
+                onChange={(e) => setAdsTicked(e.target.checked)}
+                className="mt-0.5 shrink-0 accent-rc-green-deep"
+              />
+              <span>{ADS_UPDATED_LABEL}</span>
+            </label>
+            {adsTicked && (
+              <div className="space-y-2 border-l-2 border-rc-green-deep/30 pl-3">
+                <label className="block text-xs font-semibold text-rc-ink">
+                  Date updated
+                  <input
+                    type="date"
+                    name="adsUpdatedOn"
+                    defaultValue={sydneyDate(new Date())}
+                    className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
+                  />
+                </label>
+                <label className="block text-xs font-semibold text-rc-ink">
+                  {STEPS_TAKEN_LABEL}
+                  <textarea
+                    name="adsSteps"
+                    rows={2}
+                    placeholder={STEPS_TAKEN_HINT}
+                    className="mt-1 block w-full rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        )}
         <DictatableTextarea name="note" defaultValue={data.note ?? ""} placeholder="Exact wording used in the ad" rows={2} className="w-full rounded-md border border-rc-border px-2 py-1 text-sm" />
         {/* Same state-aware treatment as ChecklistItem. This one stays fully
             usable once recorded, because re-recording is a real action here (a
@@ -2132,6 +2225,7 @@ function GuideItem({
           ))}
         </ul>
       )}
+      {adsRecord}
 
       {/* The independent read of the live page. Sits below the agent's own
           record rather than replacing it: the form above is what the agent

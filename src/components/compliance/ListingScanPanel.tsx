@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Globe, AlertTriangle, Check } from "lucide-react";
 import { checkListingNow } from "@/lib/actions/website-scan";
 import { searchLine, type SearchTry } from "@/lib/listings-pages";
+import { reformsInForce } from "@/lib/rules/underquoting-reforms";
 
 // The advertised-price check, as shown on c1.
 //
@@ -83,8 +84,9 @@ export function ListingScanPanel({
 
           {!finding ? (
             <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">
-              This listing&rsquo;s web page is checked against its ESP every morning once it&rsquo;s advertised. If no
-              price is showing or it&rsquo;s below the ESP, you&rsquo;ll get an email. Nothing to set up.
+              {reformsInForce()
+                ? "This listing’s web page is checked every morning once it’s advertised. If no price is showing, or it starts below the lowest price it can (the ESP, or a higher pass-in bid or written offer rejected on price only), you’ll get an email. Nothing to set up."
+                : "This listing’s web page is checked against its ESP every morning once it’s advertised. If no price is showing or it’s below the ESP, you’ll get an email. Nothing to set up."}
             </p>
           ) : (
             <div className="mt-1">

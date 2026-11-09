@@ -716,6 +716,8 @@ export type AuctionOutcomeData = {
   price?: number | null;
   bidderNumber?: string | null;
   highestBid?: number | null;
+  /** The day it was passed in (YYYY-MM-DD), recorded from 9 Nov 2026: the s73(3) deadline runs from it. */
+  passedInOn?: string | null;
   vendorBid?: boolean;
   reason?: string | null;
   phoneBidder?: boolean;
