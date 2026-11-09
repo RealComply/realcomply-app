@@ -8,6 +8,8 @@ import {
   type EspRevision,
 } from "@/lib/esp-history";
 import type { PropertyItem } from "@/lib/types";
+import { comparablesFor } from "@/lib/data/comparables";
+import { addressKey, previousAddresses, type RevisionCandidate } from "@/lib/rules/revision-comparables";
 
 // The listing's ESP revisions (esp_revisions, 0110), oldest first, read with
 // the caller's own access. Before 0110 runs this reads nothing, and the card
@@ -17,7 +19,7 @@ export async function espRevisionsFor(supabase: SupabaseClient, agencyId: string
   const { data, error } = await supabase
     .from("esp_revisions")
     .select(
-      "revision_no, esp_low, esp_high, notice_given_on, notice_path, notice_file_name, entered_manually, recorded_by_name, recorded_at, previous_esp_low, previous_esp_high, evidence_path, evidence_file_name, evidence_in_notice, market_feedback",
+      "revision_no, esp_low, esp_high, notice_given_on, notice_path, notice_file_name, entered_manually, recorded_by_name, recorded_at, previous_esp_low, previous_esp_high, evidence_path, evidence_file_name, evidence_in_notice, market_feedback, comparables, comparables_info_used, comparables_fewer_reason",
     )
     .eq("agency_id", agencyId)
     .eq("property_id", propertyId)
@@ -67,7 +69,34 @@ export async function espHistoryFor(
     for (const f of data ?? []) if (f.path && f.signedUrl) fileUrls[f.path] = f.signedUrl;
   }
   const last = revisions.length > 0 ? revisions[revisions.length - 1] : null;
+
+  // For the next revision's comparable sales (Reg s12G(1)(a), (c); 0120):
+  // the sales to choose from (the listing's own, then any an earlier
+  // revision added), and the ones the previous ESP was worked out from.
+  const listing = await comparablesFor(supabase, propertyId);
+  const candidates: RevisionCandidate[] = [];
+  const seen = new Set<string>();
+  const offer = (c: RevisionCandidate) => {
+    const key = addressKey(c.address);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    candidates.push(c);
+  };
+  for (const c of listing) {
+    offer({ key: `listing-${c.id}`, address: c.address, soldOn: c.saleDate?.slice(0, 10) ?? null, soldPrice: c.salePrice, distanceM: c.distanceM });
+  }
+  for (const r of [...revisions].reverse()) {
+    for (const c of r.comparables ?? []) {
+      offer({ key: `revision-${r.no}-${addressKey(c.address)}`, address: c.address, soldOn: c.soldOn, soldPrice: c.soldPrice, distanceM: c.distanceM });
+    }
+  }
+  const firstEsp = listing.filter((c) => c.weighting === "relied").map((c) => c.address);
+
   return {
+    revisionComparables: {
+      candidates,
+      previousAddresses: previousAddresses(revisions, firstEsp),
+    },
     versions,
     fileUrls,
     latestNo: last ? last.no : null,

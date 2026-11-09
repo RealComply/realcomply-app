@@ -3635,6 +3635,8 @@ function ReductionItem({
             latestNo={latestNo}
             fileUrl={espHistory?.fileUrls[pending.path] ?? null}
             currentEsp={espHistory?.currentEsp ?? null}
+            revisionComparables={espHistory?.revisionComparables}
+            areaKind={espHistory?.areaKind ?? null}
             // "Upload a PDF" under a notice that can't be read: the draft goes
             // and the upload box comes back (Adam, 3 Nov 2026).
             onUploadPdf={() => setAdding(true)}

@@ -256,7 +256,7 @@ export default async function PropertyPage({
   // Every ESP revision, with its notice (Adam, 3 Nov 2026; 0110): only for
   // the stage the d3 card is on.
   const espHistory = stageItems.some((i) => i.key === "d3")
-    ? await espHistoryFor(supabase, p.agency_id, p.id, allItems)
+    ? { ...(await espHistoryFor(supabase, p.agency_id, p.id, allItems)), areaKind: areaOf(p.council_area) }
     : undefined;
   const personName = (id: string | null) => {
     const found = people.find((x) => x.id === id);

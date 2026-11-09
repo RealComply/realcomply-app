@@ -4,8 +4,12 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 import { readNoticeIntoPending } from "@/lib/esp-notice";
-import { pendingFrom, previousEspProblem, revisionEvidenceProblem, typedFigure } from "@/lib/esp-history";
+import { noticeUnderReforms, pendingFrom, previousEspProblem, revisionEvidenceProblem, typedFigure } from "@/lib/esp-history";
 import { feedbackToStore, marketFeedbackFrom } from "@/lib/rules/market-feedback";
+import { espRevisionsFor } from "@/lib/data/esp-revisions";
+import { comparablesFor } from "@/lib/data/comparables";
+import { MAX_MOST_COMPARABLE } from "@/lib/rules/comparables-rules";
+import { previousAddresses, revisionComparablesFrom, revisionComparablesProblem } from "@/lib/rules/revision-comparables";
 
 // ESP revision history (Adam, 3 Nov 2026; mockup approved; 0110). The d3 card's
 // actions: a notice uploaded is read into a draft; the agent checks the figures
@@ -129,6 +133,28 @@ export async function recordEspRevision(
   });
   if ("error" in feedback) return { error: feedback.error };
 
+  // Its own comparable sales (Reg s12G(1)(a), (c), (d); 0120): which were
+  // taken into account, the 3 most comparable and why, why any sale new since
+  // the previous ESP wasn't used then, the information used, and why fewer
+  // than 3. What counts as "the previous ESP's" is worked out here, not taken
+  // from the form.
+  const comparables = revisionComparablesFrom(formData.get("revisionComparables"));
+  if ("error" in comparables) return { error: comparables.error };
+  const comparablesInfoUsed = String(formData.get("comparablesInfoUsed") ?? "").trim().slice(0, 4000) || null;
+  const mostCount = comparables.entries.filter((c) => c.most).length;
+  const comparablesFewerReason =
+    mostCount < MAX_MOST_COMPARABLE ? String(formData.get("comparablesFewerReason") ?? "").trim().slice(0, 4000) || null : null;
+  const earlier = await espRevisionsFor(supabase, profile.agency_id, propertyId);
+  const firstEsp = (await comparablesFor(supabase, propertyId)).filter((c) => c.weighting === "relied").map((c) => c.address);
+  const comparablesProblem = revisionComparablesProblem({
+    entries: comparables.entries,
+    previousAddresses: previousAddresses(earlier, firstEsp),
+    infoUsed: comparablesInfoUsed,
+    fewerReason: comparablesFewerReason,
+    underReforms: noticeUnderReforms(givenOn),
+  });
+  if (comparablesProblem) return { error: comparablesProblem };
+
   // Typed, or changed from what was read: the record says so (26 Aug 2026).
   const enteredManually = pending.low !== low || pending.high !== high || pending.readFailed !== null;
 
@@ -163,6 +189,10 @@ export async function recordEspRevision(
     p_evidence_in_notice: evidenceInNotice,
     // The market feedback it responded to (Reg s12G(1)(f)).
     p_market_feedback: feedbackToStore(feedback),
+    // Its own comparable sales (Reg s12G(1)(a), (c), (d); 0120).
+    p_comparables: comparables.entries,
+    p_comparables_info_used: comparablesInfoUsed,
+    p_comparables_fewer_reason: comparablesFewerReason,
   });
   if (error) {
     // The database's own words where it refused; anything else, try again.
