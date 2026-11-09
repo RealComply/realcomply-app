@@ -57,6 +57,7 @@ import {
   setReportDisclosureLoggedElsewhere,
   setItemStatus,
   addOfferEntry,
+  setElsewhereOfferAnswer,
   updateOfferEntry,
   addReportEntry,
   removeReportEntry,
@@ -96,7 +97,24 @@ import { LegalReference } from "@/components/LegalReference";
 import { CONTRACT_KEY } from "@/lib/rules/contract-before-market";
 import { ContractNeededNote } from "@/components/compliance/ContractNeededNote";
 import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
-import { EspPrompts } from "@/components/compliance/EspPrompts";import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
+import { EspPrompts } from "@/components/compliance/EspPrompts";
+import { advertisingFixLine, reformsInForce } from "@/lib/rules/underquoting-reforms";
+import { lowestPriceFromItems } from "@/lib/data/lowest-price";
+import {
+  IN_WRITING_LABEL,
+  NEEDS_REVISION_QUESTION,
+  OFFER_QUESTION,
+  ONLY_PRICE_ONLY_RAISES,
+  REJECTED_FOR_OPTIONS,
+  WHY_REJECTED_INFO,
+  WHY_REJECTED_LABEL,
+  lowestPriceLine,
+  offerSummary,
+  type ElsewhereOfferAnswer,
+  type LowestPrice,
+  type OfferRecord,
+  type RejectedFor,
+} from "@/lib/rules/lowest-advertised-price";
 import { priceFromText } from "@/lib/rules/advertised-price";
 
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
@@ -1951,10 +1969,13 @@ function GuideItem({
   espItem,
   revisionItem,
   agreementItem,
+  lowest,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
+  /** The lowest price the ads can start at (lib/rules/lowest-advertised-price.ts). */
+  lowest?: LowestPrice;
   espItem?: PropertyItem;
   /** The ESP revision card (d3): its latest revision is the ESP now (Adam, 3 Nov 2026). */
   revisionItem?: PropertyItem;
@@ -2010,7 +2031,7 @@ function GuideItem({
         </div>
       )}
       {esp.espLow == null ? (
-        <p className="text-sm text-rc-muted">Record the ESP (item a4) first — the live check needs it.</p>
+        <p className="text-sm text-rc-muted">Record the ESP (item a4) first. The live check needs it.</p>
       ) : (
         <p className="text-xs text-rc-muted">
           {latestEsp.revised ? "Latest ESP (revised)" : "Recorded ESP"}{" "}
@@ -2019,6 +2040,14 @@ function GuideItem({
             {esp.espHigh && esp.espHigh !== esp.espLow ? ` to $${esp.espHigh.toLocaleString()}` : ""}
           </span>
           . The advertised price can&rsquo;t be below it.
+        </p>
+      )}
+      {/* From 17 Nov 2026: a registered bidder's pass-in bid or a written
+          offer the vendor rejected on price only can set it higher (s73(1);
+          Adam, 9 Nov 2026). */}
+      {lowest?.floor != null && lowest.source !== "esp" && !data.rejectionPrompt && (
+        <p className="mt-1 text-xs font-semibold text-rc-amber-deep">
+          {lowestPriceLine(lowest.floor)} <span className="font-normal text-rc-muted">{lowest.why}</span>
         </p>
       )}
       <form action={formAction} className="mt-2 space-y-3">
@@ -2195,24 +2224,38 @@ function ElsewhereToggle({
   );
 }
 
-function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; propertyId: string; current?: PropertyItem }) {
-  const boundAction = addOfferEntry.bind(null, propertyId);
-  const [state, formAction, pending] = useActionState(boundAction, initialState);
+type LoggedOffer = OfferRecord & { id?: string; note: string; recordedAt: string; updatedAt?: string };
+
+function OffersLogItem({
+  item,
+  propertyId,
+  current,
+  lowest,
+  advertisedLow,
+}: {
+  item: ComplianceItem;
+  propertyId: string;
+  current?: PropertyItem;
+  /** The lowest price the ads can start at, from the ESP, the auction and this log. */
+  lowest: LowestPrice;
+  /** The advertised price card's "from" figure, for the question (Adam, 9 Nov 2026). */
+  advertisedLow: number | null;
+}) {
+  // A fresh form after each offer logged, so its choices don't carry over.
+  const [formKey, setFormKey] = useState(0);
+  const [state, formAction, pending] = useActionState(async (prev: ActionState, formData: FormData) => {
+    const result = await addOfferEntry(propertyId, prev, formData);
+    if (!result.error) setFormKey((k) => k + 1);
+    return result;
+  }, initialState);
   const data = (current?.data ?? {}) as {
-    entries?: Array<{
-      id?: string;
-      amount: number;
-      outcome: string;
-      vendorInformed: boolean;
-      belowFloor: boolean;
-      note: string;
-      recordedAt: string;
-      updatedAt?: string;
-    }>;
+    entries?: LoggedOffer[];
     flagReason?: string;
     guideAmendmentPrompt?: string;
     loggedElsewhere?: boolean;
     loggedElsewhereWhere?: string | null;
+    /** Adam's question for offers kept elsewhere (9 Nov 2026). */
+    elsewhereOffer?: ElsewhereOfferAnswer | null;
   };
   const entries = data.entries ?? [];
 
@@ -2224,7 +2267,12 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
         where={data.loggedElsewhereWhere ?? ""}
       />
 
-      <form action={formAction} className="space-y-2 rounded-lg bg-rc-bg-alt p-3">
+      {/* Offers kept in the agent's own system: one question (Adam, 9 Nov 2026). */}
+      {(data.loggedElsewhere || data.elsewhereOffer) && (
+        <ElsewhereOfferQuestion propertyId={propertyId} answer={data.elsewhereOffer ?? null} advertisedLow={advertisedLow} />
+      )}
+
+      <form key={formKey} action={formAction} className="mt-3 space-y-2 rounded-lg bg-rc-bg-alt p-3">
         <OfferFields />
         <button
           type="submit"
@@ -2252,7 +2300,18 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
           </p>
           <p className="mt-1.5 text-[11px] leading-relaxed text-rc-muted">{data.guideAmendmentPrompt}</p>
           <p className="mt-1.5 text-[11px] leading-relaxed text-rc-faint">
-            A prompt, not a determination — you and the vendor decide whether the estimate still holds.
+            A prompt, not a determination. You and the vendor decide whether the estimate still holds.
+          </p>
+        </div>
+      )}
+      {/* The lowest price, from 17 Nov 2026 (s73(1)): the highest of the ESP,
+          a registered bidder's pass-in bid and a written offer rejected on
+          price only. The same figure the price card and the website check use. */}
+      {reformsInForce() && lowest.floor != null && (
+        <div className="mt-3 rounded-lg border border-rc-green-deep/20 bg-rc-green-soft/40 px-3 py-2.5">
+          <p className="text-sm font-semibold text-rc-ink">{lowestPriceLine(lowest.floor)}</p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
+            {lowest.why} The advertised price card and the website check use it.
           </p>
         </div>
       )}
@@ -2279,22 +2338,7 @@ function OffersLogItem({ item, propertyId, current }: { item: ComplianceItem; pr
 // version as though it had always said that. This is a record a regulator may
 // read, and a log that rewrites itself invisibly is worth less than one that
 // shows its corrections.
-function OfferRow({
-  propertyId,
-  entry,
-}: {
-  propertyId: string;
-  entry: {
-    id?: string;
-    amount: number;
-    outcome: string;
-    vendorInformed: boolean;
-    belowFloor: boolean;
-    note: string;
-    recordedAt: string;
-    updatedAt?: string;
-  };
-}) {
+function OfferRow({ propertyId, entry }: { propertyId: string; entry: LoggedOffer }) {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -2323,10 +2367,9 @@ function OfferRow({
       <li className="border-t border-rc-border pt-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <span className="font-medium text-rc-ink">${entry.amount.toLocaleString()}</span> — {entry.outcome}
-            {entry.vendorInformed ? " · vendor informed" : " · vendor not yet informed"}
-            {entry.belowFloor && " · below vendor floor"}
-            {entry.note && <> — {entry.note}</>}
+            {/* No dashes in what people read (Adam, 9 Nov 2026). */}
+            <span className="font-medium text-rc-ink">${entry.amount.toLocaleString()}</span>, {offerSummary(entry)}
+            {entry.note && <> · {entry.note}</>}
             {entry.updatedAt && (
               <span className="ml-1 text-[11px] text-rc-faint">
                 (edited {new Date(entry.updatedAt).toLocaleDateString("en-AU")})
@@ -2378,11 +2421,10 @@ function OfferRow({
 
 // The offer fields, shared by the log-new form and the edit form so the two
 // can never drift apart.
-function OfferFields({
-  defaults,
-}: {
-  defaults?: { amount: number; outcome: string; vendorInformed: boolean; belowFloor: boolean; note: string };
-}) {
+function OfferFields({ defaults }: { defaults?: LoggedOffer }) {
+  const [outcome, setOutcome] = useState(defaults?.outcome ?? "pending");
+  const [belowFloor, setBelowFloor] = useState(Boolean(defaults?.belowFloor));
+  const [inWriting, setInWriting] = useState(Boolean(defaults?.inWriting));
   return (
     <>
       <div className="flex flex-wrap gap-2">
@@ -2395,7 +2437,8 @@ function OfferFields({
         />
         <select
           name="outcome"
-          defaultValue={defaults?.outcome ?? "pending"}
+          value={outcome}
+          onChange={(e) => setOutcome(e.target.value)}
           className="rounded-md border border-rc-border px-2 py-1 text-sm"
         >
           <option value="pending">Pending</option>
@@ -2408,9 +2451,57 @@ function OfferFields({
         writing
       </label>
       <label className="flex items-center gap-2 text-xs text-rc-muted">
-        <input type="checkbox" name="belowFloor" defaultChecked={defaults?.belowFloor} /> Below the vendor&rsquo;s
-        written offer-floor instruction (exempt)
+        <input
+          type="checkbox"
+          name="belowFloor"
+          checked={belowFloor}
+          onChange={(e) => setBelowFloor(e.target.checked)}
+        />{" "}
+        Below the vendor&rsquo;s written offer-floor instruction (exempt)
       </label>
+      {/* Sch 2 s5(1A), from 17 Nov 2026 (Master, 9 Nov 2026, addition 2):
+          even below the instruction, an offer that means the ESP needs
+          revising goes to the vendor. */}
+      {belowFloor && (
+        <YesNo
+          name="needsEspRevision"
+          question={NEEDS_REVISION_QUESTION}
+          defaultValue={defaults?.needsEspRevision == null ? null : defaults.needsEspRevision ? "yes" : "no"}
+        />
+      )}
+      <label className="flex items-center gap-2 text-xs text-rc-muted">
+        <input type="checkbox" name="inWriting" checked={inWriting} onChange={(e) => setInWriting(e.target.checked)} />{" "}
+        {IN_WRITING_LABEL}
+      </label>
+      {/* A written offer's record (Reg s12F(1)(d), 12G(1)(e); Master, 9 Nov
+          2026, addition 3): its conditions, and when rejected, why and when. */}
+      {inWriting && (
+        <div className="space-y-2 border-l-2 border-rc-green-deep/30 pl-3">
+          <label className="block text-xs font-semibold text-rc-ink">
+            Conditions of the offer <span className="font-normal text-rc-faint">(if any)</span>
+            <input
+              name="conditions"
+              defaultValue={defaults?.conditions ?? ""}
+              placeholder="For example: subject to finance, 42-day settlement"
+              className="mt-1 block w-full rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
+            />
+          </label>
+          {outcome === "rejected" && (
+            <>
+              <WhyRejected defaultValue={defaults?.rejectedFor ?? null} />
+              <label className="block text-xs font-semibold text-rc-ink">
+                Date the vendor rejected it
+                <input
+                  type="date"
+                  name="rejectedOn"
+                  defaultValue={defaults?.rejectedOn ?? ""}
+                  className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
+                />
+              </label>
+            </>
+          )}
+        </div>
+      )}
       <DictatableTextarea
         name="note"
         defaultValue={defaults?.note}
@@ -2419,6 +2510,156 @@ function OfferFields({
         className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
       />
     </>
+  );
+}
+
+// "Why did the vendor reject it?" with the info icon Adam asked for (9 Nov
+// 2026): why it does or doesn't change the advertised price.
+function WhyRejected({
+  defaultValue,
+  onChange,
+}: {
+  defaultValue: RejectedFor | null;
+  onChange?: (value: RejectedFor) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const info = reformsInForce() ? WHY_REJECTED_INFO : `From 17 November 2026: ${WHY_REJECTED_INFO.charAt(0).toLowerCase()}${WHY_REJECTED_INFO.slice(1)}`;
+  return (
+    <fieldset>
+      <legend className="flex items-center gap-1.5 text-xs font-semibold text-rc-ink">
+        {WHY_REJECTED_LABEL}
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={open ? "Hide why this matters" : "Why this matters"}
+          className={`inline-flex h-4 w-4 items-center justify-center rounded-full transition ${
+            open ? "bg-rc-green-soft text-rc-green-deep" : "text-rc-faint hover:bg-rc-bg-alt hover:text-rc-muted"
+          }`}
+        >
+          <Info size={13} aria-hidden="true" />
+        </button>
+      </legend>
+      {open && <p className="mt-1 text-[11px] leading-relaxed text-rc-muted">{info}</p>}
+      <div className="mt-1.5 flex flex-wrap gap-2">
+        {REJECTED_FOR_OPTIONS.map((o) => (
+          <label
+            key={o.value}
+            className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1 text-xs text-rc-ink has-[:checked]:border-rc-green-deep has-[:checked]:bg-rc-green-soft"
+          >
+            <input
+              type="radio"
+              name="rejectedFor"
+              value={o.value}
+              defaultChecked={defaultValue === o.value}
+              onChange={() => onChange?.(o.value)}
+              className="accent-rc-green-deep"
+            />
+            {o.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function YesNo({
+  name,
+  question,
+  defaultValue,
+  onChange,
+}: {
+  name: string;
+  question: string;
+  defaultValue: "yes" | "no" | null;
+  onChange?: (value: "yes" | "no") => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="text-xs font-semibold text-rc-ink">{question}</legend>
+      <div className="mt-1.5 flex flex-wrap gap-2">
+        {(["no", "yes"] as const).map((v) => (
+          <label
+            key={v}
+            className="inline-flex items-center gap-1.5 rounded-full border border-rc-border bg-white px-3 py-1 text-xs text-rc-ink has-[:checked]:border-rc-green-deep has-[:checked]:bg-rc-green-soft"
+          >
+            <input
+              type="radio"
+              name={name}
+              value={v}
+              defaultChecked={defaultValue === v}
+              onChange={() => onChange?.(v)}
+              className="accent-rc-green-deep"
+            />
+            {v === "yes" ? "Yes" : "No"}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+// Offers kept in the agent's own system (Rex, LockedOn, VaultRE): one
+// question instead of a log (Adam, 9 Nov 2026; the approved mockup, A).
+function ElsewhereOfferQuestion({
+  propertyId,
+  answer,
+  advertisedLow,
+}: {
+  propertyId: string;
+  answer: ElsewhereOfferAnswer | null;
+  advertisedLow: number | null;
+}) {
+  const [state, action, pending] = useActionState(setElsewhereOfferAnswer.bind(null, propertyId), initialState);
+  const [rejected, setRejected] = useState<"yes" | "no" | null>(answer?.rejected ?? null);
+  const [inWriting, setInWriting] = useState(Boolean(answer?.inWriting));
+  return (
+    <form action={action} className="mt-3 space-y-2 rounded-lg border border-rc-border bg-white p-3">
+      <YesNo
+        name="rejected"
+        question={`${OFFER_QUESTION}${advertisedLow ? ` ($${advertisedLow.toLocaleString("en-AU")})` : ""}?`}
+        defaultValue={answer?.rejected ?? null}
+        onChange={setRejected}
+      />
+      {rejected === "yes" && (
+        <div className="space-y-2 border-l-2 border-rc-green-deep/30 pl-3">
+          <label className="flex items-center gap-2 text-xs text-rc-muted">
+            <input type="checkbox" name="inWriting" checked={inWriting} onChange={(e) => setInWriting(e.target.checked)} />{" "}
+            {IN_WRITING_LABEL}
+          </label>
+          {inWriting && <WhyRejected defaultValue={answer?.rejectedFor ?? null} />}
+          <div className="flex flex-wrap gap-3">
+            <label className="block text-xs font-semibold text-rc-ink">
+              Amount of the offer
+              <input
+                type="number"
+                name="amount"
+                defaultValue={answer?.amount ?? ""}
+                className="mt-1 block w-40 rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
+              />
+            </label>
+            <label className="block text-xs font-semibold text-rc-ink">
+              Date the vendor rejected it
+              <input
+                type="date"
+                name="rejectedOn"
+                defaultValue={answer?.rejectedOn ?? ""}
+                className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
+              />
+            </label>
+          </div>
+          <p className="text-[11px] leading-relaxed text-rc-faint">{ONLY_PRICE_ONLY_RAISES}</p>
+        </div>
+      )}
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+      >
+        {pending ? "Saving…" : "Save"}
+      </button>
+      <FieldError error={state.error} />
+    </form>
   );
 }
 
@@ -4326,7 +4567,20 @@ function ItemCardBody({
 
   switch (item.kind) {
     case "offers":
-      return <OffersLogItem item={item} propertyId={propertyId} current={current} />;
+      return (
+        <OffersLogItem
+          item={item}
+          propertyId={propertyId}
+          current={current}
+          lowest={lowestPriceFromItems({
+            a4: allItems["a4"]?.data,
+            d3: allItems["d3"]?.data,
+            x8: allItems["x8"]?.data,
+            d2: current?.data,
+          })}
+          advertisedLow={(allItems["c1"]?.data as { guideLow?: number | null } | undefined)?.guideLow ?? null}
+        />
+      );
     case "reports":
       return <ReportsLogItem item={item} propertyId={propertyId} current={current} />;
     case "reduction":
@@ -4383,6 +4637,12 @@ function ItemCardBody({
           espItem={allItems["a4"]}
           revisionItem={allItems["d3"]}
           agreementItem={allItems["a3"]}
+          lowest={lowestPriceFromItems({
+            a4: allItems["a4"]?.data,
+            d3: allItems["d3"]?.data,
+            x8: allItems["x8"]?.data,
+            d2: allItems["d2"]?.data,
+          })}
         />
       );
     case "checklist":

@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
+import { lowestPriceFor } from "@/lib/data/lowest-price";
+import { belowLowestPrice } from "@/lib/rules/lowest-advertised-price";
 import { reopenStaleNoRevision } from "@/lib/data/no-revision-reask";
 import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import { PRICE_CHECK_FROM, scanModeAt } from "@/lib/listing-scan-schedule";
@@ -436,6 +438,18 @@ async function assess(
           : " If the ESP has been revised, record the notice on the file so this checks against the right figure.");
     issues.push(text);
     if (marketing) redFlags.push({ kind: "below_esp", text });
+  }
+  // From 17 Nov 2026 the ad can't start below a registered bidder's pass-in
+  // bid or a written offer the vendor rejected on price only either (s73(1);
+  // Adam, 9 Nov 2026). Only when that is higher than the ESP: below the ESP
+  // is the finding above.
+  if (read.priceLow != null && reformsInForce(new Date(base.checkedAt)) && !(esp.low != null && read.priceLow < esp.low)) {
+    const lowest = await lowestPriceFor(supabase, propertyId, new Date(base.checkedAt));
+    const text = lowest.source !== "esp" ? belowLowestPrice(read.priceLow, lowest) : null;
+    if (text) {
+      issues.push(text);
+      if (marketing) redFlags.push({ kind: "below_lowest", text });
+    }
   }
   if (read.priceLow != null && read.priceHigh != null && read.priceLow > 0) {
     const spread = ((read.priceHigh - read.priceLow) / read.priceLow) * 100;

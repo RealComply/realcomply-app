@@ -1459,9 +1459,13 @@ const items: ComplianceItem[] = [
     // What the tickbox preserves is the pointer. A file that says "logged in
     // LockedOn" tells a regulator where to look; a file that is simply empty
     // tells them nothing.
+    // From 17 Nov 2026 (Adam, 9 Nov 2026): only a written offer the vendor
+    // rejected on price only sets the lowest advertised price (s73(1)); one
+    // rejected over its terms doesn't. A written offer's record keeps its
+    // conditions, and when rejected, why and when (Reg s12F(1)(d), 12G(1)(e)).
     description:
-      "Every offer, presented and recorded. The vendor must be told of every offer in writing, and price can never be represented below a rejected offer once it's in writing.",
-    legalBasis: "Sch 2 r5 (PSA Reg); s73A (PSA Act)",
+      "Every offer, presented and recorded. The vendor must be told of every offer in writing. From 17 November 2026 the advertised price can't start below a written offer the vendor rejected on price only (s73(1)).",
+    legalBasis: "Sch 2 r5 (PSA Reg); s73(1), s73A (PSA Act)",
     requiresDate: false,
     requiredForStageCompletion: false,
   },
