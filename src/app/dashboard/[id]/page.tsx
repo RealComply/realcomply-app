@@ -31,6 +31,9 @@ import { WithdrawFromMarket, WithdrawnBanner } from "@/components/property/Withd
 import { canOfferWithdraw, reasonLabel, withdrawalRecordLines } from "@/lib/rules/listing-tabs";
 import { keepUntilLineFor } from "@/lib/rules/agreement-keep-until";
 import type { CouncilAreaView } from "@/components/property/CouncilArea";
+import type { ComparablesArea } from "@/components/comparables/MostComparable";
+import { areaOf } from "@/lib/rules/council-area";
+import { comparablesRulesApply, espDeterminedOn } from "@/lib/rules/comparables-rules";
 import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 
@@ -227,6 +230,17 @@ export default async function PropertyPage({
     from: p.council_area_from ?? null,
     setByName: p.council_area_set_by ? nameOf(p.council_area_set_by) : null,
     setOn: p.council_area_set_at ? formatAuTimestamp(p.council_area_set_at) : null,
+  };
+  // What the comparable sales are checked against (Reg s12D; 0119): metro or
+  // not, and the date the ESP was worked out, which the months count back from.
+  const comparablesArea: ComparablesArea = {
+    kind: areaOf(p.council_area),
+    asAt: espDeterminedOn({
+      espGivenOn: (allItems["a4"]?.data as { espGivenOn?: unknown } | undefined)?.espGivenOn,
+      agreementDate: allItems["a3"]?.event_date,
+      today: sydneyDate(new Date()),
+    }),
+    applies: comparablesRulesApply(allItems["a3"]?.event_date ?? null),
   };
   const withdrawnLine = (w: Withdrawal) =>
     `Withdrawn on ${formatAuDate(w.withdrawn_on)} by ${nameOf(w.withdrawn_by)}. Reason: ${reasonLabel(w.reason, w.reason_other)}.`;
@@ -458,6 +472,7 @@ export default async function PropertyPage({
                   espHistory={espHistory}
                   agreementKeepUntil={agreementKeepUntil}
                   councilArea={councilArea}
+                  comparablesArea={comparablesArea}
                 />
               ))}
             </div>
@@ -483,6 +498,7 @@ export default async function PropertyPage({
               espHistory={espHistory}
               agreementKeepUntil={agreementKeepUntil}
               councilArea={councilArea}
+              comparablesArea={comparablesArea}
               />
           ))}
         </div>

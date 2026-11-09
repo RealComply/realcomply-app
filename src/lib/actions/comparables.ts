@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import type { Weighting } from "@/lib/data/comparables";
+import { MAX_MOST_COMPARABLE, MOST_COMPARABLE_REASON_MISSING, factorsFrom } from "@/lib/rules/comparables-rules";
 
 // Everything the AGENT does to the comparables. Extraction writes the facts
 // (see extraction.ts); this file writes the judgement.
@@ -31,14 +32,69 @@ export async function setComparableWeighting(
 ): Promise<ComparableActionState> {
   const { supabase } = await requireAuthContext();
 
+  // Only a sale relied on can be one of the 3 most comparable (0119), so a
+  // sale moved off "Relied on" loses that mark too.
   const { error } = await supabase
     .from("property_comparables")
-    .update({ weighting })
+    .update(
+      weighting === "relied"
+        ? { weighting }
+        : { weighting, most_comparable: false, most_comparable_reason: null, comparison_factors: [] },
+    )
     .eq("id", comparableId)
     .eq("property_id", propertyId);
 
   if (error) return { error: "Couldn't save that. Try again." };
 
+  revalidatePath(`/dashboard/${propertyId}`);
+  return { error: null };
+}
+
+/**
+ * Marks a sale relied on as one of the 3 most comparable (Reg s12C, s12D(5);
+ * 0119), with why and the comparison factors weighed (Reg s12F(1)(a)). The
+ * reason is required; the database keeps it to 3, and to sales relied on.
+ */
+export async function setMostComparable(
+  propertyId: string,
+  comparableId: string,
+  _prev: ComparableActionState,
+  formData: FormData,
+): Promise<ComparableActionState> {
+  const { supabase } = await requireAuthContext();
+  const reason = String(formData.get("mostComparableReason") ?? "").trim().slice(0, 2000);
+  if (!reason) return { error: MOST_COMPARABLE_REASON_MISSING };
+  const factors = factorsFrom(formData.getAll("comparisonFactors"));
+
+  const { data, error } = await supabase
+    .from("property_comparables")
+    .update({ most_comparable: true, most_comparable_reason: reason, comparison_factors: factors })
+    .eq("id", comparableId)
+    .eq("property_id", propertyId)
+    .eq("weighting", "relied")
+    .select("id");
+
+  if (error) {
+    if (/Only 3 sales/.test(error.message)) {
+      return { error: `Only ${MAX_MOST_COMPARABLE} sales can be marked as the most comparable. Take the mark off one first.` };
+    }
+    return { error: "Couldn't save that. Try again." };
+  }
+  if (!data || data.length === 0) return { error: "Mark the sale \u201cRelied on\u201d first." };
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return { error: null };
+}
+
+/** Takes the "one of the 3 most comparable" mark off a sale, with its reason and factors. */
+export async function clearMostComparable(propertyId: string, comparableId: string): Promise<ComparableActionState> {
+  const { supabase } = await requireAuthContext();
+  const { error } = await supabase
+    .from("property_comparables")
+    .update({ most_comparable: false, most_comparable_reason: null, comparison_factors: [] })
+    .eq("id", comparableId)
+    .eq("property_id", propertyId);
+  if (error) return { error: "Couldn't save that. Try again." };
   revalidatePath(`/dashboard/${propertyId}`);
   return { error: null };
 }

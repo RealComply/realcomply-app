@@ -37,6 +37,13 @@ export type Comparable = {
   weighting: Weighting | null;
   agentNote: string | null;
   position: number;
+  /**
+   * One of the 3 most comparable (Reg s12C, s12D(5); 0119), only on a sale
+   * relied on, with why and the comparison factors weighed. Set by a person.
+   */
+  mostComparable: boolean;
+  mostComparableReason: string | null;
+  comparisonFactors: string[];
 };
 
 /**
@@ -88,6 +95,9 @@ function toComparable(row: Record<string, unknown>): Comparable {
     weighting: (row.weighting as Weighting) ?? null,
     agentNote: (row.agent_note as string) ?? null,
     position: Number(row.position ?? 0),
+    mostComparable: row.most_comparable === true,
+    mostComparableReason: (row.most_comparable_reason as string) ?? null,
+    comparisonFactors: Array.isArray(row.comparison_factors) ? (row.comparison_factors as string[]) : [],
   };
 }
 

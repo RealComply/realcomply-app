@@ -2,7 +2,15 @@
 
 import { useViewerAccess } from "@/components/ViewerAccess";
 import { useActionState, useContext, useState, useTransition } from "react";
-import { Plus, X, Check } from "lucide-react";
+import { Plus, X, Check, Star } from "lucide-react";
+import {
+  ComparablesRecordForm,
+  MostComparableMark,
+  MostComparableSummary,
+  WindowTag,
+  type ComparablesArea,
+} from "@/components/comparables/MostComparable";
+import type { ComparablesRecord } from "@/lib/rules/comparables-rules";
 import { DictateButton, DictationSuspended, appendDictated } from "@/components/Dictate";
 import {
   addComparable,
@@ -86,12 +94,19 @@ export function ComparablesPanel({
   propertyId,
   subject,
   comparables,
+  area = null,
+  record = { informationUsed: null, fewerThanThreeReason: null },
 }: {
   propertyId: string;
   subject: SubjectAttributes;
   comparables: Comparable[];
+  /** Metro or not, and the date the months count back from (Reg s12D; 0118, 0119). */
+  area?: ComparablesArea | null;
+  /** Why fewer than 3, and the information used, kept on the card (Reg s12C(2), s12F; 0119). */
+  record?: ComparablesRecord;
 }) {
   const [adding, setAdding] = useState(false);
+  const markedCount = comparables.filter((c) => c.mostComparable).length;
 
   return (
     <div className="mt-3 space-y-3">
@@ -105,8 +120,16 @@ export function ComparablesPanel({
       ) : (
         <div className="space-y-2">
           <WeighingCounter comparables={comparables} />
+          <MostComparableSummary comparables={comparables} area={area} />
           {comparables.map((c) => (
-            <ComparableRow key={c.id} propertyId={propertyId} subject={subject} comparable={c} />
+            <ComparableRow
+              key={c.id}
+              propertyId={propertyId}
+              subject={subject}
+              comparable={c}
+              area={area}
+              markedCount={markedCount}
+            />
           ))}
         </div>
       )}
@@ -123,6 +146,8 @@ export function ComparablesPanel({
           Add a sale
         </button>
       )}
+
+      <ComparablesRecordForm propertyId={propertyId} record={record} markedCount={markedCount} />
     </div>
   );
 }
@@ -276,10 +301,14 @@ function ComparableRow({
   propertyId,
   subject,
   comparable,
+  area,
+  markedCount,
 }: {
   propertyId: string;
   subject: SubjectAttributes;
   comparable: Comparable;
+  area: ComparablesArea | null;
+  markedCount: number;
 }) {
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState(comparable.agentNote ?? "");
@@ -372,6 +401,12 @@ function ComparableRow({
           </span>
           <span className="min-w-0 truncate text-[13px] font-semibold text-rc-ink">{comparable.address}</span>
           <MarkLabel weighting={comparable.weighting} />
+          {comparable.mostComparable && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-rc-green-deep bg-white px-2 py-0.5 text-[10px] font-bold text-rc-green-deep">
+              <Star size={10} className="fill-current" aria-hidden="true" />
+              Most comparable
+            </span>
+          )}
           <span className="ml-auto text-[11px] tabular-nums text-rc-muted">
             {money(comparable.salePrice)}
             {comparable.saleDate ? ` · ${shortDate(comparable.saleDate)}` : ""}
@@ -401,6 +436,7 @@ function ComparableRow({
           {comparable.source === "agent" && (
             <p className="mt-0.5 text-[11px] text-rc-faint">Added by you, not from the report.</p>
           )}
+          <WindowTag comparable={comparable} area={area} />
         </div>
         {/* Only the licensee removes a row (Adam, 9 Oct 2026). */}
         {actsAsLicensee && (
@@ -519,6 +555,8 @@ function ComparableRow({
           </button>
         )}
       </div>
+
+      <MostComparableMark propertyId={propertyId} comparable={comparable} markedCount={markedCount} />
 
       {comparable.weighting && (
         <div className="mt-2">

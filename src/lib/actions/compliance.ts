@@ -3,6 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { a4cSave, pendingFromForm } from "@/lib/rules/esp-reasoning-adoption";
 import {
+  comparablesMissing,
+  comparablesRecordFrom,
+  comparablesRecordOf,
+  comparablesRulesApply,
+} from "@/lib/rules/comparables-rules";
+import {
   ESP_REASONING_KEY,
   STAGE_GATE_MESSAGE,
   espReasoningMissing,
@@ -118,6 +124,8 @@ const CARRIED_BY_ITEM: Record<string, string[]> = {
   b1: ["aiDraft", "contractRead"],
   // espGivenOn and the ESP notice: s72A(2), from 17 Nov 2026 (Adam, 9 Nov 2026).
   a4: ["reportRead", "espGivenOn", "espNoticePath", "espNoticeFileName"],
+  // Fewer than 3 comparable, and the information used (Reg s12C(2), s12F; 0119).
+  a4c: ["comparablesRecord"],
   // The settlement date, kept when a save doesn't send it (a reopen, say).
   f5: ["settlementDate"],
 };
@@ -692,6 +700,27 @@ export async function setItemStatus(
         .is("as_at", null);
       const missing = espReasoningMissing({ data, onMarketCount: count ?? 0, signedOff: false });
       if (missing.length > 0) return { error: missing.join(" ") };
+
+      // The 17 November rules (Reg s12C, s12F; 0119): the 3 most comparable
+      // sales, or why fewer, and the information used. For an agreement
+      // signed from 17 Nov (or not signed yet, from then), and not where the
+      // reasoning is kept outside RealComply.
+      const { data: agreement } = await supabase
+        .from("property_items")
+        .select("event_date")
+        .eq("property_id", propertyId)
+        .eq("item_key", "a3")
+        .maybeSingle();
+      const signedOn = (agreement as { event_date?: string | null } | null)?.event_date ?? null;
+      if (comparablesRulesApply(signedOn) && data.loggedElsewhere !== true) {
+        const { count: most } = await supabase
+          .from("property_comparables")
+          .select("id", { count: "exact", head: true })
+          .eq("property_id", propertyId)
+          .eq("most_comparable", true);
+        const missingComparables = comparablesMissing({ mostComparableCount: most ?? 0, record: comparablesRecordOf(data) });
+        if (missingComparables.length > 0) return { error: missingComparables.join(" ") };
+      }
     }
   }
 
@@ -1010,6 +1039,47 @@ export async function setEspNotice(
   });
   revalidatePath(`/dashboard/${propertyId}`);
   return error ? { error: "Couldn't save the ESP notice just now. Try again." } : ok;
+}
+
+/**
+ * On the ESP reasoning card (a4c): why fewer than 3 sales are comparable,
+ * and the information used and where it came from (Reg s12C(2), s12F; 0119).
+ * Kept as data.comparablesRecord, beside the reasoning, and carried through
+ * the card's own saves.
+ */
+export async function setComparablesRecord(
+  propertyId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase, profile } = await requireAuthContext();
+  const record = comparablesRecordFrom({
+    informationUsed: formData.get("informationUsed"),
+    fewerThanThreeReason: formData.get("fewerThanThreeReason"),
+  });
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("status, data, event_date, completed_by")
+    .eq("property_id", propertyId)
+    .eq("item_key", "a4c")
+    .maybeSingle();
+  const existing = row as {
+    status?: "open" | "done" | "flagged";
+    data?: Record<string, unknown> | null;
+    event_date?: string | null;
+    completed_by?: string | null;
+  } | null;
+  const { error } = await upsertItem(supabase, {
+    agencyId: profile.agency_id,
+    propertyId,
+    itemKey: "a4c",
+    status: existing?.status ?? "open",
+    data: { ...(existing?.data ?? {}), comparablesRecord: record },
+    eventDate: existing?.event_date ?? null,
+    completedBy: existing?.completed_by ?? null,
+  });
+  revalidatePath(`/dashboard/${propertyId}`);
+  return error ? { error: "Couldn't save that just now. Try again." } : ok;
 }
 
 // The "Listing launch date" card (c0): the day the property was first

@@ -98,6 +98,9 @@ function comparable(over: Partial<Comparable>): Comparable {
     weighting: null,
     agentNote: null,
     position: 0,
+    mostComparable: false,
+    mostComparableReason: null,
+    comparisonFactors: [],
     ...over,
   };
 }

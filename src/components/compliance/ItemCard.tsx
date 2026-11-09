@@ -136,6 +136,8 @@ import { priceFromText } from "@/lib/rules/advertised-price";
 
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
 import { CouncilAreaPanel, type CouncilAreaView } from "@/components/property/CouncilArea";
+import type { ComparablesArea } from "@/components/comparables/MostComparable";
+import { comparablesRecordOf } from "@/lib/rules/comparables-rules";
 import { MarketListingsPanel } from "@/components/comparables/MarketListingsPanel";
 import type { MarketListing } from "@/lib/data/market-listings";
 import { fileSpecificPrompts, type EspFigures } from "@/lib/data/comparables";
@@ -886,6 +888,7 @@ function ChecklistItem({
   doneLine = null,
   keepUntil = null,
   councilArea,
+  comparablesArea,
 }: {
   item: ComplianceItem;
   propertyId: string;
@@ -894,6 +897,8 @@ function ChecklistItem({
   keepUntil?: string | null;
   /** a4c: the council area, and where to look for comparable sales (Reg s12A, s12D; 0118). */
   councilArea?: CouncilAreaView;
+  /** a4c: what the sales are checked against (Reg s12D; 0119). */
+  comparablesArea?: ComparablesArea;
   /** a4 and a4c: what the last read of the comparable-sales report on a4 came to. */
   reportRead?: ReportRead | null;
   // The listing's own attributes and its comparable sales. Read once by the
@@ -1228,7 +1233,13 @@ function ChecklistItem({
               </div>
             )
           )}
-          <ComparablesPanel propertyId={propertyId} subject={subject} comparables={comparables} />
+          <ComparablesPanel
+            propertyId={propertyId}
+            subject={subject}
+            comparables={comparables}
+            area={comparablesArea ?? null}
+            record={comparablesRecordOf(current?.data)}
+          />
           {/* The competition, under the sales (Stephen Borg, 28 Sep
               2026; mockup v2 approved by Adam). */}
           <MarketListingsPanel
@@ -4810,6 +4821,8 @@ type ItemCardProps = {
   espHistory?: EspHistoryView;
   /** The comparables card (a4c): the listing's council area, metro or non-metro (Reg s12A; 0118). */
   councilArea?: CouncilAreaView;
+  /** The comparables card (a4c): what the sales are checked against (Reg s12D; 0119). */
+  comparablesArea?: ComparablesArea;
 };
 
 export function ItemCard(props: ItemCardProps) {
@@ -4832,6 +4845,7 @@ function ItemCardBody({
   agreementKeepUntil = null,
   espHistory,
   councilArea,
+  comparablesArea,
 }: ItemCardProps) {
   // A card added after this file was signed off (the order on the agent,
   // 6 Nov 2026) was never asked for here: it says so, with nothing to do.
@@ -4982,6 +4996,7 @@ function ItemCardBody({
           doneLine={item.key === "b4" && b4Approval?.via === "tick" ? tickedLine(b4Approval) : null}
           keepUntil={item.key === "a3" ? agreementKeepUntil : null}
           councilArea={item.key === "a4c" ? councilArea : undefined}
+          comparablesArea={item.key === "a4c" ? comparablesArea : undefined}
           noteSeed={
             item.key === "b4"
               ? (allItems["a3"]?.data as { aiDraft?: { offerPrice?: string } } | undefined)?.aiDraft

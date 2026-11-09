@@ -31,6 +31,7 @@ const subject: SubjectAttributes = {
 const sale = (id: string, address: string, salePrice: number): Comparable => ({
   id, address, salePrice, saleDate: "2026-06-14", bedrooms: 4, bathrooms: 2, carSpaces: 2, landSizeSqm: 600,
   internalAreaSqm: 210, distanceM: 400, propertyType: "House", source: "report", weighting: null, agentNote: null, position: 0,
+  mostComparable: false, mostComparableReason: null, comparisonFactors: [],
 });
 const input = (prices: number[]): EspDraftInput => ({
   esp: { low: 1_300_000, high: 1_400_000 },
