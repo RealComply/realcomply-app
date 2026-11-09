@@ -390,6 +390,8 @@ export type ComplianceRecordInput = {
   councilAreaLines?: string[];
   /** Under the comparables card: how many are the most comparable, why fewer than 3, the information used (Reg s12C, s12F; 0119). */
   comparablesLines?: string[];
+  /** Under the Statement of Information card: every version, when it's due to be revised, the link for online ads (s72C; Reg s12I; 0121). */
+  soiLines?: string[];
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
   loadDocument?: (doc: PackDocument) => Promise<LoadedDocument>;
@@ -687,6 +689,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       // The 3 most comparable, fewer than 3, and the information used (Reg s12C and s12F; 0119).
       if (item.key === "a4c" && input.comparablesLines) {
         for (const line of input.comparablesLines) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+      }
+      // Every version of the Statement of Information, and its link (s72C; 0121).
+      if (item.key === "soi" && input.soiLines) {
+        for (const line of input.soiLines) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
       }
       // How long to keep the agreement (Reg s8A, from 17 Nov 2026).
       if (item.key === "a3" && input.agreementKeepUntil) {

@@ -47,6 +47,9 @@ import { tickedLine, type PriceApproval } from "@/lib/rules/price-statement";
 import { espText, SALE_PRICE_NOTE_PROMPT, salePriceFlagText, savedSaleCheck } from "@/lib/rules/sale-price";
 import { ListingScanPanel, type ScanFinding } from "@/components/compliance/ListingScanPanel";
 import { EspDraftForm, EspHistoryList, EspNoticeUpload, type EspHistoryView } from "@/components/compliance/EspRevisionParts";
+import { StatementOfInformationBody } from "@/components/compliance/StatementOfInformation";
+import type { SoiView } from "@/lib/data/soi";
+import { reviseByLine } from "@/lib/rules/soi";
 import { ADD_REVISION, HISTORY_HELP, pendingFrom } from "@/lib/esp-history";
 import {
   ESP_GIVEN_HINT,
@@ -3516,11 +3519,14 @@ function ReductionItem({
   propertyId,
   current,
   espHistory,
+  soiReviseBy = null,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   espHistory?: EspHistoryView;
+  /** When the Statement of Information has to be revised by, after a revision with different comparables (Reg s12I; 0121). */
+  soiReviseBy?: { revisionNo: number; dueBy: string } | null;
 }) {
   const yesAction = markEspRevised.bind(null, propertyId);
   const noAction = markNoPriceRevision.bind(null, propertyId);
@@ -3626,6 +3632,18 @@ function ReductionItem({
             <p className="text-xs leading-relaxed text-rc-muted">{HISTORY_HELP}</p>
             <EspHistoryList view={espHistory} />
           </>
+        )}
+
+        {soiReviseBy && (
+          <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs font-semibold text-rc-amber-deep">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>
+              {reviseByLine(soiReviseBy)}{" "}
+              <a href={`/dashboard/${propertyId}?stage=0#card-soi`} className="underline">
+                Go to the Statement of Information
+              </a>
+            </span>
+          </p>
         )}
 
         {pending ? (
@@ -4825,6 +4843,10 @@ type ItemCardProps = {
   councilArea?: CouncilAreaView;
   /** The comparables card (a4c): what the sales are checked against (Reg s12D; 0119). */
   comparablesArea?: ComparablesArea;
+  /** The Statement of Information card (soi; 0121): its versions, the form filled from the file, the link. */
+  soi?: SoiView;
+  /** The ESP revision card (d3): when the statement has to be revised by (Reg s12I; 0121). */
+  soiReviseBy?: { revisionNo: number; dueBy: string } | null;
 };
 
 export function ItemCard(props: ItemCardProps) {
@@ -4848,6 +4870,8 @@ function ItemCardBody({
   espHistory,
   councilArea,
   comparablesArea,
+  soi,
+  soiReviseBy = null,
 }: ItemCardProps) {
   // A card added after this file was signed off (the order on the agent,
   // 6 Nov 2026) was never asked for here: it says so, with nothing to do.
@@ -4880,7 +4904,16 @@ function ItemCardBody({
     case "reports":
       return <ReportsLogItem item={item} propertyId={propertyId} current={current} />;
     case "reduction":
-      return <ReductionItem item={item} propertyId={propertyId} current={current} espHistory={espHistory} />;
+      return (
+        <ReductionItem item={item} propertyId={propertyId} current={current} espHistory={espHistory} soiReviseBy={soiReviseBy} />
+      );
+    case "soi":
+      return soi ? (
+        // Done once there's a version; kept open while a revision is due.
+        <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current} foldable={!soi.reviseBy} hideReopen>
+          <StatementOfInformationBody view={soi} />
+        </ItemShell>
+      ) : null;
     case "quotes":
       return <VerbalQuoteLogItem item={item} propertyId={propertyId} current={current} />;
     case "sale":

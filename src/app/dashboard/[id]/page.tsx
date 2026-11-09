@@ -25,7 +25,10 @@ import { stageProgress } from "@/lib/rules/stage-progress";
 import { StageProgressBar } from "@/components/compliance/StageProgressBar";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
-import { espHistoryFor } from "@/lib/data/esp-revisions";
+import { espHistoryFor, espRevisionsFor } from "@/lib/data/esp-revisions";
+import { reviseByFor, soiVersionsFor, soiViewFor } from "@/lib/data/soi";
+import { revisionsOrCard } from "@/lib/esp-history";
+import { soiApplies } from "@/lib/rules/soi";
 import { withdrawalHistory, type Withdrawal } from "@/lib/data/withdrawals";
 import { WithdrawFromMarket, WithdrawnBanner } from "@/components/property/WithdrawListing";
 import { canOfferWithdraw, reasonLabel, withdrawalRecordLines } from "@/lib/rules/listing-tabs";
@@ -102,7 +105,7 @@ export default async function PropertyPage({
     // card asking. amv uses the AML position.
     supabase
       .from("agencies")
-      .select("aml_precommencement_enabled")
+      .select("aml_precommencement_enabled, name")
       .eq("id", profile.agency_id)
       .maybeSingle(),
     // For the hand-over card: whose listing this is, and who handed it over.
@@ -258,6 +261,28 @@ export default async function PropertyPage({
   const espHistory = stageItems.some((i) => i.key === "d3")
     ? { ...(await espHistoryFor(supabase, p.agency_id, p.id, allItems)), areaKind: areaOf(p.council_area) }
     : undefined;
+  // The Statement of Information (s72C; 0121): on its own card in Listing
+  // set-up, and when it has to be revised by on the ESP revision card.
+  const signedOff = allItems["sign_licensee"]?.status === "done";
+  const office = ((agencyRow as { name?: string | null } | null)?.name ?? "").trim();
+  const person = (profile.full_name ?? "").trim() || profile.email;
+  const soi = stageItems.some((i) => i.key === "soi")
+    ? await soiViewFor(supabase, {
+        property: p,
+        allItems,
+        preparedBy: office ? `${person}, ${office}` : person,
+        withdrawn,
+        signedOff,
+      })
+    : undefined;
+  const soiReviseBy =
+    espHistory && (soiApplies(allItems["a3"]?.event_date ?? null) || allItems["soi"])
+      ? reviseByFor(
+          await soiVersionsFor(supabase, p.id),
+          revisionsOrCard(await espRevisionsFor(supabase, p.agency_id, p.id), allItems["d3"]),
+          comparables,
+        )
+      : null;
   const personName = (id: string | null) => {
     const found = people.find((x) => x.id === id);
     return found?.full_name ?? "the agent";
@@ -473,6 +498,8 @@ export default async function PropertyPage({
                   agreementKeepUntil={agreementKeepUntil}
                   councilArea={councilArea}
                   comparablesArea={comparablesArea}
+                  soi={soi}
+                  soiReviseBy={soiReviseBy}
                 />
               ))}
             </div>
@@ -499,6 +526,8 @@ export default async function PropertyPage({
               agreementKeepUntil={agreementKeepUntil}
               councilArea={councilArea}
               comparablesArea={comparablesArea}
+              soi={soi}
+              soiReviseBy={soiReviseBy}
               />
           ))}
         </div>

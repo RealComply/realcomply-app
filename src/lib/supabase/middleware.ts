@@ -43,6 +43,11 @@ export function isPublicPath(pathname: string): boolean {
     // with no login. The token is the credential; the page reads and writes
     // only through 0112's functions.
     pathname.startsWith("/licensee-confirm/") ||
+    // /soi/<token> is a listing's Statement of Information for its online
+    // ads (s72C(4); 0121): opened by anyone who sees the ad. The token is the
+    // credential; it reads only through statement_of_information_public, and
+    // shows the current statement and nothing else.
+    pathname.startsWith("/soi/") ||
     // The legal documents are public for the same kind of reason: a privacy
     // policy only account holders can read is not published, and the Stripe
     // customer portal and Meta's app review both link to them signed out.
