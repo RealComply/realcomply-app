@@ -125,6 +125,7 @@ export async function recordEspRevision(
       : null,
     elsewhere: formData.get("feedbackElsewhere") === "yes",
     where: String(formData.get("feedbackWhere") ?? ""),
+    confirmed: formData.get("feedbackElsewhereConfirmed") === "yes",
   });
   if ("error" in feedback) return { error: feedback.error };
 
