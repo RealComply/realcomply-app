@@ -29,6 +29,8 @@ import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-sig
 import { priceApprovalFor } from "@/lib/data/price-approval";
 import { priceApproval } from "@/lib/rules/price-statement";
 import { espRevisionsFor } from "@/lib/data/esp-revisions";
+import { reviseByFor, soiLinkFor, soiVersionsFor } from "@/lib/data/soi";
+import { soiApplies, soiRecordLines } from "@/lib/rules/soi";
 import {
   approvalLines,
   cancelledBecause,
@@ -48,7 +50,7 @@ import { readableBytes } from "@/lib/documents/readable-bytes";
 import { EMPTY_FILE_MESSAGE, downloadedFileProblem } from "@/lib/storage/file-check";
 import { addedLine, complaintFilesFor, removedLine } from "@/lib/complaint-files";
 import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
-import type { Complaint, ComplaintFile, Property, PropertyItem } from "@/lib/types";
+import { STAGE_LABELS, type Complaint, type ComplaintFile, type Property, type PropertyItem } from "@/lib/types";
 import { formalAgencyName, namesAsAt, type AgencyNames, type NameChange } from "@/lib/agency-names";
 
 // The audit pack for one listing: the finalised compliance record as a PDF.
@@ -251,6 +253,26 @@ export async function buildAuditPack(
   );
   const documents = packDocumentsFor(items, byKey, listingFolder(agencyId, id), uploads);
 
+  // EVERY VERSION OF THE STATEMENT OF INFORMATION (s72C(6); 0121), oldest
+  // first, after the rest of Listing set-up's files: each is kept 3 years.
+  const soiVersions = await soiVersionsFor(supabase, id);
+  const soiDocs: PackDocument[] = soiVersions
+    .filter((v) => isInFolder(v.pdfPath, `${listingFolder(agencyId, id)}soi/`))
+    .map((v) => {
+      const fileName = v.fileName ?? "Statement of Information.pdf";
+      return {
+        stage: STAGE_LABELS[0],
+        cardTitle: `Statement of Information, Version ${v.versionNo}`,
+        fileName,
+        path: v.pdfPath,
+        kind: packDocKind(fileName),
+        uploadedBy: v.preparedByName,
+        uploadedAt: v.createdAt,
+      };
+    });
+  const afterSetUp = documents.findIndex((d) => d.stage !== STAGE_LABELS[0]);
+  documents.splice(afterSetUp < 0 ? documents.length : afterSetUp, 0, ...soiDocs);
+
   // Withdrawn from sale, and put back (Job B, 0114): a line each in the
   // record, and any evidence in the pack.
   const withdrawals = await withdrawalHistory(supabase as never, id);
@@ -351,6 +373,18 @@ export async function buildAuditPack(
   const comparablesApply = comparablesRulesApply(byKey["a3"]?.event_date, generatedAt);
   const comparablesLines = comparablesApply ? comparablesRecordLines(comparablesRecord, mostComparableCount) : undefined;
 
+  // The Statement of Information's versions, when it's due to be revised,
+  // and the link for online ads (s72C; Reg s12I; 0121): under its card.
+  const soiLines =
+    soiApplies(byKey["a3"]?.event_date ?? null, generatedAt)
+      ? soiRecordLines({
+          versions: soiVersions,
+          reviseBy: reviseByFor(soiVersions, revisions, comparables),
+          link: await soiLinkFor(supabase, id),
+          now: generatedAt,
+        })
+      : undefined;
+
   const pdf = await buildComplianceRecordPdf({
     property: p,
     agencyName,
@@ -409,6 +443,7 @@ export async function buildAuditPack(
       ruleLines: comparablesApply ? saleRecordLines(c, comparablesKind, comparablesAsAt) : [],
     })),
     comparablesLines,
+    soiLines,
     // The competition, as at the agency agreement date (29 Sep 2026).
     marketListings: listings.map((l) => ({
       address: l.address,

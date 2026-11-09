@@ -20,6 +20,7 @@
 import type { AuctionOutcomeData, Property, PropertyItem, PropertyStage } from "@/lib/types";
 import { readQuestion, type QuestionSpec } from "@/lib/rules/question-card";
 import type { NotApplicableSpec } from "@/lib/rules/not-applicable";
+import { soiApplies } from "@/lib/rules/soi";
 
 // ── Auction visibility ──────────────────────────────────────────────────────
 // Every x-series item is conditional on the listing being an auction. The trap
@@ -60,7 +61,8 @@ export type ItemKind =
   | "reserve" // the reserve, the time it was given, and the written evidence
   | "auction" // the outcome at the fall of the hammer
   | "question" // a Yes / No question; Yes can bring one tick with it (lib/rules/question-card.ts)
-  | "document"; // an optional upload on its own, with nothing to tick
+  | "document" // an optional upload on its own, with nothing to tick
+  | "soi"; // the Statement of Information: made or uploaded, every version, the link for ads (lib/rules/soi.ts)
 
 // Facts a rule may need that are not on the property row and not in its items.
 //
@@ -615,6 +617,30 @@ const items: ComplianceItem[] = [
       "For example: The sales I relied on are 12 Smith Street ($1,210,000) and 4 Jones Avenue ($1,265,000). This home is on a bigger block than both but has one fewer bathroom, so I put it between them.",
     requiresDate: false,
     requiredForStageCompletion: true,
+  },
+  // THE STATEMENT OF INFORMATION (s72C; Reg s12H, s12I; 0121). Adam, 9 Nov
+  // 2026, through Master: RealComply makes it from the file onto Fair
+  // Trading's approved form, checked by the agent, or the agent uploads one
+  // made elsewhere; every version kept; the 2 business day clock when an ESP
+  // revision changes the comparable properties. 10 Nov: a link for online
+  // ads, switched on by the agent. Master, 10 Nov: switched off until
+  // midnight Sydney on 8 February 2027, then only on a listing whose agency
+  // agreement was signed on or after that day (Act Sch 1, transitional cl 3).
+  // A listing signed before never gets it (lib/rules/soi.ts, soiApplies).
+  // Done once there's a version; a revision due shows on the card and on the
+  // ESP revision card, and never holds the file back.
+  {
+    key: "soi",
+    stage: 0,
+    kind: "soi",
+    label: "Statement of Information",
+    description:
+      "Made on Fair Trading's approved form, kept in every version. It goes in or is linked from every online ad, is on display at every inspection, and is given within 2 business days to a buyer who asks for it or for the contract. Revise it within 2 business days when an ESP revision takes into account different comparable properties.",
+    legalBasis: "s72C; Reg s12H, s12I",
+    hideEvidence: true,
+    requiresDate: false,
+    requiredForStageCompletion: true,
+    showIf: (_property, allItems) => soiApplies(allItems["a3"]?.event_date ?? null),
   },
   {
     key: "a5",

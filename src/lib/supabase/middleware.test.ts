@@ -52,6 +52,7 @@ const SIGNED_OUT_OK = [
   "/office-manager/x", // the licensee approves an office manager (0093)
   "/office-manager/withdraw/x",
   "/licensee-confirm/x", // the licensee email confirms first (0112)
+  "/soi/x", // a listing's Statement of Information, linked from its ads (0121)
   "/annexure/x/pdf",
   // The annexure an agent on their own plan gives their licensee (14 Oct 2026),
   // and the same with their office's names on the Agency line (0070).
