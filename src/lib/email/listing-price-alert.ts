@@ -17,7 +17,10 @@ import { renderEmailHtml, renderEmailText, type EmailDocument } from "./layout";
 // (see alertKey in website-scan.ts) and only sends when that key is new, so a
 // further price drop or a revised ESP does mail again.
 
-export type RedFlag = { kind: "no_price" | "below_esp"; text: string };
+// below_lowest (9 Nov 2026): from 17 Nov 2026 the ad is above the ESP but
+// below a registered bidder's pass-in bid or a written offer the vendor
+// rejected on price only (s73(1)).
+export type RedFlag = { kind: "no_price" | "below_esp" | "below_lowest"; text: string };
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.realcomply.com.au";
 
@@ -41,7 +44,12 @@ export function listingAlertDocument(input: {
       {
         kind: "rows",
         rows: input.flags.map((f) => ({
-          title: f.kind === "no_price" ? "No price showing" : "Advertised below the ESP",
+          title:
+            f.kind === "no_price"
+              ? "No price showing"
+              : f.kind === "below_lowest"
+                ? "Advertised below the lowest price"
+                : "Advertised below the ESP",
           detail: f.text,
           tone: "risk" as const,
         })),
@@ -67,7 +75,11 @@ export async function sendListingAlert(input: {
   flags: RedFlag[];
 }): Promise<boolean> {
   const doc = listingAlertDocument(input);
-  const what = input.flags.some((f) => f.kind === "below_esp") ? "below the ESP" : "no price showing";
+  const what = input.flags.some((f) => f.kind === "below_esp")
+    ? "below the ESP"
+    : input.flags.some((f) => f.kind === "below_lowest")
+      ? "below the lowest price"
+      : "no price showing";
   return sendEmail({
     to: input.to,
     subject: `Live ad for ${input.address}: ${what}`,

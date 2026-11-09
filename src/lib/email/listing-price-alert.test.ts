@@ -32,6 +32,21 @@ describe("listingAlertDocument", () => {
     assert.equal(doc.title, "Hi Sam,");
   });
 
+  it("names an ad below the lowest price from 17 Nov 2026 (s73(1))", () => {
+    const doc = listingAlertDocument({
+      ...base,
+      flags: [
+        {
+          kind: "below_lowest",
+          text: "The advertised price starts at $750,000, below $780,000, the lowest it can start at (s73(1)).",
+        },
+      ],
+    });
+    const rows = doc.sections.find((s) => s.kind === "rows");
+    assert.ok(rows && rows.kind === "rows");
+    assert.deepEqual(rows.rows.map((r) => r.title), ["Advertised below the lowest price"]);
+  });
+
   it("links to the listing and says which page was checked", () => {
     const text = renderEmailText(
       listingAlertDocument({ ...base, flags: [{ kind: "no_price", text: "No price is shown." }] }),

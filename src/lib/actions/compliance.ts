@@ -38,7 +38,19 @@ import { ruleContextFor } from "@/lib/data/rule-context";
 import { checkSalePrice } from "@/lib/rules/sale-price";
 import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
-import { bannedPriceWording } from "@/lib/rules/underquoting-reforms";
+import { bannedPriceWording, reformsInForce } from "@/lib/rules/underquoting-reforms";
+import {
+  NEEDS_REVISION_TELL_VENDOR,
+  belowLowestPrice,
+  elsewhereAnswerProblem,
+  lowestPriceLine,
+  offerProblem,
+  vendorMustBeTold,
+  type ElsewhereOfferAnswer,
+  type OfferRecord,
+  type RejectedFor,
+} from "@/lib/rules/lowest-advertised-price";
+import { lowestPriceFor } from "@/lib/data/lowest-price";
 import { advertisedPriceProblem } from "@/lib/rules/advertised-price";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
@@ -752,11 +764,17 @@ export async function setItemStatus(
     // ("$900,000+"): lib/rules/underquoting-reforms.ts.
     const bannedWording = bannedPriceWording(String(data.note ?? ""));
     const usesProhibitedTerm = bannedWording.length > 0;
-    const belowEsp = esp.low != null && guideLow != null && guideLow < esp.low;
+    // From 17 Nov 2026 the lowest price is the highest of the ESP, a
+    // registered bidder's pass-in bid and a written offer rejected on price
+    // only (s73(1); Adam, 9 Nov 2026). Before then it is the ESP, as here.
+    const lowest = reformsInForce() ? await lowestPriceFor(supabase, propertyId) : null;
+    const belowLowest = lowest ? belowLowestPrice(guideLow, lowest) : null;
+    const belowEsp = !lowest && esp.low != null && guideLow != null && guideLow < esp.low;
     const spreadPct = guideLow && guideHigh ? ((guideHigh - guideLow) / guideLow) * 100 : 0;
 
     const flagReasons = [
       belowEsp ? `Advertised guide is below the recorded ${espLabel(esp)} (s73).` : null,
+      belowLowest,
       usesProhibitedTerm ? `Note mentions wording s73(2) bans: ${bannedWording.join(", ")}.` : null,
       spreadPct > 10 ? "Guide range spread exceeds 10%." : null,
       esp.low == null ? "No ESP recorded yet to check against — record the ESP first." : null,
@@ -1003,12 +1021,8 @@ export async function addReportEntry(
 // position because entries are unshifted onto the front of the array, so every
 // index shifts when a new offer is logged — and an off-by-one edit on a legal
 // record is the kind of bug you only notice in a dispute.
-export type OfferEntry = {
+export type OfferEntry = OfferRecord & {
   id: string;
-  amount: number;
-  outcome: string;
-  vendorInformed: boolean;
-  belowFloor: boolean;
   note: string;
   recordedAt: string;
   /** Set the first time an entry is edited. The original recordedAt is kept. */
@@ -1030,17 +1044,19 @@ function withIds(entries: OfferEntry[]): OfferEntry[] {
  * correcting an amount downwards has to be able to withdraw it.
  */
 function assessOffers(entries: OfferEntry[], threshold: number | null, thresholdSource: string) {
-  // s73A safeguard already in place: a rejected offer, in writing and not
-  // below an agreed vendor floor, sets a floor the advertised price can't go
-  // under.
-  const rejectedFloor = entries
-    .filter((e) => e.outcome === "rejected" && !e.belowFloor)
-    .reduce((max, e) => Math.max(max, e.amount), 0);
-
-  const unreported = entries.find((e) => !e.vendorInformed && !e.belowFloor);
+  // Every offer goes to the vendor in writing, except one below their written
+  // instruction, and even that one when it means the ESP needs revising
+  // (Sch 2 s5(1A), from 17 Nov 2026; Master, 9 Nov 2026, addition 2).
+  //
+  // The lowest price a written offer sets is no longer kept here
+  // (rejectedFloor, until 9 Nov 2026, which nothing read): from 17 Nov it is
+  // worked out with the ESP and the auction in lib/data/lowest-price.ts.
+  const unreported = entries.find((e) => vendorMustBeTold(e));
   const status: "open" | "done" | "flagged" = unreported ? "flagged" : "done";
   const flagReason = unreported
-    ? "An offer here has not yet been put to the vendor in writing (Sch 2 r5)."
+    ? unreported.belowFloor
+      ? NEEDS_REVISION_TELL_VENDOR
+      : "An offer here has not yet been put to the vendor in writing (Sch 2 r5)."
     : undefined;
 
   // Rejected at or above the QUOTED price. Not the ESP.
@@ -1086,8 +1102,10 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
   // a revision is made, s72A(5) the evidence, s73(3) the advertising deadline.
   //
   // Reports only. Never revises the ESP, never touches a4.
+  // From 17 Nov 2026 this prompt gives way to the lowest price (s73(1)): only
+  // a written offer rejected on price only raises it (saveOffers below).
   const highestRejectedAtOrAbove =
-    threshold != null && threshold > 0
+    threshold != null && threshold > 0 && !reformsInForce()
       ? entries
           .filter((e) => e.outcome === "rejected" && e.amount >= threshold)
           .reduce((max, e) => Math.max(max, e.amount), 0)
@@ -1102,7 +1120,7 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
         `quoting a price that will not buy the property.`
       : undefined;
 
-  return { rejectedFloor, status, flagReason, guideAmendmentPrompt };
+  return { status, flagReason, guideAmendmentPrompt };
 }
 
 /** The figure a rejected offer is measured against: what is advertised if
@@ -1198,13 +1216,14 @@ async function saveOffers(
     itemKey: "d2",
     status: assessment.status,
     data: {
+      ...(await d2Data(supabase, params.propertyId)),
       entries: params.entries,
-      rejectedFloor: assessment.rejectedFloor,
       flagReason: assessment.flagReason,
       guideAmendmentPrompt: assessment.guideAmendmentPrompt,
     },
     completedBy: params.userId,
   });
+  if (!error) await raiseAdvertisedPriceIfNeeded(supabase, params.propertyId);
 
   // Reopen the ADVERTISED GUIDE, not the ESP revision question.
   //
@@ -1223,13 +1242,120 @@ async function saveOffers(
 }
 
 function offerFromForm(formData: FormData) {
+  const outcome = String(formData.get("outcome") ?? "pending");
+  const belowFloor = formData.get("belowFloor") === "on";
+  const inWriting = formData.get("inWriting") === "on";
+  const rejectedInWriting = inWriting && outcome === "rejected";
+  const needs = String(formData.get("needsEspRevision") ?? "");
+  const rejectedFor = String(formData.get("rejectedFor") ?? "");
+  const rejectedOn = String(formData.get("rejectedOn") ?? "").trim();
   return {
     amount: Number(formData.get("amount") ?? 0),
-    outcome: String(formData.get("outcome") ?? "pending"),
+    outcome,
     vendorInformed: formData.get("vendorInformed") === "on",
-    belowFloor: formData.get("belowFloor") === "on",
+    belowFloor,
+    // Sch 2 s5(1A): asked only of an offer below the vendor's instruction.
+    needsEspRevision: belowFloor ? (needs === "yes" ? true : needs === "no" ? false : null) : null,
+    // A written offer's record (Reg s12F(1)(d), 12G(1)(e); Master, 9 Nov 2026):
+    // its conditions, and when rejected, why and when.
+    inWriting,
+    conditions: inWriting ? String(formData.get("conditions") ?? "").trim().slice(0, 300) || null : null,
+    rejectedFor: rejectedInWriting && (rejectedFor === "price" || rejectedFor === "terms") ? (rejectedFor as RejectedFor) : null,
+    rejectedOn: rejectedInWriting && /^\d{4}-\d{2}-\d{2}$/.test(rejectedOn) ? rejectedOn : null,
     note: String(formData.get("note") ?? "").trim(),
   };
+}
+
+/**
+ * The offers card's data as it is. Saving the log keeps everything else on the
+ * card (9 Nov 2026): until then logging an offer here dropped the "logged
+ * somewhere else" pointer, and it would now drop a written offer the vendor
+ * rejected on price only, lowering the lowest price without anyone saying so.
+ */
+async function d2Data(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+): Promise<Record<string, unknown>> {
+  const { data } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d2")
+    .maybeSingle();
+  return ((data?.data ?? {}) as Record<string, unknown>) ?? {};
+}
+
+/**
+ * From 17 Nov 2026: after the offers change, if the advertised price card now
+ * starts below the lowest price (s73(1)), reopen it and say why. The website
+ * check measures the live ad against the same figure each day.
+ */
+async function raiseAdvertisedPriceIfNeeded(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyId: string,
+): Promise<void> {
+  if (!reformsInForce()) return;
+  const { data: c1 } = await supabase
+    .from("property_items")
+    .select("data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "c1")
+    .maybeSingle();
+  const guideLow = Number((c1?.data as { guideLow?: unknown } | null)?.guideLow ?? 0) || null;
+  const lowest = await lowestPriceFor(supabase, propertyId);
+  if (lowest.floor == null || lowest.source === "esp" || guideLow == null || guideLow >= lowest.floor) return;
+  await reopenGuideAfterRejection(
+    supabase,
+    propertyId,
+    `${lowestPriceLine(lowest.floor)} ${lowest.why} Change the advertised price card and your ads to match.`,
+  );
+}
+
+/**
+ * Adam's question for offers kept in the agent's own system (9 Nov 2026):
+ * "Has the vendor rejected an offer that falls at or above the lowest
+ * advertised price?" Then: in writing, why, and for a price-only rejection
+ * the amount and the date. Only a written offer rejected on price only
+ * raises the lowest price (s73(1), from 17 Nov 2026).
+ */
+export async function setElsewhereOfferAnswer(
+  propertyId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireAuthContext();
+  const rejected = String(formData.get("rejected") ?? "");
+  if (rejected !== "yes" && rejected !== "no") return { error: "Answer the question: No or Yes." };
+  const inWriting = rejected === "yes" && formData.get("inWriting") === "on";
+  const rejectedFor = String(formData.get("rejectedFor") ?? "");
+  const amount = Number(String(formData.get("amount") ?? "").replace(/[^0-9.]/g, "")) || null;
+  const rejectedOn = String(formData.get("rejectedOn") ?? "").trim();
+  const answer: ElsewhereOfferAnswer = {
+    rejected,
+    inWriting,
+    rejectedFor: inWriting && (rejectedFor === "price" || rejectedFor === "terms") ? (rejectedFor as RejectedFor) : null,
+    amount: rejected === "yes" ? amount : null,
+    rejectedOn: rejected === "yes" && /^\d{4}-\d{2}-\d{2}$/.test(rejectedOn) ? rejectedOn : null,
+  };
+  const problem = elsewhereAnswerProblem(answer);
+  if (problem) return { error: problem };
+
+  const { data: row } = await supabase
+    .from("property_items")
+    .select("id, data")
+    .eq("property_id", propertyId)
+    .eq("item_key", "d2")
+    .maybeSingle();
+  const current = row as { id?: string; data?: Record<string, unknown> } | null;
+  if (!current?.id) return { error: "Tick that offers are logged somewhere else first." };
+  const { error } = await supabase
+    .from("property_items")
+    .update({ data: { ...(current.data ?? {}), elsewhereOffer: { ...answer, answeredAt: new Date().toISOString() } } })
+    .eq("id", current.id);
+  if (error) return { error: error.message };
+  await raiseAdvertisedPriceIfNeeded(supabase, propertyId);
+  revalidatePath(`/dashboard/${propertyId}`);
+  return ok;
 }
 
 export async function addOfferEntry(
@@ -1240,7 +1366,8 @@ export async function addOfferEntry(
   const { supabase, user, profile } = await requireAuthContext();
 
   const fields = offerFromForm(formData);
-  if (!fields.amount) return { error: "Enter the offer amount." };
+  const problem = offerProblem(fields);
+  if (problem) return { error: problem };
 
   const entries = await readOffers(supabase, propertyId);
   entries.unshift({ id: crypto.randomUUID(), ...fields, recordedAt: new Date().toISOString() });
@@ -1488,7 +1615,8 @@ export async function updateOfferEntry(
   const { supabase, user, profile } = await requireAuthContext();
 
   const fields = offerFromForm(formData);
-  if (!fields.amount) return { error: "Enter the offer amount." };
+  const problem = offerProblem(fields);
+  if (problem) return { error: problem };
 
   const entries = await readOffers(supabase, propertyId);
   // Matches on the id, or on recordedAt for entries logged before ids existed.
@@ -2886,10 +3014,12 @@ export async function markReopenedCardDone(propertyId: string, itemKey: string):
     if (entries.length === 0 && data.loggedElsewhere !== true) {
       return { error: "Log an offer first, or tick that offers are logged somewhere else." };
     }
-    const unreported = entries.find((e) => !e.vendorInformed && !e.belowFloor);
+    const unreported = entries.find((e) => vendorMustBeTold(e));
     if (unreported) {
       status = "flagged";
-      data.flagReason = "An offer here has not yet been put to the vendor in writing (Sch 2 r5).";
+      data.flagReason = unreported.belowFloor
+        ? NEEDS_REVISION_TELL_VENDOR
+        : "An offer here has not yet been put to the vendor in writing (Sch 2 r5).";
     } else {
       delete data.flagReason;
     }
