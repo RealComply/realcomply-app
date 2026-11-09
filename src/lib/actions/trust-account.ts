@@ -1,5 +1,6 @@
 "use server";
 
+import { offerItemLink } from "@/lib/licensee-signoff/server";
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { EVIDENCE_BUCKET, isInFolder, storedFileProblem } from "@/lib/storage/evidence";
@@ -114,7 +115,8 @@ export async function setTrustAccountArchived(
 // REVERSAL (Adam, 3 Nov 2026; 0109). Was: the licensee only filled this in
 // and confirmed it in one step. Now the office manager (or the licensee)
 // uploads the report and enters its details, and the licensee in charge
-// confirms them: in the app, on its own or in the monthly pack. The database records who entered the details and who confirmed
+// confirms them: in the app, through their emailed link or in the monthly
+// pack. The database records who entered the details and who confirmed
 // (0109), and details changed after a confirmation need confirming again.
 // Asserting that the trust account has been audited stays the licensee's own
 // statement: s111 puts the obligation on the licensee personally.
@@ -198,12 +200,19 @@ export async function saveTrustAudit(
   // match ON CONFLICT (agency_id, trust_account_id, period_end) to an
   // expression index — every save failed with 42P10. The index still stops a
   // second row for the same account and period.
-  const { error } = existing
-    ? await supabase.from("trust_audits").update(row).eq("id", existing.id)
-    : await supabase.from("trust_audits").insert(row);
+  const { data: saved, error } = existing
+    ? await supabase.from("trust_audits").update(row).eq("id", existing.id).select("id, confirmed_at").maybeSingle()
+    : await supabase.from("trust_audits").insert(row).select("id, confirmed_at").maybeSingle();
 
   if (error) {
     return { error: "Couldn't save that — try again." };
+  }
+
+  // Entered and waiting for the licensee: a licensee with no login, in an
+  // office that signs as items come in, gets an email link (0109).
+  const audit = saved as { id: string; confirmed_at: string | null } | null;
+  if (audit && !audit.confirmed_at && (auditorName || row.file_path)) {
+    await offerItemLink(profile.agency_id, "trust_audit", audit.id, profile.id);
   }
 
   revalidatePath("/dashboard/trust");

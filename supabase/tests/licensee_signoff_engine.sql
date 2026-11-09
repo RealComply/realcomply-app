@@ -1,13 +1,15 @@
 -- ===== READ ONLY. Licensee sign-off: the monthly pack, signed in the app, 4 November 2026 =====
 --
--- Proves supabase/migrations/0109_licensee_signoff_engine.sql. Run after it.
+-- Proves supabase/migrations/0109_licensee_signoff_engine.sql. Run after it,
+-- and after 0113 where it has run.
 -- Safe on the live database: everything happens inside one transaction that
 -- is rolled back at the end, so the made-up offices, people and records it
 -- creates never exist outside it.
 --
--- The licensee in charge signs the pack in the app, logged in. A licensee
--- with no login signs nothing through 0109 (Master, 4 Nov 2026: their links
--- are a separate change), so their office can't choose "Monthly pack".
+-- The licensee in charge signs the pack in the app, logged in. 0113 adds the
+-- links for a licensee with no login, and lifts 0109's refusals of them (a
+-- null signer, 'link', "Monthly pack" without a login), so this copy of the
+-- test leaves those refusals out; licensee_links.sql tests the links.
 --
 -- Pass: the last line says "Licensee sign-off engine: all checks passed".
 -- Fail: it stops with an error naming the check that failed.
@@ -17,11 +19,9 @@ begin;
 do $$
 declare
   o1 uuid := gen_random_uuid();   -- an office whose licensee has a login
-  o2 uuid := gen_random_uuid();   -- an office whose licensee has no login
   l  uuid := gen_random_uuid();   -- o1's licensee in charge
   m  uuid := gen_random_uuid();   -- o1's office manager
   a  uuid := gen_random_uuid();   -- an agent in o1
-  m2 uuid := gen_random_uuid();   -- o2's office manager
   pa uuid := gen_random_uuid();   -- a's listing
   ta uuid := gen_random_uuid();   -- the sales trust account
   req uuid;                       -- a's sign-off request
@@ -38,18 +38,15 @@ declare
   n integer;
 begin
   insert into auth.users (id, email) values
-    (l, 'lse-l@example.invalid'), (m, 'lse-m@example.invalid'), (a, 'lse-a@example.invalid'), (m2, 'lse-m2@example.invalid');
+    (l, 'lse-l@example.invalid'), (m, 'lse-m@example.invalid'), (a, 'lse-a@example.invalid');
   insert into public.agencies (id, name, plan, status, licensee_name, licensee_email) values
-    (o1, 'LSE Office (made up)', 'office_3', 'active', 'Lou Licensee', 'lse-l@example.invalid'),
-    (o2, 'LSE Office Two (made up)', 'office_3', 'active', 'Nat Nologin', 'lse-nat@example.invalid');
+    (o1, 'LSE Office (made up)', 'office_3', 'active', 'Lou Licensee', 'lse-l@example.invalid');
   insert into public.profiles (id, agency_id, full_name, email, is_agent, is_licensee_in_charge, is_assistant) values
     (l, o1, 'Lou Licensee', 'lse-l@example.invalid', true, true, false),
     (m, o1, 'Mel Manager', 'lse-m@example.invalid', true, false, false),
-    (a, o1, 'Ana Agent', 'lse-a@example.invalid', true, false, false),
-    (m2, o2, 'Max Manager', 'lse-m2@example.invalid', true, false, false);
+    (a, o1, 'Ana Agent', 'lse-a@example.invalid', true, false, false);
   insert into public.office_managers (agency_id, profile_id, wording, approved_via, approved_by, approved_by_name) values
-    (o1, m, 'I authorise Mel Manager to manage LSE Office''s RealComply account as office manager.', 'team', l, 'Lou Licensee'),
-    (o2, m2, 'I authorise Max Manager to manage LSE Office Two''s RealComply account as office manager.', 'email_link', null, 'Nat Nologin');
+    (o1, m, 'I authorise Mel Manager to manage LSE Office''s RealComply account as office manager.', 'team', l, 'Lou Licensee');
   insert into public.properties (id, agency_id, created_by, address) values (pa, o1, a, '5 Made Up Street, Nowhere NSW (made up)');
   insert into public.trust_accounts (id, agency_id, name) values (ta, o1, 'Sales trust account (made up)');
   insert into public.property_signoff_requests (agency_id, property_id, statement, sent_to, created_by)
@@ -122,45 +119,7 @@ begin
     raise exception 'FAIL 3e: the setting was changed directly';
   end if;
 
-  -- 3f. An office whose licensee has no login can't choose "Monthly pack"
-  --     (Master, 4 Nov 2026); "As items come in" still saves.
-  perform set_config('request.jwt.claims', json_build_object('sub', m2, 'role', 'authenticated')::text, true);
-  set local role authenticated;
-  begin
-    perform public.set_licensee_signoff_mode('monthly');
-    raise exception 'FAIL 3f: "Monthly pack" was chosen for a licensee with no login';
-  exception when raise_exception then
-    if sqlerrm <> 'Your licensee needs to be on RealComply to sign a monthly pack.' then raise; end if;
-  end;
-  perform public.set_licensee_signoff_mode('as_they_come');
-  reset role;
-  if (select licensee_signoff_mode from public.agencies where id = o2) <> 'as_they_come' then
-    raise exception 'FAIL 3g: the no-login office''s setting changed';
-  end if;
-
-  -- 4. Nothing signs without a login: no null signer, and no link.
-  begin
-    perform public.licensee_sign_item(o1, 'gift', gf, null, 'Lou Licensee', 'app');
-    raise exception 'FAIL 4: an item was signed with no signer';
-  exception when insufficient_privilege then null;
-  end;
-  begin
-    perform public.licensee_sign_item(o1, 'gift', gf, l, 'Lou Licensee', 'link');
-    raise exception 'FAIL 4b: an item was signed through a link';
-  exception when raise_exception then
-    if sqlerrm not like 'A name is needed to sign%' then raise; end if;
-  end;
-  begin
-    insert into public.signoff_signatures (document_id, agency_id, signer_id, typed_name, signed_at, signed_via)
-    values (rec, o1, null, 'Someone (made up)', now(), 'pack');
-    raise exception 'FAIL 4c: a signature without a login went on a reconciliation';
-  exception when not_null_violation then null;
-  end;
-  begin
-    update public.complaints set signed_off_via = 'link' where id = cp;
-    raise exception 'FAIL 4d: a complaint recorded a link signature';
-  exception when check_violation then null;
-  end;
+  -- 4. (Signing without a login, and "Monthly pack" without one: licensee_links.sql.)
 
   -- 5. The pack is sent (as the server does) with every item; one held back at signing.
   insert into public.signoff_packs (agency_id, month, sent_at, sent_by, sent_by_name)
@@ -174,16 +133,6 @@ begin
     (pk, o1, 'complaint', cp, 'office', 'Complaint resolved'),
     (pk, o1, 'gift', gf, 'office', 'Gift over $60');
   select id into held from public.signoff_pack_items where pack_id = pk and item_type = 'gift';
-  begin
-    perform * from public.licensee_sign_pack(pk, null, 'Lou Licensee', 'app', '[]'::jsonb);
-    raise exception 'FAIL 5: the pack was signed with no signer';
-  exception when insufficient_privilege then null;
-  end;
-  begin
-    perform * from public.licensee_sign_pack(pk, l, 'Lou Licensee', 'link', '[]'::jsonb);
-    raise exception 'FAIL 5a: the pack was signed through a link';
-  exception when insufficient_privilege then null;
-  end;
   begin
     perform * from public.licensee_sign_pack(pk, l, 'Lou Licensee', 'app', jsonb_build_array(jsonb_build_object('id', held)));
     raise exception 'FAIL 5b: held back without a note';
