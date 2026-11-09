@@ -57,6 +57,7 @@ export async function espHistoryFor(
   const paths = [
     ...revisions.map((r) => r.noticePath),
     ...revisions.map((r) => r.evidencePath).filter((p): p is string => typeof p === "string"),
+    ...revisions.map((r) => r.marketFeedbackRecord?.file?.path).filter((p): p is string => typeof p === "string"),
     ...(agreementFile ? [agreementFile.path] : []),
     ...(pending ? [pending.path] : []),
   ].filter((p) => isInFolder(p, folder));

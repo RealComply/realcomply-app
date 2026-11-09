@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { withdrawalHistory } from "@/lib/data/withdrawals";
 import { withdrawalRecordLines } from "@/lib/rules/listing-tabs";
 import { keepUntilLineFor } from "@/lib/rules/agreement-keep-until";
-import { feedbackRecordLine } from "@/lib/rules/market-feedback";
+import { feedbackRecordLine, feedbackRecordLines } from "@/lib/rules/market-feedback";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import {
@@ -309,7 +309,10 @@ export async function buildAuditPack(
     items,
     byKey,
     espReasoning: noteOf("a4c"),
-    espFeedbackLines: revisions.flatMap((r) => (r.marketFeedback ?? []).map((f) => feedbackRecordLine(r.no, f))),
+    espFeedbackLines: revisions.flatMap((r) => [
+      ...(r.marketFeedback ?? []).map((f) => feedbackRecordLine(r.no, f)),
+      ...(r.marketFeedbackRecord ? feedbackRecordLines(r.no, r.marketFeedbackRecord) : []),
+    ]),
     withdrawalLines,
     agreementKeepUntil: keepUntilLineFor(
       { a3: byKey["a3"], d3: byKey["d3"], f5: byKey["f5"] },
@@ -404,6 +407,23 @@ async function espHistoryPage(
       };
     });
   documents.splice(at >= 0 ? at : documents.length, 0, ...earlier);
+
+  // Each revision's market feedback record (Reg s12G(1)(f)), after its notice
+  // and evidence (put in below, just after the notice).
+  for (const r of revisions) {
+    const file = r.marketFeedbackRecord?.file;
+    if (!file || !isInFolder(file.path, folder) || documents.some((d) => d.path === file.path)) continue;
+    const notice = documents.findIndex((d) => d.path === r.noticePath);
+    documents.splice(notice >= 0 ? notice + 1 : documents.length, 0, {
+      stage,
+      cardTitle: `ESP revision market feedback, Revision ${r.no}`,
+      fileName: file.name,
+      path: file.path,
+      kind: packDocKind(file.name),
+      uploadedBy: uploads.get(file.path)?.by ?? r.recordedByName,
+      uploadedAt: uploads.get(file.path)?.at ?? (r.recordedAt || null),
+    });
+  }
 
   // Each revision's evidence given to the seller (0117), just after its notice.
   for (const r of revisions) {
