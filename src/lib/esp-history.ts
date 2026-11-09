@@ -2,6 +2,7 @@ import { formatAuDate } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { reformsInForce } from "@/lib/rules/underquoting-reforms";
 import { feedbackRecordOf, marketFeedbackOf, type FeedbackRecord, type MarketFeedback } from "@/lib/rules/market-feedback";
+import { revisionComparablesOf, type RevisionComparable } from "@/lib/rules/revision-comparables";
 
 // ESP REVISION HISTORY (Adam, 3 Nov 2026; mockup approved; database 0110).
 //
@@ -39,6 +40,12 @@ export type EspRevision = {
   marketFeedback?: MarketFeedback[];
   /** Its record attached, and where it's kept (the CRM), when there is one. */
   marketFeedbackRecord?: FeedbackRecord;
+  /** The comparable sales taken into account for it (Reg s12G(1)(a), (c); 0120). Empty when none were kept. */
+  comparables?: RevisionComparable[];
+  /** The information used and where it came from (Reg s12G(1)(a)(iv); 0120). */
+  comparablesInfoUsed?: string | null;
+  /** Why fewer than 3 are comparable (Reg s12G(1)(d); 0120). */
+  comparablesFewerReason?: string | null;
 };
 
 const num = (v: unknown): number | null => {
@@ -70,6 +77,9 @@ export function revisionFrom(row: Record<string, unknown> | null | undefined): E
     evidenceInNotice: row.evidence_in_notice === true,
     marketFeedback: marketFeedbackOf(row.market_feedback),
     marketFeedbackRecord: feedbackRecordOf(row.market_feedback),
+    comparables: revisionComparablesOf(row.comparables),
+    comparablesInfoUsed: typeof row.comparables_info_used === "string" ? row.comparables_info_used : null,
+    comparablesFewerReason: typeof row.comparables_fewer_reason === "string" ? row.comparables_fewer_reason : null,
   };
 }
 
@@ -151,6 +161,10 @@ export type EspVersion = {
   /** The market feedback a revision responded to (Reg s12G(1)(f)). */
   feedback?: MarketFeedback[];
   feedbackRecord?: FeedbackRecord;
+  /** A revision's own comparable sales, the information used, and why fewer than 3 (0120). */
+  comparables?: RevisionComparable[];
+  comparablesInfoUsed?: string | null;
+  comparablesFewerReason?: string | null;
 };
 
 export const LATEST_PILL = "Latest: used for checks";
@@ -189,6 +203,9 @@ export function espVersions(
       evidence: r.evidencePath ? { path: r.evidencePath, name: r.evidenceFileName ?? "Evidence" } : null,
       feedback: r.marketFeedback ?? [],
       feedbackRecord: r.marketFeedbackRecord,
+      comparables: r.comparables ?? [],
+      comparablesInfoUsed: r.comparablesInfoUsed ?? null,
+      comparablesFewerReason: r.comparablesFewerReason ?? null,
     };
   });
   out.reverse();

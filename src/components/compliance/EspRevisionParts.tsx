@@ -1,7 +1,11 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { AlertTriangle, Check, Paperclip, Sparkles, Info } from "lucide-react";
+import { AlertTriangle, Check, Paperclip, Sparkles, Info, Star } from "lucide-react";
+import { RevisionComparablesFields } from "@/components/compliance/RevisionComparables";
+import { REVISION_COMPARABLES_LABEL, saleLine, type RevisionCandidate } from "@/lib/rules/revision-comparables";
+import { factorsLine } from "@/lib/rules/comparables-rules";
+import type { AreaKind } from "@/lib/rules/council-area";
 import { FileDropZone } from "@/components/FileDropZone";
 import { AcceptedFilesLine, CantReadNotice } from "@/components/AcceptedFiles";
 import { unreadableKind } from "@/lib/storage/accepted-files";
@@ -51,6 +55,10 @@ export type EspHistoryView = {
   latestNo: number | null;
   /** The ESP on file now: the one a new revision's notice should give as the ESP before it (0117). */
   currentEsp?: { low: number | null; high: number | null };
+  /** For the next revision's comparable sales (Reg s12G; 0120): the sales to choose from, and the previous ESP's. */
+  revisionComparables?: { candidates: RevisionCandidate[]; previousAddresses: string[] };
+  /** Metro or not (Reg s12A; 0118), for where each sale sits against the search area. */
+  areaKind?: AreaKind | null;
 };
 
 /** A file on the card: a link (an hour) when there is one, else its name. */
@@ -148,6 +156,41 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
                   </p>
                 </div>
               ))}
+            </div>
+          )}
+          {/* Its own comparable sales (Reg s12G(1)(a), (c), (d); 0120). */}
+          {((v.comparables?.length ?? 0) > 0 || v.comparablesInfoUsed || v.comparablesFewerReason) && (
+            <div className="col-span-2 mt-1 space-y-2 rounded-lg border border-rc-border bg-white px-2.5 py-2 text-xs">
+              <p className="font-semibold text-rc-ink">{REVISION_COMPARABLES_LABEL}</p>
+              {(v.comparables ?? []).map((c, i) => (
+                <div key={i} className="space-y-0.5 text-rc-muted">
+                  <p className="flex items-start gap-1.5 font-semibold text-rc-ink">
+                    {c.most && <Star size={12} className="mt-0.5 shrink-0 fill-current text-rc-green-deep" aria-hidden="true" />}
+                    <span>{saleLine(c)}</span>
+                  </p>
+                  {c.most && (
+                    <p>
+                      <span className="font-semibold">One of the 3 most comparable:</span> {c.mostReason}
+                      {c.factors.length > 0 ? ` Comparison factors weighed: ${factorsLine(c.factors)}.` : ""}
+                    </p>
+                  )}
+                  {c.notBeforeReason && (
+                    <p>
+                      <span className="font-semibold">Not used for the previous ESP because:</span> {c.notBeforeReason}
+                    </p>
+                  )}
+                </div>
+              ))}
+              {v.comparablesFewerReason && (
+                <p className="text-rc-muted">
+                  <span className="font-semibold">Fewer than 3 comparable:</span> {v.comparablesFewerReason}
+                </p>
+              )}
+              {v.comparablesInfoUsed && (
+                <p className="text-rc-muted">
+                  <span className="font-semibold">Information used:</span> {v.comparablesInfoUsed}
+                </p>
+              )}
             </div>
           )}
         </li>
@@ -259,11 +302,17 @@ export function EspDraftForm({
   fileUrl,
   currentEsp = null,
   onUploadPdf,
+  revisionComparables,
+  areaKind = null,
 }: {
   propertyId: string;
   pending: PendingRevision;
   latestNo: number | null;
   fileUrl: string | null;
+  /** The sales to choose from for this revision, and the previous ESP's (Reg s12G; 0120). */
+  revisionComparables?: { candidates: RevisionCandidate[]; previousAddresses: string[] };
+  /** Metro or not (Reg s12A; 0118). */
+  areaKind?: AreaKind | null;
   /** The ESP on file now, to check the notice's ESP before the revision against. */
   currentEsp?: { low: number | null; high: number | null } | null;
   /** After "Upload a PDF" has cancelled the draft: brings the upload box back. */
@@ -609,6 +658,15 @@ export function EspDraftForm({
               </>
             )}
           </div>
+
+          {/* Its own comparable sales (Reg s12G(1)(a), (c), (d); 0120). */}
+          <RevisionComparablesFields
+            candidates={revisionComparables?.candidates ?? []}
+            previousAddresses={revisionComparables?.previousAddresses ?? []}
+            kind={areaKind}
+            givenOn={givenOn}
+            underReforms={underReforms}
+          />
 
           {/* The evidence given to the seller (s72A; 0117): a file, or part of the notice. */}
           <div className="space-y-2 rounded-md border border-rc-border px-3 py-2.5">

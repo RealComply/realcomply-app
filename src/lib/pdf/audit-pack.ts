@@ -13,6 +13,7 @@ import {
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { espGivenApplies } from "@/lib/rules/esp-given-before-signing";
 import { feedbackRecordLine, feedbackRecordLines } from "@/lib/rules/market-feedback";
+import { revisionComparablesLines } from "@/lib/rules/revision-comparables";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import {
@@ -361,9 +362,12 @@ export async function buildAuditPack(
     items,
     byKey,
     espReasoning: noteOf("a4c"),
+    // Under the ESP revision card, each revision's market feedback (Reg
+    // s12G(1)(f)) and its own comparable sales (Reg s12G(1)(a), (c), (d); 0120).
     espFeedbackLines: revisions.flatMap((r) => [
       ...(r.marketFeedback ?? []).map((f) => feedbackRecordLine(r.no, f)),
       ...(r.marketFeedbackRecord ? feedbackRecordLines(r.no, r.marketFeedbackRecord, r.recordedByName) : []),
+      ...revisionComparablesLines(r.no, r),
     ]),
     withdrawalLines,
     // "Not recorded" only where the 17 November rules apply to the agreement.
