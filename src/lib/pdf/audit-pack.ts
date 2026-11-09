@@ -311,7 +311,7 @@ export async function buildAuditPack(
     espReasoning: noteOf("a4c"),
     espFeedbackLines: revisions.flatMap((r) => [
       ...(r.marketFeedback ?? []).map((f) => feedbackRecordLine(r.no, f)),
-      ...(r.marketFeedbackRecord ? feedbackRecordLines(r.no, r.marketFeedbackRecord) : []),
+      ...(r.marketFeedbackRecord ? feedbackRecordLines(r.no, r.marketFeedbackRecord, r.recordedByName) : []),
     ]),
     withdrawalLines,
     agreementKeepUntil: keepUntilLineFor(

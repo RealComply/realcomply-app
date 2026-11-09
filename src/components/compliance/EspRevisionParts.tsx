@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { AlertTriangle, Paperclip, Sparkles, Info } from "lucide-react";
+import { AlertTriangle, Check, Paperclip, Sparkles, Info } from "lucide-react";
 import { FileDropZone } from "@/components/FileDropZone";
 import { AcceptedFilesLine, CantReadNotice } from "@/components/AcceptedFiles";
 import { unreadableKind } from "@/lib/storage/accepted-files";
@@ -25,6 +25,7 @@ import {
   type PendingRevision,
 } from "@/lib/esp-history";
 import {
+  FEEDBACK_ELSEWHERE_CONFIRM,
   FEEDBACK_ELSEWHERE_HINT,
   FEEDBACK_ELSEWHERE_LABEL,
   FEEDBACK_ELSEWHERE_PLACEHOLDER,
@@ -129,6 +130,12 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
                 </p>
               )}
               {v.feedbackRecord?.where && <p className="text-rc-muted">Recorded in: {v.feedbackRecord.where}</p>}
+              {v.feedbackRecord?.where && v.feedbackRecord.confirmed && (
+                <p className="flex items-start gap-1.5 text-rc-muted">
+                  <Check size={12} className="mt-0.5 shrink-0 text-rc-green-deep" aria-hidden="true" />
+                  <span>{FEEDBACK_ELSEWHERE_CONFIRM}</span>
+                </p>
+              )}
               {(v.feedback ?? []).map((f, i) => (
                 <div key={i} className="space-y-0.5 text-rc-muted">
                   <p className="font-semibold text-rc-ink">{feedbackFrom(f)}</p>
@@ -579,12 +586,24 @@ export function EspDraftForm({
                     </span>
                   </label>
                   {feedbackElsewhere && (
-                    <input
-                      name="feedbackWhere"
-                      aria-label="Where the market feedback is recorded"
-                      placeholder={FEEDBACK_ELSEWHERE_PLACEHOLDER}
-                      className="w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
-                    />
+                    <>
+                      <input
+                        name="feedbackWhere"
+                        aria-label="Where the market feedback is recorded"
+                        placeholder={FEEDBACK_ELSEWHERE_PLACEHOLDER}
+                        className="w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
+                      />
+                      {/* Required with it (Adam, 9 Nov 2026). */}
+                      <label className="flex items-start gap-2.5">
+                        <input
+                          type="checkbox"
+                          name="feedbackElsewhereConfirmed"
+                          value="yes"
+                          className="mt-0.5 shrink-0 accent-rc-green-deep"
+                        />
+                        <span className="text-sm text-rc-ink">{FEEDBACK_ELSEWHERE_CONFIRM}</span>
+                      </label>
+                    </>
                   )}
                 </div>
               </>

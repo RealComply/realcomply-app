@@ -62,9 +62,18 @@ export const FEEDBACK_NONE =
   "Add the market feedback the revision responded to, attach a record of it or say where it's kept, or untick it.";
 export const FEEDBACK_WHERE_MISSING = "Say where the market feedback is recorded, for example the name of your CRM.";
 
-/** The record of the feedback that isn't typed here: a file, and where it's kept. */
-export type FeedbackRecord = { file: { path: string; name: string } | null; where: string | null };
-const NO_RECORD: FeedbackRecord = { file: null, where: null };
+/**
+ * Required with "recorded somewhere else" (Adam, 9 Nov 2026): the agent
+ * confirms the record kept there has everything s12G(1)(f) asks for.
+ */
+export const FEEDBACK_ELSEWHERE_CONFIRM =
+  "The feedback, who gave it, when, why it was relevant and how I used it are recorded there.";
+export const FEEDBACK_CONFIRM_MISSING =
+  "Tick that the feedback, who gave it, when, why it was relevant and how you used it are recorded there.";
+
+/** The record of the feedback that isn't typed here: a file, where it's kept, and the tick that it's all there. */
+export type FeedbackRecord = { file: { path: string; name: string } | null; where: string | null; confirmed: boolean };
+const NO_RECORD: FeedbackRecord = { file: null, where: null, confirmed: false };
 
 const MAX_ENTRIES = 20;
 const MAX_NAME = 200;
@@ -86,7 +95,12 @@ const text = (v: unknown, max: number): string | null => {
 export function marketFeedbackFrom(
   raw: unknown,
   ticked: boolean,
-  other: { file: { path: string; name: string } | null; elsewhere: boolean; where: string | null } = {
+  other: {
+    file: { path: string; name: string } | null;
+    elsewhere: boolean;
+    where: string | null;
+    confirmed?: boolean;
+  } = {
     file: null,
     elsewhere: false,
     where: null,
@@ -95,7 +109,8 @@ export function marketFeedbackFrom(
   if (!ticked) return { entries: [], record: NO_RECORD };
   const where = other.elsewhere ? text(other.where, MAX_NAME) : null;
   if (other.elsewhere && !where) return { error: FEEDBACK_WHERE_MISSING };
-  const record: FeedbackRecord = { file: other.file, where };
+  if (where && other.confirmed !== true) return { error: FEEDBACK_CONFIRM_MISSING };
+  const record: FeedbackRecord = { file: other.file, where, confirmed: Boolean(where) };
   let list: unknown = raw;
   if (typeof raw === "string") {
     try {
@@ -125,11 +140,11 @@ export function marketFeedbackFrom(
 
 /** What goes in esp_revisions.market_feedback: the typed entries, then the file and where it's kept. */
 export function feedbackToStore(feedback: { entries: MarketFeedback[]; record: FeedbackRecord }): unknown[] {
-  const { file, where } = feedback.record;
+  const { file, where, confirmed } = feedback.record;
   return [
     ...feedback.entries,
     ...(file ? [{ kind: "file", path: file.path, name: file.name }] : []),
-    ...(where ? [{ kind: "elsewhere", where }] : []),
+    ...(where ? [{ kind: "elsewhere", where, confirmed }] : []),
   ];
 }
 
@@ -138,21 +153,28 @@ export function feedbackRecordOf(raw: unknown): FeedbackRecord {
   if (!Array.isArray(raw)) return NO_RECORD;
   let file: FeedbackRecord["file"] = null;
   let where: string | null = null;
+  let confirmed = false;
   for (const r of raw as Array<Record<string, unknown>>) {
     if (!r || typeof r !== "object") continue;
     if (r.kind === "file" && typeof r.path === "string" && r.path) {
       file = { path: r.path, name: text(r.name, MAX_NAME) ?? r.path.split("/").pop() ?? "Market feedback" };
     }
-    if (r.kind === "elsewhere") where = text(r.where, MAX_NAME) ?? where;
+    if (r.kind === "elsewhere") {
+      where = text(r.where, MAX_NAME) ?? where;
+      confirmed = r.confirmed === true;
+    }
   }
-  return { file, where };
+  return { file, where, confirmed };
 }
 
-/** The compliance record's lines for the attached record and where it's kept. */
-export function feedbackRecordLines(revisionNo: number, record: FeedbackRecord): string[] {
+/** The compliance record's lines for the attached record, where it's kept, and the tick. */
+export function feedbackRecordLines(revisionNo: number, record: FeedbackRecord, tickedBy: string | null = null): string[] {
   return [
     record.file ? `Revision ${revisionNo}, market feedback record attached: ${record.file.name}.` : null,
     record.where ? `Revision ${revisionNo}, market feedback recorded in: ${record.where}.` : null,
+    record.where && record.confirmed
+      ? `Revision ${revisionNo}, ticked${tickedBy ? ` by ${tickedBy}` : ""}: "${FEEDBACK_ELSEWHERE_CONFIRM}"`
+      : null,
   ].filter((l): l is string => Boolean(l));
 }
 
