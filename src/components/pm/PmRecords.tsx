@@ -17,6 +17,7 @@ import {
 } from "@/lib/rules/nsw-pm";
 import { PmChoicePills } from "@/components/pm/PmChoicePills";
 import { todayInSydney } from "@/components/pm/pm-dates";
+import { LegalReference } from "@/components/LegalReference";
 
 // Things recorded rather than ticked (brief B6, B7). Each press records the
 // person and the time, stamped by the database (0053). Nothing here counts
@@ -55,7 +56,11 @@ function InfoToggle({ title, reference }: { title: string; reference: string }) 
       >
         <Info size={13} aria-hidden="true" />
       </button>
-      {open && <span className="basis-full text-xs text-rc-faint">Legal basis: {reference}</span>}
+      {open && (
+        <span className="basis-full text-xs text-rc-faint">
+          Legal basis: <LegalReference text={reference} />
+        </span>
+      )}
     </>
   );
 }

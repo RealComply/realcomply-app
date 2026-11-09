@@ -170,7 +170,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           pmEnabled={pm.enabled}
           actsAsLicensee={access.actsAsLicensee}
           runsOffice={access.runsOffice}
-          isOfficeManager={access.isOfficeManager}
+          // Only an approved office manager is called one (0115).
+          isOfficeManager={access.isOfficeManager && !access.keepsOfficeAccess}
           isAccountHolder={accountHolder}
         />
         <ViewerAccessProvider

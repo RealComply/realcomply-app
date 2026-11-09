@@ -20,12 +20,17 @@ import { reopenHistoryFor } from "@/lib/data/reopen";
 import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
-import { stageHold } from "@/lib/rules/stage-hold";
+import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
 import { stageProgress } from "@/lib/rules/stage-progress";
 import { StageProgressBar } from "@/components/compliance/StageProgressBar";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
 import { espHistoryFor } from "@/lib/data/esp-revisions";
+import { withdrawalHistory, type Withdrawal } from "@/lib/data/withdrawals";
+import { WithdrawFromMarket, WithdrawnBanner } from "@/components/property/WithdrawListing";
+import { canOfferWithdraw, reasonLabel, withdrawalRecordLines } from "@/lib/rules/listing-tabs";
+import { formatAuDate } from "@/lib/format-date";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 
 // "Read uploaded documents" and "Read again" run from this page. A large PDF
 // is now read in parts (25 Oct 2026, lib/documents/reader-parts.ts), and a
@@ -160,7 +165,9 @@ export default async function PropertyPage({
     signedOff: allItems["sign_licensee"]?.status === "done",
     incompleteRequired: (s) =>
       itemsForStage(s, p, allItems, ruleCtx)
-        .filter((i) => i.requiredForStageCompletion && allItems[i.key]?.status !== "done")
+        .filter(
+          (i) => i.requiredForStageCompletion && holdsBack(i.key, s, p.stage) && allItems[i.key]?.status !== "done",
+        )
         .map((i) => i.label),
   });
   const held = hold.stage !== p.stage;
@@ -186,9 +193,10 @@ export default async function PropertyPage({
     reachable: s <= maxViewable,
     // An optional upload card (the Power of Attorney copy, 15 Oct 2026)
     // counts once something is on it, never against the stage while empty.
+    // A card that's "Not on this file" (added after sign-off) never counts.
     ...stageProgress(
       itemsForStage(s, p, allItems, ruleCtx)
-        .filter((i) => i.kind !== "document" || allItems[i.key]?.status === "done")
+        .filter((i) => !i.notOnThisFile && (i.kind !== "document" || allItems[i.key]?.status === "done"))
         .map((i) => allItems[i.key]?.status),
     ),
   }));
@@ -196,6 +204,23 @@ export default async function PropertyPage({
   const countdown = auctionCountdown(p.auction_date);
 
   const people = peopleRows;
+
+  // Withdrawn from sale (Job B, 0114): read only until it is put back. The
+  // listing's agent or the licensee can withdraw it before exchange, or put
+  // it back; not an assistant (the database decides; this only hides the
+  // buttons from people it would refuse).
+  const withdrawals = await withdrawalHistory(supabase, p.id);
+  const openWithdrawal: Withdrawal | null = withdrawals.find((w) => !w.put_back_at) ?? null;
+  const withdrawn = openWithdrawal !== null;
+  const mayWithdraw = !profile.is_assistant && (profile.id === p.created_by || access.actsAsLicensee);
+  const nameOf = (pid: string | null) => people.find((x) => x.id === pid)?.full_name ?? "a team member";
+  const withdrawnLine = (w: Withdrawal) =>
+    `Withdrawn on ${formatAuDate(w.withdrawn_on)} by ${nameOf(w.withdrawn_by)}. Reason: ${reasonLabel(w.reason, w.reason_other)}.`;
+  // Earlier withdrawals and put-backs, in the audit pack's words.
+  const earlierWithdrawals = withdrawalRecordLines(
+    withdrawals.filter((w) => w.put_back_at),
+    nameOf,
+  );
 
   // b4, the price statement: who ticked it and when, or the licensee's own
   // approval from before 2 Nov 2026 (REVERSAL: lib/rules/price-statement.ts).
@@ -241,6 +266,7 @@ export default async function PropertyPage({
   const reopenPage: ReopenPage = {
     propertyId: p.id,
     signedOff: allItems["sign_licensee"]?.status === "done",
+    withdrawn,
     viewer: { id: profile.id, isLicensee: profile.is_licensee_in_charge === true && !profile.archived_at },
     names: Object.fromEntries(people.filter((x) => x.full_name).map((x) => [x.id, x.full_name as string])),
     titles: Object.fromEntries(allItemsFor(p, allItems, ruleCtx).map((i) => [i.key, i.label])),
@@ -302,6 +328,27 @@ export default async function PropertyPage({
         </div>
 
         <SendBackBanner />
+
+        {openWithdrawal ? (
+          <WithdrawnBanner
+            propertyId={p.id}
+            line={withdrawnLine(openWithdrawal)}
+            evidence={
+              openWithdrawal.evidence_path
+                ? { path: openWithdrawal.evidence_path, fileName: openWithdrawal.evidence_file_name ?? "Evidence" }
+                : null
+            }
+            history={earlierWithdrawals}
+            canPutBack={mayWithdraw}
+          />
+        ) : (
+          mayWithdraw &&
+          canOfferWithdraw({ storedStage: p.stage, withdrawn }) && (
+            <div className="mt-4">
+              <WithdrawFromMarket propertyId={p.id} agencyId={p.agency_id} today={sydneyDate(new Date())} />
+            </div>
+          )
+        )}
 
         <div className="mt-3">
           <p className="text-sm text-rc-muted">
@@ -424,7 +471,7 @@ export default async function PropertyPage({
 
         {/* Held: no Continue button. Completing the held stage's cards is
             what releases the file, back to its own stage. */}
-        {isCurrentStage && !held && p.stage < 5 && (
+        {isCurrentStage && !held && !withdrawn && p.stage < 5 && (
           <CompleteStageButton propertyId={p.id} stage={p.stage} stageInUrl={stageParam !== undefined} />
         )}
 

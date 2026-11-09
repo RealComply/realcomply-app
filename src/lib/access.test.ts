@@ -21,6 +21,7 @@ describe("accessFrom", () => {
       isAgentPlan: false,
       runsOffice: true,
       isOfficeManager: false,
+      keepsOfficeAccess: false,
     });
   });
 
@@ -119,6 +120,36 @@ describe("an office manager (0093)", () => {
     for (const label of ["Office overview", "Team", "Registers", "Trust accounts", "SG Manual", "Billing", "Training", "CPD"]) {
       assert.ok(menu.includes(label), label);
     }
+  });
+});
+
+describe("keeping the office side until the licensee approves (Adam, 6 Nov 2026; 0115)", () => {
+  const agent = { is_licensee_in_charge: false, is_assistant: false };
+
+  it("has what an office manager has, and nothing that stays with the licensee", () => {
+    const a = accessFrom(agent, "office_1", false, true);
+    assert.equal(a.keepsOfficeAccess, true);
+    assert.equal(a.isOfficeManager, true);
+    assert.equal(a.runsOffice, true);
+    assert.equal(a.seesComplaints, true);
+    assert.equal(a.actsAsLicensee, false);
+    assert.equal(a.officeLicensee, false);
+  });
+
+  it("is the same whether or not the database already counts it as office manager", () => {
+    assert.deepEqual(accessFrom(agent, "office_1", true, true), accessFrom(agent, "office_1", false, true));
+  });
+
+  it("is never kept on an agent plan, by the licensee, an assistant, or someone who left", () => {
+    assert.equal(accessFrom(agent, "agent_1", false, true).keepsOfficeAccess, false);
+    assert.equal(accessFrom({ ...agent, is_licensee_in_charge: true }, "office_1", false, true).keepsOfficeAccess, false);
+    assert.equal(accessFrom({ ...agent, is_assistant: true }, "office_1", false, true).keepsOfficeAccess, false);
+    const left = accessFrom({ ...agent, archived_at: "2026-11-06T00:00:00Z" }, "office_1", false, true);
+    assert.equal(left.keepsOfficeAccess || left.runsOffice, false);
+  });
+
+  it("an approved office manager isn't keeping it", () => {
+    assert.equal(accessFrom(agent, "office_1", true).keepsOfficeAccess, false);
   });
 });
 

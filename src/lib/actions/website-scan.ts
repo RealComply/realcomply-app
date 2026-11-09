@@ -10,11 +10,14 @@ import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
 import { reopenStaleNoRevision } from "@/lib/data/no-revision-reask";
 import { sendListingAlert, type RedFlag } from "@/lib/email/listing-price-alert";
 import { PRICE_CHECK_FROM, scanModeAt } from "@/lib/listing-scan-schedule";
+import { reformsInForce } from "@/lib/rules/underquoting-reforms";
 import { fetchPublicPage } from "@/lib/net/public-page";
 import { PAGE_IS_DATA, checkListingsPages, findListingPage, pageCache } from "@/lib/listing-scan/pages-scan";
 import { READER_MODEL, logReadFailure, readFailureWhy, type ReadFailureWhy } from "@/lib/documents/read-core";
 import { UnfinishedAnswer, toolAnswer, unfinishedMessage } from "@/lib/documents/reader-answer";
 import type { PropertyItem } from "@/lib/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { withdrawnPropertyIds } from "@/lib/data/withdrawals";
 
 // The advertised-price check.
 //
@@ -412,7 +415,10 @@ async function assess(
   if (!read.priceShown && marketing && new Date(base.checkedAt) >= PRICE_CHECK_FROM) {
     const text =
       `No price is shown on the listing page${read.priceText ? ` (it reads “${read.priceText}”)` : ""}. ` +
-      "Add the price guide to the ad.";
+      // s72D, from 17 November 2026: every ad needs a price or price range.
+      (reformsInForce(new Date(base.checkedAt))
+        ? "Every ad needs a price or price range (s72D). Add the price guide to the ad."
+        : "Add the price guide to the ad.");
     issues.push(text);
     redFlags.push({ kind: "no_price", text });
   }
@@ -422,7 +428,11 @@ async function assess(
     const text =
       `Advertised price starts at $${read.priceLow.toLocaleString("en-AU")}, below the ${espLabel(esp)} of $${esp.low.toLocaleString("en-AU")} on this file (s73(1)).` +
         (esp.revised
-          ? ` The price was revised${esp.revisedOn ? ` on ${esp.revisedOn}` : ""}, and s73(3) requires the advertising to be amended or retracted as soon as practicable after that.`
+          ? ` The price was revised${esp.revisedOn ? ` on ${esp.revisedOn}` : ""}, and ${
+              reformsInForce(new Date(base.checkedAt))
+                ? "s73(3) requires online ads to be fixed or taken down within 1 business day of that, and other ads as soon as practicable."
+                : "s73(3) requires the advertising to be amended or retracted as soon as practicable after that."
+            }`
           : " If the ESP has been revised, record the notice on the file so this checks against the right figure.");
     issues.push(text);
     if (marketing) redFlags.push({ kind: "below_esp", text });
@@ -430,7 +440,7 @@ async function assess(
   if (read.priceLow != null && read.priceHigh != null && read.priceLow > 0) {
     const spread = ((read.priceHigh - read.priceLow) / read.priceLow) * 100;
     if (spread > 10) {
-      issues.push(`Advertised range spreads ${spread.toFixed(1)}%, more than the 10% allowed (s72A(2)).`);
+      issues.push(`Advertised range spreads ${spread.toFixed(1)}%, more than the 10% allowed (s72A).`);
     }
   }
   for (const term of read.prohibitedTerms) {
@@ -616,6 +626,10 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
     .maybeSingle();
 
   if (!property) return { error: "Couldn't find that property." };
+  // Withdrawn from sale (0114): nothing to check until it is back on the market.
+  if ((await withdrawnPropertyIds(supabase)).has(propertyId)) {
+    return { error: "This listing is withdrawn from sale, so its price isn't checked. Put it back on the market first." };
+  }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const p = property as { id: string; agency_id: string; address: string; listing_url: string | null; created_by: string | null };
@@ -703,6 +717,9 @@ export async function runDailyListingScan(): Promise<{
   // and AI features are off for it.
   const { data: endedRows } = await supabase.from("agencies").select("id").not("ended_at", "is", null);
   const ended = new Set(((endedRows ?? []) as Array<{ id: string }>).map((a) => a.id));
+  // Nor for a listing withdrawn from sale (Job B, 0114): its price check and
+  // emails stop until it is put back on the market.
+  const withdrawn = await withdrawnPropertyIds(supabase as unknown as SupabaseClient);
 
   const properties = ((rows ?? []) as Array<{
     id: string;
@@ -710,7 +727,7 @@ export async function runDailyListingScan(): Promise<{
     address: string;
     listing_url: string | null;
     created_by: string | null;
-  }>).filter((p) => !ended.has(p.agency_id));
+  }>).filter((p) => !ended.has(p.agency_id) && !withdrawn.has(p.id));
 
   const db = supabase as unknown as Db;
   // Each page is fetched once this morning, however many listings use it.

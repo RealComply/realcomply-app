@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, Home as HomeIcon, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
 import { ownWork, readsBeyondOwnWork } from "@/lib/data/listing-access";
@@ -8,9 +8,15 @@ import { ListingLockCard } from "@/components/annexure/ListingLockCard";
 import { licenseeChangeStatus } from "@/lib/data/licensee-change";
 import { NewLicenseeListingLock } from "@/components/annexure/NewLicenseeListingLock";
 import { navCountsFor } from "@/lib/data/nav-counts";
-import { STAGE_LABELS, type Property } from "@/lib/types";
+import { listingTabRowsFor } from "@/lib/data/listing-tabs";
+import { readTab } from "@/lib/rules/listing-tabs";
+import { ListingTabsView } from "@/components/listings/ListingTabsView";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
@@ -27,23 +33,26 @@ export default async function DashboardPage() {
   const newLicenseeLock = change?.annexurePending === true;
   const locked = Boolean(gate) || newLicenseeLock;
 
-  const { data: properties } = await supabase
-    .from("properties")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  const list = (properties ?? []) as Property[];
+  // Four tabs (Job B; mockup v6, Adam's OK, 5 Nov 2026): On the market (the
+  // default), Sold, Settled and Withdrawn from sale. Who sees which listings
+  // is the database's rule, as before. Tabs don't change plan counts.
+  const params = await searchParams;
+  const tab = readTab(params.tab);
+  const query = typeof params.q === "string" ? params.q : "";
+  const rows = await listingTabRowsFor(supabase);
 
   // The same numbers the sidebar shows, in the place you would look for them
   // when deciding which file to open. Free: the dashboard layout has already
   // called this in the same request and navCountsFor is cached, so this is a
   // map lookup rather than a second set of queries.
   const { listingRows } = await navCountsFor(supabase, profile, readsBeyondOwnWork(access) ? profile.id : null);
-  const statusById = new Map(listingRows.map((l) => [l.id, l]));
   // An office manager sees every listing in the office (Adam, 3 Nov 2026;
-  // 0108), to read: another agent's opens as its read-only record.
-  const ownIds = new Set(ownWork(list, access, profile.id).map((p) => p.id));
-  const viewOnly = (id: string) => readsBeyondOwnWork(access) && !ownIds.has(id);
+  // 0108), to read: another agent's opens as its read-only record, marked
+  // "View only" on the tabs (Job B, 5 Nov 2026).
+  const ownIds = new Set(ownWork(rows.map((r) => r.property), access, profile.id).map((p) => p.id));
+  const viewOnlyIds = readsBeyondOwnWork(access)
+    ? rows.map((r) => r.property.id).filter((id) => !ownIds.has(id))
+    : [];
 
   return (
     <>
@@ -56,9 +65,9 @@ export default async function DashboardPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Listings</h1>
             <p className="mt-1 text-sm text-rc-muted">
-              {list.length === 0
+              {rows.length === 0
                 ? "Every listing you're running, and where each one is up to."
-                : `${list.length} listing${list.length === 1 ? "" : "s"} — open one to work through its checklist.`}
+                : `${rows.length} listing${rows.length === 1 ? "" : "s"}. Open one to work through its checklist.`}
             </p>
           </div>
           {!locked && (
@@ -87,7 +96,7 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {list.length === 0 ? (
+        {rows.length === 0 ? (
           locked ? null : (
             <div className="mt-10 rounded-card border border-dashed border-rc-border bg-white px-6 py-16 text-center">
               <p className="text-rc-muted">No listings yet. Add your first one to start its compliance checklist.</p>
@@ -100,76 +109,13 @@ export default async function DashboardPage() {
             </div>
           )
         ) : (
-          <ul className="mt-6 divide-y divide-rc-border rounded-card border border-rc-border bg-white shadow-card">
-            {list.map((property) => (
-              <li key={property.id}>
-                <Link
-                  href={viewOnly(property.id) ? `/dashboard/${property.id}/summary` : `/dashboard/${property.id}`}
-                  // On a phone the pills go under the address and the address
-                  // wraps (10 Oct 2026): beside the pills it was cut to about ten
-                  // characters. From sm up, one row as before.
-                  className="flex flex-col gap-2 px-4 py-4 transition hover:bg-rc-bg-alt sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-rc-green-deep ring-1 ring-inset ring-white/70"
-                      style={{ background: "var(--rc-badge-grad-green)" }}
-                    >
-                      <HomeIcon size={16} strokeWidth={2} />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="break-words font-medium text-rc-ink sm:truncate">{property.address}</p>
-                      <p className="text-sm text-rc-muted">
-                        {property.property_type}
-                        {property.is_strata ? " · Strata" : ""}
-                        {property.is_tenanted ? " · Tenanted" : ""}
-                        {property.has_pool ? " · Pool" : ""}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 pl-12 sm:shrink-0 sm:flex-nowrap sm:pl-0">
-                    {/* What this file still needs, in the stage it is in.
-                        Absent on a test listing, which is deliberately not
-                        counted anywhere — see nav-counts.ts. */}
-                    {viewOnly(property.id) && (
-                      <span className="rounded-full bg-rc-bg-alt px-2.5 py-1 text-xs font-semibold text-rc-muted">
-                        View only
-                      </span>
-                    )}
-                    {(() => {
-                      const s = statusById.get(property.id);
-                      if (!s) return null;
-                      if (s.flagged === 0 && s.outstanding === 0) {
-                        return (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-rc-green-soft px-2.5 py-1 text-xs font-semibold text-rc-green-deep">
-                            <Check size={12} strokeWidth={3} aria-hidden="true" />
-                            Stage complete
-                          </span>
-                        );
-                      }
-                      return (
-                        <>
-                          {s.flagged > 0 && (
-                            <span className="rounded-full bg-rc-red-soft px-2.5 py-1 text-xs font-semibold text-rc-red">
-                              {s.flagged} flagged
-                            </span>
-                          )}
-                          {s.outstanding > 0 && (
-                            <span className="rounded-full bg-rc-amber/15 px-2.5 py-1 text-xs font-semibold text-rc-amber-deep">
-                              {s.outstanding} to do
-                            </span>
-                          )}
-                        </>
-                      );
-                    })()}
-                    <span className="rounded-full bg-rc-green-soft px-3 py-1 text-xs font-medium text-rc-green-deep shadow-[inset_0_0_0_1px_rgba(12,166,120,0.14)]">
-                      {STAGE_LABELS[property.stage]}
-                    </span>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <ListingTabsView
+            rows={rows}
+            tab={tab}
+            query={query}
+            status={Object.fromEntries(listingRows.map((l) => [l.id, { flagged: l.flagged, outstanding: l.outstanding }]))}
+            viewOnlyIds={viewOnlyIds}
+          />
         )}
       </main>
     </>

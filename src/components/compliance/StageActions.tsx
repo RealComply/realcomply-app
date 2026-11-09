@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { ContractNeededNote } from "@/components/compliance/ContractNeededNote";
+import { contractRefusalParts } from "@/lib/rules/contract-before-market";
 import { useRouter } from "next/navigation";
 import { Sparkles, FlaskConical } from "lucide-react";
 import { completeStage, toggleTestMode, type ActionState } from "@/lib/actions/compliance";
@@ -78,7 +80,12 @@ export function CompleteStageButton({
       >
         {pending ? "Checking…" : label}
       </button>
-      {state.error && <p className="mt-2 text-sm text-rc-amber-deep">{state.error}</p>}
+      {/* The contract (Master, 5 Nov 2026): the title and the Act's link. */}
+      {state.error && contractRefusalParts(state.error) ? (
+        <ContractNeededNote className="mt-2" also={contractRefusalParts(state.error)?.also} />
+      ) : (
+        state.error && <p className="mt-2 text-sm text-rc-amber-deep">{state.error}</p>
+      )}
     </form>
   );
 }

@@ -55,11 +55,13 @@ file forward.
 
 ## Documents and the AI
 
-Three documents are attached when a listing is created: the agency agreement,
-the contract for sale, and the comparable-sales report. The AI reads them and
-pre-fills what it can find — the ESP figures, the date the agreement was
-signed, whether the consumer guide was acknowledged, and which s52A prescribed
-documents are present in the contract.
+Two documents are attached when a listing is created: the agency agreement and
+the comparable-sales report. The contract for sale is attached later, on its
+card in Pre-market, and the listing can't go on the market until it's there.
+The AI reads each document the moment it's attached and pre-fills what it can
+find — the ESP figures, the date the agreement was signed, whether the
+consumer guide was acknowledged, and which s52A prescribed documents are
+present in the contract.
 
 Everything the AI produces is a draft. The agent can edit or discard any of it
 before saving, and nothing is committed on the AI's say-so alone. Re-attaching

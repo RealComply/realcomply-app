@@ -20,9 +20,15 @@ const initialState: ActionState = { error: null };
 
 // Kept in sync with SETUP_EVIDENCE_FIELDS in src/lib/actions/properties.ts —
 // which item each upload field files evidence against.
+//
+// REVERSAL (Adam, 5 Nov 2026; raised by a user). Was: the contract for sale
+// was uploaded here too, so the file couldn't start without it. Now: the
+// agency agreement and the comparable sales report only; the contract goes on
+// its card in Pre-market (b1), and the listing can't go on the market until
+// it's there. Why: agents often list and organise marketing while still
+// waiting on the contract, and couldn't start the compliance file.
 const DOC_FIELDS: Array<{ field: string; itemKey: string; label: string }> = [
   { field: "agencyAgreementFile", itemKey: "a3", label: "Agency agreement" },
-  { field: "contractFile", itemKey: "b1", label: "Contract for sale" },
   { field: "comparableSalesFile", itemKey: "a4", label: "Comparable sales report" },
 ];
 
@@ -93,18 +99,18 @@ function docAnchorId(field: string) {
   return `doc-${field}`;
 }
 
-// "the agency agreement and the contract for sale", not "agency agreement,
-// contract for sale".
+// "the agency agreement and the comparable sales report", not "agency
+// agreement, comparable sales report".
 function listOut(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
-// Named, not counted. "Attach all three documents" makes the person audit
-// their own form to work out which one they are being told about.
+// Named, not counted. "Attach both documents" makes the person audit their
+// own form to work out which one they are being told about.
 function missingDocsMessage(missing: typeof DOC_FIELDS): string {
   return missing.length === DOC_FIELDS.length
-    ? "All three documents are needed to create the listing."
+    ? "Both documents are needed to create the listing."
     : `Still to attach: ${listOut(missing.map((m) => m.label.toLowerCase()))}.`;
 }
 
@@ -192,7 +198,7 @@ export function AddressAutocomplete({ defaultValue }: { defaultValue?: string })
   );
 }
 
-// Property creation bundles the setup questions with up to three document
+// Property creation bundles the setup questions with the two document
 // uploads in one submit. The documents are uploaded straight from the
 // browser to Storage (not through the createProperty Server Action) before
 // that action ever runs, because Vercel Functions hard-cap every request
@@ -378,8 +384,9 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
 
         <div className="border-t border-rc-border pt-6">
           <h2 className="text-sm font-semibold text-rc-ink">Documents</h2>
-          {/* All three are read, and the form stays short: one line for the
-              three, under the heading (Adam, 3 Nov 2026). */}
+          {/* Both are read, and the form stays short: one line for the two,
+              under the heading (Adam, 3 Nov 2026). The contract isn't asked
+              for here (Adam, 5 Nov 2026): it goes on its card in Pre-market. */}
           <AcceptedFilesLine className="mt-1" />
           <div className="mt-4 space-y-4">
             {DOC_FIELDS.map(({ field, label }) => (
@@ -402,9 +409,9 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
                     return next;
                   });
                   // The banner follows the slots (10 Oct 2026). It was only
-                  // ever set on Create, so with all three documents attached
-                  // it still said "Still to attach: contract for sale and
-                  // comparable sales report" until Create was pressed again.
+                  // ever set on Create, so with every document attached it
+                  // still said "Still to attach: ..." until Create was
+                  // pressed again.
                   // It now names only the documents still flagged, and goes
                   // once none are. An upload failure's banner stays while its
                   // document is still flagged.
@@ -429,7 +436,7 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
         >
           {/* "Reading your documents" rather than "Creating", because since
               7 Sep 2026 that is what the wait actually is: the listing itself
-              takes a moment, and the rest is the three documents being read so
+              takes a moment, and the rest is the documents being read so
               the cards are filled in by the time the agent arrives. A button
               that says "Creating…" for ninety seconds looks stuck. */}
           {uploading ? "Uploading documents…" : pending ? "Reading your documents…" : "Create listing"}

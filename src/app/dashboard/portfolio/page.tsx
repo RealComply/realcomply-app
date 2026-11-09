@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { withdrawnPropertyIds } from "@/lib/data/withdrawals";
 import { Building2, ClipboardCheck, Flag, ShieldCheck, MessageSquareWarning } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireOfficePage } from "@/lib/data/current-profile";
@@ -27,7 +28,10 @@ export default async function PortfolioPage() {
   const supabase = await createClient();
 
   const { data: properties } = await supabase.from("properties").select("*").order("created_at", { ascending: false });
-  const propertyList = (properties ?? []) as Property[];
+  // A listing withdrawn from sale is off the market and needs nothing until
+  // it is put back (Job B, 0114), so it isn't counted or listed here.
+  const withdrawn = await withdrawnPropertyIds(supabase);
+  const propertyList = ((properties ?? []) as Property[]).filter((p) => !withdrawn.has(p.id));
   const propertyIds = propertyList.map((p) => p.id);
 
   const [{ data: itemRows }, { data: profileRows }, { data: agencyRow }, { data: complaintRows }] = await Promise.all([

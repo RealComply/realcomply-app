@@ -7,6 +7,7 @@ import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { cantReadMessage } from "@/lib/storage/accepted-files";
 import { downloadedFileProblem } from "@/lib/storage/file-check";
 import { reportReadFailed, reportReadFrom, type ReportRead } from "@/lib/documents/report-read";
+import { contractReadFailed, contractReadFrom, type ContractRead } from "@/lib/documents/contract-read";
 import { addReportRows } from "@/lib/documents/report-rows";
 import { READ_FAILED_JUST_NOW, TOO_LARGE_TO_READ, mergeReads } from "@/lib/documents/reader-parts";
 import {
@@ -1439,6 +1440,8 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
   const readToEnd = new Set<string>();
   // The comparable-sales report's outcome, kept on its card (lib/documents/report-read).
   let reportRead: ReportRead | null = null;
+  // The contract's outcome, kept on its card (lib/documents/contract-read).
+  let contractRead: ContractRead | null = null;
   for (const item of withEvidence) {
     const readAt = new Date().toISOString();
     // Every read recorded, a failed one logged as an error, and Adam alerted
@@ -1454,6 +1457,7 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
       const found = await extractOneDocument(supabase, anthropic, item, prescribedDocs);
       patches.push(...found);
       readToEnd.add(item.item_key);
+      if (item.item_key === "b1") contractRead = contractReadFrom(found, item.evidence_path!, readAt);
       if (item.item_key === "a4") {
         reportRead = reportReadFrom(found, item.evidence_path!, readAt);
         await noteRead(supabase, { ...where, outcome: reportRead.outcome, sales: reportRead.sales ?? 0 });
@@ -1471,6 +1475,7 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
         err instanceof FileCantBeRead && err.why === "unsupported" ? cantReadMessage(evidenceFileNameOf(item)) : null;
       failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${cantRead ?? why}`);
       if (item.item_key === "a4") reportRead = reportReadFailed(why, item.evidence_path!, readAt);
+      if (item.item_key === "b1") contractRead = contractReadFailed(cantRead ?? why, item.evidence_path!, readAt);
       await noteRead(supabase, { ...where, outcome: "failed", error: err });
     }
   }
@@ -1838,6 +1843,25 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
       .eq("property_id", propertyId)
       .eq("item_key", "a4");
     if (reportReadError) console.error("report read not recorded:", propertyId, reportReadError.message);
+  }
+
+  // What the contract's read came to, on its card: read, couldn't be read, or
+  // the wrong document (Adam, 5 Nov 2026). Written last, over the latest copy
+  // of the card, after its prescribed-documents list.
+  if (contractRead) {
+    const { data: b1Row } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", propertyId)
+      .eq("item_key", "b1")
+      .maybeSingle();
+    const b1Data = ((b1Row as { data?: Record<string, unknown> | null } | null)?.data ?? {}) as Record<string, unknown>;
+    const { error: contractReadError } = await supabase
+      .from("property_items")
+      .update({ data: { ...b1Data, contractRead } })
+      .eq("property_id", propertyId)
+      .eq("item_key", "b1");
+    if (contractReadError) console.error("contract read not recorded:", propertyId, contractReadError.message);
   }
 
   revalidatePath(`/dashboard/${propertyId}`);

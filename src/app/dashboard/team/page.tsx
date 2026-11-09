@@ -116,6 +116,17 @@ export default async function TeamPage() {
                 <span className="text-rc-muted"> · Not on RealComply. Signs by email link.</span>
               </p>
             )}
+            {access.keepsOfficeAccess && !myApproval && (
+              <p className="mt-2 leading-relaxed text-rc-muted">
+                You keep the office side of your account until{" "}
+                {agency?.licensee_name?.trim() || "your licensee in charge"} approves you as office manager. You can ask
+                them from{" "}
+                <Link href="/dashboard/home" className="font-semibold text-rc-green-deep hover:underline">
+                  Home
+                </Link>
+                .
+              </p>
+            )}
             {myApproval && (
               <p className="mt-2 leading-relaxed text-rc-muted">
                 You&rsquo;re office manager. {myApproval.approved_by_name} approved this{" "}

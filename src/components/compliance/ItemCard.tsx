@@ -13,7 +13,14 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { Paperclip, Sparkles, AlertTriangle, Check, ChevronRight, Info, Plus, X } from "lucide-react";
-import { selfManaged } from "@/lib/rules/nsw-sales";
+import {
+  NOT_ON_THIS_FILE,
+  ORDER_ON_AGENT_KEY,
+  SETTLEMENT_DATE_LABEL,
+  addedAfterSignOffLine,
+  selfManaged,
+  settlementDateOf,
+} from "@/lib/rules/nsw-sales";
 import {
   PERMISSION_RULE_TEXT,
   PHOTO_NOTICE_DAYS,
@@ -84,8 +91,13 @@ import {
 } from "@/lib/actions/extraction";
 import { isAiReadItem } from "@/lib/documents/ai-read-items";
 import { idScreenNote } from "@/lib/documents/id-screen-note";
+import { contractReadNote, contractReadOf } from "@/lib/documents/contract-read";
+import { LegalReference } from "@/components/LegalReference";
+import { CONTRACT_KEY } from "@/lib/rules/contract-before-market";
+import { ContractNeededNote } from "@/components/compliance/ContractNeededNote";
 import { DictatableTextarea, DictationSuspended } from "@/components/Dictate";
-import { EspPrompts } from "@/components/compliance/EspPrompts";
+import { EspPrompts } from "@/components/compliance/EspPrompts";import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
+
 import { ComparablesPanel } from "@/components/comparables/ComparablesPanel";
 import { MarketListingsPanel } from "@/components/comparables/MarketListingsPanel";
 import type { MarketListing } from "@/lib/data/market-listings";
@@ -288,7 +300,9 @@ function ItemShell({
   const waitingRequest = useWaitingRequest(item.key);
   // A signed-off file: every card's own controls are locked, and only the
   // shared Reopen below works (0100). The finalised file is still generated.
-  const locked = Boolean(useReopen()?.signedOff) && item.key !== "f2";
+  // And a listing withdrawn from sale, until it is put back (0114).
+  const reopenCtx = useReopen();
+  const locked = Boolean(reopenCtx?.withdrawn) || (Boolean(reopenCtx?.signedOff) && item.key !== "f2");
   const canFold = isDone && foldable && !evidenceUnsaved && !flag && !waitingRequest;
   const [folded, setFolded] = useState(isDone && !autoCompleted);
   const [foldedFor, setFoldedFor] = useState(status);
@@ -355,7 +369,12 @@ function ItemShell({
             // Reading the explainer is not a reason to fold the card.
             <div onClick={(e) => e.stopPropagation()}>
               <p className="mt-1 text-sm text-rc-muted">{item.description}</p>
-              {item.legalBasis && <p className="mt-1 text-xs text-rc-faint">{item.legalBasis}</p>}
+              {item.legalBasis && (
+                <p className="mt-1 text-xs text-rc-faint">
+                  {/* Each section linked to the law (Adam, 5 Nov 2026). */}
+                  <LegalReference text={item.legalBasis} />
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -1116,10 +1135,16 @@ function ChecklistItem({
       evidenceReadNote={
         item.key === "a4"
           ? reportReadNote(reportRead, "report")
-          : // A file that went on without the ID check (1 Nov 2026).
-            idScreenNote(current?.data, current?.evidence_path)
+          : item.key === "b1"
+            ? // A contract that couldn't be read says so (5 Nov 2026).
+              contractReadNote(contractReadOf(current?.data, current?.evidence_path))
+            : // A file that went on without the ID check (1 Nov 2026).
+              idScreenNote(current?.data, current?.evidence_path)
       }
     >
+      {/* The contract card, until it's done (Master, 5 Nov 2026): the title
+          and the Act's link. */}
+      {item.key === CONTRACT_KEY && !isDone && <ContractNeededNote className="mb-3" />}
       {/* Offered on an open card only, so nothing already answered changes. */}
       {item.notApplicable &&
         !isDone &&
@@ -1454,20 +1479,36 @@ function ChecklistItem({
                 <span>
                   {spreadMarginal ? (
                     <>
-                      Just over the 10% limit in s72A(2). The highest this range can go on a $
+                      Just over the 10% limit in s72A. The highest this range can go on a $
                       {lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
                     </>
                   ) : spreadOver ? (
                     <>
-                      {spreadPct.toFixed(1)}% spread. Over the 10% limit in s72A(2). The highest this range can go
+                      {spreadPct.toFixed(1)}% spread. Over the 10% limit in s72A. The highest this range can go
                       on a ${lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
                     </>
                   ) : (
-                    <>{spreadPct.toFixed(1)}% spread. Within the 10% limit in s72A(2).</>
+                    <>{spreadPct.toFixed(1)}% spread. Within the 10% limit in s72A.</>
                   )}
                 </span>
               </p>
             )}
+          </div>
+        )}
+        {/* The settlement date, on the same card as the order on the agent
+            (Adam, 6 Nov 2026). The card's own date is when the order came in. */}
+        {item.key === ORDER_ON_AGENT_KEY && (
+          <div>
+            <label className="block text-xs text-rc-muted" htmlFor="settlement-date">
+              {SETTLEMENT_DATE_LABEL}
+            </label>
+            <input
+              id="settlement-date"
+              type="date"
+              name="settlementDate"
+              defaultValue={settlementDateOf(current) ?? ""}
+              className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
+            />
           </div>
         )}
         {item.requiresDate && item.key !== "t5" && (
@@ -3068,7 +3109,7 @@ function ReductionItem({
                     />
                     <span>
                       <span className="block text-sm text-rc-ink">Vendor was given evidence of the new price before the notice</span>
-                      <span className="block text-[11px] text-rc-faint">s72A(5). Comparable sales, market conditions, buyer feedback.</span>
+                      <span className="block text-[11px] text-rc-faint">s72A. Comparable sales, market conditions, buyer feedback.</span>
                     </span>
                   </label>
                   <label className="flex items-start gap-2.5 px-3 py-2.5">
@@ -3081,9 +3122,7 @@ function ReductionItem({
                     />
                     <span>
                       <span className="block text-sm text-rc-ink">Advertising updated to match the revised price</span>
-                      <span className="block text-[11px] text-rc-faint">
-                        s73(3). Anything showing a lower figure has to be amended or pulled as soon as practicable.
-                      </span>
+                      <span className="block text-[11px] text-rc-faint">{advertisingFixLine()}</span>
                     </span>
                   </label>
                 </div>
@@ -4122,6 +4161,21 @@ function AuctionOutcomeItem({
   );
 }
 
+/** "Not on this file": a card added after the file was signed off (lib/rules/nsw-sales.ts, addedAt). */
+function NotOnThisFileItem({ item }: { item: ComplianceItem }) {
+  return (
+    <div id={`card-${item.key}`} className="rounded-card border border-rc-border bg-white px-4 py-3 shadow-card">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-rc-muted">{item.label}</h3>
+        <span className="shrink-0 rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-rc-muted">
+          {NOT_ON_THIS_FILE}
+        </span>
+      </div>
+      {item.addedAt && <p className="mt-1 text-xs text-rc-faint">{addedAfterSignOffLine(item.addedAt)}</p>}
+    </div>
+  );
+}
+
 // b4 holding the licensee's own approval from before 2 Nov 2026. An agent
 // ticks this card now (REVERSAL, Adam 2 Nov 2026: lib/rules/nsw-sales.ts),
 // and an approval the licensee gave before then reads exactly as it did: who
@@ -4221,6 +4275,12 @@ function ItemCardBody({
   b4Approval = null,
   espHistory,
 }: ItemCardProps) {
+  // A card added after this file was signed off (the order on the agent,
+  // 6 Nov 2026) was never asked for here: it says so, with nothing to do.
+  if (item.notOnThisFile) {
+    return <NotOnThisFileItem item={item} />;
+  }
+
   // b4 with the licensee's own approval from before 2 Nov 2026: as it read
   // then. A tick from then on is an ordinary checklist card below.
   if (item.key === "b4" && current?.status === "done" && b4Approval && b4Approval.via !== "tick") {

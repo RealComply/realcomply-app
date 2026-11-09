@@ -351,9 +351,9 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           getting heavier and the penalties keep getting bigger.
 
           EVERY FIGURE HERE IS CHECKABLE and dated. Penalties rose 29 June
-          2026; the rest is the reform package expected late 2026. Sources in
-          RealComply-NSW-underquoting-reforms-late-2026.md. If commencement
-          moves, this band moves with it. */}
+          2026; the rest commences 17 November 2026 (statement of information
+          8 February 2027), per the amending Act 2026 No 18 and Regulation 2026
+          No 578. If commencement moves, this band moves with it. */}
       <section className="border-t border-rc-border py-16 sm:py-20">
         <div className="mx-auto max-w-2xl px-4 sm:px-6">
           <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">The job keeps getting bigger</h2>
@@ -362,10 +362,14 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
             <strong className="font-bold text-rc-ink">$110,000 for a company and $55,000 for an individual</strong>, and
             Fair Trading gained new powers to suspend a licence or order an agent back into training.
           </p>
+          {/* Dated rather than "coming" or "now" (9 Nov 2026), so it reads true
+              before and after 17 November without a deploy on the day. Act 2026
+              No 18 and Regulation 2026 No 578; see lib/rules/underquoting-reforms.ts. */}
           <p className="mt-4 text-lg leading-relaxed text-rc-muted">
-            More lands before the end of the year. A price on every residential advertisement. A statement of
-            information that goes to buyers. A record of how you arrived at your estimate. And an underquoting penalty
-            set at{" "}
+            From 17 November 2026, every residential advertisement needs a price, and it can&rsquo;t sit below your
+            estimate, a passed-in bid or a written offer the seller turned down on price. You keep a record of the
+            comparable sales behind your estimate and every change to it. From 8 February 2027, a statement of
+            information goes to buyers. And the underquoting penalty is{" "}
             <strong className="font-bold text-rc-ink">
               $110,000 or three times your commission on the property, whichever is greater
             </strong>

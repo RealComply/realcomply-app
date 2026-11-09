@@ -4,7 +4,14 @@ import { SaveAuditPack } from "@/components/compliance/SaveAuditPack";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess, requireProfile } from "@/lib/data/current-profile";
 import { worksOnListing } from "@/lib/data/listing-access";
-import { allItemsFor } from "@/lib/rules/nsw-sales";
+import {
+  NOT_ON_THIS_FILE,
+  ORDER_ON_AGENT_KEY,
+  SETTLEMENT_DATE_LABEL,
+  addedAfterSignOffLine,
+  allItemsFor,
+  settlementDateOf,
+} from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
@@ -18,6 +25,7 @@ import { earlierApprovalLine, tickedLine } from "@/lib/rules/price-statement";
 import { priceApprovalFor } from "@/lib/data/price-approval";
 import { saleRecordLines } from "@/lib/rules/sale-price";
 import { RoofMark } from "@/components/RoofMark";
+import { LegalReference } from "@/components/LegalReference";
 
 
 
@@ -132,20 +140,36 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                       <span className="font-medium text-rc-ink">{item.label}</span>{" "}
                       <span className={current?.status === "flagged" ? "font-medium text-rc-amber-deep" : "text-rc-muted"}>
                         —{" "}
-                        {item.kind === "document" && current?.status !== "done"
+                        {item.notOnThisFile
+                          ? NOT_ON_THIS_FILE.toLowerCase()
+                          : item.kind === "document" && current?.status !== "done"
                           ? "optional"
                           : item.notApplicable && current?.status === "done" && readNa(current.data).notApplicable
                             ? "not applicable"
                             : (current?.status ?? "open")}
                         {current?.event_date ? ` · ${formatAuDate(current.event_date)}` : ""}
                       </span>
-                      {item.legalBasis && <span className="ml-1 text-xs text-rc-faint">({item.legalBasis})</span>}
+                      {item.legalBasis && (
+                        <span className="ml-1 text-xs text-rc-faint">
+                          (<LegalReference text={item.legalBasis} />)
+                        </span>
+                      )}
                       {/* The Power of Attorney answer, tick and upload, with who and when (15 Oct 2026). */}
                       {questionAndDocumentRecordLines(item, current, (iso) => formatAuTimestamp(iso)).map((line) => (
                         <p key={line} className="mt-0.5 text-xs text-rc-muted">
                           {line}
                         </p>
                       ))}
+                      {/* A card added after the file was signed off, and when (6 Nov 2026). */}
+                      {item.notOnThisFile && item.addedAt && (
+                        <p className="mt-0.5 text-xs text-rc-muted">{addedAfterSignOffLine(item.addedAt)}</p>
+                      )}
+                      {/* The settlement date, on the order on the agent card (6 Nov 2026). */}
+                      {item.key === ORDER_ON_AGENT_KEY && settlementDateOf(current) && (
+                        <p className="mt-0.5 text-xs text-rc-muted">
+                          {SETTLEMENT_DATE_LABEL}: {formatAuDate(settlementDateOf(current) as string)}
+                        </p>
+                      )}
                       {/* "Not applicable", with who and when (f4, 17 Oct 2026). */}
                       {naRecordLines(item, current, (iso) => formatAuTimestamp(iso)).map((line) => (
                         <p key={line} className="mt-0.5 text-xs text-rc-muted">

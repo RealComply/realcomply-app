@@ -82,6 +82,7 @@ export async function officeManagerHomeFor(
     now: new Date(),
     seenKeys,
     personName: profile.full_name?.trim() || profile.email,
+    keepsOfficeAccess: access.keepsOfficeAccess,
   });
 }
 

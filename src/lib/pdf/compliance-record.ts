@@ -4,7 +4,14 @@ import { formatSignedAt } from "./sign-stamp";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { pdfText } from "./text";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
-import type { ComplianceItem } from "@/lib/rules/nsw-sales";
+import {
+  NOT_ON_THIS_FILE,
+  ORDER_ON_AGENT_KEY,
+  SETTLEMENT_DATE_LABEL,
+  addedAfterSignOffLine,
+  settlementDateOf,
+  type ComplianceItem,
+} from "@/lib/rules/nsw-sales";
 import { earlierApprovalLine, tickedLine, type PriceApproval } from "@/lib/rules/price-statement";
 import { saleRecordLines } from "@/lib/rules/sale-price";
 import { formatAuDate } from "@/lib/format-date";
@@ -369,6 +376,11 @@ export type ComplianceRecordInput = {
       packMonth?: string | null;
     } | null;
   };
+  /**
+   * Withdrawn from sale, and put back, oldest first, one line each (Job B,
+   * 0114): "Withdrawn on 21 October 2026 by Marcus Tran. Reason: ...".
+   */
+  withdrawalLines?: string[];
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
   loadDocument?: (doc: PackDocument) => Promise<LoadedDocument>;
@@ -589,6 +601,15 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
     c.rule(10, 14);
   }
 
+  // Withdrawn from sale, and every put-back (Job B, 0114).
+  if (input.withdrawalLines && input.withdrawalLines.length > 0) {
+    c.need(46);
+    c.text("Withdrawn from sale", { size: 11, bold: true, gap: 2 });
+    c.rule(2, 8);
+    for (const line of input.withdrawalLines) c.text(line, { size: 9, indent: 4 });
+    c.rule(10, 14);
+  }
+
   for (const stage of [0, 1, 2, 3, 4, 5] as PropertyStage[]) {
     const stageItems = items.filter((i) => i.stage === stage);
     if (stageItems.length === 0) continue;
@@ -615,8 +636,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       // An optional upload card with nothing on it is optional, not "open"
       // (the Power of Attorney copy, 15 Oct 2026).
       // A card marked "Not applicable" says so rather than "done" (f4, 17 Oct 2026).
-      const shownStatus =
-        item.kind === "document" && status !== "done"
+      // A card added after the file was signed off says so (6 Nov 2026).
+      const shownStatus = item.notOnThisFile
+        ? NOT_ON_THIS_FILE.toLowerCase()
+        : item.kind === "document" && status !== "done"
           ? "optional"
           : item.notApplicable && status === "done" && readNa(current?.data).notApplicable
             ? "not applicable"
@@ -630,6 +653,17 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       // who and when; and its document card: the upload, who and when.
       for (const line of questionAndDocumentLines(item, current)) {
         c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+      }
+      if (item.notOnThisFile && item.addedAt) {
+        c.text(addedAfterSignOffLine(item.addedAt), { size: 8.5, color: MUTED, indent: 12 });
+      }
+      // The settlement date, kept on the order on the agent card (6 Nov 2026).
+      if (item.key === ORDER_ON_AGENT_KEY && settlementDateOf(current)) {
+        c.text(`${SETTLEMENT_DATE_LABEL}: ${formatAuDate(settlementDateOf(current) as string)}`, {
+          size: 8.5,
+          color: MUTED,
+          indent: 12,
+        });
       }
       for (const line of notApplicableLines(item, current)) {
         c.text(line, { size: 8.5, color: MUTED, indent: 12 });
@@ -768,14 +802,14 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       gap: 2,
     });
     c.text(
-      "The agent recorded their reasoning outside this system and identified where it is held. s72A(5), Property and Stock Agents Act 2002 (NSW).",
+      "The agent recorded their reasoning outside this system and identified where it is held. s72A, Property and Stock Agents Act 2002 (NSW).",
       { size: 8, color: FAINT },
     );
   } else if (espReasoning && espReasoning.trim()) {
     c.rule(6, 10);
     c.text("How the estimated selling price was formed", { size: 11, bold: true, gap: 4 });
     c.text(espReasoning.trim(), { size: 9.5, color: MUTED, gap: 2 });
-    c.text("In the agent's own words. s72A(5), Property and Stock Agents Act 2002 (NSW).", {
+    c.text("In the agent's own words. s72A, Property and Stock Agents Act 2002 (NSW).", {
       size: 8,
       color: FAINT,
     });

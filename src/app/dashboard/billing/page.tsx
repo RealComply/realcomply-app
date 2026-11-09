@@ -10,6 +10,11 @@ import { PlanPicker } from "@/components/billing/PlanPicker";
 import { ManageBillingButton } from "@/components/billing/ManageBillingButton";
 import { isAccountHolder } from "@/lib/subscription-end/access";
 import { RoofMark } from "@/components/RoofMark";
+import { KeepPlanButton } from "@/components/billing/KeepPlanButton";
+import { PlanChangeDone } from "@/components/billing/PlanChangeParts";
+import { doneLine, intervalWord, type ChangeTiming } from "@/lib/billing/plan-change";
+import { planFamily, type Plan } from "@/lib/billing/entitlement";
+import type { Interval } from "@/lib/billing/stripe";
 
 // Billing.
 //
@@ -25,11 +30,11 @@ import { RoofMark } from "@/components/RoofMark";
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ started?: string; cancelled?: string }>;
+  searchParams: Promise<{ started?: string; cancelled?: string; changed?: string; kept?: string }>;
 }) {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
-  const { started, cancelled } = await searchParams;
+  const { started, cancelled, changed, kept } = await searchParams;
 
   const entitlement = await entitlementFor(supabase, profile.agency_id);
   // The licensee in charge or the account holder sets up billing (9 Oct 2026).
@@ -52,6 +57,14 @@ export default async function BillingPage({
   } | null;
 
   const subscribed = Boolean(agency?.stripe_subscription_id);
+  // Change plan (Adam, 6 Nov 2026): whoever pays, while the subscription is
+  // running. Not an office manager who doesn't pay.
+  const accountHolder = await isAccountHolder(supabase);
+  const mayChange =
+    subscribed &&
+    (access.actsAsLicensee || accountHolder) &&
+    (entitlement.status === "active" || entitlement.status === "trialing");
+  const changes = await recentPlanChanges(supabase, profile.agency_id, changed);
   const spec = entitlement.spec;
   const cap = spec.maxListings;
 
@@ -101,6 +114,12 @@ export default async function BillingPage({
           Thanks — that&rsquo;s gone through. It can take a few seconds to show below; reload if it hasn&rsquo;t.
         </p>
       )}
+      {changes.done && <PlanChangeDone {...changes.done} />}
+      {kept && (
+        <p className="mt-5 rounded-xl border border-rc-border bg-white px-4 py-3 text-sm text-rc-ink">
+          No change. You stay on {spec.name}.
+        </p>
+      )}
       {cancelled && (
         <p className="mt-5 rounded-xl border border-rc-border bg-white px-4 py-3 text-sm text-rc-muted">
           No changes made. Nothing has been charged.
@@ -111,7 +130,7 @@ export default async function BillingPage({
       <section className="mt-6 rounded-2xl border border-rc-border bg-white p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-rc-faint">Current plan</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-rc-faint">Your plan</p>
             <p className="mt-1 text-2xl font-extrabold tracking-tight text-rc-ink">{spec.name}</p>
             <p className="mt-1 text-sm text-rc-muted">{spec.blurb}</p>
           </div>
@@ -128,6 +147,24 @@ export default async function BillingPage({
 
         <p className="mt-4 text-sm font-semibold text-rc-ink">{statusLine(entitlement, agency)}</p>
 
+        {changes.booked && (
+          <div className="mt-3 rounded-xl border border-rc-amber/40 bg-rc-amber/10 px-4 py-3 text-sm text-rc-ink">
+            <p className="font-semibold">{changes.booked}</p>
+            {mayChange && <KeepPlanButton planName={spec.name} />}
+          </div>
+        )}
+
+        {mayChange && (
+          <div className="mt-5">
+            <Link
+              href="/dashboard/billing/change"
+              className="inline-flex min-h-11 items-center rounded-full bg-rc-green-deep px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rc-green-deep-600"
+            >
+              Change plan
+            </Link>
+          </div>
+        )}
+
         {entitlement.readOnly && (
           <p className="mt-2 rounded-xl border border-rc-red/25 bg-rc-red/5 px-4 py-3 text-sm text-rc-ink">
             New listings and new records are paused. Everything already on file stays readable, and you can
@@ -141,9 +178,7 @@ export default async function BillingPage({
         {subscribed && mayManageBilling && (
           <div className="mt-5">
             <ManageBillingButton />
-            <p className="mt-2 text-xs text-rc-faint">
-              Change your card, switch plan, download invoices or cancel — all on Stripe&rsquo;s own page.
-            </p>
+            <p className="mt-2 text-xs text-rc-faint">Card, invoices and cancelling, on Stripe.</p>
           </div>
         )}
       </section>
@@ -168,6 +203,10 @@ export default async function BillingPage({
             use out loud. */}
         <p className="mt-1 text-sm text-rc-muted">
           Counts every listing added in the last 12 months, whether it sold or not.
+        </p>
+        {/* Moving down is automatic (Adam, 6 Nov 2026; Terms cl 7.2). */}
+        <p className="mt-1 text-sm text-rc-muted">
+          After your first 12 months, if your listings fit a cheaper plan at a billing date, we move you down to it.
         </p>
 
         {usedPercent !== null && (
@@ -253,4 +292,64 @@ function statusLine(
       return `Free account${until}${why}.`;
     }
   }
+}
+
+type PlanChangeRow = {
+  id: string;
+  from_plan: Plan;
+  to_plan: Plan;
+  to_interval: Interval;
+  takes_effect: ChangeTiming;
+  effective_at: string;
+  next_payment_at: string | null;
+  ongoing_cents: number;
+  status: "done" | "scheduled" | "kept_current";
+};
+
+/**
+ * Self-serve plan changes (0116): the one just made, for the "You're on …"
+ * panel, and a change booked for the next billing date. Empty before 0116 has
+ * run, or for someone who can't read the record.
+ */
+async function recentPlanChanges(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  agencyId: string,
+  changedId: string | undefined,
+): Promise<{ done: { title: string; body: string; nextSteps: boolean } | null; booked: string | null }> {
+  const { data, error } = await supabase
+    .from("plan_changes")
+    .select("id, from_plan, to_plan, to_interval, takes_effect, effective_at, next_payment_at, ongoing_cents, status")
+    .eq("agency_id", agencyId)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  if (error || !data) return { done: null, booked: null };
+  const rows = data as PlanChangeRow[];
+  const now = Date.now();
+  const justMade = changedId ? rows.find((r) => r.id === changedId) ?? null : null;
+  const scheduled = rows.find((r) => r.status === "scheduled" && new Date(r.effective_at).getTime() > now) ?? null;
+
+  let done: { title: string; body: string; nextSteps: boolean } | null = null;
+  if (justMade) {
+    const toOffice = planFamily(justMade.to_plan) === "office";
+    const fromAgent = planFamily(justMade.from_plan) === "agent";
+    done = {
+      ...doneLine({
+        timing: justMade.takes_effect,
+        fromName: PLANS[justMade.from_plan].name,
+        toName: PLANS[justMade.to_plan].name,
+        toOffice,
+        fromAgent,
+        effectiveDate: formatAuDate(justMade.effective_at),
+        ongoingCents: justMade.ongoing_cents,
+        interval: justMade.to_interval,
+        nextPaymentDate: formatAuDate(justMade.next_payment_at ?? justMade.effective_at),
+      }),
+      nextSteps: toOffice && fromAgent && justMade.takes_effect !== "next_billing_date",
+    };
+  }
+  const booked =
+    scheduled && scheduled.id !== justMade?.id
+      ? `Your plan changes to ${PLANS[scheduled.to_plan].name}, ${intervalWord(scheduled.to_interval)}, on ${formatAuDate(scheduled.effective_at)}.`
+      : null;
+  return { done, booked };
 }

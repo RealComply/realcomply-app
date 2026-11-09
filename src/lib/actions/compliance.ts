@@ -15,7 +15,15 @@ import { marketListingsFor } from "@/lib/data/market-listings";
 import { redirect } from "next/navigation";
 import { accessFrom } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import { getItem, itemsForStage } from "@/lib/rules/nsw-sales";
+import {
+  ORDER_NOT_ATTACHED,
+  ORDER_ON_AGENT_KEY,
+  SETTLEMENT_DATE_NEEDED,
+  getItem,
+  itemsForStage,
+  readSettlementDate,
+} from "@/lib/rules/nsw-sales";
+import { CONTRACT_KEY, CONTRACT_NOT_ATTACHED, completeStageRefusal } from "@/lib/rules/contract-before-market";
 import {
   applyAnswer,
   applyTick,
@@ -28,8 +36,9 @@ import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/
 import { COVERING_LETTER_KEY, afterAgentSave } from "@/lib/documents/covering-letter";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { checkSalePrice } from "@/lib/rules/sale-price";
-import { stageHold } from "@/lib/rules/stage-hold";
+import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
 import { effectiveEsp, espLabel } from "@/lib/data/effective-esp";
+import { bannedPriceWording } from "@/lib/rules/underquoting-reforms";
 import { AML_COMMENCEMENT_DATE, preCommencementNote } from "@/lib/rules/aml-precommencement";
 import { formatAuDate } from "@/lib/format-date";
 import { CANCELS_SIGNOFF, MARK_DONE_AGAIN_KEYS, ONLY_LICENSEE_SIGNOFF } from "@/lib/rules/reopen";
@@ -77,12 +86,16 @@ function assistantBlocked(itemKey: string, profile: { is_assistant?: boolean }):
 //   a4 reportRead — what the last read of the comparable-sales report came
 //      to (lib/documents/report-read). Mark done would otherwise erase the
 //      card's only word that a read failed or found nothing (30 Oct 2026).
+//   b1 contractRead: the same for the contract (lib/documents/contract-read;
+//      5 Nov 2026).
 const CARRIED_BY_ITEM: Record<string, string[]> = {
   f4: ["entries", "loggedElsewhere", "loggedElsewhereWhere"],
   c1: ["websiteScan"],
   a3: ["aiDraft"],
-  b1: ["aiDraft"],
+  b1: ["aiDraft", "contractRead"],
   a4: ["reportRead"],
+  // The settlement date, kept when a save doesn't send it (a reopen, say).
+  f5: ["settlementDate"],
 };
 
 // Kept on every card: the attached file's name. The file itself (evidence_path)
@@ -282,6 +295,39 @@ export async function setItemStatus(
   // to stay possible, or a mistake becomes unfixable.
   if (status === "done" && rule?.requiresDate && !eventDate) {
     return { error: "Enter the date this happened before marking it done." };
+  }
+
+  // The contract card can't be newly done without the contract (Adam, 5 Nov
+  // 2026). Until then it always had one, from Add a listing; now it starts
+  // empty in Pre-market. A card already done is left alone: nothing already
+  // done changes. See lib/rules/contract-before-market.ts.
+  if (status === "done" && itemKey === CONTRACT_KEY) {
+    const { data: attached } = await supabase
+      .from("property_items")
+      .select("evidence_path, status")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+    const row = attached as { evidence_path?: string | null; status?: string } | null;
+    if (row?.status !== "done" && !row?.evidence_path) {
+      return { error: CONTRACT_NOT_ATTACHED };
+    }
+  }
+
+  // The order on the agent (f5, Adam's OK, 6 Nov 2026): the date it came in
+  // (checked above, requiresDate) and a copy of the order, both needed. The
+  // copy goes up in its own request first, as on every card.
+  if (status === "done" && itemKey === ORDER_ON_AGENT_KEY) {
+    const { data: attached } = await supabase
+      .from("property_items")
+      .select("evidence_path, status")
+      .eq("property_id", propertyId)
+      .eq("item_key", itemKey)
+      .maybeSingle();
+    const row = attached as { evidence_path?: string | null; status?: string } | null;
+    if (row?.status !== "done" && !row?.evidence_path) {
+      return { error: ORDER_NOT_ATTACHED };
+    }
   }
 
   // Same reasoning as the date above, for items where the NOTE is the record.
@@ -518,6 +564,21 @@ export async function setItemStatus(
     }
   }
 
+  // f5, the order on the agent: the settlement date, on the same card (Adam,
+  // 6 Nov 2026). Needed to mark it done, like the date received and the
+  // order; the Settled list shows it. Only "done" is blocked, as above.
+  if (itemKey === ORDER_ON_AGENT_KEY) {
+    // From the form when it sends one; otherwise the one already saved.
+    const settlement = readSettlementDate(
+      formData.has("settlementDate") ? formData.get("settlementDate") : data.settlementDate,
+    );
+    if (status === "done" && !settlement) {
+      return { error: SETTLEMENT_DATE_NEEDED };
+    }
+    if (settlement) data.settlementDate = settlement;
+    else delete data.settlementDate;
+  }
+
   // t1. Whether this agency also manages the property, in which case Sch 2 r7
   // has nobody to notify: the duty is written notice to "any agent responsible
   // for managing the property", and that agent is us. Recorded as a fact on the
@@ -676,16 +737,16 @@ export async function setItemStatus(
     // life being measured against a superseded figure.
     const esp = await effectiveEsp(supabase, propertyId);
 
-    const lowerNote = (data.note as string).toLowerCase();
-    const usesProhibitedTerm = ["offers over", "offers above", "o.n.o", "offers from"].some((t) =>
-      lowerNote.includes(t),
-    );
+    // s73(2), and the price-plus symbol Fair Trading's checklist names
+    // ("$900,000+"): lib/rules/underquoting-reforms.ts.
+    const bannedWording = bannedPriceWording(String(data.note ?? ""));
+    const usesProhibitedTerm = bannedWording.length > 0;
     const belowEsp = esp.low != null && guideLow != null && guideLow < esp.low;
     const spreadPct = guideLow && guideHigh ? ((guideHigh - guideLow) / guideLow) * 100 : 0;
 
     const flagReasons = [
       belowEsp ? `Advertised guide is below the recorded ${espLabel(esp)} (s73).` : null,
-      usesProhibitedTerm ? "Note mentions a prohibited price term." : null,
+      usesProhibitedTerm ? `Note mentions wording s73(2) bans: ${bannedWording.join(", ")}.` : null,
       spreadPct > 10 ? "Guide range spread exceeds 10%." : null,
       esp.low == null ? "No ESP recorded yet to check against — record the ESP first." : null,
     ].filter(Boolean) as string[];
@@ -2619,7 +2680,7 @@ export async function completeStage(
       signedOff: byKey.get("sign_licensee")?.status === "done",
       incompleteRequired: (s) =>
         itemsForStage(s, property, allItems, ctx)
-          .filter((i) => i.requiredForStageCompletion && !isComplete(i.key))
+          .filter((i) => i.requiredForStageCompletion && holdsBack(i.key, s, property.stage) && !isComplete(i.key))
           .map((i) => i.label),
     });
     if (hold.stage !== property.stage) {
@@ -2630,11 +2691,12 @@ export async function completeStage(
 
     const incomplete = required.filter((r) => !isComplete(r.key));
 
-    if (incomplete.length > 0) {
-      const labels = incomplete.map((i) => i.label);
-      return {
-        error: `Complete these first: ${labels.join(", ")}.`,
-      };
+    // Pre-market can't finish without the contract (Adam, 5 Nov 2026): the
+    // listing would go on the market without one. Said first when it's the
+    // reason. lib/rules/contract-before-market.ts.
+    const refusal = completeStageRefusal({ stage: property.stage, incomplete });
+    if (refusal) {
+      return { error: refusal };
     }
   }
 

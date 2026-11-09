@@ -174,8 +174,8 @@ export type ComplianceItem = {
   // it would mean identity documents landing in storage.
   evidenceWarning?: string;
   // Offer Replace instead of Remove on an already-attached file. Set on the
-  // three documents collected at listing setup (a3, b1, a4), which are
-  // mandatory there: a listing cannot be created without them, so allowing
+  // documents a listing must have (a3 and a4 at listing setup; b1, the
+  // contract, in Pre-market since 5 Nov 2026), so allowing
   // them to be removed to nothing afterwards puts the file in a state the
   // setup form would have refused. Swapping one is a correction; deleting one
   // is a hole. Adam, 22 Aug 2026, on the merged ESP card: "there's no card
@@ -207,6 +207,21 @@ export type ComplianceItem = {
    * showIf, for the files that must keep showing it: see retiredCardShows.
    */
   retiredAt?: string;
+  /**
+   * When a card joined the checklist (ISO time), for a card added after files
+   * were already finished. A file the licensee signed off before then was
+   * never asked for it: the card shows "Not on this file" there, counts
+   * toward nothing, and the compliance file prints it that way. Every other
+   * file, open or signed off later, gets it as an ordinary card. See
+   * addedAfterSignOff.
+   */
+  addedAt?: string;
+  /**
+   * Set by itemsForStage and allItemsFor, never in the list below: this file
+   * was signed off before the card was added (addedAt). A plain boolean so
+   * it crosses into client components.
+   */
+  notOnThisFile?: boolean;
   /**
    * For a "question" card: what No says, and the tick Yes brings with it. The
    * engine (lib/rules/question-card.ts) keeps the answer, the tick, who and
@@ -248,6 +263,66 @@ export function retiredCardShows(key: string, retiredAt: string, allItems: Recor
   if (allItems[key] != null) return true;
   const signed = Date.parse(signedAt);
   return Number.isFinite(signed) && signed < Date.parse(retiredAt);
+}
+
+// ── Cards added later ───────────────────────────────────────────────────────
+// The other way round from a retired card. A card added to the checklist
+// after a file was signed off was never asked for on that file, so the file
+// isn't reopened and doesn't read as unfinished: the card shows "Not on this
+// file" there (Master, 5 Nov 2026, for the order on the agent). A file that
+// isn't signed off gets the card as an ordinary to-do, and anything saved on
+// the card always shows as saved.
+
+/** What the card says, and the status the compliance file prints, on such a file. */
+export const NOT_ON_THIS_FILE = "Not on this file";
+
+/** The line under it: when the card was added, in plain words. */
+export function addedAfterSignOffLine(addedAt: string): string {
+  const day = new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Australia/Sydney",
+  }).format(new Date(addedAt));
+  return `This card was added on ${day}, after this file was signed off.`;
+}
+
+/** Whether this file was signed off before the card was added, with nothing saved on it. */
+export function addedAfterSignOff(item: Pick<ComplianceItem, "key" | "addedAt">, allItems: Record<string, PropertyItem>): boolean {
+  if (!item.addedAt || allItems[item.key] != null) return false;
+  const signedAt = signedOffAt(allItems);
+  if (!signedAt) return false;
+  const signed = Date.parse(signedAt);
+  return Number.isFinite(signed) && signed < Date.parse(item.addedAt);
+}
+
+// "Order on the agent received" joined Settled on 6 Nov 2026 (Adam's OK, via
+// Master). From midnight at the start of 7 Nov 2026, Sydney time: a file
+// signed off on 6 Nov or before doesn't get it.
+export const F5_ADDED_AT = "2026-11-06T13:00:00.000Z";
+
+/** The order on the agent card, and why Mark done waits for its copy (setItemStatus). */
+export const ORDER_ON_AGENT_KEY = "f5";
+export const ORDER_NOT_ATTACHED = "Upload the order on the agent before marking this done.";
+
+// The settlement date, on the same card as the order (Adam, 6 Nov 2026).
+// Nothing else in the app records it, and the Settled list shows it. Kept in
+// the card's data (settlementDate, YYYY-MM-DD); the card's own date stays the
+// date the order was received.
+export const SETTLEMENT_DATE_LABEL = "Settlement date";
+export const SETTLEMENT_DATE_NEEDED = "Enter the settlement date before marking this done.";
+
+/** A date as the form sends it (YYYY-MM-DD, a real day), or null. */
+export function readSettlementDate(value: unknown): string | null {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const day = new Date(`${text}T00:00:00Z`);
+  return Number.isFinite(day.getTime()) && day.toISOString().slice(0, 10) === text ? text : null;
+}
+
+/** The settlement date saved on the order on the agent card, or null. */
+export function settlementDateOf(row: Pick<PropertyItem, "data"> | null | undefined): string | null {
+  return readSettlementDate((row?.data as { settlementDate?: unknown } | null | undefined)?.settlementDate);
 }
 
 // REVERSAL 15 Oct 2026 (Adam): these were Campaign cards; moved to Did you know because every ad already carries the agency's details and marketing approval is covered by Vendor approved all marketing and the price guide checks.
@@ -457,7 +532,7 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "Estimated selling price (ESP) recorded",
     description:
-      "Record the ESP in the agency agreement — a single figure, or a range with a spread no greater than 10%.",
+      "Record the ESP in the agency agreement: a single figure, or a range whose top is no more than 10% above its bottom.",
     legalBasis: "s72A, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -698,8 +773,14 @@ const items: ComplianceItem[] = [
     // from Sch 1 Pt 1 of the Conveyancing (Sale of Land) Regulation 2022 and
     // varied by whether the listing is strata. Not repeated here: naming three
     // of them in this description was how the list quietly stayed at three.
+    // REVERSAL (Adam, 5 Nov 2026; raised by a user). Was: the contract was
+    // uploaded at Add a listing and arrived here already attached. Now: it's
+    // uploaded here, in Pre-market, read the moment it's attached, and the
+    // listing can't go on the market until this card is done with it
+    // (lib/rules/contract-before-market.ts). Why: agents often list and
+    // organise marketing while still waiting on the contract.
     description:
-      "Contract available before marketing, with the s52A prescribed documents attached. Attach the contract and the documents are checked off one by one.",
+      "Contract available before marketing, with the s52A prescribed documents attached. Attach the contract and the documents are checked off one by one. The listing can't go on the market until it's here.",
     legalBasis: "s52A, Conveyancing Act 1919 (NSW); Conveyancing (Sale of Land) Regulation 2022, Sch 1",
     // NO DATE HERE, and no findings box (Adam, 14 Sep 2026).
     //
@@ -727,6 +808,9 @@ const items: ComplianceItem[] = [
     requiredForStageCompletion: true,
     hideNote: true,
     evidenceReplaceOnly: true,
+    // Where the contract goes, said on the upload (5 Nov 2026): it no longer
+    // arrives from Add a listing.
+    evidenceLabel: "Contract for sale",
   },
   // ── Auction, before the day ───────────────────────────────────────────
   // Two items, both plain. Adam's steer, 18 Aug 2026: keep it to tick boxes.
@@ -1145,7 +1229,7 @@ const items: ComplianceItem[] = [
     kind: "guide",
     label: "Advertised price guide vs ESP",
     description:
-      "Record the advertised guide. It must not be below the ESP, must not use prohibited price terms (\"offers over\", \"O.N.O.\", etc.), and if it's a range, the spread must be ≤10%.",
+      "Record the advertised guide. It must not be below the ESP, must not use banned price wording (\"offers over\", \"O.N.O.\", a plus sign such as \"$900,000+\"), and if it's a range, its top must be no more than 10% above its bottom.",
     legalBasis: "s73 / s73A, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -1381,6 +1465,26 @@ const items: ComplianceItem[] = [
 
   // ── Stage 4 — Sold (exchanged) ────────────────────────────────────────
   {
+    // REVERSAL (Adam, 6 Nov 2026; Master's final layout). Was: Final sale
+    // price and Record of price quotes given were in Settled. Now: they're in
+    // Sold. Why: the sale price and quotes are known at exchange. Same key,
+    // rules and saved answers; nothing already done reopens. A file already in
+    // Settled isn't held back at Sold for its price (lib/rules/stage-hold.ts).
+    key: "f0",
+    stage: 4,
+    kind: "sale",
+    label: "Final sale price",
+    // REVERSAL (Adam, 26 Oct 2026): compared with the latest ESP, flagged only
+    // when more than 10% above it, and the flag never holds the stage. Was:
+    // flagged outside the original ESP range, and the flag blocked the stage.
+    // See lib/rules/sale-price.ts.
+    description:
+      "Record the final sale price. It's compared with the latest estimated selling price: the revised one if the ESP was revised, otherwise the one in the agency agreement. If the sale is more than 10% above it, the card says so and you can add a note on how that came about. That never stops the file being completed or signed off.",
+    legalBasis: "s72A",
+    requiresDate: false,
+    requiredForStageCompletion: true,
+  },
+  {
     key: "e1",
     stage: 4,
     kind: "checklist",
@@ -1469,6 +1573,51 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
   },
+  {
+    // s73B: every price statement made to a buyer, prospective buyer or seller
+    // "orally or in writing" must be recorded in writing, with the address,
+    // the price or range, and the date and time, kept at the principal place
+    // of business for 3 years. Real duty, $2,200 penalty notice.
+    //
+    // REBUILT 22 Aug 2026 from a log into a pointer. Adam: "I don't think we
+    // should keep log quotes here. It's gonna be too tedious. It's something
+    // that is kept in most agents' CRM anyway whenever they get an inquiry or
+    // they do an open home check-in... we could perhaps have an option for an
+    // agent to upload their own copy, but we're not gonna make it mandatory."
+    //
+    // He is right, and it is the product's own principle rather than a
+    // concession: forms are an index to evidence, not a re-tick. A CRM logs
+    // the figure at the moment of the enquiry, with the buyer attached. Asking
+    // an agent to retype the same quotes here at settlement produces a worse
+    // record than the one they already have, from memory, weeks late.
+    //
+    // NO LONGER GATES THE STAGE, and that is a deliberate trade Adam made with
+    // his eyes open. The duty does not go away, so an agency that attaches
+    // nothing has no evidence of s73B on the file. What it has instead is a
+    // record that says where the evidence lives, which is the honest position
+    // and the one a regulator can follow.
+    // REVERSAL (Adam, 6 Nov 2026; Master's final layout). Was: Final sale
+    // price and Record of price quotes given were in Settled. Now: they're in
+    // Sold. Why: the sale price and quotes are known at exchange. Same key,
+    // rules and saved answers; nothing already done reopens.
+    key: "b5",
+    stage: 4,
+    kind: "checklist",
+    label: "Record of price quotes given",
+    description:
+      "Every price you quote a buyer, verbally or in writing, has to be recorded with the date and time and kept for 3 years. Most CRMs already do this on enquiries and open-home check-ins. Say where yours is kept, and attach a copy if you want it in this file.",
+    legalBasis: "s73B, Property and Stock Agents Act 2002 (NSW)",
+    requiresDate: false,
+    requiredForStageCompletion: false,
+    noteLabel: "Where the record is kept",
+    // Three CRMs, not one (Adam, 23 Aug 2026). The placeholder used to name
+    // only LockedOn, which is what Cass runs — fine for the reference
+    // implementation, wrong for the product. An agent on Box+Dice reads a
+    // single competitor's name in the example box as "this was not built for
+    // me", and a placeholder is the cheapest possible place to say otherwise.
+    notePlaceholder: "e.g. Box+Dice, AgentBox, LockedOn",
+    evidenceLabel: "Your own record (optional)",
+  },
   // amvc (vendor check cleared) used to sit here at Sold. MOVED to Pre-market,
   // 28 Sep 2026 — see the note beside it there. Sold now carries only the
   // purchaser side.
@@ -1509,63 +1658,31 @@ const items: ComplianceItem[] = [
     requiresDate: false,
     requiredForStageCompletion: true,
   },
-
   {
-    // s73B: every price statement made to a buyer, prospective buyer or seller
-    // "orally or in writing" must be recorded in writing, with the address,
-    // the price or range, and the date and time, kept at the principal place
-    // of business for 3 years. Real duty, $2,200 penalty notice.
-    //
-    // REBUILT 22 Aug 2026 from a log into a pointer. Adam: "I don't think we
-    // should keep log quotes here. It's gonna be too tedious. It's something
-    // that is kept in most agents' CRM anyway whenever they get an inquiry or
-    // they do an open home check-in... we could perhaps have an option for an
-    // agent to upload their own copy, but we're not gonna make it mandatory."
-    //
-    // He is right, and it is the product's own principle rather than a
-    // concession: forms are an index to evidence, not a re-tick. A CRM logs
-    // the figure at the moment of the enquiry, with the buyer attached. Asking
-    // an agent to retype the same quotes here at settlement produces a worse
-    // record than the one they already have, from memory, weeks late.
-    //
-    // NO LONGER GATES THE STAGE, and that is a deliberate trade Adam made with
-    // his eyes open. The duty does not go away, so an agency that attaches
-    // nothing has no evidence of s73B on the file. What it has instead is a
-    // record that says where the evidence lives, which is the honest position
-    // and the one a regulator can follow.
-    key: "b5",
+    // NEW (Adam's OK, 6 Nov 2026; Master's brief, 5 Nov). The vendor's
+    // solicitor or conveyancer sends the agency an order on the agent: the
+    // written authority to release the deposit. Required to complete Settled,
+    // with the date it came in and a copy of the order. The copy is stored,
+    // not read, so the upload has no "Accepted files" line. A file signed off
+    // before the card was added shows "Not on this file" (addedAt); every
+    // other file in Sold or Settled gets it as a to-do.
+    key: "f5",
     stage: 5,
     kind: "checklist",
-    label: "Record of price quotes given",
+    label: "Order on the agent received",
     description:
-      "Every price you quote a buyer, verbally or in writing, has to be recorded with the date and time and kept for 3 years. Most CRMs already do this on enquiries and open-home check-ins. Say where yours is kept, and attach a copy if you want it in this file.",
-    legalBasis: "s73B, Property and Stock Agents Act 2002 (NSW)",
-    requiresDate: false,
-    requiredForStageCompletion: false,
-    noteLabel: "Where the record is kept",
-    // Three CRMs, not one (Adam, 23 Aug 2026). The placeholder used to name
-    // only LockedOn, which is what Cass runs — fine for the reference
-    // implementation, wrong for the product. An agent on Box+Dice reads a
-    // single competitor's name in the example box as "this was not built for
-    // me", and a placeholder is the cheapest possible place to say otherwise.
-    notePlaceholder: "e.g. Box+Dice, AgentBox, LockedOn",
-    evidenceLabel: "Your own record (optional)",
-  },
-  {
-    key: "f0",
-    stage: 5,
-    kind: "sale",
-    label: "Final sale price",
-    // REVERSAL (Adam, 26 Oct 2026): compared with the latest ESP, flagged only
-    // when more than 10% above it, and the flag never holds the stage. Was:
-    // flagged outside the original ESP range, and the flag blocked the stage.
-    // See lib/rules/sale-price.ts.
-    description:
-      "Record the final sale price. It's compared with the latest estimated selling price: the revised one if the ESP was revised, otherwise the one in the agency agreement. If the sale is more than 10% above it, the card says so and you can add a note on how that came about. That never stops the file being completed or signed off.",
-    legalBasis: "s72A",
-    requiresDate: false,
+      "The order on the agent from the vendor's solicitor or conveyancer, authorising release of the deposit.",
+    requiresDate: true,
+    dateLabel: "Date received",
     requiredForStageCompletion: true,
+    hideNote: true,
+    evidenceRequired: true,
+    evidenceLabel: "The order on the agent",
+    // A copy the card needs, so a correction is a swap, not a hole (as b1).
+    evidenceReplaceOnly: true,
+    addedAt: F5_ADDED_AT,
   },
+
   {
     // MOVED FROM SETTLED TO CAMPAIGN, 18 Aug 2026 (Adam). Reports arrive
     // during the campaign, and cl 37 requires the register to be available to
@@ -1637,7 +1754,7 @@ const items: ComplianceItem[] = [
     label: "Was the Estimated Selling Price revised?",
     description:
       "If the estimated selling price changes during the campaign, record it here. Serving the notice on the vendor is what amends the agency agreement, so there is nothing to re-sign. Keep a copy of the notice with the agreement, and get the advertising updated.",
-    legalBasis: "s72A(4), s72A(5), s73(3), Property and Stock Agents Act 2002 (NSW)",
+    legalBasis: "s72A, s73(3), Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: false,
   },
@@ -1848,10 +1965,20 @@ const items: ComplianceItem[] = [
 // attached, per the "never strand a file" rule in ItemShell (see
 // components/compliance/ItemCard.tsx): an attached evidence_path always
 // keeps the upload control visible, however the predicate reads.
-function resolveItem(item: ComplianceItem, current?: PropertyItem): ComplianceItem {
+//
+// A card added after this file was signed off (addedAt) comes back marked
+// notOnThisFile and not required, so nothing counts it as left to do.
+function resolveItem(
+  item: ComplianceItem,
+  current?: PropertyItem,
+  allItems: Record<string, PropertyItem> = {},
+): ComplianceItem {
   const { showIf: _showIf, hideEvidenceWhen, ...rest } = item;
   const dynamicHide = Boolean(hideEvidenceWhen?.(current)) && !current?.evidence_path;
-  return { ...rest, hideEvidence: Boolean(rest.hideEvidence) || dynamicHide };
+  const resolved = { ...rest, hideEvidence: Boolean(rest.hideEvidence) || dynamicHide };
+  return addedAfterSignOff(item, allItems)
+    ? { ...resolved, notOnThisFile: true, requiredForStageCompletion: false }
+    : resolved;
 }
 
 export function itemsForStage(
@@ -1863,7 +1990,7 @@ export function itemsForStage(
   return items
     .filter((item) => item.stage === stage)
     .filter((item) => (item.showIf ? item.showIf(property, allItems, ctx) : true))
-    .map((item) => resolveItem(item, allItems[item.key]));
+    .map((item) => resolveItem(item, allItems[item.key], allItems));
 }
 
 export function allItemsFor(
@@ -1873,7 +2000,7 @@ export function allItemsFor(
 ): ComplianceItem[] {
   return items
     .filter((item) => (item.showIf ? item.showIf(property, allItems, ctx) : true))
-    .map((item) => resolveItem(item, allItems[item.key]));
+    .map((item) => resolveItem(item, allItems[item.key], allItems));
 }
 
 /**

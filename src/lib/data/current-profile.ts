@@ -146,14 +146,22 @@ export const requireProfile = cache(async function requireProfile(): Promise<Pro
 export const requireAccess = cache(async function requireAccess(): Promise<{ profile: Profile; access: Access }> {
   const profile = await requireProfile();
   const supabase = await createClient();
-  const [{ data: agency }, { data: officeManager, error: officeManagerError }] = await Promise.all([
-    supabase.from("agencies").select("plan").eq("id", profile.agency_id).maybeSingle(),
-    // 0093. Before it is run the function doesn't exist: nobody is one.
-    supabase.rpc("is_office_manager"),
-  ]);
+  const [{ data: agency }, { data: officeManager, error: officeManagerError }, { data: keeps, error: keepsError }] =
+    await Promise.all([
+      supabase.from("agencies").select("plan").eq("id", profile.agency_id).maybeSingle(),
+      // 0093. Before it is run the function doesn't exist: nobody is one.
+      supabase.rpc("is_office_manager"),
+      // 0115. Likewise: before it is run, nobody keeps office access.
+      supabase.rpc("keeps_office_access"),
+    ]);
   return {
     profile,
-    access: accessFrom(profile, (agency as { plan?: string } | null)?.plan, !officeManagerError && officeManager === true),
+    access: accessFrom(
+      profile,
+      (agency as { plan?: string } | null)?.plan,
+      !officeManagerError && officeManager === true,
+      !keepsError && keeps === true,
+    ),
   };
 });
 

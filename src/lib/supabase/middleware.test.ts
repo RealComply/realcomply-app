@@ -65,6 +65,7 @@ const SIGNED_OUT_OK = [
   "/api/cron/licensee-confirm", // the licensee email confirm emails (0112): CRON_SECRET, like every job
   "/api/cron/licensee-signoff", // the monthly pack's reminders: CRON_SECRET, like every job
   "/api/cron/listing-scan",
+  "/api/cron/plan-move-down", // moving down automatically (Adam, 6 Nov 2026): CRON_SECRET, like every job
   "/api/cron/pm-retention",
   "/api/cron/reader-check", // the daily reader check: CRON_SECRET, like every job
   "/api/cron/subscription-end",

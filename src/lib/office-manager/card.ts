@@ -60,10 +60,18 @@ export type OfficeManagerCardInput = {
   seenKeys?: ReadonlySet<string> | null;
   /** The person's own name, for the small line. */
   personName?: string;
+  /** Keeping the office side until the licensee approves (0115). */
+  keepsOfficeAccess?: boolean;
 };
 
 export type OfficeManagerCard =
-  | { kind: "ask"; licenseeName: string; licenseeEmail: string | null }
+  | {
+      kind: "ask";
+      licenseeName: string;
+      licenseeEmail: string | null;
+      /** Keeping the office side until the licensee approves (0115). */
+      keepsAccess: boolean;
+    }
   | {
       kind: "waiting";
       licenseeName: string;
@@ -74,6 +82,8 @@ export type OfficeManagerCard =
       openedLine: string | null;
       /** After 2 NSW business days unopened: the nudge, in Adam's words. No Copy link here (option 2). */
       nudge: string | null;
+      /** Keeping the office side until the licensee approves (0115). */
+      keepsAccess: boolean;
     }
   | {
       kind: "approved";
@@ -138,6 +148,7 @@ export function officeManagerCard(input: OfficeManagerCardInput): OfficeManagerC
       emailFailed: open.email_sent_at === null && open.email_attempts > 0,
       openedLine: openedLine(delivery),
       nudge: unopenedNudgeDue(delivery, input.now) ? nudgeText("office_manager", licenseeName) : null,
+      keepsAccess: input.keepsOfficeAccess === true,
     };
   }
 
@@ -160,7 +171,12 @@ export function officeManagerCard(input: OfficeManagerCardInput): OfficeManagerC
   }
 
   if (input.officeHasLicenseeLogin || !input.isAccountHolder) return null;
-  return { kind: "ask", licenseeName, licenseeEmail: input.licenseeEmail?.trim() || null };
+  return {
+    kind: "ask",
+    licenseeName,
+    licenseeEmail: input.licenseeEmail?.trim() || null,
+    keepsAccess: input.keepsOfficeAccess === true,
+  };
 }
 
 /**
