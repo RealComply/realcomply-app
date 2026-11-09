@@ -532,7 +532,7 @@ const items: ComplianceItem[] = [
     kind: "checklist",
     label: "Estimated selling price (ESP) recorded",
     description:
-      "Record the ESP in the agency agreement — a single figure, or a range with a spread no greater than 10%.",
+      "Record the ESP in the agency agreement: a single figure, or a range whose top is no more than 10% above its bottom.",
     legalBasis: "s72A, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -1229,7 +1229,7 @@ const items: ComplianceItem[] = [
     kind: "guide",
     label: "Advertised price guide vs ESP",
     description:
-      "Record the advertised guide. It must not be below the ESP, must not use prohibited price terms (\"offers over\", \"O.N.O.\", etc.), and if it's a range, the spread must be ≤10%.",
+      "Record the advertised guide. It must not be below the ESP, must not use banned price wording (\"offers over\", \"O.N.O.\", a plus sign such as \"$900,000+\"), and if it's a range, its top must be no more than 10% above its bottom.",
     legalBasis: "s73 / s73A, Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: true,
@@ -1754,7 +1754,7 @@ const items: ComplianceItem[] = [
     label: "Was the Estimated Selling Price revised?",
     description:
       "If the estimated selling price changes during the campaign, record it here. Serving the notice on the vendor is what amends the agency agreement, so there is nothing to re-sign. Keep a copy of the notice with the agreement, and get the advertising updated.",
-    legalBasis: "s72A(4), s72A(5), s73(3), Property and Stock Agents Act 2002 (NSW)",
+    legalBasis: "s72A, s73(3), Property and Stock Agents Act 2002 (NSW)",
     requiresDate: false,
     requiredForStageCompletion: false,
   },

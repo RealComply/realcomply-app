@@ -5,6 +5,7 @@ import { AlertTriangle, Paperclip, Sparkles, Info } from "lucide-react";
 import { FileDropZone } from "@/components/FileDropZone";
 import { AcceptedFilesLine, CantReadNotice } from "@/components/AcceptedFiles";
 import { unreadableKind } from "@/lib/storage/accepted-files";
+import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import { cancelEspDraft, readEspNotice, recordEspRevision, type EspActionState } from "@/lib/actions/esp-revisions";
@@ -276,7 +277,7 @@ export function EspDraftForm({
           </div>
           {spread !== null && spread > 10 && (
             <p className="text-[11px] leading-relaxed text-rc-amber-deep">
-              Spread {spread.toFixed(1)}%: wider than the 10% s72A(2) allows, which is a problem with the notice itself,
+              Spread {spread.toFixed(1)}%: wider than the 10% s72A allows, which is a problem with the notice itself,
               not with this record.
             </p>
           )}
@@ -304,7 +305,7 @@ export function EspDraftForm({
               <span>
                 <span className="block text-sm text-rc-ink">Vendor was given evidence of the new price before the notice</span>
                 <span className="block text-[11px] text-rc-faint">
-                  s72A(5).{" "}
+                  s72A.{" "}
                   {pending.evidenceProvidedBeforeNotice
                     ? "The notice says so, so this is ticked. Untick it if that is wrong."
                     : "Comparable sales, market conditions, buyer feedback."}
@@ -316,7 +317,7 @@ export function EspDraftForm({
               <span>
                 <span className="block text-sm text-rc-ink">Advertising updated to match the revised price</span>
                 <span className="block text-[11px] text-rc-faint">
-                  s73(3). Anything showing a lower figure has to be amended or pulled as soon as practicable.
+                  {advertisingFixLine()}
                 </span>
               </span>
             </label>

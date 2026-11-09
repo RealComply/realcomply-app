@@ -26,6 +26,7 @@ import { X, MessageCircleQuestion, Scale, LifeBuoy, ChevronLeft } from "lucide-r
 import { askLegislationQuestion, type ChatMessage } from "@/lib/actions/legislation-chat";
 import { askProductQuestion } from "@/lib/actions/help-chat";
 import { DictateButton, appendDictated } from "@/components/Dictate";
+import { ASK_THE_ACT_OUT_OF_DATE_LINE, storedLegislationOutOfDate } from "@/lib/rules/underquoting-reforms";
 
 type Mode = "act" | "help";
 
@@ -36,7 +37,7 @@ const MODES = {
     placeholder: "Ask about the Act…",
     thinking: "Checking the Act…",
     empty:
-      "Ask a question about the Act — e.g. “when does cooling-off apply?” or “what does s49 say about agent’s interest?” This is diligence support, not legal advice — always check the actual section and, if it matters, your adviser.",
+      "Ask a question about the Act, for example “when does cooling-off apply?” or “what does s49 say about agent’s interest?” This is diligence support, not legal advice. Always check the actual section and, if it matters, your adviser.",
     ask: askLegislationQuestion,
   },
   help: {
@@ -159,6 +160,14 @@ export function AssistantChat() {
             <>
               <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-rc-bg-alt px-4 py-3">
                 {messages.length === 0 && <p className="text-sm text-rc-muted">{active!.empty}</p>}
+                {/* From 17 Nov 2026 until the new Act text is loaded
+                    (lib/rules/underquoting-reforms.ts). Client-only: the
+                    thread only renders once the panel is opened. */}
+                {mode === "act" && storedLegislationOutOfDate() && (
+                  <p className="rounded-2xl border border-rc-amber-deep/30 bg-rc-amber/10 px-3 py-2 text-xs text-rc-amber-deep">
+                    {ASK_THE_ACT_OUT_OF_DATE_LINE}
+                  </p>
+                )}
                 {messages.map((m, i) => (
                   <div
                     key={i}
