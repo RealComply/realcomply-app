@@ -136,3 +136,62 @@ describe("the audit pack's page", () => {
     assert.equal(cancelledBecause({ because: "reopened", becauseItemKey: "a4", cancelledAt: R1.recordedAt }, []), "the ESP card was changed");
   });
 });
+
+describe("each revision: the ESP before it and the evidence (s72A(5); 0117)", () => {
+  it("the notice has to state the ESP before the revision from 17 November, and it should match the file", async () => {
+    const { previousEspProblem, previousEspDiffers, PREVIOUS_ESP_MISSING } = await import("./esp-history");
+    const none = { low: null, high: null };
+    assert.equal(previousEspProblem(none, "2026-11-17"), PREVIOUS_ESP_MISSING);
+    assert.match(PREVIOUS_ESP_MISSING, /\(s72A\)/);
+    assert.equal(previousEspProblem(none, "2026-11-16"), null, "a notice given before 17 November isn't asked for it");
+    assert.equal(previousEspProblem(none, null, new Date("2026-11-10T00:00:00+11:00")), null);
+    assert.equal(previousEspProblem(none, null, new Date("2026-11-18T00:00:00+11:00")), PREVIOUS_ESP_MISSING);
+    assert.equal(previousEspProblem({ low: 1_400_000, high: 1_450_000 }, "2026-11-18"), null);
+    const onFile = { low: 1_400_000, high: 1_450_000 };
+    assert.equal(previousEspDiffers({ low: 1_400_000, high: 1_450_000 }, onFile), null);
+    assert.equal(
+      previousEspDiffers({ low: 1_400_000, high: 1_460_000 }, onFile),
+      "The notice gives the ESP before the revision as $1,400,000 to $1,460,000, but the file has $1,400,000 to $1,450,000. Check the notice.",
+    );
+    assert.equal(previousEspDiffers(none, onFile), null);
+    assert.equal(previousEspDiffers({ low: 1_400_000, high: 1_460_000 }, null), null);
+  });
+
+  it("the evidence is a file or part of the notice, from 17 November", async () => {
+    const { revisionEvidenceProblem, EVIDENCE_MISSING } = await import("./esp-history");
+    assert.equal(revisionEvidenceProblem({ evidencePath: null, inNotice: false, givenOn: "2026-11-17" }), EVIDENCE_MISSING);
+    assert.equal(revisionEvidenceProblem({ evidencePath: "o/p/d3/e.pdf", inNotice: false, givenOn: "2026-11-17" }), null);
+    assert.equal(revisionEvidenceProblem({ evidencePath: null, inNotice: true, givenOn: "2026-11-17" }), null);
+    assert.equal(revisionEvidenceProblem({ evidencePath: null, inNotice: false, givenOn: "2026-11-16" }), null);
+  });
+
+  it("the history shows the ESP before it and the evidence", async () => {
+    const { espVersions } = await import("./esp-history");
+    const [latest] = espVersions({ low: 1_400_000, high: 1_450_000, agreementDate: null, file: null }, [
+      {
+        no: 1, low: 1_300_000, high: 1_360_000, givenOn: "2026-11-18", noticePath: "o/p/d3/n.pdf", noticeFileName: "Notice.pdf",
+        enteredManually: false, recordedByName: "Ana Agent", recordedAt: "2026-11-18T01:00:00Z",
+        previousLow: 1_400_000, previousHigh: 1_450_000, evidencePath: "o/p/d3/e.pdf", evidenceFileName: "Comparables.pdf", evidenceInNotice: false,
+      },
+    ]);
+    assert.ok(latest.lines.includes("ESP before it, on the notice: $1,400,000 to $1,450,000"));
+    assert.ok(!latest.lines.includes("Not the ESP on file before it"));
+    assert.deepEqual(latest.evidence, { path: "o/p/d3/e.pdf", name: "Comparables.pdf" });
+  });
+
+  it("the history says when the ESP before it on the notice isn't the one on file", async () => {
+    const { espVersions } = await import("./esp-history");
+    const base = {
+      noticeFileName: "Notice.pdf", enteredManually: false, recordedByName: "Ana Agent",
+      evidencePath: null, evidenceFileName: null, evidenceInNotice: true,
+    };
+    const versions = espVersions({ low: 1_400_000, high: 1_450_000, agreementDate: null, file: null }, [
+      { ...base, no: 1, low: 1_300_000, high: 1_360_000, givenOn: "2026-11-18", noticePath: "o/p/d3/1.pdf", recordedAt: "2026-11-18T01:00:00Z", previousLow: 1_400_000, previousHigh: 1_450_000 },
+      { ...base, no: 2, low: 1_250_000, high: 1_300_000, givenOn: "2026-11-25", noticePath: "o/p/d3/2.pdf", recordedAt: "2026-11-25T01:00:00Z", previousLow: 1_350_000, previousHigh: 1_400_000 },
+    ]);
+    const [two, one] = versions;
+    assert.ok(two.lines.includes("Not the ESP on file before it"), "revision 2's notice gives a figure that isn't revision 1's");
+    assert.ok(!one.lines.includes("Not the ESP on file before it"), "revision 1's notice gives the original");
+    assert.ok(two.lines.includes("Evidence: in the notice"));
+  });
+});

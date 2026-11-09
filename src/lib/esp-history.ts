@@ -1,5 +1,6 @@
 import { formatAuDate } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
+import { reformsInForce } from "@/lib/rules/underquoting-reforms";
 
 // ESP REVISION HISTORY (Adam, 3 Nov 2026; mockup approved; database 0110).
 //
@@ -26,6 +27,13 @@ export type EspRevision = {
   recordedByName: string | null;
   /** ISO time. */
   recordedAt: string;
+  /** The ESP before this revision, as the notice states it (s72A(5)(b)(i); 0117). Null when not recorded. */
+  previousLow?: number | null;
+  previousHigh?: number | null;
+  /** The evidence given to the seller (s72A(5)(b)(ii); 0117): a file, or part of the notice. */
+  evidencePath?: string | null;
+  evidenceFileName?: string | null;
+  evidenceInNotice?: boolean;
 };
 
 const num = (v: unknown): number | null => {
@@ -50,6 +58,11 @@ export function revisionFrom(row: Record<string, unknown> | null | undefined): E
     enteredManually: row.entered_manually === true,
     recordedByName: typeof row.recorded_by_name === "string" ? row.recorded_by_name : null,
     recordedAt: String(row.recorded_at ?? ""),
+    previousLow: num(row.previous_esp_low),
+    previousHigh: num(row.previous_esp_high),
+    evidencePath: typeof row.evidence_path === "string" ? row.evidence_path : null,
+    evidenceFileName: typeof row.evidence_file_name === "string" ? row.evidence_file_name : null,
+    evidenceInNotice: row.evidence_in_notice === true,
   };
 }
 
@@ -126,6 +139,8 @@ export type EspVersion = {
   lines: string[];
   /** The notice (or the agency agreement), when there is one. */
   file: { path: string; name: string } | null;
+  /** The evidence given with a revision (0117), when it is its own file. */
+  evidence?: { path: string; name: string } | null;
 };
 
 export const LATEST_PILL = "Latest: used for checks";
@@ -143,8 +158,13 @@ export function espVersions(
   const out: EspVersion[] = sorted.map((r, i) => {
     const next = sorted[i + 1];
     const latest = !next;
+    const before = i > 0 ? sorted[i - 1] : original;
+    const stated = { low: r.previousLow ?? null, high: r.previousHigh ?? null };
     const lines = [
       r.givenOn ? `Notice given ${formatAuDate(r.givenOn)}` : "Date the notice was given not recorded",
+      stated.low != null && stated.high != null ? `ESP before it, on the notice: ${espRange(stated.low, stated.high)}` : null,
+      previousEspDiffers(stated, before) ? NOT_THE_ESP_ON_FILE : null,
+      r.evidenceInNotice ? "Evidence: in the notice" : null,
       recordedLine(r),
       r.enteredManually ? "Figures typed from the notice" : null,
     ].filter((l): l is string => Boolean(l));
@@ -156,6 +176,7 @@ export function espVersions(
       pill: latest ? LATEST_PILL : `Replaced ${next.recordedAt ? shortDay(next.recordedAt) : ""}`.trim(),
       lines,
       file: { path: r.noticePath, name: r.noticeFileName ?? "Revised ESP notice" },
+      evidence: r.evidencePath ? { path: r.evidencePath, name: r.evidenceFileName ?? "Evidence" } : null,
     };
   });
   out.reverse();
@@ -300,6 +321,9 @@ export type PendingRevision = {
   methodOfService: string | null;
   reason: string | null;
   evidenceProvidedBeforeNotice: boolean | null;
+  /** The ESP before the revision, as the notice states it (s72A(5)(b)(i)), when it could be read. */
+  previousLow?: number | null;
+  previousHigh?: number | null;
   /** Why the figures couldn't be read; the agent types them from the notice. */
   readFailed: string | null;
   /** The file isn't a notice revising the ESP: nothing to save from it. */
@@ -321,6 +345,8 @@ export function pendingFrom(data: unknown): PendingRevision | null {
     methodOfService: str(p.methodOfService),
     reason: str(p.reason),
     evidenceProvidedBeforeNotice: typeof p.evidenceProvidedBeforeNotice === "boolean" ? p.evidenceProvidedBeforeNotice : null,
+    previousLow: num(p.previousLow),
+    previousHigh: num(p.previousHigh),
     readFailed: str(p.readFailed),
     notRecognised: p.notRecognised === true,
   };
@@ -330,4 +356,63 @@ export function pendingFrom(data: unknown): PendingRevision | null {
 export function typedFigure(raw: unknown): number | null {
   const n = Number(String(raw ?? "").replace(/[^0-9.]/g, ""));
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// ── Each revision: the ESP before it and the evidence (s72A(5); 0117) ──────
+// Adam, 9 Nov 2026: "check the old ESP and attach the evidence". From 17
+// November 2026 the notice of a revision has to include the ESP before it and
+// the revised ESP (s72A(5)(b)(i)), and the seller is given evidence the
+// revised ESP is reasonable (s72A(5)(b)(ii)). Cited as plain "s72A", which is
+// right on both sides of the date (underquoting-reforms.ts). A notice given
+// before 17 November is checked against the rules then: neither is asked for.
+
+export const PREVIOUS_ESP_LABEL = "ESP before the revision, as on the notice";
+export const PREVIOUS_ESP_HINT = "From 17 November the notice has to state it (s72A).";
+export const EVIDENCE_LABEL = "Evidence of the revised ESP you gave the seller";
+export const EVIDENCE_HINT = "Comparable sales, market conditions, buyer feedback. From 17 November (s72A).";
+export const EVIDENCE_IN_NOTICE_LABEL = "The evidence is part of the notice file";
+export const NOT_THE_ESP_ON_FILE = "Not the ESP on file before it";
+
+/** On the card while it is open: the latest notice doesn't state the ESP before it. */
+export const PREVIOUS_ESP_MISSING =
+  "The notice doesn't state the ESP before the revision, which it has to from 17 November (s72A). Give the seller a notice that states it, and add it as a new revision.";
+
+/** Saving is refused without it, from 17 November: a revision row can't be changed later (0117). */
+export const EVIDENCE_MISSING =
+  "Attach the evidence of the revised ESP you gave the seller, or tick that it is part of the notice (s72A).";
+
+/** Whether a notice given on this date (yyyy-mm-dd) falls under the 17 November rules. No date: today. */
+export function noticeUnderReforms(givenOn: string | null, now: Date = new Date()): boolean {
+  return reformsInForce(givenOn && /^\d{4}-\d{2}-\d{2}$/.test(givenOn) ? new Date(`${givenOn}T12:00:00+11:00`) : now);
+}
+
+/**
+ * The old ESP check: the ESP before the revision, as the notice states it,
+ * against the ESP on file. Says so when they differ; null when they match or
+ * either isn't there.
+ */
+export function previousEspDiffers(
+  stated: { low: number | null; high: number | null },
+  onFile: { low: number | null; high: number | null } | null,
+): string | null {
+  if (stated.low == null || stated.high == null || onFile?.low == null || onFile.high == null) return null;
+  if (stated.low === onFile.low && stated.high === onFile.high) return null;
+  return `The notice gives the ESP before the revision as ${espRange(stated.low, stated.high)}, but the file has ${espRange(onFile.low, onFile.high)}. Check the notice.`;
+}
+
+/** The notice has to state the ESP before the revision, from 17 November. Null when it does, or before then. */
+export function previousEspProblem(
+  stated: { low: number | null; high: number | null },
+  givenOn: string | null,
+  now: Date = new Date(),
+): string | null {
+  return noticeUnderReforms(givenOn, now) && (stated.low == null || stated.high == null) ? PREVIOUS_ESP_MISSING : null;
+}
+
+/** The evidence: a file, or part of the notice, from 17 November. Null when it is there, or before then. */
+export function revisionEvidenceProblem(
+  input: { evidencePath: string | null; inNotice: boolean; givenOn: string | null },
+  now: Date = new Date(),
+): string | null {
+  return noticeUnderReforms(input.givenOn, now) && !input.evidencePath && !input.inNotice ? EVIDENCE_MISSING : null;
 }

@@ -1737,9 +1737,15 @@ export async function confirmEspRevision(
   // Both are legal obligations, so neither closes the item on its own. Held
   // open rather than refused: the record of the revision itself is already
   // saved and correct, and what remains outstanding is visible on the card.
+  // A problem with the notice itself (0117: no ESP before the revision on it)
+  // stays until a notice that fixes it is added as a new revision.
+  const noticeProblems = Array.isArray(data.noticeProblems)
+    ? data.noticeProblems.filter((p): p is string => typeof p === "string")
+    : [];
   const outstanding = [
     evidenceBeforeNotice ? null : "Evidence of the new price has not been confirmed as given to the vendor (s72A(5)).",
     advertisingUpdated ? null : "The advertising has not been confirmed as updated to the revised price (s73(3)).",
+    ...noticeProblems,
   ].filter(Boolean) as string[];
 
   await upsertItem(supabase, {

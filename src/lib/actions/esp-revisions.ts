@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 import { readNoticeIntoPending } from "@/lib/esp-notice";
-import { pendingFrom, typedFigure } from "@/lib/esp-history";
+import { pendingFrom, previousEspProblem, revisionEvidenceProblem, typedFigure } from "@/lib/esp-history";
 
 // ESP revision history (Adam, 3 Nov 2026; mockup approved; 0110). The d3 card's
 // actions: a notice uploaded is read into a draft; the agent checks the figures
@@ -54,13 +54,20 @@ export async function cancelEspDraft(propertyId: string): Promise<EspActionState
  * given, and the two things the notice can't prove about itself (s72A(5),
  * s73(3)). Records a new revision (record_esp_revision, 0110), which becomes
  * the latest, drives every check and cancels the price statement approval.
+ *
+ * With each revision (0117; Adam, 9 Nov 2026: "check the old ESP and attach
+ * the evidence"): the ESP before it as the notice states it, and the evidence
+ * given to the seller, a file in the listing's d3 folder or part of the
+ * notice. For a notice given from 17 November: no evidence, no save, since a
+ * revision can't be changed once recorded; no ESP before it on the notice,
+ * the card stays open until a notice that states it is added.
  */
 export async function recordEspRevision(
   propertyId: string,
   _prev: EspActionState,
   formData: FormData,
 ): Promise<EspActionState> {
-  const { supabase } = await requireAuthContext();
+  const { supabase, profile } = await requireAuthContext();
   const { data: row } = await supabase
     .from("property_items")
     .select("data")
@@ -81,14 +88,39 @@ export async function recordEspRevision(
   if (high < low) return { error: "The higher figure is below the lower one. Check which way round they go." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(givenOn)) return { error: "Put in the date the notice was given to the seller." };
 
+  const previousLow = typedFigure(formData.get("previousEspLow"));
+  const previousHigh = typedFigure(formData.get("previousEspHigh"));
+  if ((previousLow === null) !== (previousHigh === null)) {
+    return { error: "Put in both figures for the ESP before the revision, or leave both empty." };
+  }
+  if (previousLow !== null && previousHigh !== null && previousHigh < previousLow) {
+    return { error: "In the ESP before the revision, the higher figure is below the lower one. Check which way round they go." };
+  }
+
+  const evidencePath = String(formData.get("evidencePath") ?? "").trim() || null;
+  const evidenceFileName = String(formData.get("evidenceFileName") ?? "").trim() || null;
+  const evidenceInNotice = formData.get("evidenceInNotice") === "yes";
+  if (evidencePath) {
+    if (!isInFolder(evidencePath, `${profile.agency_id}/${propertyId}/d3`)) return { error: "Upload the evidence again." };
+    const empty = await storedFileProblem(supabase, evidencePath);
+    if (empty) return { error: empty };
+  }
+  const noEvidence = revisionEvidenceProblem({ evidencePath, inNotice: evidenceInNotice, givenOn });
+  if (noEvidence) return { error: noEvidence };
+
   // Typed, or changed from what was read: the record says so (26 Aug 2026).
   const enteredManually = pending.low !== low || pending.high !== high || pending.readFailed !== null;
 
   const evidenceProvidedBeforeNotice = formData.get("evidenceProvidedBeforeNotice") === "yes";
   const advertisingUpdated = formData.get("advertisingUpdated") === "yes";
+  // What only a new notice can fix: kept through the two ticks below (confirmEspRevision).
+  const noticeProblems = [previousEspProblem({ low: previousLow, high: previousHigh }, givenOn)].filter(
+    (o): o is string => Boolean(o),
+  );
   const outstanding = [
     evidenceProvidedBeforeNotice ? null : "Evidence of the new price has not been confirmed as given to the vendor (s72A(5)).",
     advertisingUpdated ? null : "The advertising has not been confirmed as updated to the revised price (s73(3)).",
+    ...noticeProblems,
   ].filter((o): o is string => Boolean(o));
 
   const { error } = await supabase.rpc("record_esp_revision", {
@@ -101,8 +133,15 @@ export async function recordEspRevision(
     p_entered_manually: enteredManually,
     p_method: pending.methodOfService,
     p_reason: pending.reason,
-    p_card: { evidenceProvidedBeforeNotice, advertisingUpdated, outstanding },
+    p_card: { evidenceProvidedBeforeNotice, advertisingUpdated, outstanding, noticeProblems },
     p_status: outstanding.length > 0 ? "open" : "done",
+    p_previous_low: previousLow,
+    p_previous_high: previousHigh,
+    p_evidence_path: evidencePath,
+    p_evidence_file_name: evidencePath ? evidenceFileName : null,
+    p_evidence_in_notice: evidenceInNotice,
+    // Market feedback (Reg s12G(1)(f)): its own screen after 17 November.
+    p_market_feedback: [],
   });
   if (error) {
     // The database's own words where it refused; anything else, try again.

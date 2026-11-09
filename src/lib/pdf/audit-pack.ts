@@ -398,6 +398,23 @@ async function espHistoryPage(
     });
   documents.splice(at >= 0 ? at : documents.length, 0, ...earlier);
 
+  // Each revision's evidence given to the seller (0117), just after its notice.
+  for (const r of revisions) {
+    const path = r.evidencePath;
+    if (!path || !isInFolder(path, folder) || documents.some((d) => d.path === path)) continue;
+    const fileName = r.evidenceFileName ?? path.split("/").pop() ?? "evidence";
+    const notice = documents.findIndex((d) => d.path === r.noticePath);
+    documents.splice(notice >= 0 ? notice + 1 : documents.length, 0, {
+      stage,
+      cardTitle: `ESP revision evidence, Revision ${r.no}`,
+      fileName,
+      path,
+      kind: packDocKind(fileName),
+      uploadedBy: uploads.get(path)?.by ?? r.recordedByName,
+      uploadedAt: uploads.get(path)?.at ?? (r.recordedAt || null),
+    });
+  }
+
   const a4 = (byKey["a4"]?.data ?? {}) as { espLow?: unknown; espHigh?: unknown };
   const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
   const agreementPath = byKey["a3"]?.evidence_path && isInFolder(byKey["a3"].evidence_path, folder) ? byKey["a3"].evidence_path : null;

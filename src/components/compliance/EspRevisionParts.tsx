@@ -11,7 +11,15 @@ import { buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence"
 import { cancelEspDraft, readEspNotice, recordEspRevision, type EspActionState } from "@/lib/actions/esp-revisions";
 import {
   ADD_REVISION,
+  EVIDENCE_HINT,
+  EVIDENCE_IN_NOTICE_LABEL,
+  EVIDENCE_LABEL,
+  PREVIOUS_ESP_HINT,
+  PREVIOUS_ESP_LABEL,
   UPLOAD_HELP,
+  espRange,
+  noticeUnderReforms,
+  previousEspDiffers,
   replaceWarning,
   type EspVersion,
   type PendingRevision,
@@ -29,7 +37,45 @@ export type EspHistoryView = {
   fileUrls: Record<string, string>;
   /** The latest revision's number, or null before the first. */
   latestNo: number | null;
+  /** The ESP on file now: the one a new revision's notice should give as the ESP before it (0117). */
+  currentEsp?: { low: number | null; high: number | null };
 };
+
+/** A file on the card: a link (an hour) when there is one, else its name. */
+function FileLink({ url, name }: { url: string | undefined; name: string }) {
+  return url ? (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 font-semibold text-rc-green-deep hover:underline"
+    >
+      <Paperclip size={12} aria-hidden="true" /> {name}
+    </a>
+  ) : (
+    <span className="inline-flex items-center gap-1 font-semibold text-rc-green-deep">
+      <Paperclip size={12} aria-hidden="true" /> {name}
+    </span>
+  );
+}
+
+/**
+ * Puts a file in the listing's d3 folder, as the notice goes (0110). The
+ * stored name is the file that exists: an iPhone photo goes up as a JPEG.
+ */
+async function uploadToD3(propertyId: string, file: File): Promise<{ error: string } | { path: string; name: string }> {
+  const supabase = createBrowserClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("agency_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  if (!profile?.agency_id) return { error: "Couldn't confirm your agency. Reload the page and try again." };
+  const path = buildEvidencePath(profile.agency_id, propertyId, "d3", file.name);
+  const { error, file: stored } = await uploadEvidenceObject(supabase, { path, file });
+  return error ? { error } : { path, name: stored.name };
+}
 
 /** The versions, newest first (mockup view 1). */
 export function EspHistoryList({ view }: { view: EspHistoryView }) {
@@ -59,21 +105,8 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
             {v.lines.map((l) => (
               <span key={l}>{l}</span>
             ))}
-            {v.file &&
-              (view.fileUrls[v.file.path] ? (
-                <a
-                  href={view.fileUrls[v.file.path]}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-semibold text-rc-green-deep hover:underline"
-                >
-                  <Paperclip size={12} aria-hidden="true" /> {v.file.name}
-                </a>
-              ) : (
-                <span className="inline-flex items-center gap-1 font-semibold text-rc-green-deep">
-                  <Paperclip size={12} aria-hidden="true" /> {v.file.name}
-                </span>
-              ))}
+            {v.file && <FileLink url={view.fileUrls[v.file.path]} name={v.file.name} />}
+            {v.evidence && <FileLink url={view.fileUrls[v.evidence.path]} name={`Evidence: ${v.evidence.name}`} />}
           </span>
         </li>
       ))}
@@ -103,28 +136,14 @@ export function EspNoticeUpload({
     }
     setError(null);
     setBusy("uploading");
-    const supabase = createBrowserClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const { data: profile } = user
-      ? await supabase.from("profiles").select("agency_id").eq("id", user.id).maybeSingle()
-      : { data: null };
-    if (!profile?.agency_id) {
+    const stored = await uploadToD3(propertyId, file);
+    if ("error" in stored) {
       setBusy(null);
-      setError("Couldn't confirm your agency. Reload the page and try again.");
-      return;
-    }
-    const path = buildEvidencePath(profile.agency_id, propertyId, "d3", file.name);
-    // An iPhone photo goes up as a JPEG (uploadEvidenceObject): the name kept is the file that exists.
-    const { error: uploadError, file: stored } = await uploadEvidenceObject(supabase, { path, file });
-    if (uploadError) {
-      setBusy(null);
-      setError(uploadError);
+      setError(stored.error);
       return;
     }
     setBusy("reading");
-    const result = await readEspNotice(propertyId, path, stored.name);
+    const result = await readEspNotice(propertyId, stored.path, stored.name);
     setBusy(null);
     if (result.error) setError(result.error);
   }
@@ -181,18 +200,26 @@ const typed = (raw: string) => {
  * Type the figures from it, or upload a clearer copy.", and keeps the figures
  * to type. Its "Upload a PDF" cancels the draft, as Cancel does, so the upload
  * box comes back for the PDF.
+ *
+ * With each revision (0117; Adam, 9 Nov 2026: "check the old ESP and attach
+ * the evidence"): the ESP before it as the notice states it, read from the
+ * notice where it can be, checked against the ESP on file; and the evidence
+ * given to the seller, a file or part of the notice. From 17 November.
  */
 export function EspDraftForm({
   propertyId,
   pending,
   latestNo,
   fileUrl,
+  currentEsp = null,
   onUploadPdf,
 }: {
   propertyId: string;
   pending: PendingRevision;
   latestNo: number | null;
   fileUrl: string | null;
+  /** The ESP on file now, to check the notice's ESP before the revision against. */
+  currentEsp?: { low: number | null; high: number | null } | null;
   /** After "Upload a PDF" has cancelled the draft: brings the upload box back. */
   onUploadPdf?: () => void;
 }) {
@@ -203,6 +230,29 @@ export function EspDraftForm({
   const lowN = typed(low);
   const highN = typed(high);
   const spread = lowN && highN && highN >= lowN ? ((highN - lowN) / lowN) * 100 : null;
+  const [givenOn, setGivenOn] = useState(pending.givenOn ?? "");
+  const [prevLow, setPrevLow] = useState(asTyped(pending.previousLow ?? null));
+  const [prevHigh, setPrevHigh] = useState(asTyped(pending.previousHigh ?? null));
+  const stated = { low: typed(prevLow), high: typed(prevHigh) };
+  const differs = previousEspDiffers(stated, currentEsp);
+  const underReforms = noticeUnderReforms(givenOn || null);
+  const onFile = currentEsp?.low != null && currentEsp.high != null ? espRange(currentEsp.low, currentEsp.high) : null;
+  const [evidence, setEvidence] = useState<{ path: string; name: string } | null>(null);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidenceBusy, setEvidenceBusy] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [inNotice, setInNotice] = useState(false);
+  const pickEvidence = async (file: File | null) => {
+    setEvidenceFile(file);
+    setEvidenceError(null);
+    if (!file) return;
+    setEvidenceBusy(true);
+    const stored = await uploadToD3(propertyId, file);
+    setEvidenceBusy(false);
+    setEvidenceFile(null);
+    if ("error" in stored) setEvidenceError(stored.error);
+    else setEvidence(stored);
+  };
   const cancel = () => startCancel(async () => void (await cancelEspDraft(propertyId)));
   const cantRead = !pending.notRecognised && unreadableKind(pending.fileName) !== null;
   const uploadPdf = () =>
@@ -286,10 +336,110 @@ export function EspDraftForm({
             <input
               name="noticeGivenOn"
               type="date"
-              defaultValue={pending.givenOn ?? ""}
+              value={givenOn}
+              onChange={(e) => setGivenOn(e.target.value)}
               className="mt-1 block rounded-md border border-rc-border px-2.5 py-2 text-sm focus:border-rc-green-deep focus:outline-none"
             />
           </label>
+
+          {/* The old ESP check (s72A; 0117): as the notice states it, against the file. */}
+          <div>
+            <p className="text-xs font-semibold text-rc-ink">{PREVIOUS_ESP_LABEL}</p>
+            <div className="mt-1 grid gap-2.5 sm:grid-cols-2">
+              <input
+                name="previousEspLow"
+                aria-label={`${PREVIOUS_ESP_LABEL}, from`}
+                inputMode="numeric"
+                value={prevLow}
+                onChange={(e) => setPrevLow(e.target.value)}
+                placeholder="From"
+                className="w-full rounded-md border border-rc-border px-2.5 py-2 text-sm tabular-nums focus:border-rc-green-deep focus:outline-none"
+              />
+              <input
+                name="previousEspHigh"
+                aria-label={`${PREVIOUS_ESP_LABEL}, to`}
+                inputMode="numeric"
+                value={prevHigh}
+                onChange={(e) => setPrevHigh(e.target.value)}
+                placeholder="To"
+                className="w-full rounded-md border border-rc-border px-2.5 py-2 text-sm tabular-nums focus:border-rc-green-deep focus:outline-none"
+              />
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-rc-faint">
+              {onFile ? `On file: ${onFile}. ` : ""}
+              {PREVIOUS_ESP_HINT}
+            </p>
+            {differs ? (
+              <p className="mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-amber-deep">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                <span>{differs}</span>
+              </p>
+            ) : (
+              underReforms &&
+              (stated.low === null || stated.high === null) && (
+                <p className="mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-rc-amber-deep">
+                  <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                  <span>
+                    If the notice doesn&rsquo;t state it, you can still save. The card stays open until you add a notice
+                    that does.
+                  </span>
+                </p>
+              )
+            )}
+          </div>
+
+          {/* The evidence given to the seller (s72A; 0117): a file, or part of the notice. */}
+          <div className="space-y-2 rounded-md border border-rc-border px-3 py-2.5">
+            <div>
+              <p className="text-sm text-rc-ink">{EVIDENCE_LABEL}</p>
+              <p className="text-[11px] text-rc-faint">{EVIDENCE_HINT}</p>
+            </div>
+            <input type="hidden" name="evidencePath" value={evidence?.path ?? ""} />
+            <input type="hidden" name="evidenceFileName" value={evidence?.name ?? ""} />
+            {evidence ? (
+              <p className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="inline-flex items-center gap-1 font-semibold text-rc-ink">
+                  <Paperclip size={12} aria-hidden="true" /> {evidence.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEvidence(null)}
+                  disabled={saving}
+                  className="text-rc-green-deep hover:underline disabled:opacity-60"
+                >
+                  Remove
+                </button>
+              </p>
+            ) : (
+              !inNotice && (
+                <FileDropZone
+                  compact
+                  file={evidenceFile}
+                  onFile={pickEvidence}
+                  disabled={evidenceBusy || saving}
+                  label={evidenceBusy ? "Uploading…" : "Drag the evidence here, or click to browse"}
+                />
+              )
+            )}
+            {evidenceError && (
+              <p role="alert" className="text-xs font-medium text-rc-amber-deep">
+                {evidenceError}
+              </p>
+            )}
+            {!evidence && (
+              <label className="flex items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  name="evidenceInNotice"
+                  value="yes"
+                  checked={inNotice}
+                  onChange={(e) => setInNotice(e.target.checked)}
+                  className="mt-0.5 shrink-0 accent-rc-green-deep"
+                />
+                <span className="text-xs text-rc-ink">{EVIDENCE_IN_NOTICE_LABEL}</span>
+              </label>
+            )}
+          </div>
 
           {/* The two things the notice can't prove about itself: one before it
               (s72A(5)), one after it (s73(3)). */}
@@ -339,7 +489,7 @@ export function EspDraftForm({
         {!pending.notRecognised && (
           <button
             type="submit"
-            disabled={saving || cancelling}
+            disabled={saving || cancelling || evidenceBusy}
             className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save revision"}

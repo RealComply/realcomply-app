@@ -16,7 +16,9 @@ import type { PropertyItem } from "@/lib/types";
 export async function espRevisionsFor(supabase: SupabaseClient, agencyId: string, propertyId: string): Promise<EspRevision[]> {
   const { data, error } = await supabase
     .from("esp_revisions")
-    .select("revision_no, esp_low, esp_high, notice_given_on, notice_path, notice_file_name, entered_manually, recorded_by_name, recorded_at")
+    .select(
+      "revision_no, esp_low, esp_high, notice_given_on, notice_path, notice_file_name, entered_manually, recorded_by_name, recorded_at, previous_esp_low, previous_esp_high, evidence_path, evidence_file_name, evidence_in_notice",
+    )
     .eq("agency_id", agencyId)
     .eq("property_id", propertyId)
     .order("revision_no", { ascending: true });
@@ -54,6 +56,7 @@ export async function espHistoryFor(
   const pending = pendingFrom(allItems["d3"]?.data);
   const paths = [
     ...revisions.map((r) => r.noticePath),
+    ...revisions.map((r) => r.evidencePath).filter((p): p is string => typeof p === "string"),
     ...(agreementFile ? [agreementFile.path] : []),
     ...(pending ? [pending.path] : []),
   ].filter((p) => isInFolder(p, folder));
@@ -62,5 +65,13 @@ export async function espHistoryFor(
     const { data } = await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrls([...new Set(paths)], 3600);
     for (const f of data ?? []) if (f.path && f.signedUrl) fileUrls[f.path] = f.signedUrl;
   }
-  return { versions, fileUrls, latestNo: revisions.length > 0 ? revisions[revisions.length - 1].no : null };
+  const last = revisions.length > 0 ? revisions[revisions.length - 1] : null;
+  return {
+    versions,
+    fileUrls,
+    latestNo: last ? last.no : null,
+    // The ESP on file now, which a new revision's notice should give as the
+    // ESP before it (s72A(5)(b)(i); 9 Nov 2026).
+    currentEsp: last ? { low: last.low, high: last.high } : { low: num(a4.espLow), high: num(a4.espHigh) },
+  };
 }

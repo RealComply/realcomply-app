@@ -720,6 +720,15 @@ const REVISED_ESP_TOOL: Anthropic.Tool = {
         type: "number",
         description: "The upper figure of the revised estimated selling price. Same rules as revisedEspLow.",
       },
+      previousEspLow: {
+        type: "number",
+        description:
+          "The lower figure of the estimated selling price BEFORE the revision, as stated on the notice (from 17 November 2026 the notice has to include it, s72A(5)(b)(i)). Plain number. For a single figure, the same value in both. Omit if the notice does not state the earlier price.",
+      },
+      previousEspHigh: {
+        type: "number",
+        description: "The upper figure of the estimated selling price before the revision. Same rules as previousEspLow.",
+      },
       noticeServedOn: {
         type: "string",
         description:
@@ -749,6 +758,8 @@ export type RevisedEspFields = {
   looksLikeRevisedEspNotice?: boolean;
   revisedEspLow?: number;
   revisedEspHigh?: number;
+  previousEspLow?: number;
+  previousEspHigh?: number;
   noticeServedOn?: string;
   methodOfService?: string;
   reason?: string;
