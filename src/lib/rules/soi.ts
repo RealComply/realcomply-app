@@ -7,8 +7,14 @@
 // residential property and all 7 kinds of report it lists.
 //
 // When it applies: to an agency agreement entered into after s72C commences
-// on 8 February 2027 (Act Sch 1, transitional cl 3). A listing with no
-// signing date yet: from that day.
+// on 8 February 2027 (Act Sch 1, transitional cl 3).
+//
+// THE SWITCH (Master, 10 Nov 2026): built now, off until midnight Sydney on
+// 8 February 2027: the card, the link for ads, the 2 business day clock,
+// everything. Then only for a listing whose agency agreement was signed on
+// or after that day (or isn't signed yet, so will be). A listing signed
+// before never gets it. soiApplies is the app's one check; the database has
+// the same one (soi_applies, 0121) for what's saved and what the link shows.
 //
 // What goes on it (Reg s12H(1)): the address and type of the property; for
 // each comparable property whose sold price was taken into account, its
@@ -27,6 +33,7 @@
 // No database or browser here, so every rule is tested (soi.test.ts).
 
 import { addNswBusinessDays } from "@/lib/licensee-history";
+import { SOI_FROM } from "@/lib/rules/underquoting-reforms";
 import { formatAuDate } from "@/lib/format-date";
 import type { AreaKind } from "@/lib/rules/council-area";
 import { MAX_MOST_COMPARABLE } from "@/lib/rules/comparables-rules";
@@ -39,11 +46,19 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const sydneyToday = (now: Date) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 
-/** Whether s72C covers the listing: an agreement signed from 8 February 2027, or none signed yet and today is from then. */
+/**
+ * Whether the statement is switched on for the listing: never before midnight
+ * Sydney on 8 February 2027; from then, for an agreement signed on or after
+ * that day, or none signed yet.
+ */
 export function soiApplies(agreementDate: string | null | undefined, now: Date = new Date()): boolean {
+  if (now.getTime() < SOI_FROM.getTime()) return false;
   const signed = typeof agreementDate === "string" && ISO.test(agreementDate) ? agreementDate : sydneyToday(now);
   return signed >= SOI_STARTS_ON;
 }
+
+export const SOI_NOT_YET =
+  "The Statement of Information starts on 8 February 2027, for agency agreements signed from that day.";
 
 // ── The approved form's lists, word for word ───────────────────────────────
 

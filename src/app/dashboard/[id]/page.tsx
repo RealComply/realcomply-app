@@ -276,7 +276,7 @@ export default async function PropertyPage({
       })
     : undefined;
   const soiReviseBy =
-    espHistory && (soiApplies(allItems["a3"]?.event_date ?? null) || allItems["soi"])
+    espHistory && soiApplies(allItems["a3"]?.event_date ?? null)
       ? reviseByFor(
           await soiVersionsFor(supabase, p.id),
           revisionsOrCard(await espRevisionsFor(supabase, p.agency_id, p.id), allItems["d3"]),

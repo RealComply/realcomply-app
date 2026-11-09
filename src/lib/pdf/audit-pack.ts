@@ -378,7 +378,7 @@ export async function buildAuditPack(
   // The Statement of Information's versions, when it's due to be revised,
   // and the link for online ads (s72C; Reg s12I; 0121): under its card.
   const soiLines =
-    soiVersions.length > 0 || soiApplies(byKey["a3"]?.event_date ?? null, generatedAt)
+    soiApplies(byKey["a3"]?.event_date ?? null, generatedAt)
       ? soiRecordLines({
           versions: soiVersions,
           reviseBy: reviseByFor(soiVersions, revisions, comparables),

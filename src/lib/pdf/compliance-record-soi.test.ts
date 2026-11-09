@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { buildComplianceRecordPdf } from "@/lib/pdf/compliance-record";
 import { allItemsFor, allItemsInRuleset } from "@/lib/rules/nsw-sales";
@@ -69,11 +69,22 @@ describe("where the card shows (Act Sch 1, transitional cl 3)", () => {
   const property = { id: "p1", address: "9 Made Up Parade", stage: 0, property_type: "House" } as unknown as Property;
   const a3 = (date: string) => ({ a3: { item_key: "a3", status: "done", event_date: date } as unknown as PropertyItem });
 
-  it("on an agreement from 8 February 2027, not before, unless a statement is already on the file", () => {
-    assert.ok(allItemsFor(property, a3("2027-02-08")).some((i) => i.key === "soi"));
-    assert.ok(!allItemsFor(property, a3("2027-02-07")).some((i) => i.key === "soi"));
-    assert.ok(
-      allItemsFor(property, { ...a3("2027-02-07"), soi: { item_key: "soi", status: "done" } as unknown as PropertyItem }).some((i) => i.key === "soi"),
-    );
+  const shows = (items: Record<string, PropertyItem>) => allItemsFor(property, items).some((i) => i.key === "soi");
+
+  it("nowhere before midnight Sydney on 8 February 2027 (Master, 10 Nov 2026)", () => {
+    assert.ok(!shows(a3("2027-02-10")), "today, in November 2026: switched off");
+    assert.ok(!shows({}));
+  });
+
+  it("with the switch on: an agreement from 8 February 2027, never one signed before, even with a statement on it", () => {
+    mock.timers.enable({ apis: ["Date"], now: new Date("2027-03-01T01:00:00Z") });
+    try {
+      assert.ok(shows(a3("2027-02-08")));
+      assert.ok(shows({}), "not signed yet");
+      assert.ok(!shows(a3("2027-02-07")));
+      assert.ok(!shows({ ...a3("2027-02-07"), soi: { item_key: "soi", status: "done" } as unknown as PropertyItem }));
+    } finally {
+      mock.timers.reset();
+    }
   });
 });

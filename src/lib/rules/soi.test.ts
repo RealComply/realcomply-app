@@ -48,10 +48,17 @@ const form = (rows: unknown[], over: Record<string, unknown> = {}) => ({
 
 describe("when the statement applies (Act Sch 1, transitional cl 3)", () => {
   it("covers an agreement signed from 8 February 2027, or none signed yet from that day", () => {
-    assert.equal(soiApplies("2027-02-07"), false);
-    assert.equal(soiApplies("2027-02-08"), true);
-    assert.equal(soiApplies(null, new Date("2027-02-07T12:00:00Z")), false);
-    assert.equal(soiApplies(null, new Date("2027-02-07T13:00:00Z")), true, "8 February in Sydney");
+    const after = new Date("2027-03-01T01:00:00Z");
+    assert.equal(soiApplies("2027-02-07", after), false, "signed the day before: never");
+    assert.equal(soiApplies("2027-02-08", after), true);
+    assert.equal(soiApplies(null, new Date("2027-02-07T12:59:59Z")), false, "11:59:59 pm on 7 February in Sydney");
+    assert.equal(soiApplies(null, new Date("2027-02-07T13:00:00Z")), true, "midnight at the start of 8 February in Sydney");
+  });
+
+  it("is switched off before then, whatever date was typed (Master, 10 Nov 2026)", () => {
+    assert.equal(soiApplies("2027-02-10", new Date("2026-11-10T01:00:00Z")), false);
+    assert.equal(soiApplies(null, new Date("2026-11-10T01:00:00Z")), false);
+    assert.equal(soiApplies("2027-02-10"), false, "today, in November 2026");
   });
 });
 

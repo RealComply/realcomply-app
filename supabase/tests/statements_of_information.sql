@@ -5,6 +5,9 @@
 -- is rolled back at the end, so the made-up offices, people and listings it
 -- creates never exist outside it.
 --
+-- It checks the 8 February 2027 switch is off first, then switches it on
+-- inside the transaction (made-up offices only) to check the rest.
+--
 -- Pass: the last line says "Statements of information: all checks passed".
 -- Fail: it stops with an error naming the check that failed.
 
@@ -18,6 +21,7 @@ declare
   b   uuid := gen_random_uuid();  -- o2's agent
   p1  uuid;
   p2  uuid;
+  p3  uuid;  -- agreement signed 7 February 2027: never gets it
   n   integer;
   r   record;
   t   text;
@@ -32,7 +36,34 @@ begin
     (b, o2, 'Ben Agent', 'soi-b@example.invalid', true, false, false);
   insert into public.properties (agency_id, created_by, address) values (o1, a, '12 Harbour Street (made up)') returning id into p1;
   insert into public.properties (agency_id, created_by, address) values (o1, a, '3 Quiet Lane (made up)') returning id into p2;
+  insert into public.properties (agency_id, created_by, address) values (o1, a, '5 Early Road (made up)') returning id into p3;
+  insert into public.property_items (agency_id, property_id, item_key, status, event_date) values
+    (o1, p1, 'a3', 'done', date '2027-02-10'),
+    (o1, p2, 'a3', 'done', date '2027-02-10'),
+    (o1, p3, 'a3', 'done', date '2027-02-07');
   folder := o1::text || '/' || p1::text || '/soi/';
+
+  -- 0. Switched off until midnight Sydney on 8 February 2027: nothing can be added.
+  perform set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  begin
+    insert into public.statements_of_information (agency_id, property_id, source, pdf_path, content)
+    values (o1, p1, 'realcomply', folder || '0.pdf', '{}');
+    raise exception 'FAIL 0a: a version was added before 8 February 2027';
+  exception when sqlstate 'P0001' then
+    if sqlerrm not like '%starts on 8 February 2027%' then raise exception 'FAIL 0a: refused with %', sqlerrm; end if;
+  end;
+  begin
+    insert into public.statement_of_information_links (property_id, agency_id) values (p1, o1);
+    raise exception 'FAIL 0b: a link was switched on before 8 February 2027';
+  exception when sqlstate 'P0001' then
+    if sqlerrm not like '%starts on 8 February 2027%' then raise exception 'FAIL 0b: refused with %', sqlerrm; end if;
+  end;
+  reset role;
+
+  -- The switch on, for the rest of this rolled-back test.
+  execute $q$create or replace function public.soi_starts_at() returns timestamptz language plpgsql stable
+    set search_path = public as $f$ begin return now() - interval '1 day'; end $f$ $q$;
 
   perform set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -68,6 +99,15 @@ begin
     raise exception 'FAIL 3c: a date in the future was taken';
   exception when sqlstate 'P0001' then
     if sqlerrm not like '%future%' then raise exception 'FAIL 3c: refused with %', sqlerrm; end if;
+  end;
+
+  -- 3d. A listing whose agreement was signed before 8 February 2027 never gets it.
+  begin
+    insert into public.statements_of_information (agency_id, property_id, source, pdf_path)
+    values (o1, p3, 'uploaded', o1::text || '/' || p3::text || '/soi/x.pdf');
+    raise exception 'FAIL 3d: a listing signed before 8 February 2027 took one';
+  exception when sqlstate 'P0001' then
+    if sqlerrm not like '%starts on 8 February 2027%' then raise exception 'FAIL 3d: refused with %', sqlerrm; end if;
   end;
 
   -- 4. Never changed or deleted.
@@ -194,6 +234,16 @@ begin
   end;
   reset role;
   delete from public.property_items where property_id = p1 and item_key = 'sign_licensee';
+
+  -- 12b. Switched off again: the link shows nothing; back on, it works.
+  execute $q$create or replace function public.soi_starts_at() returns timestamptz language plpgsql stable
+    set search_path = public as $f$ begin return timestamptz '2027-02-08 00:00:00+11'; end $f$ $q$;
+  select count(*) into n from public.statement_of_information_public(t);
+  if n <> 0 then raise exception 'FAIL 12b: the link gave a file before 8 February 2027'; end if;
+  execute $q$create or replace function public.soi_starts_at() returns timestamptz language plpgsql stable
+    set search_path = public as $f$ begin return now() - interval '1 day'; end $f$ $q$;
+  select count(*) into n from public.statement_of_information_public(t);
+  if n <> 1 then raise exception 'FAIL 12c: switched back on, the link gave nothing'; end if;
 
   -- 13. The office's subscription ended: the link stops.
   perform set_config('request.jwt.claims', '', true);

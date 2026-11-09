@@ -9,7 +9,7 @@ import { draftFor, soiVersionsFor } from "@/lib/data/soi";
 import { revisionsOrCard } from "@/lib/esp-history";
 import { areaOf } from "@/lib/rules/council-area";
 import { addressKey } from "@/lib/rules/revision-comparables";
-import { SOI_BAD, soiApplies, soiContentFrom } from "@/lib/rules/soi";
+import { SOI_BAD, SOI_NOT_YET, soiApplies, soiContentFrom } from "@/lib/rules/soi";
 import { buildSoiPdf, soiFilename } from "@/lib/pdf/soi";
 import type { Property, PropertyItem } from "@/lib/types";
 
@@ -85,9 +85,7 @@ export async function makeStatementOfInformation(propertyId: string, _prev: SoiA
     comparablesFor(supabase, propertyId),
     espRevisionsFor(supabase, profile.agency_id, propertyId),
   ]);
-  if (!soiApplies(allItems["a3"]?.event_date ?? null) && versions.length === 0) {
-    return { error: "The Statement of Information is for agency agreements from 8 February 2027." };
-  }
+  if (!soiApplies(allItems["a3"]?.event_date ?? null)) return { error: SOI_NOT_YET };
 
   // Made from the file as it is now. The form's properties are the ones the
   // file says (their addresses can't be retyped), for the ESP it says.
@@ -177,10 +175,8 @@ export async function recordUploadedStatement(propertyId: string, _prev: SoiActi
   const empty = await storedFileProblem(supabase, path);
   if (empty) return { error: empty };
 
+  if (!soiApplies(listing.allItems["a3"]?.event_date ?? null)) return { error: SOI_NOT_YET };
   const versions = await soiVersionsFor(supabase, propertyId);
-  if (!soiApplies(listing.allItems["a3"]?.event_date ?? null) && versions.length === 0) {
-    return { error: "The Statement of Information is for agency agreements from 8 February 2027." };
-  }
   const { error } = await supabase.from("statements_of_information").insert({
     agency_id: profile.agency_id,
     property_id: propertyId,
@@ -204,6 +200,11 @@ export async function setStatementLink(propertyId: string, _prev: SoiActionState
   const ctx = await requireAuthContext();
   const { supabase, profile } = ctx;
   const on = formData.get("on") === "true";
+  if (on) {
+    const listing = await listingFor(ctx, propertyId);
+    if (!listing) return { error: SOI_BAD };
+    if (!soiApplies(listing.allItems["a3"]?.event_date ?? null)) return { error: SOI_NOT_YET };
+  }
   const { data: existing } = await supabase
     .from("statement_of_information_links")
     .select("enabled")

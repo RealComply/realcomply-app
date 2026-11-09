@@ -623,10 +623,12 @@ const items: ComplianceItem[] = [
   // Trading's approved form, checked by the agent, or the agent uploads one
   // made elsewhere; every version kept; the 2 business day clock when an ESP
   // revision changes the comparable properties. 10 Nov: a link for online
-  // ads, switched on by the agent. Only on a listing whose agency agreement
-  // is from 8 February 2027 (Act Sch 1, transitional cl 3), or that already
-  // has one. Done once there's a version; a revision due shows on the card
-  // and on the ESP revision card, and never holds the file back.
+  // ads, switched on by the agent. Master, 10 Nov: switched off until
+  // midnight Sydney on 8 February 2027, then only on a listing whose agency
+  // agreement was signed on or after that day (Act Sch 1, transitional cl 3).
+  // A listing signed before never gets it (lib/rules/soi.ts, soiApplies).
+  // Done once there's a version; a revision due shows on the card and on the
+  // ESP revision card, and never holds the file back.
   {
     key: "soi",
     stage: 0,
@@ -638,7 +640,7 @@ const items: ComplianceItem[] = [
     hideEvidence: true,
     requiresDate: false,
     requiredForStageCompletion: true,
-    showIf: (_property, allItems) => soiApplies(allItems["a3"]?.event_date ?? null) || allItems["soi"] != null,
+    showIf: (_property, allItems) => soiApplies(allItems["a3"]?.event_date ?? null),
   },
   {
     key: "a5",

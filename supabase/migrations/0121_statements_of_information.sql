@@ -38,9 +38,56 @@
 -- the only thing a signed-out visitor can call. Who switched it on or off,
 -- and when, is stamped.
 --
+-- THE SWITCH (Master, 10 Nov 2026): all of it stays off until midnight
+-- Sydney on 8 February 2027, then only for a listing whose agency agreement
+-- was signed on or after that day (or isn't signed yet). A listing signed
+-- before never gets it. One function says so, soi_applies; until then nothing
+-- can be added, no link switched on, and the link shows nothing.
+--
 -- Grants are given here, with each table. Safe to run twice.
 
 begin;
+
+-- ── 0. The switch ────────────────────────────────────────────────────────
+-- When it starts: midnight at the start of 8 February 2027, Sydney (daylight
+-- time, +11:00). Its own function so a test can switch it on inside a
+-- transaction it rolls back.
+create or replace function public.soi_starts_at()
+returns timestamptz
+language plpgsql
+stable
+set search_path = public
+as $$
+begin
+  return timestamptz '2027-02-08 00:00:00+11';
+end
+$$;
+revoke execute on function public.soi_starts_at() from public, anon, authenticated;
+
+-- Whether it's on for the listing: never before it starts; from then, for an
+-- agreement signed on or after 8 February 2027 (the agreement card's date),
+-- or none signed yet (Act Sch 1, transitional cl 3).
+create or replace function public.soi_applies(p_property uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_signed date;
+begin
+  if now() < public.soi_starts_at() then
+    return false;
+  end if;
+  select i.event_date into v_signed
+    from public.property_items i
+   where i.property_id = p_property and i.item_key = 'a3';
+  return coalesce(v_signed, (now() at time zone 'Australia/Sydney')::date) >= date '2027-02-08';
+end
+$$;
+revoke execute on function public.soi_applies(uuid) from public, anon;
+grant execute on function public.soi_applies(uuid) to authenticated, service_role;
 
 -- ── 1. The table ─────────────────────────────────────────────────────────
 create table if not exists public.statements_of_information (
@@ -91,6 +138,9 @@ begin
     new.version_no := null;
     if new.prepared_on > (now() at time zone 'Australia/Sydney')::date then
       raise exception 'The date it was prepared can''t be in the future.';
+    end if;
+    if not public.soi_applies(new.property_id) then
+      raise exception 'The Statement of Information starts on 8 February 2027, for agency agreements signed from that day.';
     end if;
   end if;
   if new.version_no is null then
@@ -187,6 +237,9 @@ begin
   new.changed_at := now();
 
   if new.enabled and (tg_op = 'INSERT' or not old.enabled) then
+    if not public.soi_applies(new.property_id) then
+      raise exception 'The Statement of Information starts on 8 February 2027, for agency agreements signed from that day.';
+    end if;
     if not exists (select 1 from public.statements_of_information s where s.property_id = new.property_id) then
       raise exception 'Make or upload the statement of information first, then switch the link on.';
     end if;
@@ -260,6 +313,7 @@ as $$
    where p_token ~ '^[0-9a-f]{64}$'
      and l.token = p_token
      and l.enabled
+     and public.soi_applies(l.property_id)
      and p.stage < 5
      and not public.listing_signed_off(l.property_id)
      and not public.listing_is_withdrawn(l.property_id)
@@ -296,4 +350,7 @@ select
     and not has_table_privilege('authenticated', 'public.statement_of_information_links', 'delete')
     and not has_table_privilege('anon', 'public.statement_of_information_links', 'select')
     as link_grants_right,
-  has_function_privilege('anon', 'public.statement_of_information_public(text)', 'execute') as link_lookup_open;
+  has_function_privilege('anon', 'public.statement_of_information_public(text)', 'execute') as link_lookup_open,
+  public.soi_starts_at() = timestamptz '2027-02-08 00:00:00+11'
+    and not has_function_privilege('anon', 'public.soi_applies(uuid)', 'execute')
+    as switched_on_8_feb_2027;
