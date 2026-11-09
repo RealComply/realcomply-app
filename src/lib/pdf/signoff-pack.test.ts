@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildSignoffPackPdf, type PackPdfInput } from "@/lib/pdf/signoff-pack";
+import { buildSignoffPackPdf, flagLine, type PackPdfInput } from "@/lib/pdf/signoff-pack";
 import { PACK_TICK, UNSIGNED_MARK } from "@/lib/licensee-signoff/model";
 import { pdfPageTexts, pdfText } from "@/lib/testing/pdf-text";
 
@@ -44,7 +44,8 @@ describe("the sign-off pack PDF", () => {
     const text = (await pdfText(bytes)).replace(/\s+/g, " ");
     assert.ok(text.includes("October sign-off pack"));
     assert.ok(text.includes("Prepared by Mel Carter, office manager."));
-    assert.ok(text.includes("Flag: 1 flag: Price advertised outside the estimate"));
+    assert.ok(text.includes("1 flag: Price advertised outside the estimate"));
+    assert.ok(!text.includes("Flag: 1 flag"), "the flag line says it once (Adam, 9 Nov 2026)");
     assert.ok(text.includes("Note from Mel Carter: Vendor asked to hold the photos."));
     assert.ok(text.includes("Property management (0)"));
     assert.ok(text.includes("Nothing waiting this month."));
@@ -69,5 +70,13 @@ describe("the sign-off pack PDF", () => {
     assert.ok(text.includes("60 items signed. 1 held back, with the licensee's note above; it goes back to the office"));
     assert.ok(text.includes("Held back: Missing the vendor's ID."));
     assert.ok(text.includes("Signed in this pack"));
+  });
+});
+
+describe("flagLine", () => {
+  it("says a counted flag once, and puts Flag: in front of anything else", () => {
+    assert.equal(flagLine("1 flag: Price advertised outside the estimate"), "1 flag: Price advertised outside the estimate");
+    assert.equal(flagLine("3 flags: No signed agency agreement"), "3 flags: No signed agency agreement");
+    assert.equal(flagLine("Review"), "Flag: Review");
   });
 });
