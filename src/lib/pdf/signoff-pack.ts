@@ -107,6 +107,15 @@ function wrap(text: string, font: PDFFont, size: number, width: number): string[
   return out;
 }
 
+/**
+ * The flag line under an item (Adam, 9 Nov 2026: "Flag: 1 flag: ..." didn't
+ * read cleanly). "1 flag: Price advertised outside the estimate" already says
+ * what it is; anything else, such as a gift's "Review", gets "Flag:" in front.
+ */
+export function flagLine(flagText: string): string {
+  return /^\d+ flags?: /.test(flagText) ? flagText : `Flag: ${flagText}`;
+}
+
 export async function buildSignoffPackPdf(input: PackPdfInput): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`${input.officeName}: ${monthName(input.month)} sign-off pack`);
@@ -132,7 +141,7 @@ export async function buildSignoffPackPdf(input: PackPdfInput): Promise<Uint8Arr
       c.y -= 4;
       c.text(item.title, { bold: true, color: item.flagText ? AMBER : INK });
       if (item.details) c.text(item.details, { size: 9, color: MUTED, x: LEFT + 10 });
-      if (item.flagText) c.text(`Flag: ${item.flagText}`, { size: 9, color: AMBER, x: LEFT + 10 });
+      if (item.flagText) c.text(flagLine(item.flagText), { size: 9, color: AMBER, x: LEFT + 10 });
       if (item.note) c.text(`Note${item.noteBy ? ` from ${item.noteBy}` : ""}: ${item.note}`, { size: 9, x: LEFT + 10 });
       if (item.heldBackNote) c.text(`Held back: ${item.heldBackNote}`, { size: 9, color: AMBER, x: LEFT + 10 });
       if (item.outcome === "signed") c.text("Signed in this pack", { size: 9, color: GREEN, x: LEFT + 10 });
