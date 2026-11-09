@@ -382,6 +382,8 @@ export type ComplianceRecordInput = {
    * 0114): "Withdrawn on 21 October 2026 by Marcus Tran. Reason: ...".
    */
   withdrawalLines?: string[];
+  /** Under the agreement: how long to keep it (Reg s8A, from 17 Nov 2026). */
+  agreementKeepUntil?: string | null;
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
   loadDocument?: (doc: PackDocument) => Promise<LoadedDocument>;
@@ -665,6 +667,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
           color: MUTED,
           indent: 12,
         });
+      }
+      // How long to keep the agreement (Reg s8A, from 17 Nov 2026).
+      if (item.key === "a3" && input.agreementKeepUntil) {
+        c.text(input.agreementKeepUntil, { size: 8.5, color: MUTED, indent: 12 });
       }
       // The date the ESP and evidence were given to the vendor (s72A(2), from 17 Nov 2026).
       if (item.key === "a4" && espGivenOf(current)) {

@@ -3,6 +3,7 @@ import { sendEmail } from "@/lib/email/send";
 import { renderEmailHtml, renderEmailText, type EmailDocument } from "@/lib/email/layout";
 import { addDays, daysLeft, deletionDate, longDate } from "./dates";
 import { accountHolderId } from "./access";
+import { agreementsDownloadLine } from "@/lib/rules/agreement-keep-until";
 
 // The two emails after a subscription ends (brief, item 4).
 //
@@ -47,6 +48,9 @@ export function endedEmail(
   const left = daysLeft(input.endedAt, input.now ?? new Date());
   const deleteOn = deletionDate(input.endedAt);
   const lastDay = addDays(deleteOn, -1);
+  // Agency agreements, kept 3 years after they end (Reg s8A, from 17 Nov 2026).
+  const agreements = agreementsDownloadLine(deleteOn, input.now ?? new Date());
+  const agreementsSection = agreements ? [{ kind: "paragraph" as const, text: agreements }] : [];
 
   const doc: EmailDocument =
     kind === "day0"
@@ -74,6 +78,7 @@ export function endedEmail(
             },
             { kind: "button", label: "Reactivate subscription", href: `${RECORDS_URL}#reactivate` },
             { kind: "button", label: "Download your records", href: RECORDS_URL },
+            ...agreementsSection,
             { kind: "paragraph", text: legalHoldLine(deleteOn) },
             {
               kind: "note",
@@ -104,6 +109,7 @@ export function endedEmail(
                 "keep its records for at least three years. RealComply will not hold them after " +
                 `${longDate(deleteOn)}, so make sure you have your own copy.`,
             },
+            ...agreementsSection,
             { kind: "button", label: "Reactivate subscription", href: `${RECORDS_URL}#reactivate` },
             { kind: "button", label: "Download your records", href: RECORDS_URL },
             { kind: "paragraph", text: legalHoldLine(deleteOn) },

@@ -29,6 +29,7 @@ import { espHistoryFor } from "@/lib/data/esp-revisions";
 import { withdrawalHistory, type Withdrawal } from "@/lib/data/withdrawals";
 import { WithdrawFromMarket, WithdrawnBanner } from "@/components/property/WithdrawListing";
 import { canOfferWithdraw, reasonLabel, withdrawalRecordLines } from "@/lib/rules/listing-tabs";
+import { keepUntilLineFor } from "@/lib/rules/agreement-keep-until";
 import { formatAuDate } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 
@@ -212,6 +213,11 @@ export default async function PropertyPage({
   const withdrawals = await withdrawalHistory(supabase, p.id);
   const openWithdrawal: Withdrawal | null = withdrawals.find((w) => !w.put_back_at) ?? null;
   const withdrawn = openWithdrawal !== null;
+  // How long to keep the agency agreement (Reg s8A, from 17 Nov 2026): on the agreement card.
+  const agreementKeepUntil = keepUntilLineFor(
+    { a3: allItems["a3"], d3: allItems["d3"], f5: allItems["f5"] },
+    openWithdrawal?.withdrawn_on ?? null,
+  );
   const mayWithdraw = !profile.is_assistant && (profile.id === p.created_by || access.actsAsLicensee);
   const nameOf = (pid: string | null) => people.find((x) => x.id === pid)?.full_name ?? "a team member";
   const withdrawnLine = (w: Withdrawal) =>
@@ -442,6 +448,7 @@ export default async function PropertyPage({
                   marketListings={marketListings}
                   b4Approval={b4Approval}
                   espHistory={espHistory}
+                  agreementKeepUntil={agreementKeepUntil}
                 />
               ))}
             </div>
@@ -465,6 +472,7 @@ export default async function PropertyPage({
               marketListings={marketListings}
               b4Approval={b4Approval}
               espHistory={espHistory}
+              agreementKeepUntil={agreementKeepUntil}
               />
           ))}
         </div>
