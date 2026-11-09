@@ -883,10 +883,13 @@ function ChecklistItem({
   comparablesReportRead = false,
   reportRead = null,
   doneLine = null,
+  keepUntil = null,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
+  /** a3: how long to keep the agreement (Reg s8A, from 17 Nov 2026). */
+  keepUntil?: string | null;
   /** a4 and a4c: what the last read of the comparable-sales report on a4 came to. */
   reportRead?: ReportRead | null;
   // The listing's own attributes and its comparable sales. Read once by the
@@ -1835,6 +1838,7 @@ function ChecklistItem({
       </form>
       <FieldError error={state.error} />
       {isDone && doneLine && <p className="mt-2 text-xs text-rc-muted">{doneLine}</p>}
+      {keepUntil && <p className="mt-2 text-xs text-rc-muted">{keepUntil}</p>}
       {/* Why it is flagged (10 Oct 2026). The reason was saved (an inspection
           dated after the agreement, a contract after the launch) but never
           shown, so the card said "Flagged" and nothing else. */}
@@ -4792,6 +4796,8 @@ type ItemCardProps = {
   // approval from before 2 Nov 2026 (lib/rules/price-statement.ts). Only the
   // b4 card uses it.
   b4Approval?: PriceApproval | null;
+  /** The agreement card: how long to keep the agreement (Reg s8A, from 17 Nov 2026). */
+  agreementKeepUntil?: string | null;
   /** The ESP revision card (d3): every version, and links to each notice (Adam, 3 Nov 2026; 0110). */
   espHistory?: EspHistoryView;
 };
@@ -4813,6 +4819,7 @@ function ItemCardBody({
   marketListings = [],
   listingAgentId,
   b4Approval = null,
+  agreementKeepUntil = null,
   espHistory,
 }: ItemCardProps) {
   // A card added after this file was signed off (the order on the agent,
@@ -4962,6 +4969,7 @@ function ItemCardBody({
           // Undefined for an auction file, where the agreement has no such
           // term and the model is told to omit it.
           doneLine={item.key === "b4" && b4Approval?.via === "tick" ? tickedLine(b4Approval) : null}
+          keepUntil={item.key === "a3" ? agreementKeepUntil : null}
           noteSeed={
             item.key === "b4"
               ? (allItems["a3"]?.data as { aiDraft?: { offerPrice?: string } } | undefined)?.aiDraft

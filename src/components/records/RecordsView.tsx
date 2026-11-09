@@ -3,6 +3,7 @@ import { logout } from "@/lib/actions/auth";
 import type { Profile } from "@/lib/types";
 import type { EndedState } from "@/lib/subscription-end/access";
 import { daysLeft, deletionDate, longDate, sydneyDate } from "@/lib/subscription-end/dates";
+import { agreementsDownloadLine } from "@/lib/rules/agreement-keep-until";
 import { legalHoldLine } from "@/lib/subscription-end/emails";
 import type { RecordsListing } from "@/lib/subscription-end/records";
 import { DownloadAll } from "./DownloadAll";
@@ -76,6 +77,8 @@ export function RecordsView({
   const endedOn = longDate(sydneyDate(state.endedAt));
   const deleteOn = deletionDate(state.endedAt);
   const left = daysLeft(state.endedAt, new Date());
+  // Agency agreements, kept 3 years after they end (Reg s8A, from 17 Nov 2026).
+  const agreements = agreementsDownloadLine(deleteOn);
 
   return (
     <div className="rec">
@@ -141,6 +144,7 @@ export function RecordsView({
                 <li>Trust account reconciliations</li>
                 <li>Every document you uploaded</li>
               </ul>
+              {agreements && <p style={{ margin: "0 0 12px" }}>{agreements}</p>}
               <DownloadAll agencyName={state.agencyName} />
             </div>
 

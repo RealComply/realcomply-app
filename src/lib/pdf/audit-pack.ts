@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { withdrawalHistory } from "@/lib/data/withdrawals";
 import { withdrawalRecordLines } from "@/lib/rules/listing-tabs";
+import { keepUntilLineFor } from "@/lib/rules/agreement-keep-until";
 import { allItemsFor } from "@/lib/rules/nsw-sales";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import {
@@ -308,6 +309,10 @@ export async function buildAuditPack(
     byKey,
     espReasoning: noteOf("a4c"),
     withdrawalLines,
+    agreementKeepUntil: keepUntilLineFor(
+      { a3: byKey["a3"], d3: byKey["d3"], f5: byKey["f5"] },
+      withdrawals.find((w) => !w.put_back_at)?.withdrawn_on ?? null,
+    ),
     // Where the agent said the reasoning lives, if they said it lives outside
     // RealComply. Without this the section simply vanishes from the record,
     // which reads as "no reasoning was recorded" — the worst thing a file can
