@@ -3,8 +3,12 @@ import assert from "node:assert/strict";
 import {
   FEEDBACK_INCOMPLETE,
   FEEDBACK_NONE,
+  FEEDBACK_WHERE_MISSING,
   feedbackFrom,
   feedbackRecordLine,
+  feedbackRecordLines,
+  feedbackRecordOf,
+  feedbackToStore,
   marketFeedbackFrom,
   marketFeedbackOf,
 } from "./market-feedback";
@@ -20,7 +24,7 @@ const full = {
 
 describe("market feedback on an ESP revision (Reg s12G(1)(f))", () => {
   it("keeps nothing when the tick is off, whatever was typed", () => {
-    assert.deepEqual(marketFeedbackFrom(JSON.stringify([full]), false), { entries: [] });
+    assert.deepEqual(marketFeedbackFrom(JSON.stringify([full]), false), { entries: [], record: { file: null, where: null } });
   });
 
   it("needs the five details for each piece; phone or email is optional", () => {
@@ -52,5 +56,38 @@ describe("market feedback on an ESP revision (Reg s12G(1)(f))", () => {
       "Revision 2, market feedback from Sam Buyer (made up) (0400 000 000), 24 November 2026: Said the kitchen needs work and the price is high for it. Why used: Three buyers at the open home said the same. How used: Lowered the top of the range by $50,000.",
     );
     assert.deepEqual(marketFeedbackOf(null), []);
+  });
+});
+
+describe("market feedback attached or kept in the CRM (Adam, 9 Nov 2026)", () => {
+  const file = { path: "o/p/d3/1-feedback.pdf", name: "Buyer emails (made up).pdf" };
+
+  it("a file or where it's kept is enough on its own; typed entries can come with them", () => {
+    const fileOnly = marketFeedbackFrom("[]", true, { file, elsewhere: false, where: null });
+    assert.deepEqual(fileOnly, { entries: [], record: { file, where: null } });
+    const crmOnly = marketFeedbackFrom(JSON.stringify([{ who: "" }]), true, { file: null, elsewhere: true, where: " Rex " });
+    assert.deepEqual(crmOnly, { entries: [], record: { file: null, where: "Rex" } });
+    const all = marketFeedbackFrom(JSON.stringify([full]), true, { file, elsewhere: true, where: "Rex" });
+    assert.ok("entries" in all && all.entries.length === 1 && all.record.file && all.record.where === "Rex");
+  });
+
+  it("ticked 'somewhere else' needs where; a half-typed entry is still refused", () => {
+    assert.deepEqual(marketFeedbackFrom("[]", true, { file: null, elsewhere: true, where: "  " }), { error: FEEDBACK_WHERE_MISSING });
+    assert.deepEqual(
+      marketFeedbackFrom(JSON.stringify([{ ...full, why: "" }]), true, { file, elsewhere: false, where: null }),
+      { error: FEEDBACK_INCOMPLETE },
+    );
+  });
+
+  it("is kept in the one list and read back from it", () => {
+    const stored = feedbackToStore({ entries: [{ ...full, who: "Sam Buyer (made up)", contact: null }], record: { file, where: "Rex" } });
+    assert.equal(stored.length, 3);
+    assert.equal(marketFeedbackOf(stored).length, 1, "the file and the pointer aren't typed feedback");
+    assert.deepEqual(feedbackRecordOf(stored), { file, where: "Rex" });
+    assert.deepEqual(feedbackRecordOf([]), { file: null, where: null });
+    assert.deepEqual(feedbackRecordLines(2, { file, where: "Rex" }), [
+      "Revision 2, market feedback record attached: Buyer emails (made up).pdf.",
+      "Revision 2, market feedback recorded in: Rex.",
+    ]);
   });
 });

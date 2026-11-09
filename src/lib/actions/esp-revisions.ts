@@ -5,7 +5,7 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 import { readNoticeIntoPending } from "@/lib/esp-notice";
 import { pendingFrom, previousEspProblem, revisionEvidenceProblem, typedFigure } from "@/lib/esp-history";
-import { marketFeedbackFrom } from "@/lib/rules/market-feedback";
+import { feedbackToStore, marketFeedbackFrom } from "@/lib/rules/market-feedback";
 
 // ESP revision history (Adam, 3 Nov 2026; mockup approved; 0110). The d3 card's
 // actions: a notice uploaded is read into a draft; the agent checks the figures
@@ -109,8 +109,23 @@ export async function recordEspRevision(
   const noEvidence = revisionEvidenceProblem({ evidencePath, inNotice: evidenceInNotice, givenOn });
   if (noEvidence) return { error: noEvidence };
 
-  // The market feedback it responded to, when it did (Reg s12G(1)(f)).
-  const feedback = marketFeedbackFrom(formData.get("marketFeedback"), formData.get("marketFeedbackTicked") === "yes");
+  // The market feedback it responded to, when it did (Reg s12G(1)(f)): typed,
+  // a record of it attached, where it's kept (the CRM), or any mix (Adam,
+  // 9 Nov 2026). The record goes up to the listing's d3 folder, as the evidence does.
+  const feedbackTicked = formData.get("marketFeedbackTicked") === "yes";
+  const feedbackFilePath = feedbackTicked ? String(formData.get("feedbackFilePath") ?? "").trim() || null : null;
+  if (feedbackFilePath) {
+    if (!isInFolder(feedbackFilePath, `${profile.agency_id}/${propertyId}/d3`)) return { error: "Upload the feedback record again." };
+    const empty = await storedFileProblem(supabase, feedbackFilePath);
+    if (empty) return { error: empty };
+  }
+  const feedback = marketFeedbackFrom(formData.get("marketFeedback"), feedbackTicked, {
+    file: feedbackFilePath
+      ? { path: feedbackFilePath, name: String(formData.get("feedbackFileName") ?? "").trim() || "Market feedback" }
+      : null,
+    elsewhere: formData.get("feedbackElsewhere") === "yes",
+    where: String(formData.get("feedbackWhere") ?? ""),
+  });
   if ("error" in feedback) return { error: feedback.error };
 
   // Typed, or changed from what was read: the record says so (26 Aug 2026).
@@ -146,7 +161,7 @@ export async function recordEspRevision(
     p_evidence_file_name: evidencePath ? evidenceFileName : null,
     p_evidence_in_notice: evidenceInNotice,
     // The market feedback it responded to (Reg s12G(1)(f)).
-    p_market_feedback: feedback.entries,
+    p_market_feedback: feedbackToStore(feedback),
   });
   if (error) {
     // The database's own words where it refused; anything else, try again.

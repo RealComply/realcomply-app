@@ -24,7 +24,17 @@ import {
   type EspVersion,
   type PendingRevision,
 } from "@/lib/esp-history";
-import { FEEDBACK_HINT, FEEDBACK_LABELS, FEEDBACK_TICK, feedbackFrom } from "@/lib/rules/market-feedback";
+import {
+  FEEDBACK_ELSEWHERE_HINT,
+  FEEDBACK_ELSEWHERE_LABEL,
+  FEEDBACK_ELSEWHERE_PLACEHOLDER,
+  FEEDBACK_FILE_HINT,
+  FEEDBACK_FILE_LABEL,
+  FEEDBACK_HINT,
+  FEEDBACK_LABELS,
+  FEEDBACK_TICK,
+  feedbackFrom,
+} from "@/lib/rules/market-feedback";
 
 // The parts of the ESP revision card (Adam, 3 Nov 2026; the approved mockup;
 // 0110): every version, newest first; the notice upload; and the draft, read
@@ -110,10 +120,16 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
             {v.evidence && <FileLink url={view.fileUrls[v.evidence.path]} name={`Evidence: ${v.evidence.name}`} />}
           </span>
           {/* The market feedback it responded to (Reg s12G(1)(f)). */}
-          {v.feedback && v.feedback.length > 0 && (
+          {((v.feedback?.length ?? 0) > 0 || v.feedbackRecord?.file || v.feedbackRecord?.where) && (
             <div className="col-span-2 mt-1 space-y-2 rounded-lg border border-rc-border bg-white px-2.5 py-2 text-xs">
               <p className="font-semibold text-rc-ink">Market feedback it responded to</p>
-              {v.feedback.map((f, i) => (
+              {v.feedbackRecord?.file && (
+                <p>
+                  <FileLink url={view.fileUrls[v.feedbackRecord.file.path]} name={`Record: ${v.feedbackRecord.file.name}`} />
+                </p>
+              )}
+              {v.feedbackRecord?.where && <p className="text-rc-muted">Recorded in: {v.feedbackRecord.where}</p>}
+              {(v.feedback ?? []).map((f, i) => (
                 <div key={i} className="space-y-0.5 text-rc-muted">
                   <p className="font-semibold text-rc-ink">{feedbackFrom(f)}</p>
                   <p>{f.what}</p>
@@ -271,6 +287,23 @@ export function EspDraftForm({
   const [feedback, setFeedback] = useState<FeedbackRow[]>([BLANK_FEEDBACK]);
   const setRow = (i: number, key: keyof FeedbackRow, value: string) =>
     setFeedback((rows) => rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
+  // Or a record of it attached, or where it's kept (Adam, 9 Nov 2026).
+  const [feedbackFile, setFeedbackFile] = useState<{ path: string; name: string } | null>(null);
+  const [feedbackPicked, setFeedbackPicked] = useState<File | null>(null);
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [feedbackElsewhere, setFeedbackElsewhere] = useState(false);
+  const pickFeedbackFile = async (file: File | null) => {
+    setFeedbackPicked(file);
+    setFeedbackError(null);
+    if (!file) return;
+    setFeedbackBusy(true);
+    const stored = await uploadToD3(propertyId, file);
+    setFeedbackBusy(false);
+    setFeedbackPicked(null);
+    if ("error" in stored) setFeedbackError(stored.error);
+    else setFeedbackFile(stored);
+  };
   const pickEvidence = async (file: File | null) => {
     setEvidenceFile(file);
     setEvidenceError(null);
@@ -494,6 +527,66 @@ export function EspDraftForm({
                 >
                   + Add more feedback
                 </button>
+
+                {/* Or a record of it attached, or where it's kept (Adam, 9 Nov 2026). */}
+                <div className="space-y-2 border-t border-rc-border pt-2.5">
+                  <div>
+                    <p className="text-xs font-semibold text-rc-ink">{FEEDBACK_FILE_LABEL}</p>
+                    <p className="text-[11px] text-rc-faint">{FEEDBACK_FILE_HINT}</p>
+                  </div>
+                  <input type="hidden" name="feedbackFilePath" value={feedbackFile?.path ?? ""} />
+                  <input type="hidden" name="feedbackFileName" value={feedbackFile?.name ?? ""} />
+                  {feedbackFile ? (
+                    <p className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="inline-flex items-center gap-1 font-semibold text-rc-ink">
+                        <Paperclip size={12} aria-hidden="true" /> {feedbackFile.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setFeedbackFile(null)}
+                        disabled={saving}
+                        className="text-rc-green-deep hover:underline disabled:opacity-60"
+                      >
+                        Remove
+                      </button>
+                    </p>
+                  ) : (
+                    <FileDropZone
+                      compact
+                      file={feedbackPicked}
+                      onFile={pickFeedbackFile}
+                      disabled={feedbackBusy || saving}
+                      label={feedbackBusy ? "Uploading…" : "Drag the record here, or click to browse"}
+                    />
+                  )}
+                  {feedbackError && (
+                    <p role="alert" className="text-xs font-medium text-rc-amber-deep">
+                      {feedbackError}
+                    </p>
+                  )}
+                  <label className="flex items-start gap-2.5 pt-1">
+                    <input
+                      type="checkbox"
+                      name="feedbackElsewhere"
+                      value="yes"
+                      checked={feedbackElsewhere}
+                      onChange={(e) => setFeedbackElsewhere(e.target.checked)}
+                      className="mt-0.5 shrink-0 accent-rc-green-deep"
+                    />
+                    <span>
+                      <span className="block text-sm text-rc-ink">{FEEDBACK_ELSEWHERE_LABEL}</span>
+                      <span className="block text-[11px] text-rc-faint">{FEEDBACK_ELSEWHERE_HINT}</span>
+                    </span>
+                  </label>
+                  {feedbackElsewhere && (
+                    <input
+                      name="feedbackWhere"
+                      aria-label="Where the market feedback is recorded"
+                      placeholder={FEEDBACK_ELSEWHERE_PLACEHOLDER}
+                      className="w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm focus:border-rc-green-deep focus:outline-none"
+                    />
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -599,7 +692,7 @@ export function EspDraftForm({
         {!pending.notRecognised && (
           <button
             type="submit"
-            disabled={saving || cancelling || evidenceBusy}
+            disabled={saving || cancelling || evidenceBusy || feedbackBusy}
             className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save revision"}

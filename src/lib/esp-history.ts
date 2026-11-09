@@ -1,7 +1,7 @@
 import { formatAuDate } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { reformsInForce } from "@/lib/rules/underquoting-reforms";
-import { marketFeedbackOf, type MarketFeedback } from "@/lib/rules/market-feedback";
+import { feedbackRecordOf, marketFeedbackOf, type FeedbackRecord, type MarketFeedback } from "@/lib/rules/market-feedback";
 
 // ESP REVISION HISTORY (Adam, 3 Nov 2026; mockup approved; database 0110).
 //
@@ -37,6 +37,8 @@ export type EspRevision = {
   evidenceInNotice?: boolean;
   /** The market feedback it responded to (Reg s12G(1)(f); 0117). Empty when none. */
   marketFeedback?: MarketFeedback[];
+  /** Its record attached, and where it's kept (the CRM), when there is one. */
+  marketFeedbackRecord?: FeedbackRecord;
 };
 
 const num = (v: unknown): number | null => {
@@ -67,6 +69,7 @@ export function revisionFrom(row: Record<string, unknown> | null | undefined): E
     evidenceFileName: typeof row.evidence_file_name === "string" ? row.evidence_file_name : null,
     evidenceInNotice: row.evidence_in_notice === true,
     marketFeedback: marketFeedbackOf(row.market_feedback),
+    marketFeedbackRecord: feedbackRecordOf(row.market_feedback),
   };
 }
 
@@ -147,6 +150,7 @@ export type EspVersion = {
   evidence?: { path: string; name: string } | null;
   /** The market feedback a revision responded to (Reg s12G(1)(f)). */
   feedback?: MarketFeedback[];
+  feedbackRecord?: FeedbackRecord;
 };
 
 export const LATEST_PILL = "Latest: used for checks";
@@ -184,6 +188,7 @@ export function espVersions(
       file: { path: r.noticePath, name: r.noticeFileName ?? "Revised ESP notice" },
       evidence: r.evidencePath ? { path: r.evidencePath, name: r.evidenceFileName ?? "Evidence" } : null,
       feedback: r.marketFeedback ?? [],
+      feedbackRecord: r.marketFeedbackRecord,
     };
   });
   out.reverse();

@@ -12,6 +12,15 @@
 // Kept with the revision it belongs to (esp_revisions.market_feedback, 0117),
 // so it is entered when the revision is saved: a revision can't be changed
 // once recorded. "Market feedback" isn't defined in the Regulation.
+//
+// Three ways to record it, in any mix (Adam, 9 Nov 2026: "give the option to
+// upload evidence of market feedback and also point to market feedback being
+// held in their CRM"): typed here, a record of it attached (an email, a note,
+// a CRM export, in the listing's d3 folder), or where it's kept (the CRM).
+// The same "recorded somewhere else" as the offers log and the reasoning card:
+// the Regulation asks for the record, not that it lives in RealComply. All
+// three go in the one list, the attachment and the pointer as items with a
+// "kind", so no new column is needed.
 
 import { formatAuDate } from "@/lib/format-date";
 
@@ -31,7 +40,13 @@ export type MarketFeedback = {
 };
 
 export const FEEDBACK_TICK = "The ESP was revised in response to market feedback";
-export const FEEDBACK_HINT = "Reg s12G. For each piece of feedback: who gave it, when, what it was, why you used it and how.";
+export const FEEDBACK_HINT =
+  "Reg s12G. For each piece of feedback: who gave it, when, what it was, why you used it and how. Type it here, attach a record of it, or say where it's kept.";
+export const FEEDBACK_FILE_LABEL = "Attach a record of the feedback";
+export const FEEDBACK_FILE_HINT = "An email, a note, or an export from your CRM.";
+export const FEEDBACK_ELSEWHERE_LABEL = "This feedback is recorded somewhere else";
+export const FEEDBACK_ELSEWHERE_HINT = "Your CRM, for example. The file will point there.";
+export const FEEDBACK_ELSEWHERE_PLACEHOLDER = "Where? e.g. LockedOn, Rex, VaultRE";
 export const FEEDBACK_LABELS = {
   who: "Who gave it",
   contact: "Their phone or email (best practice)",
@@ -43,7 +58,13 @@ export const FEEDBACK_LABELS = {
 
 export const FEEDBACK_INCOMPLETE =
   "For each piece of market feedback, put in who gave it, the date, what it was, why you used it and how.";
-export const FEEDBACK_NONE = "Add the market feedback the revision responded to, or untick it.";
+export const FEEDBACK_NONE =
+  "Add the market feedback the revision responded to, attach a record of it or say where it's kept, or untick it.";
+export const FEEDBACK_WHERE_MISSING = "Say where the market feedback is recorded, for example the name of your CRM.";
+
+/** The record of the feedback that isn't typed here: a file, and where it's kept. */
+export type FeedbackRecord = { file: { path: string; name: string } | null; where: string | null };
+const NO_RECORD: FeedbackRecord = { file: null, where: null };
 
 const MAX_ENTRIES = 20;
 const MAX_NAME = 200;
@@ -57,13 +78,24 @@ const text = (v: unknown, max: number): string | null => {
 
 /**
  * The feedback as sent from the revision form: checked and tidied, or what's
- * missing. `ticked` is the form's tick; untick it and nothing is kept.
+ * missing. `ticked` is the form's tick; untick it and nothing is kept. Typed
+ * entries, an attached record and where it's kept can come in any mix; at
+ * least one is needed, and each typed entry needs all five details. The
+ * file's folder is checked by the caller.
  */
 export function marketFeedbackFrom(
   raw: unknown,
   ticked: boolean,
-): { entries: MarketFeedback[] } | { error: string } {
-  if (!ticked) return { entries: [] };
+  other: { file: { path: string; name: string } | null; elsewhere: boolean; where: string | null } = {
+    file: null,
+    elsewhere: false,
+    where: null,
+  },
+): { entries: MarketFeedback[]; record: FeedbackRecord } | { error: string } {
+  if (!ticked) return { entries: [], record: NO_RECORD };
+  const where = other.elsewhere ? text(other.where, MAX_NAME) : null;
+  if (other.elsewhere && !where) return { error: FEEDBACK_WHERE_MISSING };
+  const record: FeedbackRecord = { file: other.file, where };
   let list: unknown = raw;
   if (typeof raw === "string") {
     try {
@@ -77,7 +109,7 @@ export function marketFeedbackFrom(
   const rows = (list as Array<Record<string, unknown>>).filter(
     (r) => r && typeof r === "object" && ["who", "contact", "on", "what", "why", "how"].some((k) => text(r[k], MAX_TEXT)),
   );
-  if (rows.length === 0) return { error: FEEDBACK_NONE };
+  if (rows.length === 0) return record.file || record.where ? { entries: [], record } : { error: FEEDBACK_NONE };
   const entries: MarketFeedback[] = [];
   for (const r of rows.slice(0, MAX_ENTRIES)) {
     const who = text(r.who, MAX_NAME);
@@ -88,7 +120,40 @@ export function marketFeedbackFrom(
     if (!who || !on || !what || !why || !how) return { error: FEEDBACK_INCOMPLETE };
     entries.push({ who, contact: text(r.contact, MAX_NAME), on, what, why, how });
   }
-  return { entries };
+  return { entries, record };
+}
+
+/** What goes in esp_revisions.market_feedback: the typed entries, then the file and where it's kept. */
+export function feedbackToStore(feedback: { entries: MarketFeedback[]; record: FeedbackRecord }): unknown[] {
+  const { file, where } = feedback.record;
+  return [
+    ...feedback.entries,
+    ...(file ? [{ kind: "file", path: file.path, name: file.name }] : []),
+    ...(where ? [{ kind: "elsewhere", where }] : []),
+  ];
+}
+
+/** The attached record and where it's kept, from what a revision kept. */
+export function feedbackRecordOf(raw: unknown): FeedbackRecord {
+  if (!Array.isArray(raw)) return NO_RECORD;
+  let file: FeedbackRecord["file"] = null;
+  let where: string | null = null;
+  for (const r of raw as Array<Record<string, unknown>>) {
+    if (!r || typeof r !== "object") continue;
+    if (r.kind === "file" && typeof r.path === "string" && r.path) {
+      file = { path: r.path, name: text(r.name, MAX_NAME) ?? r.path.split("/").pop() ?? "Market feedback" };
+    }
+    if (r.kind === "elsewhere") where = text(r.where, MAX_NAME) ?? where;
+  }
+  return { file, where };
+}
+
+/** The compliance record's lines for the attached record and where it's kept. */
+export function feedbackRecordLines(revisionNo: number, record: FeedbackRecord): string[] {
+  return [
+    record.file ? `Revision ${revisionNo}, market feedback record attached: ${record.file.name}.` : null,
+    record.where ? `Revision ${revisionNo}, market feedback recorded in: ${record.where}.` : null,
+  ].filter((l): l is string => Boolean(l));
 }
 
 /** The feedback kept on a revision (0117), as the app reads it. Anything malformed is left out. */
@@ -96,7 +161,7 @@ export function marketFeedbackOf(raw: unknown): MarketFeedback[] {
   if (!Array.isArray(raw)) return [];
   const out: MarketFeedback[] = [];
   for (const r of raw as Array<Record<string, unknown>>) {
-    if (!r || typeof r !== "object") continue;
+    if (!r || typeof r !== "object" || "kind" in r) continue;
     const who = text(r.who, MAX_NAME);
     const on = typeof r.on === "string" && ISO_DATE.test(r.on) ? r.on : null;
     const what = text(r.what, MAX_TEXT);
