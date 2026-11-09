@@ -17,7 +17,7 @@ export async function espRevisionsFor(supabase: SupabaseClient, agencyId: string
   const { data, error } = await supabase
     .from("esp_revisions")
     .select(
-      "revision_no, esp_low, esp_high, notice_given_on, notice_path, notice_file_name, entered_manually, recorded_by_name, recorded_at, previous_esp_low, previous_esp_high, evidence_path, evidence_file_name, evidence_in_notice",
+      "revision_no, esp_low, esp_high, notice_given_on, notice_path, notice_file_name, entered_manually, recorded_by_name, recorded_at, previous_esp_low, previous_esp_high, evidence_path, evidence_file_name, evidence_in_notice, market_feedback",
     )
     .eq("agency_id", agencyId)
     .eq("property_id", propertyId)

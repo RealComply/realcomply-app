@@ -384,6 +384,8 @@ export type ComplianceRecordInput = {
   withdrawalLines?: string[];
   /** Under the agreement: how long to keep it (Reg s8A, from 17 Nov 2026). */
   agreementKeepUntil?: string | null;
+  /** Under the ESP revision card: the market feedback each revision responded to (Reg s12G(1)(f)). */
+  espFeedbackLines?: string[];
   /** Every document on the listing, in pack order (Adam, 2 Nov 2026). */
   documents?: PackDocument[];
   loadDocument?: (doc: PackDocument) => Promise<LoadedDocument>;
@@ -667,6 +669,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
           color: MUTED,
           indent: 12,
         });
+      }
+      // The market feedback each ESP revision responded to (Reg s12G(1)(f)).
+      if (item.key === "d3" && input.espFeedbackLines) {
+        for (const line of input.espFeedbackLines) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
       }
       // How long to keep the agreement (Reg s8A, from 17 Nov 2026).
       if (item.key === "a3" && input.agreementKeepUntil) {

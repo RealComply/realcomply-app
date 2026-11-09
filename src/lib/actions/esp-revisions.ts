@@ -5,6 +5,7 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 import { readNoticeIntoPending } from "@/lib/esp-notice";
 import { pendingFrom, previousEspProblem, revisionEvidenceProblem, typedFigure } from "@/lib/esp-history";
+import { marketFeedbackFrom } from "@/lib/rules/market-feedback";
 
 // ESP revision history (Adam, 3 Nov 2026; mockup approved; 0110). The d3 card's
 // actions: a notice uploaded is read into a draft; the agent checks the figures
@@ -108,6 +109,10 @@ export async function recordEspRevision(
   const noEvidence = revisionEvidenceProblem({ evidencePath, inNotice: evidenceInNotice, givenOn });
   if (noEvidence) return { error: noEvidence };
 
+  // The market feedback it responded to, when it did (Reg s12G(1)(f)).
+  const feedback = marketFeedbackFrom(formData.get("marketFeedback"), formData.get("marketFeedbackTicked") === "yes");
+  if ("error" in feedback) return { error: feedback.error };
+
   // Typed, or changed from what was read: the record says so (26 Aug 2026).
   const enteredManually = pending.low !== low || pending.high !== high || pending.readFailed !== null;
 
@@ -140,8 +145,8 @@ export async function recordEspRevision(
     p_evidence_path: evidencePath,
     p_evidence_file_name: evidencePath ? evidenceFileName : null,
     p_evidence_in_notice: evidenceInNotice,
-    // Market feedback (Reg s12G(1)(f)): its own screen after 17 November.
-    p_market_feedback: [],
+    // The market feedback it responded to (Reg s12G(1)(f)).
+    p_market_feedback: feedback.entries,
   });
   if (error) {
     // The database's own words where it refused; anything else, try again.
