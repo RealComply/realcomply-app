@@ -162,9 +162,10 @@ describe("the Complaints register for the licensee in charge (unchanged)", () =>
 
 // "Add a file" on every complaint, open or resolved, for the licensee in
 // charge and the office manager (Adam, 10 Nov 2026: he couldn't see it on a
-// logged complaint). It was a button in the far-right column, off the edge of
-// anything narrower than about 1,250px. Now it is its own line under each
-// complaint, held to the left (sticky left-0) like the sign-off.
+// logged complaint). It was a button in the far-right column of a table that
+// scrolled sideways, off the edge of anything narrower than about 1,250px.
+// Then: "the columns don't work. the layout needs to be much easier to read".
+// Now one card per complaint, open ones first, nothing sideways.
 describe("Add a file on every complaint", () => {
   const every = [
     complaint({ id: "c-open" }),
@@ -202,12 +203,66 @@ describe("Add a file on every complaint", () => {
     it(`the ${who}: one on each of the 4 complaints, open, under review, resolved and signed off`, () => {
       const html = render(who);
       assert.equal(count(html, "Add a file"), 4);
-      assert.ok(!html.includes(">Files</th>"), "no far-right Files column any more");
-      assert.ok(html.includes('class="@container mt-3 overflow-x-auto"'), "pinned boxes measure against the visible register");
-      // Each one on its own line, held to the left.
-      assert.equal(count(html, 'class="sticky left-0 max-w-[100cqw]"><button type="button" aria-expanded="false"'), 4);
+      assert.equal(count(html, "data-complaint="), 4, "one card each");
+      assert.ok(!html.includes("<table"), "no columns, nothing to scroll sideways");
+      // Each card's own Add a file, inside that card.
+      for (const id of ["c-open", "c-review", "c-resolved", "c-signed"]) {
+        const at = html.indexOf(`data-complaint="${id}"`);
+        const next = html.indexOf("data-complaint=", at + 1);
+        assert.ok(html.slice(at, next < 0 ? undefined : next).includes("Add a file"), id);
+      }
     });
   }
+
+  it("open ones first, under their own headings, with plain dates", () => {
+    const html = render("licensee");
+    const openAt = html.indexOf("Open (2)");
+    const resolvedAt = html.indexOf("Resolved (2)");
+    assert.ok(openAt >= 0 && resolvedAt > openAt);
+    assert.ok(html.indexOf('data-complaint="c-review"') < resolvedAt);
+    assert.ok(html.indexOf('data-complaint="c-resolved"') > resolvedAt);
+    assert.ok(html.includes("Received 12 October 2026"));
+    assert.ok(!html.includes(">2026-10-12<"), "no raw dates");
+  });
+
+  it("says how long an open one has been open, and when it's past the office's target", () => {
+    const html = renderToStaticMarkup(
+      createElement(panelUi.ComplaintsPanel, {
+        complaints: [
+          complaint({ id: "c-late", received_date: "2026-01-05" }),
+          complaint({ id: "c-done", status: "resolved", received_date: "2026-01-05", resolved_at: "2026-01-09T01:00:00Z" }),
+        ],
+        staff: [],
+        properties: [],
+        viewerProfile: viewer,
+        nameOf: {},
+        resolutionTargetDays: 30,
+        files: [],
+        filesReady: true,
+      }),
+    );
+    const late = html.slice(html.indexOf('data-complaint="c-late"'), html.indexOf('data-complaint="c-done"'));
+    assert.match(late, /\d+ days open, past the 30-day target/);
+    assert.ok(!html.slice(html.indexOf('data-complaint="c-done"')).includes("days open"), "not on a resolved one");
+  });
+
+  it("shows the agent, the listing and the notes, which the old table never showed", () => {
+    const html = renderToStaticMarkup(
+      createElement(panelUi.ComplaintsPanel, {
+        complaints: [complaint({ agent_id: LEE, property_id: OWN_LISTING, notes: "Called them back on the 13th." })],
+        staff: [],
+        properties: [listing],
+        viewerProfile: viewer,
+        nameOf: { [LEE]: "Lee Licensee" },
+        resolutionTargetDays: 30,
+        files: [],
+        filesReady: true,
+      }),
+    );
+    assert.ok(html.includes("Agent: Lee Licensee"));
+    assert.ok(html.includes(`href="/dashboard/${OWN_LISTING}"`));
+    assert.ok(html.includes("Called them back on the 13th."));
+  });
 
   it("with files on it, says how many and still offers Add a file", () => {
     const html = render("office manager", [file({ complaint_id: "c-signed" })]);
