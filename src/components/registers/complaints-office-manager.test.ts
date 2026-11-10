@@ -107,7 +107,7 @@ describe("the Complaints register for an office manager (adding and read only)",
     assert.ok(html.includes("K. Adams, buyer (made up)"));
     assert.ok(html.includes("Not told about the strata report"));
     assert.ok(html.includes("+ Log a complaint"));
-    assert.ok(html.includes("Add files"));
+    assert.ok(html.includes("Add a file"));
   });
 
   it("has no Review, Resolve or Remove, and says who does those", () => {
@@ -157,6 +157,79 @@ describe("the Complaints register for the licensee in charge (unchanged)", () =>
 
   it("keeps Remove on each file", () => {
     assert.ok(files(true).includes(">Remove</button>"));
+  });
+});
+
+// "Add a file" on every complaint, open or resolved, for the licensee in
+// charge and the office manager (Adam, 10 Nov 2026: he couldn't see it on a
+// logged complaint). It was a button in the far-right column, off the edge of
+// anything narrower than about 1,250px. Now it is its own line under each
+// complaint, held to the left (sticky left-0) like the sign-off.
+describe("Add a file on every complaint", () => {
+  const every = [
+    complaint({ id: "c-open" }),
+    complaint({ id: "c-review", status: "under_review" }),
+    complaint({ id: "c-resolved", status: "resolved", resolved_date: "2026-10-20", resolved_at: "2026-10-20T01:00:00Z" }),
+    complaint({
+      id: "c-signed",
+      status: "resolved",
+      resolved_date: "2026-10-01",
+      resolved_at: "2026-10-01T01:00:00Z",
+      signed_off_by: LEE,
+      signed_off_at: "2026-10-02T01:00:00Z",
+      signed_off_via: "app",
+    }),
+  ];
+  const render = (who: "licensee" | "office manager", withFiles: ComplaintFile[] = []) =>
+    renderToStaticMarkup(
+      createElement(panelUi.ComplaintsPanel, {
+        complaints: every,
+        staff: [],
+        properties: [listing],
+        viewerProfile: viewer,
+        canChange: who === "licensee",
+        canMoveOn: true,
+        canSignOff: who === "licensee",
+        nameOf: { [LEE]: "Lee Licensee", [MAX]: "Max Manager" },
+        resolutionTargetDays: 30,
+        files: withFiles,
+        filesReady: true,
+      }),
+    );
+  const count = (html: string, text: string) => html.split(text).length - 1;
+
+  for (const who of ["licensee", "office manager"] as const) {
+    it(`the ${who}: one on each of the 4 complaints, open, under review, resolved and signed off`, () => {
+      const html = render(who);
+      assert.equal(count(html, "Add a file"), 4);
+      assert.ok(!html.includes(">Files</th>"), "no far-right Files column any more");
+      assert.ok(html.includes('class="@container mt-3 overflow-x-auto"'), "pinned boxes measure against the visible register");
+      // Each one on its own line, held to the left.
+      assert.equal(count(html, 'class="sticky left-0 max-w-[100cqw]"><button type="button" aria-expanded="false"'), 4);
+    });
+  }
+
+  it("with files on it, says how many and still offers Add a file", () => {
+    const html = render("office manager", [file({ complaint_id: "c-signed" })]);
+    assert.ok(html.includes("1 file · Add a file"));
+    assert.equal(count(html, "Add a file"), 4);
+  });
+
+  it("before 0101 has run, no files line at all", () => {
+    const html = renderToStaticMarkup(
+      createElement(panelUi.ComplaintsPanel, {
+        complaints: every,
+        staff: [],
+        properties: [listing],
+        viewerProfile: viewer,
+        canChange: true,
+        nameOf: {},
+        resolutionTargetDays: 30,
+        files: [],
+        filesReady: false,
+      }),
+    );
+    assert.ok(!html.includes("Add a file"));
   });
 });
 

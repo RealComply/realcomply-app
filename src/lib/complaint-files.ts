@@ -28,6 +28,18 @@ export function complaintFilesFor(
 }
 
 /**
+ * The button on its own line under each complaint on the register, for
+ * everyone who has the register, open or resolved (Adam, 10 Nov 2026: "Add a
+ * file" couldn't be seen; it sat in the far-right column, off the edge of
+ * anything narrower than about 1,250px). Closed, it always says "Add a file".
+ */
+export function filesToggleLabel(count: number, open: boolean): string {
+  if (open) return "Hide files";
+  if (count === 0) return "Add a file";
+  return `${count} ${count === 1 ? "file" : "files"} · Add a file`;
+}
+
+/**
  * Files removed from a complaint that has since been deleted. Their record
  * stays (the database keeps every removal), with no complaint to show it under.
  */

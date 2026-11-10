@@ -4,7 +4,8 @@ import { Fragment, useActionState, useState } from "react";
 import Link from "next/link";
 import { addComplaint, updateComplaintStatus, deleteComplaint, type ActionState } from "@/lib/actions/registers";
 import { useOnSaved } from "@/lib/use-on-saved";
-import { complaintFilesFor } from "@/lib/complaint-files";
+import { Paperclip } from "lucide-react";
+import { complaintFilesFor, filesToggleLabel } from "@/lib/complaint-files";
 import { ComplaintFiles } from "@/components/registers/ComplaintFiles";
 import { ComplaintSignOff } from "@/components/registers/ComplaintSignOff";
 import { complaintAwaitsSignOff, complaintRecordLines } from "@/lib/reviews/records";
@@ -186,7 +187,10 @@ export function ComplaintsPanel({
           </form>
         )}
 
-        <div className="mt-3 overflow-x-auto">
+        {/* @container: the boxes pinned under each complaint (files, sign-off)
+            are as wide as this visible box (100cqw), whatever the screen, so
+            nothing in them is off the right edge while the table scrolls. */}
+        <div className="@container mt-3 overflow-x-auto">
           {complaints.length === 0 ? (
             <p className="text-sm text-rc-muted">No complaints logged.</p>
           ) : (
@@ -200,7 +204,6 @@ export function ComplaintsPanel({
                   <th className="pb-2 pr-3">Nature</th>
                   <th className="pb-2 pr-3">Days</th>
                   <th className="pb-2 pr-3">Status</th>
-                  {filesReady && <th className="pb-2 pr-3">Files</th>}
                   <th className="pb-2"></th>
                 </tr>
               </thead>
@@ -208,9 +211,11 @@ export function ComplaintsPanel({
                 {complaints.map((c) => {
                   const { current, removed } = complaintFilesFor(c.id, files);
                   const filesOpen = openFiles.has(c.id);
+                  const awaitsSignOff = canSignOff && complaintAwaitsSignOff(c);
                   return (
                     <Fragment key={c.id}>
-                      <tr className={`align-top ${filesOpen ? "" : "border-b border-neutral-100"}`}>
+                      {/* The files line under it carries the row's rule. */}
+                      <tr className={`align-top ${filesReady || awaitsSignOff ? "" : "border-b border-neutral-100"}`}>
                         {/* nowrap: at 1280px the date broke over two lines. */}
                         <td className="whitespace-nowrap py-2 pr-3">{c.received_date}</td>
                         <td className="py-2 pr-3">{c.complainant}</td>
@@ -238,22 +243,6 @@ export function ComplaintsPanel({
                             </span>
                           ))}
                         </td>
-                        {filesReady && (
-                          <td className="py-2 pr-3">
-                            <button
-                              type="button"
-                              onClick={() => toggleFiles(c.id)}
-                              aria-expanded={filesOpen}
-                              className="whitespace-nowrap text-xs font-medium text-rc-green-deep hover:underline"
-                            >
-                              {current.length === 0
-                                ? filesOpen
-                                  ? "Close"
-                                  : "Add files"
-                                : `${current.length} ${current.length === 1 ? "file" : "files"}${filesOpen ? " ▴" : " ▾"}`}
-                            </button>
-                          </td>
-                        )}
                         <td className="py-2 text-right">
                           <div className="flex justify-end gap-2">
                             {canMoveOn && c.status !== "resolved" && (
@@ -293,21 +282,35 @@ export function ComplaintsPanel({
                           </div>
                         </td>
                       </tr>
-                      {canSignOff && complaintAwaitsSignOff(c) && (
-                        <tr className="border-b border-neutral-100">
-                          <td colSpan={9} className="pb-3">
-                            <div className="sticky left-0 max-w-[calc(100vw-4rem)] rounded-lg border border-rc-green-deep/20 bg-rc-green-soft/40 p-3 sm:max-w-none">
-                              <ComplaintSignOff complaintId={c.id} />
+                      {/* The files, on their own line under every complaint, open
+                          or resolved, for everyone who has the register. Held to
+                          the left like the sign-off below, so it is on screen at
+                          any width. It was the far-right column, off the edge of
+                          anything narrower than about 1,250px with nothing to
+                          show it was there (Adam, 10 Nov 2026). */}
+                      {filesReady && (
+                        <tr className={filesOpen || awaitsSignOff ? "" : "border-b border-neutral-100"}>
+                          <td colSpan={8} className="pb-2">
+                            <div className="sticky left-0 max-w-[100cqw]">
+                              <button
+                                type="button"
+                                onClick={() => toggleFiles(c.id)}
+                                aria-expanded={filesOpen}
+                                className="inline-flex items-center gap-1.5 text-xs font-medium text-rc-green-deep hover:underline"
+                              >
+                                <Paperclip size={12} className="shrink-0" aria-hidden />
+                                {filesToggleLabel(current.length, filesOpen)}
+                              </button>
                             </div>
                           </td>
                         </tr>
                       )}
                       {filesReady && filesOpen && (
-                        <tr className="border-b border-neutral-100">
-                          <td colSpan={9} className="pb-3">
-                            {/* Held to the visible width on a phone, where the
-                                register scrolls sideways under it. */}
-                            <div className="sticky left-0 max-w-[calc(100vw-4rem)] rounded-lg bg-rc-bg-alt p-3 sm:max-w-none">
+                        <tr className={awaitsSignOff ? "" : "border-b border-neutral-100"}>
+                          <td colSpan={8} className="pb-3">
+                            {/* Held to the register's visible width, where it
+                                scrolls sideways under it. */}
+                            <div className="sticky left-0 max-w-[100cqw] rounded-lg bg-rc-bg-alt p-3">
                               <ComplaintFiles
                                 agencyId={viewerProfile.agency_id}
                                 complaintId={c.id}
@@ -317,6 +320,15 @@ export function ComplaintsPanel({
                                 nameOf={nameOf}
                                 canRemove={canChange}
                               />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {awaitsSignOff && (
+                        <tr className="border-b border-neutral-100">
+                          <td colSpan={8} className="pb-3">
+                            <div className="sticky left-0 max-w-[100cqw] rounded-lg border border-rc-green-deep/20 bg-rc-green-soft/40 p-3">
+                              <ComplaintSignOff complaintId={c.id} />
                             </div>
                           </td>
                         </tr>
