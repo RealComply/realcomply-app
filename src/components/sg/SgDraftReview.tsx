@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { discardSgDocument, saveSgDocument } from "@/lib/actions/sg-document";
-import { sgCheckLines, type SgChecks } from "@/lib/sg-document/checks";
+import { sgCheckLines, sgReadGapLines, type SgChecks } from "@/lib/sg-document/checks";
 import { SG_DOC_TYPES, type SgDocType } from "@/lib/sg-document/fair-trading";
 import { sectionHeading } from "@/lib/sg-document/sections";
 import type { SgSectionView } from "@/lib/data/sg-document";
@@ -35,6 +35,7 @@ export function SgDraftReview({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lines = checks ? sgCheckLines(checks) : [];
+  const gaps = sgReadGapLines(checks);
   const paragraphs = sections.reduce((n, s) => n + s.paragraphs.length, 0);
 
   async function save() {
@@ -85,6 +86,19 @@ export function SgDraftReview({
         Check it, pick what kind of document it is and confirm the version number, then save it as your live document.
         Until you save it, your current file stays as it is.
       </p>
+
+      {/* What couldn't be read (Adam, 10 Nov 2026): named, so the office
+          checks those pages by hand. Never hidden, and saving isn't blocked. */}
+      {gaps.length > 0 && (
+        <div role="note" className="mt-4 rounded-xl border border-rc-amber-deep/25 bg-rc-amber/10 px-3.5 py-2.5 text-sm text-rc-ink">
+          <p className="font-semibold text-rc-amber-deep">Not everything could be read</p>
+          {gaps.map((g) => (
+            <p key={g} className="mt-0.5">
+              {g}
+            </p>
+          ))}
+        </div>
+      )}
 
       {lines.length > 0 && (
         <div className="mt-4">

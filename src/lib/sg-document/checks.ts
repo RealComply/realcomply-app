@@ -14,6 +14,14 @@ export type SgChecks = {
   business: { found: string | null; looked_for: string[] };
   licensee: { found: string | null; looked_for: string[] };
   acts: { found: string[]; missing: string[] };
+  /**
+   * Pages of a PDF that couldn't be read, even a page at a time (Adam, 10 Nov
+   * 2026): their words aren't in the sections, so the office checks them by
+   * hand. Absent when every page was read.
+   */
+  pages_not_read?: number[];
+  /** Stretches of a Word document whose headings couldn't be picked out (words kept). */
+  unmarked_stretches?: number;
 };
 
 /** Lower case, "&" as "and", every run of punctuation or space as one space. */
@@ -83,11 +91,53 @@ export function sgChecksOf(raw: unknown): SgChecks | null {
   if (!r || typeof r !== "object" || !r.business || !r.licensee || !r.acts) return null;
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const pages = Array.isArray(r.pages_not_read)
+    ? (r.pages_not_read as unknown[]).filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n > 0)
+    : [];
+  const unmarked = typeof r.unmarked_stretches === "number" && r.unmarked_stretches > 0 ? Math.trunc(r.unmarked_stretches) : 0;
   return {
     business: { found: str(r.business.found), looked_for: list(r.business.looked_for) },
     licensee: { found: str(r.licensee.found), looked_for: list(r.licensee.looked_for) },
     acts: { found: list(r.acts.found), missing: list(r.acts.missing) },
+    ...(pages.length > 0 ? { pages_not_read: pages } : {}),
+    ...(unmarked > 0 ? { unmarked_stretches: unmarked } : {}),
   };
+}
+
+/** "Page 25", "Pages 25 to 28", "Pages 25, 27 and 40 to 42". */
+export function pagesSaid(pages: number[]): string {
+  const sorted = [...new Set(pages)].sort((a, b) => a - b);
+  const runs: string[] = [];
+  for (let i = 0; i < sorted.length; ) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    runs.push(j === i ? `${sorted[i]}` : `${sorted[i]} to ${sorted[j]}`);
+    i = j + 1;
+  }
+  const list = runs.length <= 1 ? runs.join("") : `${runs.slice(0, -1).join(", ")} and ${runs[runs.length - 1]}`;
+  return `${sorted.length === 1 ? "Page" : "Pages"} ${list}`;
+}
+
+/**
+ * What couldn't be read, in plain words, for the draft and the live document:
+ * which pages to check in the file by hand. Empty when everything was read.
+ */
+export function sgReadGapLines(c: SgChecks | null): string[] {
+  if (!c) return [];
+  const lines: string[] = [];
+  const pages = c.pages_not_read ?? [];
+  if (pages.length > 0) {
+    lines.push(
+      `${pagesSaid(pages)} of the file couldn't be read, so ${pages.length === 1 ? "its" : "their"} words aren't in the sections here. Check ${pages.length === 1 ? "that page" : "those pages"} in the file by hand.`,
+    );
+  }
+  const unmarked = c.unmarked_stretches ?? 0;
+  if (unmarked > 0) {
+    lines.push(
+      `In ${unmarked === 1 ? "one part" : `${unmarked} parts`} of the document the headings couldn't be picked out, so those paragraphs sit under the section before them. Check the sections against the file.`,
+    );
+  }
+  return lines;
 }
 
 /** One line for each check, as the draft shows it. */

@@ -17,6 +17,14 @@ export type ReadPartResult = {
   continues: boolean;
   /** The version number printed on the document, when this part showed it. */
   version: string | null;
+  /**
+   * Pages of a PDF (1-based, of the whole file) that still couldn't be read
+   * after trying again page by page (Adam, 10 Nov 2026). The rest of the
+   * part is kept; the office is told which pages to check by hand.
+   */
+  unreadPages?: number[];
+  /** Stretches of a Word document whose headings couldn't be picked out: the words are kept, under the section before. */
+  unmarked?: number;
 };
 
 export type SgSection = { position: number; number: string | null; title: string; paragraphs: string[] };
@@ -42,10 +50,47 @@ export function readPartOf(raw: unknown): ReadPartResult | null {
     if (!text && !section) continue;
     paragraphs.push({ text, section: section && section.title ? section : null });
   }
+  const unreadPages = Array.isArray(r.unreadPages)
+    ? (r.unreadPages as unknown[]).filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n > 0)
+    : [];
+  const unmarked = typeof r.unmarked === "number" && Number.isInteger(r.unmarked) && r.unmarked > 0 ? r.unmarked : 0;
   return {
     paragraphs,
     continues: r.continues === true,
     version: typeof r.version === "string" && r.version.trim() ? oneLine(r.version).slice(0, MAX_VERSION) : null,
+    ...(unreadPages.length > 0 ? { unreadPages } : {}),
+    ...(unmarked > 0 ? { unmarked } : {}),
+  };
+}
+
+/**
+ * Pieces of one part read separately (a page at a time, after the part as a
+ * whole couldn't be read), put back together in order. A paragraph carried
+ * over from the page before is joined to it, as between parts; never across
+ * a page that couldn't be read (null).
+ */
+export function joinPieces(pieces: Array<ReadPartResult | null>): ReadPartResult {
+  const paragraphs: ReadParagraph[] = [];
+  let afterGap = false;
+  pieces.forEach((piece, k) => {
+    if (!piece) {
+      afterGap = true;
+      return;
+    }
+    piece.paragraphs.forEach((p, i) => {
+      const prev = paragraphs[paragraphs.length - 1];
+      if (k > 0 && i === 0 && !afterGap && piece.continues && prev && !prev.section && !p.section && p.text) {
+        prev.text = `${prev.text} ${p.text}`.trim();
+        return;
+      }
+      paragraphs.push({ text: p.text, section: p.section });
+    });
+    afterGap = false;
+  });
+  return {
+    paragraphs,
+    continues: pieces[0]?.continues === true,
+    version: pieces.find((p) => p?.version)?.version ?? null,
   };
 }
 

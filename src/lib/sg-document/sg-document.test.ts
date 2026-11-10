@@ -5,9 +5,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { PDFDocument } from "pdf-lib";
 import { UnfinishedAnswer } from "@/lib/documents/reader-answer";
 import { DocxUnreadable, docxParagraphs, documentXmlParagraphs } from "@/lib/sg-document/docx";
-import { sgCheckLines, sgChecks, sgChecksOf } from "@/lib/sg-document/checks";
+import { pagesSaid, sgCheckLines, sgChecks, sgChecksOf, sgReadGapLines } from "@/lib/sg-document/checks";
 import { SG_2_1_3_ACTS } from "@/lib/sg-document/fair-trading";
-import { assembleSections, readPartOf, sectionHeading, versionOf, type ReadPartResult } from "@/lib/sg-document/sections";
+import { assembleSections, joinPieces, readPartOf, sectionHeading, versionOf, type ReadPartResult } from "@/lib/sg-document/sections";
 import { openSgFile, partCount, readSgPart, SgFileUnreadable } from "@/lib/sg-document/read";
 import { advanceSgRead, sgReadFailureText, type SgReadStore } from "@/lib/sg-document/advance";
 
@@ -335,16 +335,19 @@ describe("moving a read along", () => {
     assert.deepEqual(state.notes, []);
   });
 
-  it("an answer cut off fails the read, in plain words, and is recorded", async () => {
+  it("no page can be read at all, even one at a time: the read fails, in plain words, and is recorded", async () => {
     const { store, state } = memoryStore({ bytes: await pdf(4), name: "manual.pdf" });
+    let asked = 0;
     const progress = await advanceSgRead(store, "d1", {
       ask: async () => {
+        asked++;
         throw new UnfinishedAnswer("cut_off");
       },
     });
     assert.equal(progress.status, "read_failed");
-    assert.equal(state.failed, "Part of it couldn't be read to the end. Try reading it again.");
+    assert.equal(state.failed, "None of its pages could be read. Try reading it again in a while, or upload the Word version.");
     assert.deepEqual(state.notes, ["failed"]);
+    assert.equal(asked, 1 + 4 * 2, "the part, then each page twice");
   });
 
   it("someone else already reading it: says how far it is and reads nothing", async () => {
@@ -363,5 +366,174 @@ describe("moving a read along", () => {
   it("every failure says what to do next, never the reader's own error", () => {
     assert.match(sgReadFailureText(new Error("socket hang up")), /Try reading it again in a minute/);
     assert.match(sgReadFailureText(new SgFileUnreadable("Upload a Word (.docx) or PDF file.")), /^Upload a Word/);
+  });
+});
+
+// ── One bad part never fails the manual (Adam, 10 Nov 2026) ─────────────
+//
+// Global Property's 92-page manual (23 parts) stopped at part 7: the
+// reader's answer for pages 25 to 28 came back unusable, the whole document
+// was marked failed, and parts 10 to 23 were never read. Made-up pages here.
+
+/** Which pages a question was about, from the note the reader is given. */
+function pagesAsked(note: string | null): number[] {
+  const one = /This is page (\d+) of/.exec(note ?? "");
+  if (one) return [Number(one[1])];
+  const range = /These are pages (\d+) to (\d+) of/.exec(note ?? "");
+  if (!range) return [];
+  return Array.from({ length: Number(range[2]) - Number(range[1]) + 1 }, (_, i) => Number(range[1]) + i);
+}
+
+/**
+ * A made-up reader: every page is "Page n words.", page 1 of each 8 a
+ * heading. `bad` says how a question goes wrong: unusable for the pages it
+ * names, or always for a page that can never be read.
+ */
+function pagesReader(opts: { wholePartFails?: (pages: number[]) => boolean; neverReads?: number[]; asked?: string[] } = {}) {
+  return async (parts: Array<{ note: string | null }>) => {
+    const pages = pagesAsked(parts[0].note);
+    opts.asked?.push(pages.length === 1 ? `p${pages[0]}` : `p${pages[0]}-${pages[pages.length - 1]}`);
+    if (pages.length > 1 && opts.wholePartFails?.(pages)) throw new UnfinishedAnswer("unparseable");
+    if (pages.some((n) => opts.neverReads?.includes(n))) throw new UnfinishedAnswer("unparseable");
+    return [
+      {
+        paragraphs: pages.flatMap((n) =>
+          n % 8 === 1 ? [{ text: `Section ${n}`, section: { number: String(n), title: `Section ${n}` } }, { text: `Page ${n} words.` }] : [{ text: `Page ${n} words.` }],
+        ),
+      },
+    ];
+  };
+}
+
+describe("one part the reader can't answer never fails the manual", () => {
+  it("Global's case: part 7's answer unusable, read again a page at a time, and the whole manual becomes a draft", async () => {
+    const { store, state } = memoryStore({ bytes: await pdf(92), name: "Procedures (made up).pdf" });
+    const asked: string[] = [];
+    const ask = pagesReader({ wholePartFails: (pages) => pages[0] === 25, asked });
+    const progress = await advanceSgRead(store, "d1", { ask });
+    assert.deepEqual(progress, { status: "draft", done: 23, total: 23 });
+    // Every part asked; part 7 again as pages 25, 26, 27 and 28.
+    for (const p of ["p1-4", "p21-24", "p25-28", "p25", "p26", "p27", "p28", "p29-32", "p89-92"]) assert.ok(asked.includes(p), p);
+    const text = state.finished!.sections.flatMap((s) => s.paragraphs).join(" ");
+    for (let n = 1; n <= 92; n++) assert.ok(text.includes(`Page ${n} words.`), `page ${n}`);
+    assert.equal(state.finished!.sections.length, 12, "a section every 8 pages");
+    assert.equal(state.finished!.checks.pages_not_read, undefined, "nothing left unread");
+  });
+
+  it("a page that still can't be read: named, tried twice, and the rest kept", async () => {
+    const { store, state } = memoryStore({ bytes: await pdf(92), name: "Procedures (made up).pdf" });
+    const asked: string[] = [];
+    const ask = pagesReader({ neverReads: [26], asked });
+    const progress = await advanceSgRead(store, "d1", { ask });
+    assert.equal(progress.status, "draft");
+    assert.deepEqual(state.finished!.checks.pages_not_read, [26]);
+    assert.equal(asked.filter((a) => a === "p26").length, 2, "page 26 tried twice on its own");
+    const text = state.finished!.sections.flatMap((s) => s.paragraphs).join(" ");
+    assert.ok(!text.includes("Page 26 words."));
+    for (const n of [25, 27, 28, 29, 92]) assert.ok(text.includes(`Page ${n} words.`), `page ${n}`);
+    assert.deepEqual(sgReadGapLines(state.finished!.checks), [
+      "Page 26 of the file couldn't be read, so its words aren't in the sections here. Check that page in the file by hand.",
+    ]);
+    assert.deepEqual(state.notes, ["read"]);
+  });
+
+  it("something unexpected about one part: its pages named, every other part read", async () => {
+    const { store, state } = memoryStore({ bytes: await pdf(12), name: "manual.pdf" });
+    const reader = pagesReader();
+    const ask = async (parts: Array<{ note: string | null }>) => {
+      if (pagesAsked(parts[0].note).includes(6)) throw new TypeError("made up");
+      return reader(parts);
+    };
+    const quiet = console.error;
+    console.error = () => {};
+    try {
+      const progress = await advanceSgRead(store, "d1", { ask: ask as never });
+      assert.equal(progress.status, "draft");
+    } finally {
+      console.error = quiet;
+    }
+    assert.deepEqual(state.finished!.checks.pages_not_read, [6], "page 6 alone, after the part was tried a page at a time");
+  });
+
+  it("the reader busy part way: nothing lost, nothing failed, and the next call reads only what's left", async () => {
+    const { store, state } = memoryStore({ bytes: await pdf(36), name: "manual.pdf" });
+    let busy = true;
+    const asked: string[] = [];
+    const reader = pagesReader({ asked });
+    const ask = async (parts: Array<{ note: string | null }>) => {
+      if (busy && pagesAsked(parts[0].note)[0] >= 13) throw new Anthropic.RateLimitError(429, undefined, "made up", new Headers());
+      return reader(parts);
+    };
+    const first = await advanceSgRead(store, "d1", { ask: ask as never });
+    assert.equal(first.status, "reading");
+    assert.equal(state.status, "reading");
+    assert.equal(state.held, false);
+    assert.equal(first.done, 3, "parts 1 to 3 kept");
+    busy = false;
+    asked.length = 0;
+    const second = await advanceSgRead(store, "d1", { ask: ask as never });
+    assert.deepEqual(second, { status: "draft", done: 9, total: 9 });
+    assert.ok(!asked.includes("p1-4") && !asked.includes("p9-12"), "parts already read aren't read again");
+  });
+
+  it("a read stopped part way (Global's: parts 1 to 6, 8 and 9 kept) carries on with only the parts not read", async () => {
+    const { store, state } = memoryStore({ bytes: await pdf(92), name: "Procedures (made up).pdf" });
+    const reader = pagesReader();
+    const kept = await Promise.all(
+      Array.from({ length: 23 }, async (_, i) =>
+        i < 6 || i === 7 || i === 8 ? readPartOf((await reader([{ note: `These are pages ${i * 4 + 1} to ${i * 4 + 4} of 92` }]))[0]) : null,
+      ),
+    );
+    state.parts = JSON.parse(JSON.stringify(kept));
+    const asked: string[] = [];
+    const progress = await advanceSgRead(store, "d1", { ask: pagesReader({ asked }) });
+    assert.deepEqual(progress, { status: "draft", done: 23, total: 23 });
+    assert.equal(asked.length, 15, "part 7 and parts 10 to 23 only");
+    assert.ok(asked.includes("p25-28") && asked.includes("p37-40") && !asked.includes("p1-4") && !asked.includes("p29-32"));
+  });
+
+  it("a Word document: a stretch the reader can't answer is tried again in halves; the words are always kept", async () => {
+    const file = await openSgFile(MANUAL, "manual.docx");
+    let calls = 0;
+    const read = await readSgPart(file, 0, "manual.docx", async () => {
+      calls++;
+      throw new UnfinishedAnswer("no_answer");
+    });
+    assert.equal(calls, 2, "a short document is tried twice");
+    assert.equal(read.unmarked, 1);
+    assert.ok(read.paragraphs.length > 0 && read.paragraphs.every((p) => p.section === null), "every word kept, no headings guessed");
+    assert.deepEqual(sgReadGapLines({ ...sgChecksOf({ business: {}, licensee: {}, acts: {} })!, unmarked_stretches: 1 }), [
+      "In one part of the document the headings couldn't be picked out, so those paragraphs sit under the section before them. Check the sections against the file.",
+    ]);
+  });
+});
+
+describe("saying which pages couldn't be read", () => {
+  it("in ranges, in plain words", () => {
+    assert.equal(pagesSaid([26]), "Page 26");
+    assert.equal(pagesSaid([25, 26, 27, 28]), "Pages 25 to 28");
+    assert.equal(pagesSaid([42, 25, 27, 40, 41]), "Pages 25, 27 and 40 to 42");
+    assert.deepEqual(sgReadGapLines(null), []);
+  });
+
+  it("kept with the checks, and read back; nothing from something else", () => {
+    const kept = { business: { found: null, looked_for: [] }, licensee: { found: null, looked_for: [] }, acts: { found: [], missing: [] }, pages_not_read: [25, 26, "x", -1] };
+    assert.deepEqual(sgChecksOf(kept)?.pages_not_read, [25, 26]);
+    assert.equal(sgChecksOf({ ...kept, pages_not_read: undefined })?.pages_not_read, undefined);
+    assert.deepEqual(sgReadGapLines(sgChecksOf(kept)), [
+      "Pages 25 to 26 of the file couldn't be read, so their words aren't in the sections here. Check those pages in the file by hand.",
+    ]);
+  });
+
+  it("a part keeps which of its pages weren't read", () => {
+    assert.deepEqual(readPartOf({ paragraphs: [{ text: "A." }], unreadPages: [26, 0, "x"] })?.unreadPages, [26]);
+    assert.equal(readPartOf({ paragraphs: [] })?.unreadPages, undefined);
+  });
+
+  it("pages read one at a time are joined as one part; a sentence carries over, but never across a page not read", () => {
+    const page = (text: string, continues = false): ReadPartResult => ({ paragraphs: [{ text, section: null }], continues, version: null });
+    assert.deepEqual(joinPieces([page("Money is", false), page("banked daily.", true)]).paragraphs.map((p) => p.text), ["Money is banked daily."]);
+    assert.deepEqual(joinPieces([page("Money is"), null, page("banked daily.", true)]).paragraphs.map((p) => p.text), ["Money is", "banked daily."]);
+    assert.equal(joinPieces([page("A", true), page("B")]).continues, true);
   });
 });
