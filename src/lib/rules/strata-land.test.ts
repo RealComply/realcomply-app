@@ -155,6 +155,8 @@ describe("Draft my reasoning on a strata listing", () => {
     assert.doesNotMatch(d.text, /land/i, d.text);
     assert.doesNotMatch(d.text, /1,800|2,600|2,400|650m²/, d.text);
     assert.match(d.text, /internal area/, "floor area is still compared");
+    assert.match(d.text, /also a unit\./);
+    assert.doesNotMatch(d.text, /\ban unit\b/);
   });
 
   it("the same when a caller hands it the sales as read", () => {

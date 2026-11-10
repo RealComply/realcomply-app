@@ -44,7 +44,7 @@ export function PropertyFigures({
       <p className="block text-sm font-medium text-rc-ink">The property</p>
       <p className="mt-0.5 text-xs text-rc-muted">
         Used to compare this property against the sales in your comparables report. Leave anything you
-        don&rsquo;t know yet — you can add it later.
+        don&rsquo;t know yet: you can add it later.
       </p>
       <div className="mt-2 grid grid-cols-4 gap-2">
         {FIELDS.map((f) => (

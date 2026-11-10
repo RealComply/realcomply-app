@@ -571,7 +571,8 @@ function count(n: number): string {
 }
 
 function article(word: string): string {
-  return `${/^[aeiou]/i.test(word) ? "an" : "a"} ${word}`;
+  // "a unit", not "an unit": the u says "you".
+  return `${/^[aeiou]/i.test(word) && !/^uni/i.test(word) ? "an" : "a"} ${word}`;
 }
 
 function shortAddress(c: { address: string }): string {
