@@ -512,6 +512,8 @@ describe("saying which pages couldn't be read", () => {
   it("in ranges, in plain words", () => {
     assert.equal(pagesSaid([26]), "Page 26");
     assert.equal(pagesSaid([25, 26, 27, 28]), "Pages 25 to 28");
+    assert.equal(pagesSaid([27, 26]), "Pages 26 and 27");
+    assert.equal(pagesSaid([3, 4, 9]), "Pages 3, 4 and 9");
     assert.equal(pagesSaid([42, 25, 27, 40, 41]), "Pages 25, 27 and 40 to 42");
     assert.deepEqual(sgReadGapLines(null), []);
   });
@@ -521,7 +523,7 @@ describe("saying which pages couldn't be read", () => {
     assert.deepEqual(sgChecksOf(kept)?.pages_not_read, [25, 26]);
     assert.equal(sgChecksOf({ ...kept, pages_not_read: undefined })?.pages_not_read, undefined);
     assert.deepEqual(sgReadGapLines(sgChecksOf(kept)), [
-      "Pages 25 to 26 of the file couldn't be read, so their words aren't in the sections here. Check those pages in the file by hand.",
+      "Pages 25 and 26 of the file couldn't be read, so their words aren't in the sections here. Check those pages in the file by hand.",
     ]);
   });
 

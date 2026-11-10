@@ -104,14 +104,15 @@ export function sgChecksOf(raw: unknown): SgChecks | null {
   };
 }
 
-/** "Page 25", "Pages 25 to 28", "Pages 25, 27 and 40 to 42". */
+/** "Page 25", "Pages 26 and 27", "Pages 25 to 28", "Pages 25, 27 and 40 to 42". */
 export function pagesSaid(pages: number[]): string {
   const sorted = [...new Set(pages)].sort((a, b) => a - b);
   const runs: string[] = [];
   for (let i = 0; i < sorted.length; ) {
     let j = i;
     while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
-    runs.push(j === i ? `${sorted[i]}` : `${sorted[i]} to ${sorted[j]}`);
+    if (j === i + 1) runs.push(`${sorted[i]}`, `${sorted[j]}`);
+    else runs.push(j === i ? `${sorted[i]}` : `${sorted[i]} to ${sorted[j]}`);
     i = j + 1;
   }
   const list = runs.length <= 1 ? runs.join("") : `${runs.slice(0, -1).join(", ")} and ${runs[runs.length - 1]}`;
