@@ -3,13 +3,25 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { discardSgDocument, fileSgDocumentUnread, retrySgDocument } from "@/lib/actions/sg-document";
+import { fileUnreadSaid } from "@/lib/sg-document/file-unread";
 
 // A document that couldn't be read: why, in plain words, and what can be
 // done. Nothing has changed until one of these is pressed: the current file
 // stays as it is. "File it without reading it" keeps what the office could
-// always do: the file as its current SG Manual, for staff to sign, without
-// sections.
-export function SgReadFailedCard({ id, fileName, reason }: { id: string; fileName: string; reason: string | null }) {
+// always do: the file as its current SG Manual, without sections. A new
+// upload is then signed by every staff member; a manual already on file
+// isn't signed again (Master, 10 Nov 2026).
+export function SgReadFailedCard({
+  id,
+  fileName,
+  reason,
+  fromFileOnRecord = false,
+}: {
+  id: string;
+  fileName: string;
+  reason: string | null;
+  fromFileOnRecord?: boolean;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState<"retry" | "discard" | "file" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +37,9 @@ export function SgReadFailedCard({ id, fileName, reason }: { id: string; fileNam
 
   return (
     <section className="rounded-card border border-rc-amber-deep/25 bg-rc-amber/10 p-5">
-      <h2 className="text-base font-semibold text-rc-amber-deep">Your document couldn&rsquo;t be read</h2>
+      <h2 className="text-base font-semibold text-rc-amber-deep">
+        {fromFileOnRecord ? <>Your manual on file couldn&rsquo;t be read into sections</> : <>Your document couldn&rsquo;t be read</>}
+      </h2>
       <p className="mt-1 text-sm text-rc-ink">
         <span className="font-medium">{fileName}</span>: {reason ?? "It couldn't be read just now. Try reading it again in a minute."}
       </p>
@@ -46,9 +60,7 @@ export function SgReadFailedCard({ id, fileName, reason }: { id: string; fileNam
           {busy === "discard" ? "Throwing away…" : "Throw it away"}
         </button>
       </div>
-      <p className="mt-2 text-xs text-rc-muted">
-        Filed without reading, it becomes your current file for staff to sign, as before, without sections.
-      </p>
+      <p className="mt-2 text-xs text-rc-muted">{fileUnreadSaid(fromFileOnRecord)}</p>
       {error && (
         <p role="alert" className="mt-2 text-xs text-rc-amber-deep">
           {error}

@@ -9,6 +9,7 @@ import { storedFileProblem } from "@/lib/storage/evidence";
 import { advanceSgRead, type SgReadProgress } from "@/lib/sg-document/advance";
 import { sgReadStore } from "@/lib/sg-document/store";
 import { isSgDocType } from "@/lib/sg-document/fair-trading";
+import { fileUnreadAsksToSign } from "@/lib/sg-document/file-unread";
 
 // The supervision guidelines as a live document, part 1 (Adam's mockup, 6
 // Nov 2026; Master, 10 Nov 2026). Whoever runs the office (the licensee in
@@ -97,19 +98,33 @@ export async function discardSgDocument(id: string): Promise<{ error: string | n
 }
 
 /**
- * A document that can't be read, filed as it is: the current SG Manual file,
- * signed by every staff member, exactly as before part 1, just without
- * sections. Then the draft is thrown away.
+ * A document that can't be read, filed as it is, without sections. Then the
+ * draft is thrown away.
+ *
+ * A new upload becomes the current SG Manual file, signed by every staff
+ * member, exactly as before part 1. A manual already on file (Master, 10 Nov
+ * 2026) is kept as the current document as it is: staff have already signed
+ * that same file, so nobody is asked to sign again. Only a new upload, or a
+ * new version, asks staff to sign (lib/sg-document/file-unread.ts).
  */
 export async function fileSgDocumentUnread(id: string): Promise<{ error: string | null }> {
   const { supabase, access } = await requireAuthContext();
   if (!access.runsOffice) return { error: NOT_YOURS };
-  const { data } = await supabase.from("sg_documents").select("file_path, file_name, status").eq("id", id).maybeSingle();
-  const doc = data as { file_path: string; file_name: string; status: string } | null;
+  const { data } = await supabase
+    .from("sg_documents")
+    .select("file_path, file_name, status, from_file_on_record")
+    .eq("id", id)
+    .maybeSingle();
+  const doc = data as { file_path: string; file_name: string; status: string; from_file_on_record: boolean } | null;
   if (!doc || doc.status !== "read_failed") return { error: "That document isn't waiting to be filed." };
-  const filed = await addSgManualVersion(doc.file_path, doc.file_name, null, null);
-  if (filed.error) return filed;
-  await supabase.rpc("discard_sg_document", { p_id: id });
+  const { data: onRecord } = await supabase.from("sg_manual_versions").select("file_path").eq("file_path", doc.file_path).limit(1);
+  const versionsOnRecord = ((onRecord ?? []) as Array<{ file_path: string }>).map((v) => v.file_path);
+  if (fileUnreadAsksToSign({ fromFileOnRecord: doc.from_file_on_record === true, filePath: doc.file_path }, versionsOnRecord)) {
+    const filed = await addSgManualVersion(doc.file_path, doc.file_name, null, null);
+    if (filed.error) return filed;
+  }
+  const { error } = await supabase.rpc("discard_sg_document", { p_id: id });
+  if (error) return { error: plain(error.message, "It couldn't be filed just now. Try again.") };
   refresh();
   return { error: null };
 }
