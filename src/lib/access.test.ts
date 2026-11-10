@@ -117,7 +117,7 @@ describe("an office manager (0093)", () => {
       (l) => l.label,
     );
     assert.deepEqual(menu, licensee);
-    for (const label of ["Office overview", "Team", "Registers", "Trust accounts", "SG Manual", "Billing", "Training", "CPD"]) {
+    for (const label of ["Office overview", "Team", "Registers", "Trust accounts", "Supervision guidelines", "Billing", "Training", "CPD"]) {
       assert.ok(menu.includes(label), label);
     }
   });
@@ -163,7 +163,7 @@ describe("visibleNavLink", () => {
       "Training",
       "CPD",
       "Sign-offs",
-      "SG Manual",
+      "Supervision guidelines",
       "Getting started",
       "Did you know?",
     ]);

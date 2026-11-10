@@ -3,7 +3,12 @@ import { agencyPeople } from "@/lib/data/people";
 import { Paperclip } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccess } from "@/lib/data/current-profile";
-import { SgManualUploader } from "@/components/registers/SgManualUploader";
+import { SgDocumentUploader } from "@/components/sg/SgDocumentUploader";
+import { SgReadingCard } from "@/components/sg/SgReadingCard";
+import { SgDraftReview } from "@/components/sg/SgDraftReview";
+import { SgReadFailedCard } from "@/components/sg/SgReadFailedCard";
+import { SgLiveDocument } from "@/components/sg/SgLiveDocument";
+import { sgDocumentsFor } from "@/lib/data/sg-document";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
@@ -13,23 +18,35 @@ import { StaffRemindersCard } from "@/components/registers/StaffRemindersCard";
 import type { SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
 
-// SG Manual store — simple upload + version history (see the SG Manual
-// scope decision: the full AI gap-analysis/redline review flow from the
-// mockup is a deliberate later build). Current version = most recent row.
-// Every version also publishes a sign-off document (addSgManualVersion in
-// registers.ts) so staff can acknowledge it right here, not just from the
-// full Document sign-offs register.
+// Supervision guidelines and operational procedures (was "SG Manual").
+//
+// REVERSAL (Adam's mockup, signed off 6 Nov 2026; part 1 built 10 Nov). Was:
+// upload a file and keep its version history, nothing read. Now the office's
+// document is read into sections, checked against Fair Trading's 2.1.3 and,
+// once the licensee in charge or an office manager has checked it, picked the
+// kind of document and confirmed the version, saved as the live document
+// everyone in the office reads. The 4 manuals already on file are read into
+// drafts the same way (Master, 10 Nov 2026: "A"); until one is saved its
+// current file stays exactly as it is. Every file still publishes a sign-off
+// document so every staff member signs it, as before.
+//
+// Reading a long document runs past a normal request: the page moves it
+// along while it's open (continueSgDocumentRead), within this limit.
+export const maxDuration = 300;
+
 export default async function SgManualPage() {
   const { profile, access } = await requireAccess();
   const supabase = await createClient();
 
-  const [{ data: versionRows }, staff, { data: signoffDocRows }, { data: signoffSigRows }, { data: agency }] = await Promise.all([
+  const [{ data: versionRows }, staff, { data: signoffDocRows }, { data: signoffSigRows }, { data: agency }, sg] = await Promise.all([
     supabase.from("sg_manual_versions").select("*").order("created_at", { ascending: false }),
     agencyPeople(supabase),
     supabase.from("signoff_documents").select("*").eq("category", "sg_manual").order("created_at", { ascending: false }),
     supabase.from("signoff_signatures").select("*"),
     supabase.from("agencies").select("aml_precommencement_enabled").eq("id", profile.agency_id).maybeSingle(),
+    sgDocumentsFor(supabase),
   ]);
+  const open = access.runsOffice ? sg.open : null;
 
   // Who still needs to sign or read, for the reminder card (0093): the
   // licensee or an office manager only.
@@ -67,14 +84,14 @@ export default async function SgManualPage() {
 
   return (
     <>
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Supervision Guidelines Manual</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Supervision guidelines and operational procedures</h1>
             <p className="mt-1 text-sm text-rc-muted">
-              {profile.is_licensee_in_charge || access.isOfficeManager
-                ? "Upload and keep the current version on file, with history."
-                : "The office's current version, with history. The licensee in charge publishes new versions."}
+              {access.runsOffice
+                ? "Your office's own document, read into sections and kept current, with every version on file."
+                : "The office's own document and every version on file. The licensee in charge or an office manager publishes new versions."}
             </p>
           </div>
           <Link href="/dashboard/registers" className="text-sm font-medium text-rc-muted transition hover:text-rc-green-deep">
@@ -82,10 +99,48 @@ export default async function SgManualPage() {
           </Link>
         </div>
 
+        {open && (
+          <div className="mt-6">
+            {open.doc.status === "reading" ? (
+              <SgReadingCard
+                id={open.doc.id}
+                fileName={open.doc.fileName}
+                done={open.doc.done}
+                total={open.doc.total}
+                fromFileOnRecord={open.doc.fromFileOnRecord}
+              />
+            ) : open.doc.status === "draft" ? (
+              <SgDraftReview
+                id={open.doc.id}
+                fileName={open.doc.fileName}
+                fromFileOnRecord={open.doc.fromFileOnRecord}
+                versionRead={open.doc.versionRead}
+                checks={open.doc.checks}
+                sections={open.sections}
+              />
+            ) : (
+              <SgReadFailedCard id={open.doc.id} fileName={open.doc.fileName} reason={open.doc.readError} />
+            )}
+          </div>
+        )}
+
+        {sg.live && (
+          <div className="mt-8">
+            <SgLiveDocument
+              docType={sg.live.doc.docType}
+              versionLabel={sg.live.doc.versionLabel}
+              savedAt={sg.live.doc.savedAt}
+              savedByName={sg.live.doc.savedByName}
+              sections={sg.live.sections}
+              canUpload={access.runsOffice}
+            />
+          </div>
+        )}
+
         {current && (
           <div className="mt-6 rounded-card border border-rc-green-deep/30 bg-rc-green-soft px-4 py-3 text-sm shadow-card">
             <p className="font-medium text-rc-green-deep">
-              Current version{current.version_label ? `: ${current.version_label}` : ""}
+              Current file{current.version_label ? `: ${current.version_label}` : ""}
             </p>
             <p className="mt-1 text-rc-muted">
               {signedUrls[0]?.data?.signedUrl ? (
@@ -129,13 +184,14 @@ export default async function SgManualPage() {
           />
         )}
 
-        {/* And an office manager (0093). */}
-        {profile.is_licensee_in_charge || access.isOfficeManager ? (
+        {/* Whoever runs the office: the licensee in charge, an office manager
+            (0093), or an agent on their own plan. The database checks the same (0122). */}
+        {access.runsOffice ? (
           <div className="mt-6">
-            <SgManualUploader profile={profile} isFirstUpload={versions.length === 0} />
+            <SgDocumentUploader agencyId={profile.agency_id} hasLive={Boolean(sg.live) || versions.length > 0} />
           </div>
         ) : (
-          <p className="mt-6 text-xs text-rc-faint">Only the licensee in charge can publish a new version.</p>
+          <p className="mt-6 text-xs text-rc-faint">The licensee in charge or an office manager publishes new versions.</p>
         )}
 
         {/* The agency's standing positions — things confirmed once here rather

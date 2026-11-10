@@ -21,6 +21,8 @@ import { GiftsWidget } from "@/components/home/GiftsWidget";
 import { ComplaintsWidget } from "@/components/home/ComplaintsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgManualWidget } from "@/components/home/SgManualWidget";
+import { SgDraftReadyCard } from "@/components/home/SgDraftReadyCard";
+import { sgDraftWaiting } from "@/lib/data/sg-document";
 import { AnnexureCard } from "@/components/home/AnnexureCard";
 import { FairTradingCard, NewLicenseeAnnexureCard } from "@/components/home/LicenseeChangeCards";
 import { fairTradingDueSentence, fairTradingReminder, type LicenseeHistoryLine } from "@/lib/licensee-history";
@@ -79,11 +81,13 @@ export default async function HomeDashboardPage({
     }
     // Asking to be office manager, and where that is up to (0093); once the
     // approval has been seen, a small line instead (0096).
-    const [officeManager, setup] = await Promise.all([
+    const [officeManager, setup, sgDraft] = await Promise.all([
       officeManagerHomeFor(supabase, profile, access),
       // "Set up your office" for an office manager; "Set up your profile" for
       // everyone else here (Adam, 27 Oct 2026).
       setupViewFor(supabase, profile, access),
+      // An office manager: a draft of the supervision guidelines waiting to be checked.
+      access.runsOffice ? sgDraftWaiting(supabase) : Promise.resolve(null),
     ]);
     return (
       <AgentHome
@@ -93,11 +97,14 @@ export default async function HomeDashboardPage({
         sgReadShows={sgReadShows}
         officeManager={officeManager}
         setup={setup}
+        sgDraft={sgDraft}
       />
     );
   }
 
   const cpdYear = currentCpdYear();
+  // The supervision guidelines read into a draft, waiting to be checked (Master, 10 Nov 2026).
+  const sgDraft = await sgDraftWaiting(supabase);
 
   // Until the annexure is adopted (brief, 14 Oct 2026), the Home of an
   // office's licensee in charge asks for it. Shown only on a clean read that
@@ -378,6 +385,8 @@ export default async function HomeDashboardPage({
               everything below is a picture of the office. Only rendered when
               there is something in it, so an office with no assistants never
               sees it. */}
+          {sgDraft && <SgDraftReadyCard fileName={sgDraft.fileName} fromFileOnRecord={sgDraft.fromFileOnRecord} />}
+
           {awaitingMyReview.length > 0 && (
             <section className="mt-6 rounded-card border border-rc-amber-deep/25 bg-rc-amber/10 px-4 py-3.5">
               <h2 className="text-sm font-semibold text-rc-amber-deep">

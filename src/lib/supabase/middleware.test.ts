@@ -69,6 +69,7 @@ const SIGNED_OUT_OK = [
   "/api/cron/plan-move-down", // moving down automatically (Adam, 6 Nov 2026): CRON_SECRET, like every job
   "/api/cron/pm-retention",
   "/api/cron/reader-check", // the daily reader check: CRON_SECRET, like every job
+  "/api/cron/sg-documents", // reading the supervision guidelines (part 1, 10 Nov 2026): CRON_SECRET, like every job
   "/api/cron/subscription-end",
   "/api/cron/trust-reminders",
   "/api/cron/weekly-digest",

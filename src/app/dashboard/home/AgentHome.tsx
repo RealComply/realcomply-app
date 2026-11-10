@@ -12,6 +12,7 @@ import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home
 import { GiftsWidget } from "@/components/home/GiftsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgReadCard } from "@/components/home/SgReadCard";
+import { SgDraftReadyCard } from "@/components/home/SgDraftReadyCard";
 import { OfficeManagerHomeCard } from "@/components/office-manager/OfficeManagerHomeCard";
 import { OfficeManagerLines } from "@/components/office-manager/OfficeManagerLine";
 import type { OfficeManagerHome } from "@/lib/data/office-manager";
@@ -40,6 +41,7 @@ export async function AgentHome({
   sgReadShows = false,
   officeManager = null,
   setup = null,
+  sgDraft = null,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   profile: Profile;
@@ -51,6 +53,8 @@ export async function AgentHome({
   officeManager?: OfficeManagerHome | null;
   /** "Set up your office" for an office manager, or "Set up your profile" (Adam, 27 Oct 2026). */
   setup?: SetupView | null;
+  /** For an office manager: the supervision guidelines read into a draft, waiting to be checked (Master, 10 Nov 2026). */
+  sgDraft?: { fileName: string; fromFileOnRecord: boolean } | null;
 }) {
   const cpdYear = currentCpdYear();
 
@@ -137,6 +141,8 @@ export async function AgentHome({
         {officeManager?.card && <OfficeManagerHomeCard card={officeManager.card} />}
 
         {sgReadShows && <SgReadCard />}
+
+        {sgDraft && <SgDraftReadyCard fileName={sgDraft.fileName} fromFileOnRecord={sgDraft.fromFileOnRecord} />}
 
         <UnopenedSignoffLinks nudges={signoffNudges} />
         <AnnexureLinkCard status={annexureWaiting} />
