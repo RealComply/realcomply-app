@@ -120,7 +120,12 @@ export default async function SgManualPage() {
                 sections={open.sections}
               />
             ) : (
-              <SgReadFailedCard id={open.doc.id} fileName={open.doc.fileName} reason={open.doc.readError} />
+              <SgReadFailedCard
+                id={open.doc.id}
+                fileName={open.doc.fileName}
+                reason={open.doc.readError}
+                fromFileOnRecord={open.doc.fromFileOnRecord}
+              />
             )}
           </div>
         )}

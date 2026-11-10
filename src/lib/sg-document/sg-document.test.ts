@@ -10,6 +10,7 @@ import { SG_2_1_3_ACTS } from "@/lib/sg-document/fair-trading";
 import { assembleSections, joinPieces, readPartOf, sectionHeading, versionOf, type ReadPartResult } from "@/lib/sg-document/sections";
 import { openSgFile, partCount, readSgPart, SgFileUnreadable } from "@/lib/sg-document/read";
 import { advanceSgRead, sgReadFailureText, type SgReadStore } from "@/lib/sg-document/advance";
+import { fileUnreadAsksToSign, fileUnreadSaid } from "@/lib/sg-document/file-unread";
 
 // Supervision guidelines as a live document, part 1 (Adam's mockup, 6 Nov
 // 2026; "go ahead with part 1", 10 Nov 2026). Made-up offices, people and
@@ -537,5 +538,26 @@ describe("saying which pages couldn't be read", () => {
     assert.deepEqual(joinPieces([page("Money is", false), page("banked daily.", true)]).paragraphs.map((p) => p.text), ["Money is banked daily."]);
     assert.deepEqual(joinPieces([page("Money is"), null, page("banked daily.", true)]).paragraphs.map((p) => p.text), ["Money is", "banked daily."]);
     assert.equal(joinPieces([page("A", true), page("B")]).continues, true);
+  });
+});
+
+// ── Filing a document that couldn't be read (Master, 10 Nov 2026) ───────
+
+describe("File it without reading it", () => {
+  const path = "o1/_sg-manual/1-manual.pdf";
+
+  it("a manual already on file stays the current document; nobody is asked to sign it again", () => {
+    assert.equal(fileUnreadAsksToSign({ fromFileOnRecord: true, filePath: path }, [path]), false);
+    assert.equal(fileUnreadAsksToSign({ fromFileOnRecord: true, filePath: path }, []), false, "on file, whatever the versions list says");
+    assert.match(fileUnreadSaid(true), /stays your current file, as it is, without sections\. Staff have already signed it, so nobody is asked to sign it again\.$/);
+  });
+
+  it("a new upload becomes the current file, and every staff member is asked to sign it, as before", () => {
+    assert.equal(fileUnreadAsksToSign({ fromFileOnRecord: false, filePath: path }, []), true);
+    assert.equal(fileUnreadSaid(false), "Filed without reading, it becomes your current file for staff to sign, as before, without sections.");
+  });
+
+  it("the same file already a version on record isn't signed twice", () => {
+    assert.equal(fileUnreadAsksToSign({ fromFileOnRecord: false, filePath: path }, [path]), false);
   });
 });
