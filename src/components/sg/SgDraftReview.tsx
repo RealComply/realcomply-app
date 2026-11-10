@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { discardSgDocument, saveSgDocument } from "@/lib/actions/sg-document";
 import { sgCheckLines, sgReadGapLines, type SgChecks } from "@/lib/sg-document/checks";
 import { SG_DOC_TYPES, type SgDocType } from "@/lib/sg-document/fair-trading";
 import { sectionHeading } from "@/lib/sg-document/sections";
 import type { SgSectionView } from "@/lib/data/sg-document";
+import { compareVersions } from "@/lib/sg-document/compare";
+import type { SgAmendment } from "@/lib/sg-document/amendments";
+import { SgCompareVersions } from "@/components/sg/SgCompareVersions";
 
 // A document read into sections, waiting to be checked (Adam's mockup, 6 Nov
 // 2026, screen 1; Master, 10 Nov 2026, for the manuals already on file). The
@@ -20,6 +23,7 @@ export function SgDraftReview({
   versionRead,
   checks,
   sections,
+  live = null,
 }: {
   id: string;
   fileName: string;
@@ -27,6 +31,11 @@ export function SgDraftReview({
   versionRead: string | null;
   checks: SgChecks | null;
   sections: SgSectionView[];
+  /**
+   * The live document and its approved amendments, to compare a new full
+   * version with (Adam's mockup, screen 4; part 3). Null for the first one.
+   */
+  live?: { versionLabel: string | null; sections: SgSectionView[]; amendments: SgAmendment[] } | null;
 }) {
   const router = useRouter();
   const [docType, setDocType] = useState<SgDocType | null>(null);
@@ -37,6 +46,10 @@ export function SgDraftReview({
   const lines = checks ? sgCheckLines(checks) : [];
   const gaps = sgReadGapLines(checks);
   const paragraphs = sections.reduce((n, s) => n + s.paragraphs.length, 0);
+  const comparison = useMemo(
+    () => (live ? compareVersions(live.sections, live.amendments, sections, live.versionLabel) : null),
+    [live, sections],
+  );
 
   async function save() {
     if (!docType) {
@@ -99,6 +112,8 @@ export function SgDraftReview({
           ))}
         </div>
       )}
+
+      {comparison && live && <SgCompareVersions comparison={comparison} liveLabel={live.versionLabel} newLabel={version} />}
 
       {lines.length > 0 && (
         <div className="mt-4">
@@ -193,7 +208,7 @@ export function SgDraftReview({
           disabled={busy !== null}
           className="rounded-full bg-rc-green-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
         >
-          {busy === "save" ? "Saving…" : "Save as current document"}
+          {busy === "save" ? "Saving…" : live ? `Approve ${version.trim() || "this version"} as current` : "Save as current document"}
         </button>
         {!confirmDiscard ? (
           <button type="button" onClick={() => setConfirmDiscard(true)} className="text-sm font-medium text-rc-muted hover:text-rc-amber-deep">
