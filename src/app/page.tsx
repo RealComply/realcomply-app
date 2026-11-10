@@ -249,7 +249,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               {badge}
             </p>
             <h1 className="text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
-              Every ad, <span className="text-rc-green-deep">checked against the estimate on file.</span>
+              Stay on top of compliance. <span className="text-rc-green-deep">Without a full-time hire.</span>
             </h1>
             {/* The most important sentence on the page. It replaced "AI
                 compliance support for NSW agencies", which never said what the
