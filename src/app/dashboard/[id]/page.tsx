@@ -17,7 +17,7 @@ import { openFlagsFor, sendBackRoundFor } from "@/lib/data/send-backs";
 import { SendBackBanner, SendBackProvider } from "@/components/compliance/SendBack";
 import { ReopenProvider, type ReopenPage } from "@/components/compliance/Reopen";
 import { reopenHistoryFor } from "@/lib/data/reopen";
-import { comparablesFor, subjectAttributesFrom } from "@/lib/data/comparables";
+import { comparablesFor, subjectAttributesFrom, withSubjectStrataLand } from "@/lib/data/comparables";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
@@ -101,7 +101,7 @@ export default async function PropertyPage({
     redirect(`/dashboard/${p.id}/summary`);
   }
 
-  const [{ data: propertyItemRows }, { data: agencyRow }, peopleRows, signoffLinks, comparables, marketListings] = await Promise.all([
+  const [{ data: propertyItemRows }, { data: agencyRow }, peopleRows, signoffLinks, comparablesAsRead, listingsAsRead] = await Promise.all([
     supabase.from("property_items").select("*").eq("property_id", id),
     // One lookup for the page, passed down to every card, rather than each
     // card asking. amv uses the AML position.
@@ -134,6 +134,11 @@ export default async function PropertyPage({
   // The listing's own attributes — the other half of every comparison, and
   // read off the property row the page already has rather than fetched again.
   const subject = subjectAttributesFrom(property as Record<string, unknown>);
+  // On a unit, townhouse or duplex on strata, a land size over 500 m² is
+  // likely the whole strata site: not shown or used on any card below (Adam,
+  // 10 Nov 2026; lib/rules/strata-land.ts).
+  const comparables = withSubjectStrataLand(subject, comparablesAsRead);
+  const marketListings = withSubjectStrataLand(subject, listingsAsRead);
 
   // The ESP reasoning card reads by its completion rule: one stored as done
   // with no reasoning, or no on-market answer, shows as not complete. See

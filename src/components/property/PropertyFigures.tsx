@@ -32,9 +32,12 @@ const FIELDS: Array<{ name: string; label: string; placeholder: string; wide?: b
 
 export function PropertyFigures({
   values,
+  landNote = null,
 }: {
   /** Current values when editing an existing listing. Omitted when creating. */
   values?: Partial<Record<string, number | null>>;
+  /** Said under the boxes when the land size in them isn't shown or used (a strata site). */
+  landNote?: string | null;
 }) {
   return (
     <div>
@@ -59,6 +62,7 @@ export function PropertyFigures({
           </label>
         ))}
       </div>
+      {landNote && <p className="mt-1.5 text-[11px] leading-relaxed text-rc-amber-deep">{landNote}</p>}
     </div>
   );
 }

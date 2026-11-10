@@ -225,6 +225,36 @@ describe("Draft my reasoning", () => {
     assert.ok(draftProblems(tampered, input()).some((p) => p.startsWith("(e)")));
   });
 
+  it("short paragraphs with a blank line between each, the wording unchanged (Adam, 10 Nov 2026)", () => {
+    const i = input({
+      subject: { ...subject, internalAreaSqm: null },
+      comparables: [...input().comparables, sale({ address: "1 Gone St, Mount Colah", weighting: "not_comparable", agentNote: "knock-down" })],
+    });
+    const d = draft(i);
+    const paragraphs = d.text.split("\n\n");
+
+    // Which sales; each of the three drawn on, against this property; the
+    // others; the one not treated as comparable; what wasn't compared; the
+    // estimate against them; the competition.
+    assert.equal(paragraphs.length, 9, d.text);
+    assert.match(paragraphs[0], /^The sales I've drawn on most are 14 Smith St, 8 Jones Ave and 5 Rose Pl, the closest/);
+    for (const [k, street] of [[1, "14 Smith St"], [2, "8 Jones Ave"], [3, "5 Rose Pl"]] as const) {
+      assert.match(paragraphs[k], new RegExp(`^${street} sold for \\$[\\d,]+ in `), paragraphs[k]);
+      assert.match(paragraphs[k], /It is .* away/);
+    }
+    assert.match(paragraphs[4], /^The other sales are less alike\. 22 High St/);
+    assert.equal(paragraphs[5], "I didn't treat 1 Gone St as comparable: “knock-down”.");
+    assert.equal(paragraphs[6], "This file doesn't record the listing's internal area, so I haven't compared the sales on it.");
+    assert.equal(paragraphs[7], d.sections.estimate);
+    assert.equal(paragraphs[8], d.sections.market);
+    for (const p of paragraphs) assert.ok(p.trim() === p && p.length > 0 && !p.includes("\n"), JSON.stringify(p));
+
+    // Nothing reworded: the same sentences as when it was one block.
+    const asOneBlock = d.text.replace(/\n\n/g, " ");
+    assert.equal(asOneBlock.split(/(?<=\.) /).length, d.text.split(/(?<=\.)\s+/).length);
+    assert.equal(d.sections.sales, paragraphs.slice(0, 7).join("\n\n"));
+  });
+
   it("the checker catches a different estimate and an asking price used as support", () => {
     const d = draft(input());
     const otherEstimate = { ...d, sections: { ...d.sections, estimate: d.sections.estimate.replace("$1,400,000", "$1,450,000") } };

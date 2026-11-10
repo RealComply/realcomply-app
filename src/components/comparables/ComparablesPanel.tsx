@@ -11,6 +11,7 @@ import {
   type ComparablesArea,
 } from "@/components/comparables/MostComparable";
 import type { ComparablesRecord } from "@/lib/rules/comparables-rules";
+import { STRATA_LAND_NOT_SHOWN } from "@/lib/rules/strata-land";
 import { DictateButton, DictationSuspended, appendDictated } from "@/components/Dictate";
 import {
   addComparable,
@@ -87,6 +88,8 @@ function spec(c: Comparable): string {
   if (c.bathrooms !== null) bits.push(`${c.bathrooms} bath`);
   if (c.carSpaces !== null) bits.push(`${c.carSpaces} car`);
   if (c.landSizeSqm !== null) bits.push(`${Math.round(c.landSizeSqm)}m² land`);
+  // Over 500 m² on a strata listing: said, never shown (lib/rules/strata-land.ts).
+  else if (c.landSizeHidden) bits.push(STRATA_LAND_NOT_SHOWN);
   return bits.join(" · ");
 }
 
@@ -227,6 +230,7 @@ function suggestedSpec(s: SubjectAttributes["suggestions"]): string {
   if (s?.bathrooms != null) bits.push(`${s.bathrooms} bath`);
   if (s?.carSpaces != null) bits.push(`${s.carSpaces} car`);
   if (s?.landSizeSqm != null) bits.push(`${Math.round(s.landSizeSqm)}m² land`);
+  else if (s?.landSizeHidden) bits.push(STRATA_LAND_NOT_SHOWN.charAt(0).toLowerCase() + STRATA_LAND_NOT_SHOWN.slice(1));
   return bits.join(", ") || "nothing it could read";
 }
 

@@ -21,6 +21,7 @@ import {
   type SoiComparable,
 } from "@/lib/rules/soi";
 import { formatAuDate } from "@/lib/format-date";
+import { STRATA_LAND_NOT_SHOWN } from "@/lib/rules/strata-land";
 
 // The Statement of Information card (s72C; Reg s12H, s12I; 0121). Made in
 // RealComply from the file (the main route) or uploaded, every version kept
@@ -148,6 +149,10 @@ function MakeForm({ view, onClose }: { view: SoiView; onClose: () => void }) {
               <label className="text-[11px] text-rc-muted">
                 Land size, m² (if known)
                 <input inputMode="decimal" value={r.landSizeSqm} onChange={(e) => set(i, "landSizeSqm", e.target.value)} className={inputClass} />
+                {/* Over 500 m² on a strata listing: left out, and said why (lib/rules/strata-land.ts). */}
+                {!r.landSizeSqm.trim() && view.draft.landNotShown.includes(r.address) && (
+                  <span className="mt-0.5 block text-[10px] text-rc-faint">{STRATA_LAND_NOT_SHOWN}</span>
+                )}
               </label>
               <label className="text-[11px] text-rc-muted">
                 Floor area, m² (if known)

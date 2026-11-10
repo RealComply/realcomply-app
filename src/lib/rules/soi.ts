@@ -38,6 +38,7 @@ import { formatAuDate } from "@/lib/format-date";
 import type { AreaKind } from "@/lib/rules/council-area";
 import { MAX_MOST_COMPARABLE } from "@/lib/rules/comparables-rules";
 import { addressKey, type RevisionComparable } from "@/lib/rules/revision-comparables";
+import { strataLandHidden } from "@/lib/rules/strata-land";
 
 /** The day s72C commences (Act Sch 1, transitional cl 3). */
 export const SOI_STARTS_ON = "2027-02-08";
@@ -161,6 +162,9 @@ export const SOI_FEWER_MISSING = "Say why there are fewer than 3 comparable prop
 export const SOI_NOT_CHECKED = "Tick that you've checked the details before making the statement.";
 export const SOI_TOO_MANY = "Section A takes the 3 most comparable properties only.";
 export const SOI_BAD = "Something on the form didn't come through. Reload the page and try again.";
+/** Adam, 10 Nov 2026: lib/rules/strata-land.ts. */
+export const SOI_STRATA_LAND =
+  "On a unit, townhouse or duplex on strata, a land size over 500 m² is likely the whole strata site, so it can't go on the statement. Enter the lot's own land size, or leave it empty.";
 
 const MAX_TEXT = 2000;
 const text = (v: unknown, max = MAX_TEXT): string | null => {
@@ -193,7 +197,15 @@ const realDay = (v: unknown): string | null => {
  */
 export function soiContentFrom(
   form: { propertyType: unknown; comparables: unknown; fewerReason: unknown; reports: unknown[]; checked: unknown },
-  fixed: { address: string; area: AreaKind | null; preparedOn: string; preparedBy: string; espRevisionNo: number },
+  fixed: {
+    address: string;
+    area: AreaKind | null;
+    preparedOn: string;
+    preparedBy: string;
+    espRevisionNo: number;
+    /** The listing is a unit, townhouse or duplex on strata (lib/rules/strata-land.ts). */
+    strata?: boolean;
+  },
 ): { content: SoiContent } | { error: string } {
   if (!fixed.area) return { error: SOI_AREA_MISSING };
   const propertyType = SOI_TYPES.find((t) => t === form.propertyType);
@@ -234,6 +246,7 @@ export function soiContentFrom(
     ) {
       return { error: SOI_COMPARABLE_INCOMPLETE };
     }
+    if (strataLandHidden(c.landSizeSqm, fixed.strata === true)) return { error: SOI_STRATA_LAND };
     comparables.push(c);
   }
   const fewerReason = comparables.length < MAX_MOST_COMPARABLE ? text(form.fewerReason) : null;
@@ -306,6 +319,11 @@ export type SoiDraft = {
   from: string;
   /** Reports on the register that could be one of two boxes: the agent ticks which. */
   reportHints: string[];
+  /**
+   * The properties whose land size was left out: over 500 m² on a strata
+   * listing, likely the whole strata site (Adam, 10 Nov 2026).
+   */
+  landNotShown: string[];
 };
 
 /**
@@ -323,7 +341,10 @@ export function soiDraft(input: {
   revisions: Array<{ no: number; comparables?: RevisionComparable[]; comparablesFewerReason?: string | null }>;
   previous: SoiContent | null;
   register: { building: boolean; pest: boolean; strata: boolean };
+  /** The listing is a unit, townhouse or duplex on strata (lib/rules/strata-land.ts). */
+  strataDwelling?: boolean;
 }): SoiDraft {
+  const landNotShown: string[] = [];
   const latestNo = input.revisions.reduce((n, r) => Math.max(n, r.no), 0);
   const kept = [...input.revisions].sort((a, b) => b.no - a.no).find((r) => (r.comparables ?? []).length > 0);
   const byAddress = new Map(input.listing.map((s) => [addressKey(s.address), s]));
@@ -332,12 +353,17 @@ export function soiDraft(input: {
   const fill = (address: string, sold: { price: number | null; on: string | null }, reason: string | null): SoiComparable => {
     const sale = byAddress.get(addressKey(address));
     const before = typedBefore.get(addressKey(address));
+    let land = sale?.landSizeSqm ?? before?.landSizeSqm ?? null;
+    if (strataLandHidden(land, input.strataDwelling === true)) {
+      land = null;
+      landNotShown.push(address);
+    }
     return {
       address,
       bedrooms: sale?.bedrooms ?? before?.bedrooms ?? null,
       bathrooms: sale?.bathrooms ?? before?.bathrooms ?? null,
       parking: sale?.carSpaces ?? before?.parking ?? null,
-      landSizeSqm: sale?.landSizeSqm ?? before?.landSizeSqm ?? null,
+      landSizeSqm: land,
       floorAreaSqm: sale?.internalAreaSqm ?? before?.floorAreaSqm ?? null,
       soldPrice: sold.price ?? sale?.salePrice ?? before?.soldPrice ?? null,
       soldOn: sold.on ?? sale?.saleDate?.slice(0, 10) ?? before?.soldOn ?? null,
@@ -374,6 +400,7 @@ export function soiDraft(input: {
     espRevisionNo: latestNo,
     from: kept ? `ESP revision ${kept.no}` : "the comparable sales on this listing",
     reportHints,
+    landNotShown,
   };
 }
 
