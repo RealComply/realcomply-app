@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
-import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, isInFolder, storedFileProblem } from "@/lib/storage/evidence";
+import { createServiceClient } from "@/lib/supabase/service";
 import { readNoticeIntoPending } from "@/lib/esp-notice";
 import { noticeUnderReforms, pendingFrom, previousEspProblem, revisionEvidenceProblem, typedFigure } from "@/lib/esp-history";
 import { feedbackToStore, marketFeedbackFrom } from "@/lib/rules/market-feedback";
@@ -207,6 +208,47 @@ export async function recordEspRevision(
     console.error("advertised price recheck after an ESP revision failed:", err instanceof Error ? err.message : err);
   }
 
+  revalidatePath(`/dashboard/${propertyId}`);
+  return { error: null };
+}
+
+/**
+ * Delete a revision (Adam, 10 Nov 2026: "Just have it deleted cleanly";
+ * 0124). The database checks it's the listing's agent or the licensee in
+ * charge, deletes it, moves the later ones up a number and moves the card,
+ * then hands back the files that went with it. Those are removed here, and
+ * only from this listing's own ESP revision folder: the person may not
+ * otherwise delete files (only the licensee can, 0058), so the removal is
+ * RealComply's, after the database has agreed.
+ */
+export async function deleteEspRevision(propertyId: string, revisionNo: number): Promise<EspActionState> {
+  const { supabase, profile } = await requireAuthContext();
+  if (!Number.isInteger(revisionNo) || revisionNo < 1) return { error: "That revision isn't on this listing. Reload the page." };
+  const { data, error } = await supabase.rpc("delete_esp_revision", { p_property_id: propertyId, p_revision_no: revisionNo });
+  if (error) {
+    return { error: error.code === "P0001" || error.code === "42501" ? error.message : "Couldn't delete the revision just now. Try again." };
+  }
+  const folder = `${profile.agency_id}/${propertyId}/d3`;
+  const paths = (Array.isArray(data) ? (data as unknown[]) : []).filter(
+    (p): p is string => typeof p === "string" && isInFolder(p, folder),
+  );
+  if (paths.length > 0) {
+    try {
+      const { error: removeError } = await createServiceClient().storage.from(EVIDENCE_BUCKET).remove(paths);
+      // The folder only, never a file's name.
+      if (removeError) console.error("deleted ESP revision's files not removed:", folder, removeError.message);
+    } catch (err) {
+      console.error("deleted ESP revision's files not removed:", folder, err instanceof Error ? err.message : err);
+    }
+  }
+
+  // The ESP on file may have changed: check the live ad against it again.
+  try {
+    const { checkListingNow } = await import("@/lib/actions/website-scan");
+    await checkListingNow(propertyId);
+  } catch (err) {
+    console.error("advertised price recheck after an ESP revision was deleted failed:", err instanceof Error ? err.message : err);
+  }
   revalidatePath(`/dashboard/${propertyId}`);
   return { error: null };
 }

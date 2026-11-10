@@ -281,7 +281,14 @@ export default async function PropertyPage({
   // Every ESP revision, with its notice (Adam, 3 Nov 2026; 0110): only for
   // the stage the d3 card is on.
   const espHistory = stageItems.some((i) => i.key === "d3")
-    ? { ...(await espHistoryFor(supabase, p.agency_id, p.id, allItems)), areaKind: areaOf(p.council_area) }
+    ? {
+        ...(await espHistoryFor(supabase, p.agency_id, p.id, allItems)),
+        areaKind: areaOf(p.council_area),
+        // Delete a revision (Adam, 10 Nov 2026; 0124): the listing's agent or
+        // the licensee in charge; not on a signed-off file or a withdrawn listing.
+        deleting:
+          allItems["sign_licensee"]?.status === "done" || withdrawn || !mayWithdraw ? null : { propertyId: p.id },
+      }
     : undefined;
   // The Statement of Information (s72C; 0121): on its own card in Listing
   // set-up, and when it has to be revised by on the ESP revision card.

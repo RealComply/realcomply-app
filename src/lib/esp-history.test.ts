@@ -5,6 +5,8 @@ import {
   LATEST_PILL,
   approvalLines,
   cancelledBecause,
+  deleteButton,
+  deleteLines,
   espPackRows,
   espRange,
   espVersions,
@@ -220,5 +222,63 @@ describe("market feedback on a revision (Reg s12G(1)(f))", () => {
     assert.equal(r!.marketFeedback?.length, 1);
     const [latest] = espVersions({ low: 1_400_000, high: 1_450_000, agreementDate: null, file: null }, [r!]);
     assert.equal(latest.feedback?.[0].who, "Sam Buyer (made up)");
+  });
+});
+
+describe("deleting a revision (Adam, 10 Nov 2026; 0124)", () => {
+  const R3 = rev(3, 1150000, 1200000, "2026-11-03", "2026-11-03T01:00:00Z");
+
+  it("each revision can be deleted, and says what that does before it goes", () => {
+    const v = espVersions(ORIGINAL, [R1, R2, R3]);
+    assert.deepEqual(v.map((x) => x.revisionNo), [3, 2, 1, undefined]);
+    assert.equal(v[3].deleteLines, undefined, "the original ESP isn't a revision");
+    assert.equal(deleteButton(2), "Delete Revision 2");
+  });
+
+  it("the newest: the ESP on file goes back to the one before it, and an approval of the new figures goes", () => {
+    assert.deepEqual(deleteLines(R3, [R1, R2, R3], ORIGINAL), [
+      "Revision 3 and its notice are deleted from the listing, the history and the audit pack. This can't be undone.",
+      "The ESP on file goes back to Revision 2: $1,250,000 to $1,300,000.",
+      "A price statement approved against this revision is cancelled, and the card asks you to confirm the advertising matches the ESP on file.",
+    ]);
+  });
+
+  it("the newest with the same figures as the one before: nothing else changes", () => {
+    const same = { ...R3, low: R2.low, high: R2.high };
+    assert.deepEqual(deleteLines(same, [R1, R2, same], ORIGINAL).slice(1), [
+      "The ESP on file goes back to Revision 2: $1,250,000 to $1,300,000.",
+    ]);
+  });
+
+  it("the only one: back to the agency agreement's ESP, and the card asks again", () => {
+    assert.deepEqual(deleteLines(R1, [R1], ORIGINAL).slice(1), [
+      "The ESP on file goes back to the one in the agency agreement: $1,400,000 to $1,450,000. The card asks again whether the ESP was revised.",
+      "A price statement approved against this revision is cancelled.",
+    ]);
+  });
+
+  it("an earlier one: the later ones move up a number and the ESP on file stays", () => {
+    assert.equal(deleteLines(R2, [R1, R2, R3], ORIGINAL)[1], "Revision 3 becomes Revision 2. The ESP on file doesn't change.");
+    assert.equal(deleteLines(R1, [R1, R2, R3], ORIGINAL)[1], "Revisions 2 to 3 each move up a number. The ESP on file doesn't change.");
+  });
+
+  it("says when recording it cancelled the price statement approval (Master, 10 Nov 2026)", () => {
+    const cancellations = [
+      { becauseItemKey: "d3", cancelledAt: R2.recordedAt },
+      { becauseItemKey: "a4", cancelledAt: R1.recordedAt },
+    ];
+    assert.equal(
+      deleteLines(R2, [R1, R2, R3], ORIGINAL, cancellations).at(-1),
+      "Recording this revision cancelled the price statement approval on 28 October 2026. Deleting it doesn't bring that approval back.",
+    );
+    // Not one it didn't cancel: Revision 1's was the ESP card's, not the revision's.
+    assert.ok(!deleteLines(R1, [R1, R2, R3], ORIGINAL, cancellations).some((l) => l.startsWith("Recording")));
+    const v = espVersions(ORIGINAL, [R1, R2, R3], cancellations);
+    assert.match(v[1].deleteLines?.at(-1) ?? "", /^Recording this revision cancelled/);
+  });
+
+  it("no em dashes and no internal ids", () => {
+    const all = [R1, R2, R3].flatMap((r) => deleteLines(r, [R1, R2, R3], ORIGINAL, [{ becauseItemKey: "d3", cancelledAt: R1.recordedAt }]));
+    assert.ok(all.every((l) => !l.includes("—") && !/[0-9a-f]{8}-[0-9a-f]{4}/.test(l)));
   });
 });

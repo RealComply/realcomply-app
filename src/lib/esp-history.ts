@@ -165,6 +165,10 @@ export type EspVersion = {
   comparables?: RevisionComparable[];
   comparablesInfoUsed?: string | null;
   comparablesFewerReason?: string | null;
+  /** The revision's number, for deleting it (0124). Absent on the original ESP. */
+  revisionNo?: number;
+  /** What deleting it does, said before it is deleted (0124). */
+  deleteLines?: string[];
 };
 
 export const LATEST_PILL = "Latest: used for checks";
@@ -177,6 +181,8 @@ export const LATEST_PILL = "Latest: used for checks";
 export function espVersions(
   original: { low: number | null; high: number | null; agreementDate: string | null; file: { path: string; name: string } | null },
   revisions: EspRevision[],
+  /** The price statement cancellations (0100), to say when recording a revision cancelled the approval. */
+  cancellations: Array<{ becauseItemKey: string | null; cancelledAt: string }> = [],
 ): EspVersion[] {
   const sorted = [...revisions].sort((a, b) => a.no - b.no);
   const out: EspVersion[] = sorted.map((r, i) => {
@@ -206,6 +212,8 @@ export function espVersions(
       comparables: r.comparables ?? [],
       comparablesInfoUsed: r.comparablesInfoUsed ?? null,
       comparablesFewerReason: r.comparablesFewerReason ?? null,
+      revisionNo: r.no,
+      deleteLines: deleteLines(r, sorted, original, cancellations),
     };
   });
   out.reverse();
@@ -222,9 +230,77 @@ export function espVersions(
   return out;
 }
 
-/** Above the history (the mockup). */
+// ── Delete a revision (Adam, 10 Nov 2026; 0124) ───────────────────────────
+//
+// Master asked for a revision entered in error to be marked and kept. Adam:
+// "there's no need to leave a trail saying that it's been entered in error.
+// This isn't a trust account. Just have it deleted cleanly." The listing's
+// agent or the licensee in charge deletes it, with its notice; the later ones
+// move up a number. Before it goes, the card says what that does.
+
+export const DELETE_REVISION = "Delete";
+export function deleteButton(no: number): string {
+  return `Delete Revision ${no}`;
+}
+
+/**
+ * What deleting a revision does, said before it's deleted: the ESP the
+ * checks go back to, what happens to the price statement approval, and how
+ * the later revisions are numbered.
+ */
+export function deleteLines(
+  r: Pick<EspRevision, "no" | "low" | "high" | "recordedAt">,
+  revisions: Array<Pick<EspRevision, "no" | "low" | "high">>,
+  original: { low: number | null; high: number | null },
+  cancellations: Array<{ becauseItemKey: string | null; cancelledAt: string }> = [],
+): string[] {
+  const sorted = [...revisions].sort((a, b) => a.no - b.no);
+  const later = sorted.filter((s) => s.no > r.no);
+  const lines = [`Revision ${r.no} and its notice are deleted from the listing, the history and the audit pack. This can't be undone.`];
+  if (later.length === 0) {
+    const prev = sorted.filter((s) => s.no < r.no).pop();
+    const back = prev ? { low: prev.low, high: prev.high } : original;
+    lines.push(
+      prev
+        ? `The ESP on file goes back to Revision ${prev.no}: ${espRange(back.low, back.high)}.`
+        : `The ESP on file goes back to the one in the agency agreement: ${espRange(back.low, back.high)}. The card asks again whether the ESP was revised.`,
+    );
+    if (back.low !== r.low || back.high !== r.high) {
+      lines.push(
+        prev
+          ? "A price statement approved against this revision is cancelled, and the card asks you to confirm the advertising matches the ESP on file."
+          : "A price statement approved against this revision is cancelled.",
+      );
+    }
+  } else if (later.length === 1) {
+    lines.push(`Revision ${later[0].no} becomes Revision ${later[0].no - 1}. The ESP on file doesn't change.`);
+  } else {
+    lines.push(`Revisions ${later[0].no} to ${later[later.length - 1].no} each move up a number. The ESP on file doesn't change.`);
+  }
+  // Master, 10 Nov 2026: if recording it cancelled the price statement
+  // approval, say so. The cancellation is written in the same transaction as
+  // the revision (0110), so at the same moment.
+  const recorded = Date.parse(r.recordedAt);
+  const hit = Number.isNaN(recorded)
+    ? undefined
+    : cancellations
+        .filter((c) => c.becauseItemKey === "d3")
+        .map((c) => Date.parse(c.cancelledAt))
+        .find((t) => !Number.isNaN(t) && t >= recorded - 1000 && t - recorded < 5 * 60_000);
+  if (hit !== undefined) {
+    lines.push(
+      `Recording this revision cancelled the price statement approval on ${formatAuDate(sydneyDate(new Date(hit)))}. Deleting it doesn't bring that approval back.`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * Above the history (the mockup). "unless it's deleted" since a revision
+ * entered by mistake can be deleted (Adam, 10 Nov 2026; 0124).
+ */
 export const HISTORY_HELP =
-  "Every change stays on the file, with its notice. RealComply checks advertised prices and the sale price against the latest one.";
+  "Every change stays on the file, with its notice, unless it's deleted. RealComply checks advertised prices and the sale price against the latest one.";
 
 /**
  * The button on the card that adds the next revision.

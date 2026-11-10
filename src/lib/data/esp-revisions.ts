@@ -46,6 +46,17 @@ export async function espHistoryFor(
   allItems: Record<string, PropertyItem | undefined>,
 ) {
   const revisions = revisionsOrCard(await espRevisionsFor(supabase, agencyId, propertyId), allItems["d3"]);
+  // The price statement cancellations (0100), so the card can say, before a
+  // revision is deleted, that recording it cancelled the approval (0124).
+  const { data: cancelled } = await supabase
+    .from("listing_signoff_cancellations")
+    .select("because_item_key, cancelled_at")
+    .eq("property_id", propertyId)
+    .eq("item_key", "b4");
+  const cancellations = ((cancelled ?? []) as Array<{ because_item_key: string | null; cancelled_at: string }>).map((c) => ({
+    becauseItemKey: c.because_item_key,
+    cancelledAt: c.cancelled_at,
+  }));
   const a4 = (allItems["a4"]?.data ?? {}) as { espLow?: unknown; espHigh?: unknown };
   const a3 = allItems["a3"];
   const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
@@ -53,6 +64,7 @@ export async function espHistoryFor(
   const versions = espVersions(
     { low: num(a4.espLow), high: num(a4.espHigh), agreementDate: a3?.event_date ?? null, file: agreementFile },
     revisions,
+    cancellations,
   );
   const folder = `${agencyId}/${propertyId}`;
   const pending = pendingFrom(allItems["d3"]?.data);

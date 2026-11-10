@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { AlertTriangle, Check, Paperclip, Sparkles, Info, Star } from "lucide-react";
+import { AlertTriangle, Check, Paperclip, Sparkles, Info, Star, Trash2 } from "lucide-react";
 import { RevisionComparablesFields } from "@/components/compliance/RevisionComparables";
 import { REVISION_COMPARABLES_LABEL, saleLine, type RevisionCandidate } from "@/lib/rules/revision-comparables";
 import { factorsLine } from "@/lib/rules/comparables-rules";
@@ -12,9 +12,11 @@ import { unreadableKind } from "@/lib/storage/accepted-files";
 import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
-import { cancelEspDraft, readEspNotice, recordEspRevision, type EspActionState } from "@/lib/actions/esp-revisions";
+import { cancelEspDraft, deleteEspRevision, readEspNotice, recordEspRevision, type EspActionState } from "@/lib/actions/esp-revisions";
 import {
   ADD_REVISION,
+  DELETE_REVISION,
+  deleteButton,
   EVIDENCE_HINT,
   EVIDENCE_IN_NOTICE_LABEL,
   EVIDENCE_LABEL,
@@ -59,6 +61,12 @@ export type EspHistoryView = {
   revisionComparables?: { candidates: RevisionCandidate[]; previousAddresses: string[] };
   /** Metro or not (Reg s12A; 0118), for where each sale sits against the search area. */
   areaKind?: AreaKind | null;
+  /**
+   * Delete a revision (Adam, 10 Nov 2026; 0124): for the listing's agent or
+   * the licensee in charge, and not on a signed-off file or a withdrawn
+   * listing (page.tsx). Null for everyone else.
+   */
+  deleting?: { propertyId: string } | null;
 };
 
 /** A file on the card: a link (an hour) when there is one, else its name. */
@@ -193,9 +201,72 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
               )}
             </div>
           )}
+          {view.deleting && v.revisionNo !== undefined && (
+            <DeleteRevision propertyId={view.deleting.propertyId} no={v.revisionNo} lines={v.deleteLines ?? []} />
+          )}
         </li>
       ))}
     </ul>
+  );
+}
+
+/** On a revision: "Delete", which says what deleting it does before it goes. */
+function DeleteRevision({ propertyId, no, lines }: { propertyId: string; no: number; lines: string[] }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  if (!open) {
+    return (
+      <div className="col-span-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-rc-red hover:underline"
+        >
+          <Trash2 size={12} aria-hidden="true" /> {DELETE_REVISION}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="col-span-2 mt-1 space-y-2 rounded-lg border border-rc-red/30 bg-white px-2.5 py-2 text-xs">
+      {lines.map((l, k) => (
+        <p key={l} className={k === 0 ? "font-semibold text-rc-ink" : "text-rc-muted"}>
+          {l}
+        </p>
+      ))}
+      {error && <p className="font-semibold text-rc-red">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setError(null);
+            startTransition(async () => {
+              const res = await deleteEspRevision(propertyId, no);
+              if (res.error) setError(res.error);
+              else setOpen(false);
+            });
+          }}
+          className="rounded-md bg-rc-red px-3 py-1.5 font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+        >
+          {busy ? "Deleting…" : deleteButton(no)}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setOpen(false);
+            setError(null);
+          }}
+          className="rounded-md border border-rc-border px-3 py-1.5 font-medium text-rc-muted transition hover:bg-rc-bg-alt"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 
