@@ -273,9 +273,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
               >
                 Start free trial
               </a>
-              <p className="text-sm font-semibold text-rc-ink">
-                14 days free. Cancel before day 14 and you won&rsquo;t be charged.
-              </p>
+              <p className="text-sm font-semibold text-rc-ink">14 days free.</p>
             </div>
 
             {/* RISK REVERSAL. Adam, 15 Aug 2026: "I really want the person who
