@@ -1649,7 +1649,9 @@ const items: ComplianceItem[] = [
     // single competitor's name in the example box as "this was not built for
     // me", and a placeholder is the cheapest possible place to say otherwise.
     notePlaceholder: "e.g. Box+Dice, AgentBox, LockedOn",
-    evidenceLabel: "Your own record (optional)",
+    // No "(optional)" here: the upload box adds it (Master, 10 Nov 2026; it
+    // read "Your own record (optional) (optional)").
+    evidenceLabel: "Your own record",
   },
   // amvc (vendor check cleared) used to sit here at Sold. MOVED to Pre-market,
   // 28 Sep 2026 — see the note beside it there. Sold now carries only the
