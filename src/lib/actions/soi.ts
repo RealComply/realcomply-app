@@ -12,6 +12,7 @@ import { addressKey } from "@/lib/rules/revision-comparables";
 import { SOI_BAD, SOI_NOT_YET, soiApplies, soiContentFrom } from "@/lib/rules/soi";
 import { buildSoiPdf, soiFilename } from "@/lib/pdf/soi";
 import type { Property, PropertyItem } from "@/lib/types";
+import { isStrataDwelling } from "@/lib/rules/strata-land";
 
 // The Statement of Information card (s72C; Reg s12H, s12I; 0121): make one
 // from the file, record one made elsewhere, and switch the link for online
@@ -38,14 +39,17 @@ async function listingFor(ctx: Ctx, propertyId: string) {
   const [{ data: property }, { data: items }] = await Promise.all([
     supabase
       .from("properties")
-      .select("id, agency_id, address, property_type, council_area, stage")
+      .select("id, agency_id, address, property_type, is_strata, council_area, stage")
       .eq("id", propertyId)
       .maybeSingle(),
     supabase.from("property_items").select("*").eq("property_id", propertyId),
   ]);
   if (!property) return null;
   const allItems = Object.fromEntries(((items ?? []) as PropertyItem[]).map((i) => [i.item_key, i]));
-  return { property: property as Pick<Property, "id" | "agency_id" | "address" | "property_type" | "council_area" | "stage">, allItems };
+  return {
+    property: property as Pick<Property, "id" | "agency_id" | "address" | "property_type" | "is_strata" | "council_area" | "stage">,
+    allItems,
+  };
 }
 
 /** The card counts as done once there's a version (Listing set-up). */
@@ -116,6 +120,7 @@ export async function makeStatementOfInformation(propertyId: string, _prev: SoiA
       preparedOn: sydneyToday(),
       preparedBy: await preparedByFor(ctx),
       espRevisionNo: draft.espRevisionNo,
+      strata: isStrataDwelling(property.property_type, property.is_strata),
     },
   );
   if ("error" in parsed) return { error: parsed.error };

@@ -16,6 +16,7 @@ import {
   type SoiVersion,
 } from "@/lib/rules/soi";
 import type { Property, PropertyItem } from "@/lib/types";
+import { isStrataDwelling } from "@/lib/rules/strata-land";
 
 // The Statement of Information on a listing (0121): every version, the link
 // for online ads, and the form filled from the file. Before 0121 runs, the
@@ -74,7 +75,7 @@ export function reviseByFor(versions: SoiVersion[], revisions: EspRevision[], li
 
 /** The form, filled from the listing's records. */
 export function draftFor(input: {
-  property: Pick<Property, "property_type">;
+  property: Pick<Property, "property_type" | "is_strata">;
   allItems: Record<string, PropertyItem | undefined>;
   listing: Comparable[];
   revisions: EspRevision[];
@@ -85,6 +86,7 @@ export function draftFor(input: {
   const previous = [...input.versions].reverse().find((v) => v.content)?.content ?? null;
   return soiDraft({
     propertyType: input.property.property_type ?? null,
+    strataDwelling: isStrataDwelling(input.property.property_type, input.property.is_strata),
     listing: input.listing.map((c) => ({
       address: c.address,
       salePrice: c.salePrice,
@@ -134,7 +136,7 @@ export type SoiView = {
 export async function soiViewFor(
   supabase: SupabaseClient,
   input: {
-    property: Pick<Property, "id" | "agency_id" | "address" | "property_type" | "council_area" | "stage">;
+    property: Pick<Property, "id" | "agency_id" | "address" | "property_type" | "is_strata" | "council_area" | "stage">;
     allItems: Record<string, PropertyItem | undefined>;
     preparedBy: string;
     withdrawn: boolean;

@@ -1,5 +1,14 @@
-import { hasSubjectDetail, proseComparison, type Comparable, type EspFigures, type SubjectAttributes } from "./comparables";
+import {
+  hasSubjectDetail,
+  isStrataSubject,
+  proseComparison,
+  withSubjectStrataLand,
+  type Comparable,
+  type EspFigures,
+  type SubjectAttributes,
+} from "./comparables";
 import { daysOnMarket, longDate, type MarketListing } from "./market-listings";
+import { withStrataLand } from "@/lib/rules/strata-land";
 
 // "Draft my reasoning" on the ESP reasoning card (a4c).
 //
@@ -64,7 +73,10 @@ export type EspDraftUnavailable = {
 export type EspDraft = {
   kind: "draft";
   text: string;
-  /** The three paragraphs separately, so the checks can hold each to its own rules. */
+  /**
+   * The three parts separately, so the checks can hold each to its own rules.
+   * The sales part is itself several short paragraphs.
+   */
   sections: { sales: string; estimate: string; market: string };
   /** The agent's own notes as they appear, quoted, in the text — theirs, not ours. */
   agentQuotes: string[];
@@ -76,9 +88,19 @@ export type EspDraft = {
 };
 
 const MIN_SALES_TO_JUDGE = 2;
+/** Between paragraphs of the draft: a blank line. */
+const PARAGRAPH = "\n\n";
 const MOST_ALIKE = 3;
 
-export function draftEspReasoning(input: EspDraftInput): EspDraftUnavailable | EspDraft {
+export function draftEspReasoning(given: EspDraftInput): EspDraftUnavailable | EspDraft {
+  // On a strata unit, townhouse or duplex, no land size over 500 m² is used
+  // or mentioned: it is likely the whole strata site (Adam, 10 Nov 2026).
+  const input: EspDraftInput = {
+    ...given,
+    subject: withStrataLand(given.subject, isStrataSubject(given.subject)),
+    comparables: withSubjectStrataLand(given.subject, given.comparables),
+    listings: withSubjectStrataLand(given.subject, given.listings),
+  };
   const { esp, subject } = input;
 
   // (a) No estimate, no draft. Nothing here may stand in for the figure.
@@ -120,17 +142,24 @@ export function draftEspReasoning(input: EspDraftInput): EspDraftUnavailable | E
   const others = priced.filter((c) => !drawnIds.has(c.id));
 
   const gaps = notRecorded(subject);
-  const sales =
-    salesParagraph(input, drawn, others, legacyRejected, hasMarks, quote) +
-    (gaps.length > 0
-      ? ` This file doesn't record the listing's ${list(gaps)}, so I haven't compared the sales on ${gaps.length === 1 ? "it" : "them"}.`
-      : "");
+  // Short paragraphs, a blank line between each (Adam, 10 Nov 2026): which
+  // sales, each sale against this property, the others, what wasn't
+  // compared; then the estimate against them, then the competition. The
+  // wording is the same as when it was one block.
+  const sales = [
+    salesParagraph(input, drawn, others, legacyRejected, hasMarks, quote),
+    gaps.length > 0
+      ? `This file doesn't record the listing's ${list(gaps)}, so I haven't compared the sales on ${gaps.length === 1 ? "it" : "them"}.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(PARAGRAPH);
   const { text: estimate, verdict, warning } = estimateParagraph(input, drawn, hasMarks);
   const market = marketParagraph(input, quote);
 
   return {
     kind: "draft",
-    text: [sales, estimate, market].filter(Boolean).join("\n\n"),
+    text: [sales, estimate, market].filter(Boolean).join(PARAGRAPH),
     sections: { sales, estimate, market },
     agentQuotes,
     evidence: verdict,
@@ -162,9 +191,14 @@ function unconfirmedDetails(subject: SubjectAttributes): string | null {
     : `This listing's details aren't recorded yet (${what}). Add them in Edit listing details at the top of the page. The draft compares every sale with them, so it won't guess.`;
 }
 
-/** The confirmed details that are still empty, so the draft can say what it didn't compare. */
+/**
+ * The confirmed details that are still empty, so the draft can say what it
+ * didn't compare. A strata site's land size left out on purpose isn't one.
+ */
 function notRecorded(subject: SubjectAttributes): string[] {
-  return DETAIL_LABELS.filter(([k]) => subject[k] === null).map(([, label]) => label);
+  return DETAIL_LABELS.filter(([k]) => subject[k] === null && !(k === "landSizeSqm" && subject.landSizeHidden)).map(
+    ([, label]) => label,
+  );
 }
 
 // ── Which sales are most alike ──────────────────────────────────────────
@@ -261,12 +295,14 @@ function salesParagraph(
     lines.push(`${lead}${hasMarks && drawn.length > 0 ? parts.join("; ") : capitalise(parts.join(". "))}.`);
   }
 
-  for (const c of legacyRejected) {
+  const rejected = legacyRejected.map((c) => {
     const note = quote(c.agentNote);
-    lines.push(`I didn't treat ${shortAddress(c)} as comparable${note ? `: ${note}` : ""}.`);
-  }
+    return `I didn't treat ${shortAddress(c)} as comparable${note ? `: ${note}` : ""}.`;
+  });
+  if (rejected.length > 0) lines.push(rejected.join(" "));
 
-  return lines.join(" ");
+  // Which sales; then each one drawn on, with how it compares; then the rest.
+  return lines.join(PARAGRAPH);
 }
 
 function saleFacts(c: Comparable, input: EspDraftInput): string {
@@ -535,7 +571,8 @@ function count(n: number): string {
 }
 
 function article(word: string): string {
-  return `${/^[aeiou]/i.test(word) ? "an" : "a"} ${word}`;
+  // "a unit", not "an unit": the u says "you".
+  return `${/^[aeiou]/i.test(word) && !/^uni/i.test(word) ? "an" : "a"} ${word}`;
 }
 
 function shortAddress(c: { address: string }): string {

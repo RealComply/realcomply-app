@@ -52,3 +52,17 @@ export function pdfText(text: string, font: PDFFont): string {
   }
   return out;
 }
+
+/**
+ * Typed text as it was laid out: paragraphs where there is a blank line, and
+ * each line within a paragraph as typed. pdfText joins lines into one, so a
+ * long note in paragraphs (the ESP reasoning, Adam, 10 Nov 2026) is drawn
+ * through this, a line at a time, with a gap between paragraphs.
+ */
+export function paragraphsOf(text: string): string[][] {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split(/\n[ \t]*\n/)
+    .map((p) => p.split("\n").map((l) => l.trim()).filter(Boolean))
+    .filter((p) => p.length > 0);
+}

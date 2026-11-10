@@ -32,6 +32,8 @@ export type MarketListing = {
   bathrooms: number | null;
   carSpaces: number | null;
   landSizeSqm: number | null;
+  /** Over 500 m² on a strata listing: not shown or used (lib/rules/strata-land.ts). */
+  landSizeHidden?: boolean;
   internalAreaSqm: number | null;
   distanceM: number | null;
   propertyType: string | null;

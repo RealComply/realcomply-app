@@ -2,7 +2,7 @@ import { photoNoticeRecordLines, type TenantPhotoData } from "@/lib/rules/tenant
 import { LineCapStyle, PDFDocument, PDFName, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { formatSignedAt } from "./sign-stamp";
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
-import { pdfText } from "./text";
+import { paragraphsOf, pdfText } from "./text";
 import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } from "@/lib/types";
 import {
   NOT_ON_THIS_FILE,
@@ -430,6 +430,8 @@ export type ComparableForRecord = {
   agentNote: string | null;
   /** Where it sits against the search area, and why it's one of the 3 most comparable (Reg s12D, s12F; 0119). */
   ruleLines?: string[];
+  /** Figures changed by hand, with what the report said: "Changed by Ana Agent, 10 November 2026: …" (0123). */
+  changeLines?: string[];
 };
 
 export type MarketListingForRecord = {
@@ -773,6 +775,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         c.text(comp.agentNote.trim(), { size: 8.5, color: MUTED, indent: 12 });
       }
       for (const line of comp.ruleLines ?? []) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+      for (const line of comp.changeLines ?? []) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
       c.y -= 4;
     }
     c.text(
@@ -850,7 +853,12 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
   } else if (espReasoning && espReasoning.trim()) {
     c.rule(6, 10);
     c.text("How the estimated selling price was formed", { size: 11, bold: true, gap: 4 });
-    c.text(espReasoning.trim(), { size: 9.5, color: MUTED, gap: 2 });
+    // In its paragraphs, a blank line between each, as on the card.
+    const paragraphs = paragraphsOf(espReasoning);
+    paragraphs.forEach((lines, i) => {
+      for (const line of lines) c.text(line, { size: 9.5, color: MUTED });
+      c.y -= i < paragraphs.length - 1 ? 7 : 2;
+    });
     c.text("In the agent's own words. s72A, Property and Stock Agents Act 2002 (NSW).", {
       size: 8,
       color: FAINT,

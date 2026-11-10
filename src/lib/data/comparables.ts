@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isStrataDwelling, withStrataLand } from "@/lib/rules/strata-land";
+import { changeLinesBySale, type ComparableChange } from "@/lib/rules/comparable-changes";
 
 // Comparable sales, and the subject property they are compared against.
 //
@@ -30,6 +32,12 @@ export type Comparable = {
   bathrooms: number | null;
   carSpaces: number | null;
   landSizeSqm: number | null;
+  /**
+   * Over 500 m² on a strata listing (Adam, 10 Nov 2026): not shown or used,
+   * and landSizeSqm is null in its place. The column keeps what was read.
+   * lib/rules/strata-land.ts.
+   */
+  landSizeHidden?: boolean;
   internalAreaSqm: number | null;
   distanceM: number | null;
   propertyType: string | null;
@@ -44,6 +52,12 @@ export type Comparable = {
   mostComparable: boolean;
   mostComparableReason: string | null;
   comparisonFactors: string[];
+  /**
+   * Figures changed by hand with "Edit details", as the record says them:
+   * "Changed by Ana Agent, 10 November 2026: land size 650 m² (read from
+   * report) to 210 m²" (0123). Oldest first; empty or absent when none.
+   */
+  changes?: string[];
 };
 
 /**
@@ -62,6 +76,8 @@ export type SubjectAttributes = {
   bathrooms: number | null;
   carSpaces: number | null;
   landSizeSqm: number | null;
+  /** The listing's own land size is over 500 m² and it is on strata: not shown or used. */
+  landSizeHidden?: boolean;
   internalAreaSqm: number | null;
   conditionNote: string | null;
   /** The listing's address as typed, so a sale in the same block can be spotted. */
@@ -70,6 +86,8 @@ export type SubjectAttributes = {
   addressSuburb: string | null;
   /** properties.property_type ("House", "Unit"…), for "Draft my reasoning". */
   propertyType?: string | null;
+  /** properties.is_strata: the Strata or community title answer. */
+  isStrata?: boolean | null;
   /** What extraction read, awaiting confirmation. Null once confirmed or if never read. */
   suggestions: Partial<Omit<SubjectAttributes, "suggestions" | "confirmedAt">> | null;
   confirmedAt: string | null;
@@ -115,21 +133,76 @@ export async function comparablesFor(
   return ((data ?? []) as Array<Record<string, unknown>>).map(toComparable);
 }
 
+/** Every figure changed by hand on this listing's sales (0123). Empty until 0123 is run. */
+export async function comparableChangesFor(supabase: SupabaseClient, propertyId: string): Promise<ComparableChange[]> {
+  const { data, error } = await supabase
+    .from("property_comparable_changes")
+    .select("comparable_id, field, old_value, new_value, was_from_report, changed_by_name, changed_at")
+    .eq("property_id", propertyId)
+    .order("changed_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    comparableId: String(r.comparable_id),
+    field: String(r.field),
+    oldValue: (r.old_value as string | null) ?? null,
+    newValue: (r.new_value as string | null) ?? null,
+    wasFromReport: r.was_from_report === true,
+    changedByName: String(r.changed_by_name ?? ""),
+    changedAt: String(r.changed_at),
+  }));
+}
+
+/** Each sale with its changes, as the record says them. */
+export function withChangeLines<T extends { id: string }>(rows: T[], changes: ComparableChange[]): Array<T & { changes: string[] }> {
+  const lines = changeLinesBySale(changes);
+  return rows.map((r) => ({ ...r, changes: lines.get(r.id) ?? [] }));
+}
+
 export function subjectAttributesFrom(row: Record<string, unknown> | null): SubjectAttributes {
-  const suggestions = (row?.attribute_suggestions ?? null) as SubjectAttributes["suggestions"];
+  const propertyType = (row?.property_type as string) ?? null;
+  const isStrata = typeof row?.is_strata === "boolean" ? row.is_strata : null;
+  const strata = isStrataDwelling(propertyType, isStrata);
+  const read = (row?.attribute_suggestions ?? null) as SubjectAttributes["suggestions"];
+  // A whole-site figure the report suggests is not offered either, so "Use
+  // these details" can't make it the listing's own.
+  const suggestions = read && read.landSizeSqm !== undefined ? withStrataLand({ ...read, landSizeSqm: read.landSizeSqm ?? null }, strata) : read;
   return {
-    bedrooms: numeric(row?.bedrooms),
-    bathrooms: numeric(row?.bathrooms),
-    carSpaces: numeric(row?.car_spaces),
-    landSizeSqm: numeric(row?.land_size_sqm),
-    internalAreaSqm: numeric(row?.internal_area_sqm),
+    ...withStrataLand(
+      {
+        bedrooms: numeric(row?.bedrooms),
+        bathrooms: numeric(row?.bathrooms),
+        carSpaces: numeric(row?.car_spaces),
+        landSizeSqm: numeric(row?.land_size_sqm),
+        internalAreaSqm: numeric(row?.internal_area_sqm),
+      },
+      strata,
+    ),
     conditionNote: (row?.condition_note as string) ?? null,
     address: (row?.address as string) ?? null,
     addressSuburb: suburbOf(String(row?.address ?? "")),
-    propertyType: (row?.property_type as string) ?? null,
+    propertyType,
+    isStrata,
     suggestions,
     confirmedAt: (row?.attributes_confirmed_at as string) ?? null,
   };
+}
+
+/** A unit, townhouse or duplex on strata: land over 500 m² is not shown or used. */
+export function isStrataSubject(subject: Pick<SubjectAttributes, "propertyType" | "isStrata">): boolean {
+  return isStrataDwelling(subject.propertyType, subject.isStrata);
+}
+
+/**
+ * Sales or on-market listings as the card, the comparison and the draft see
+ * them against this listing: on a strata listing, a land size over 500 m² is
+ * null and marked hidden (lib/rules/strata-land.ts). Safe to apply twice.
+ */
+export function withSubjectStrataLand<T extends { landSizeSqm: number | null; landSizeHidden?: boolean }>(
+  subject: Pick<SubjectAttributes, "propertyType" | "isStrata">,
+  rows: T[],
+): T[] {
+  const strata = isStrataSubject(subject);
+  return strata ? rows.map((r) => withStrataLand(r, true)) : rows;
 }
 
 /** True when we know enough about the subject to compare anything against it. */

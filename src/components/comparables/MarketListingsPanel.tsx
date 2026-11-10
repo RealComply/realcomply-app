@@ -13,6 +13,7 @@ import {
   type ListingActionState,
 } from "@/lib/actions/market-listings";
 import { differencesFrom, similaritiesFrom, hasSubjectDetail, type SubjectAttributes } from "@/lib/data/comparables";
+import { STRATA_LAND_NOT_SHOWN } from "@/lib/rules/strata-land";
 import {
   daysOnMarket,
   onMarketHeading,
@@ -49,6 +50,8 @@ function spec(l: MarketListing): string {
   if (l.bathrooms !== null) bits.push(`${l.bathrooms} bath`);
   if (l.carSpaces !== null) bits.push(`${l.carSpaces} car`);
   if (l.landSizeSqm !== null) bits.push(`${Math.round(l.landSizeSqm)}m² land`);
+  // Over 500 m² on a strata listing: said, never shown (lib/rules/strata-land.ts).
+  else if (l.landSizeHidden) bits.push(STRATA_LAND_NOT_SHOWN);
   return bits.join(" · ");
 }
 

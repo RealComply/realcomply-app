@@ -1,7 +1,7 @@
 "use client";
 
 import { useViewerAccess } from "@/components/ViewerAccess";
-import { useActionState, useContext, useState, useTransition } from "react";
+import { useActionState, useContext, useState, useTransition, type FormEvent } from "react";
 import { Plus, X, Check, Star } from "lucide-react";
 import {
   ComparablesRecordForm,
@@ -11,6 +11,8 @@ import {
   type ComparablesArea,
 } from "@/components/comparables/MostComparable";
 import type { ComparablesRecord } from "@/lib/rules/comparables-rules";
+import { STRATA_LAND_NOT_SHOWN } from "@/lib/rules/strata-land";
+import { DETAIL_FIELDS, type DetailKey } from "@/lib/rules/comparable-changes";
 import { DictateButton, DictationSuspended, appendDictated } from "@/components/Dictate";
 import {
   addComparable,
@@ -18,6 +20,7 @@ import {
   removeComparable,
   setComparableNote,
   setComparableWeighting,
+  updateComparableDetails,
   type ComparableActionState,
 } from "@/lib/actions/comparables";
 import {
@@ -87,6 +90,8 @@ function spec(c: Comparable): string {
   if (c.bathrooms !== null) bits.push(`${c.bathrooms} bath`);
   if (c.carSpaces !== null) bits.push(`${c.carSpaces} car`);
   if (c.landSizeSqm !== null) bits.push(`${Math.round(c.landSizeSqm)}m² land`);
+  // Over 500 m² on a strata listing: said, never shown (lib/rules/strata-land.ts).
+  else if (c.landSizeHidden) bits.push(STRATA_LAND_NOT_SHOWN);
   return bits.join(" · ");
 }
 
@@ -227,6 +232,7 @@ function suggestedSpec(s: SubjectAttributes["suggestions"]): string {
   if (s?.bathrooms != null) bits.push(`${s.bathrooms} bath`);
   if (s?.carSpaces != null) bits.push(`${s.carSpaces} car`);
   if (s?.landSizeSqm != null) bits.push(`${Math.round(s.landSizeSqm)}m² land`);
+  else if (s?.landSizeHidden) bits.push(STRATA_LAND_NOT_SHOWN.charAt(0).toLowerCase() + STRATA_LAND_NOT_SHOWN.slice(1));
   return bits.join(", ") || "nothing it could read";
 }
 
@@ -316,6 +322,7 @@ function ComparableRow({
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState(comparable.agentNote ?? "");
   const [savedNote, setSavedNote] = useState(comparable.agentNote ?? "");
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const similar = similaritiesFrom(subject, comparable);
@@ -439,6 +446,22 @@ function ComparableRow({
           {comparable.source === "agent" && (
             <p className="mt-0.5 text-[11px] text-rc-faint">Added by you, not from the report.</p>
           )}
+          {/* What was changed by hand, with what the report said (0123). */}
+          {(comparable.changes ?? []).map((line) => (
+            <p key={line} className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
+              {line}
+            </p>
+          ))}
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label={`Edit details of ${comparable.address}`}
+              className="mt-0.5 text-[11px] font-semibold text-rc-muted underline underline-offset-2 transition hover:text-rc-ink"
+            >
+              Edit details
+            </button>
+          )}
           {area?.applies && <WindowTag comparable={comparable} area={area} />}
         </div>
         {/* Only the licensee removes a row (Adam, 9 Oct 2026). */}
@@ -455,6 +478,8 @@ function ComparableRow({
           </button>
         )}
       </div>
+
+      {editing && <EditComparableDetails propertyId={propertyId} comparable={comparable} onDone={() => setEditing(false)} />}
 
       {/* Adam's two columns, 7 Sep 2026. Both sides are the same arithmetic —
           "about the same land" is a measurement within a tolerance and
@@ -599,6 +624,105 @@ function ComparableRow({
       </DictationSuspended.Provider>
       </div>
     </div>
+  );
+}
+
+// ── Edit a sale's details (Adam, 10 Nov 2026; 0123) ─────────────────────
+//
+// Bedrooms, bathrooms, parking, land size, floor area, sold price and sale
+// date. Only what the person changes is sent. What the report said is kept:
+// the database records each change, and the line above says it. A land size
+// not shown on a strata listing starts empty, and stays as it was unless a
+// figure is typed in.
+
+function editableValues(c: Comparable): Record<DetailKey, string> {
+  const n = (v: number | null) => (v === null ? "" : v.toLocaleString("en-AU", { maximumFractionDigits: 2 }));
+  return {
+    bedrooms: n(c.bedrooms),
+    bathrooms: n(c.bathrooms),
+    carSpaces: n(c.carSpaces),
+    landSizeSqm: n(c.landSizeSqm),
+    internalAreaSqm: n(c.internalAreaSqm),
+    salePrice: n(c.salePrice),
+    saleDate: c.saleDate ? c.saleDate.slice(0, 10) : "",
+  };
+}
+
+function EditComparableDetails({
+  propertyId,
+  comparable,
+  onDone,
+}: {
+  propertyId: string;
+  comparable: Comparable;
+  onDone: () => void;
+}) {
+  const [initial] = useState(() => editableValues(comparable));
+  const [values, setValues] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function save(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const changed = Object.fromEntries(
+      DETAIL_FIELDS.filter((f) => values[f.key].trim() !== initial[f.key].trim()).map((f) => [f.key, values[f.key]]),
+    );
+    if (Object.keys(changed).length === 0) {
+      onDone();
+      return;
+    }
+    startTransition(async () => {
+      const result = await updateComparableDetails(propertyId, comparable.id, changed);
+      if (result.error) setError(result.error);
+      else onDone();
+    });
+  }
+
+  return (
+    <form onSubmit={save} className="mt-2 rounded-md border border-rc-border bg-rc-bg-alt px-2.5 py-2">
+      <p className="text-[11px] font-semibold text-rc-ink">Edit details</p>
+      <p className="mt-0.5 text-[11px] leading-relaxed text-rc-muted">
+        {comparable.source === "report"
+          ? "Correct anything the report got wrong. What the report said is kept on the record, with your name and the date."
+          : "Change what was typed. What it said before is kept on the record, with your name and the date."}
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {DETAIL_FIELDS.map((f) => (
+          <label key={f.key} className="block text-[11px] font-medium text-rc-muted">
+            {f.label}
+            <input
+              type={f.key === "saleDate" ? "date" : "text"}
+              inputMode={f.key === "saleDate" ? undefined : f.key === "bedrooms" || f.key === "bathrooms" || f.key === "carSpaces" ? "numeric" : "decimal"}
+              name={f.key}
+              value={values[f.key]}
+              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              className="mt-1 w-full min-w-0 rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm text-rc-ink"
+            />
+            {f.key === "landSizeSqm" && comparable.landSizeHidden && !values.landSizeSqm.trim() && (
+              <span className="mt-0.5 block text-[10px] font-normal text-rc-faint">{STRATA_LAND_NOT_SHOWN}</span>
+            )}
+          </label>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-full bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rc-green-deep-600 disabled:opacity-60"
+        >
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button type="button" onClick={onDone} disabled={pending} className="text-[11px] font-semibold text-rc-muted hover:text-rc-ink">
+          Cancel
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1.5 text-[11px] font-medium text-rc-amber-deep">
+          {error}
+        </p>
+      )}
+    </form>
   );
 }
 

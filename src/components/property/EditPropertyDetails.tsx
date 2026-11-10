@@ -10,6 +10,7 @@ import { PropertyFigures } from "@/components/property/PropertyFigures";
 import { DeletePropertySection } from "@/components/compliance/DeletePropertySection";
 import { CouncilAreaSelect } from "@/components/property/CouncilArea";
 import { COUNCIL_AREA_LABEL, areaName, areaOf } from "@/lib/rules/council-area";
+import { STRATA_LAND_FORM_NOTE, isStrataDwelling, strataLandHidden } from "@/lib/rules/strata-land";
 
 // Edit the setup answers on an existing listing.
 //
@@ -199,6 +200,14 @@ export function EditPropertyDetails({
                 carSpaces: property.car_spaces ?? null,
                 landSizeSqm: property.land_size_sqm ?? null,
               }}
+              landNote={
+                strataLandHidden(
+                  property.land_size_sqm === null || property.land_size_sqm === undefined ? null : Number(property.land_size_sqm),
+                  isStrataDwelling(property.property_type, property.is_strata),
+                )
+                  ? STRATA_LAND_FORM_NOTE
+                  : null
+              }
             />
           </div>
 
