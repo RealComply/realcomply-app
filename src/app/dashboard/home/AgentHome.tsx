@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Building2, ClipboardCheck, FileWarning, IdCard, PenLine } from "lucide-react";
 import type { createClient } from "@/lib/supabase/server";
+import { sgChangesToSign } from "@/lib/data/sg-document";
+import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { ownWork, readsBeyondOwnWork } from "@/lib/data/listing-access";
 import type { Access } from "@/lib/access";
@@ -57,6 +59,8 @@ export async function AgentHome({
   sgDraft?: { fileName: string; fromFileOnRecord: boolean } | null;
 }) {
   const cpdYear = currentCpdYear();
+  // Changes to the supervision guidelines this person hasn't signed (0125).
+  const sgChanges = await sgChangesToSign(supabase, profile.id);
 
   // Every query here goes through the signed-in person's own rules (0058):
   // their listings (or their agents', for an assistant), their CPD, the
@@ -143,6 +147,9 @@ export async function AgentHome({
         {sgReadShows && <SgReadCard />}
 
         {sgDraft && <SgDraftReadyCard fileName={sgDraft.fileName} fromFileOnRecord={sgDraft.fromFileOnRecord} />}
+
+        {/* Changes to the supervision guidelines to sign (Adam's mockup, screen 6; 0125). */}
+        <SgChangesToSign changes={sgChanges} />
 
         <UnopenedSignoffLinks nudges={signoffNudges} />
         <AnnexureLinkCard status={annexureWaiting} />

@@ -8,7 +8,11 @@ import { SgReadingCard } from "@/components/sg/SgReadingCard";
 import { SgDraftReview } from "@/components/sg/SgDraftReview";
 import { SgReadFailedCard } from "@/components/sg/SgReadFailedCard";
 import { SgLiveDocument } from "@/components/sg/SgLiveDocument";
-import { sgDocumentsFor } from "@/lib/data/sg-document";
+import { sgAmendmentSigners, sgAmendmentsFor, sgDocumentsFor, sgSavedDocuments } from "@/lib/data/sg-document";
+import { SgChangeLog } from "@/components/sg/SgChangeLog";
+import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
+import { signedOf, todayInSydney } from "@/lib/sg-document/amendments";
+import { changeLogRows, nextReviewDue } from "@/lib/sg-document/change-log";
 import { sgReadGapLines } from "@/lib/sg-document/checks";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
@@ -44,10 +48,23 @@ export default async function SgManualPage() {
     agencyPeople(supabase),
     supabase.from("signoff_documents").select("*").eq("category", "sg_manual").order("created_at", { ascending: false }),
     supabase.from("signoff_signatures").select("*"),
-    supabase.from("agencies").select("aml_precommencement_enabled").eq("id", profile.agency_id).maybeSingle(),
+    supabase.from("agencies").select("aml_precommencement_enabled, created_at").eq("id", profile.agency_id).maybeSingle(),
     sgDocumentsFor(supabase),
   ]);
   const open = access.runsOffice ? sg.open : null;
+
+  // Part 2 (0125): the live document's quick amendments, who has signed each,
+  // every document saved, for the change log, and when the next review is due
+  // (2.1.2: at least every 12 months).
+  const [amendments, savedDocs] = await Promise.all([
+    sg.live ? sgAmendmentsFor(supabase, sg.live.doc.id) : Promise.resolve([]),
+    sgSavedDocuments(supabase),
+  ]);
+  const approvedAmendments = amendments.filter((a) => a.status === "approved");
+  const signers = await sgAmendmentSigners(
+    supabase,
+    approvedAmendments.map((a) => a.id),
+  );
 
   // Who still needs to sign or read, for the reminder card (0093): the
   // licensee or an office manager only.
@@ -61,6 +78,7 @@ export default async function SgManualPage() {
   );
 
   const current = versions[0];
+  const staffIds = staff.filter((s) => !s.archived_at).map((s) => s.id);
 
   // Matched by file_path rather than a formal FK — the signoff row is
   // created from the same upload, in the same request, right after this one.
@@ -82,6 +100,32 @@ export default async function SgManualPage() {
           .data?.signedUrl ?? null
       : signedUrls[versions.findIndex((v) => v.file_path === currentSignoff.file_path)]?.data?.signedUrl ?? null
     : null;
+
+  // Each saved version's sign-off: its file's sign-off document (0009), matched by path.
+  const versionSigned = (manualVersionId: string | null) => {
+    const file = versions.find((v) => v.id === manualVersionId)?.file_path;
+    const doc = file ? signoffDocs.find((d) => d.file_path === file) : undefined;
+    if (!doc) return null;
+    const sigs = signoffSigs.filter((x) => x.document_id === doc.id);
+    return { signed: sigs.filter((x) => x.signed_at).length, of: sigs.length };
+  };
+  const logRows = changeLogRows(
+    savedDocs.map((d) => ({ ...d, signed: versionSigned(d.manualVersionId) })),
+    sg.live
+      ? approvedAmendments.map((a) => ({
+          amendment: a,
+          document: { docType: sg.live!.doc.docType, versionLabel: sg.live!.doc.versionLabel },
+          signed: signedOf(signers.get(a.id) ?? [], staffIds),
+        }))
+      : [],
+  );
+  const reviewDue = sg.live
+    ? nextReviewDue((agency as { created_at?: string } | null)?.created_at ?? null, [
+        ...savedDocs.map((d) => d.savedAt),
+        ...approvedAmendments.map((a) => a.approvedAt),
+      ])
+    : null;
+  const myChanges = approvedAmendments.filter((a) => !(signers.get(a.id) ?? []).includes(profile.id));
 
   return (
     <>
@@ -130,9 +174,15 @@ export default async function SgManualPage() {
           </div>
         )}
 
+        <SgChangesToSign changes={myChanges} />
+
         {sg.live && (
           <div className="mt-8">
             <SgLiveDocument
+              documentId={sg.live.doc.id}
+              amendments={amendments}
+              nextReviewDue={reviewDue}
+              today={todayInSydney()}
               docType={sg.live.doc.docType}
               versionLabel={sg.live.doc.versionLabel}
               savedAt={sg.live.doc.savedAt}
@@ -141,6 +191,12 @@ export default async function SgManualPage() {
               canUpload={access.runsOffice}
               gaps={sgReadGapLines(sg.live.doc.checks)}
             />
+          </div>
+        )}
+
+        {sg.live && logRows.length > 0 && (
+          <div className="mt-8">
+            <SgChangeLog rows={logRows} />
           </div>
         )}
 

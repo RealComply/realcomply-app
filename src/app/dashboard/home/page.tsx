@@ -22,7 +22,8 @@ import { ComplaintsWidget } from "@/components/home/ComplaintsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgManualWidget } from "@/components/home/SgManualWidget";
 import { SgDraftReadyCard } from "@/components/home/SgDraftReadyCard";
-import { sgDraftWaiting } from "@/lib/data/sg-document";
+import { sgChangesToSign, sgDraftWaiting } from "@/lib/data/sg-document";
+import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
 import { AnnexureCard } from "@/components/home/AnnexureCard";
 import { FairTradingCard, NewLicenseeAnnexureCard } from "@/components/home/LicenseeChangeCards";
 import { fairTradingDueSentence, fairTradingReminder, type LicenseeHistoryLine } from "@/lib/licensee-history";
@@ -105,6 +106,8 @@ export default async function HomeDashboardPage({
   const cpdYear = currentCpdYear();
   // The supervision guidelines read into a draft, waiting to be checked (Master, 10 Nov 2026).
   const sgDraft = await sgDraftWaiting(supabase);
+  // Changes to the supervision guidelines this person hasn't signed (0125).
+  const sgChanges = await sgChangesToSign(supabase, profile.id);
 
   // Until the annexure is adopted (brief, 14 Oct 2026), the Home of an
   // office's licensee in charge asks for it. Shown only on a clean read that
@@ -386,6 +389,7 @@ export default async function HomeDashboardPage({
               there is something in it, so an office with no assistants never
               sees it. */}
           {sgDraft && <SgDraftReadyCard fileName={sgDraft.fileName} fromFileOnRecord={sgDraft.fromFileOnRecord} />}
+          <SgChangesToSign changes={sgChanges} />
 
           {awaitingMyReview.length > 0 && (
             <section className="mt-6 rounded-card border border-rc-amber-deep/25 bg-rc-amber/10 px-4 py-3.5">
