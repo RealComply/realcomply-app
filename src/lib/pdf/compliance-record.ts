@@ -430,6 +430,8 @@ export type ComparableForRecord = {
   agentNote: string | null;
   /** Where it sits against the search area, and why it's one of the 3 most comparable (Reg s12D, s12F; 0119). */
   ruleLines?: string[];
+  /** Figures changed by hand, with what the report said: "Changed by Ana Agent, 10 November 2026: …" (0123). */
+  changeLines?: string[];
 };
 
 export type MarketListingForRecord = {
@@ -773,6 +775,7 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
         c.text(comp.agentNote.trim(), { size: 8.5, color: MUTED, indent: 12 });
       }
       for (const line of comp.ruleLines ?? []) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
+      for (const line of comp.changeLines ?? []) c.text(line, { size: 8.5, color: MUTED, indent: 12 });
       c.y -= 4;
     }
     c.text(

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isStrataDwelling, withStrataLand } from "@/lib/rules/strata-land";
+import { changeLinesBySale, type ComparableChange } from "@/lib/rules/comparable-changes";
 
 // Comparable sales, and the subject property they are compared against.
 //
@@ -51,6 +52,12 @@ export type Comparable = {
   mostComparable: boolean;
   mostComparableReason: string | null;
   comparisonFactors: string[];
+  /**
+   * Figures changed by hand with "Edit details", as the record says them:
+   * "Changed by Ana Agent, 10 November 2026: land size 650 m² (read from
+   * report) to 210 m²" (0123). Oldest first; empty or absent when none.
+   */
+  changes?: string[];
 };
 
 /**
@@ -124,6 +131,31 @@ export async function comparablesFor(
     .order("created_at", { ascending: true });
 
   return ((data ?? []) as Array<Record<string, unknown>>).map(toComparable);
+}
+
+/** Every figure changed by hand on this listing's sales (0123). Empty until 0123 is run. */
+export async function comparableChangesFor(supabase: SupabaseClient, propertyId: string): Promise<ComparableChange[]> {
+  const { data, error } = await supabase
+    .from("property_comparable_changes")
+    .select("comparable_id, field, old_value, new_value, was_from_report, changed_by_name, changed_at")
+    .eq("property_id", propertyId)
+    .order("changed_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    comparableId: String(r.comparable_id),
+    field: String(r.field),
+    oldValue: (r.old_value as string | null) ?? null,
+    newValue: (r.new_value as string | null) ?? null,
+    wasFromReport: r.was_from_report === true,
+    changedByName: String(r.changed_by_name ?? ""),
+    changedAt: String(r.changed_at),
+  }));
+}
+
+/** Each sale with its changes, as the record says them. */
+export function withChangeLines<T extends { id: string }>(rows: T[], changes: ComparableChange[]): Array<T & { changes: string[] }> {
+  const lines = changeLinesBySale(changes);
+  return rows.map((r) => ({ ...r, changes: lines.get(r.id) ?? [] }));
 }
 
 export function subjectAttributesFrom(row: Record<string, unknown> | null): SubjectAttributes {

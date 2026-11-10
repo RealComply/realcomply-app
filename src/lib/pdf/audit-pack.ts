@@ -22,7 +22,8 @@ import {
   type LoadedDocument,
   type ComplaintForRecord,
 } from "@/lib/pdf/compliance-record";
-import { comparablesFor } from "@/lib/data/comparables";
+import { comparableChangesFor, comparablesFor } from "@/lib/data/comparables";
+import { changeLinesBySale } from "@/lib/rules/comparable-changes";
 import { marketListingsFor } from "@/lib/data/market-listings";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
 import { linkRequestNeedingTime, signatureOnCard } from "@/lib/rules/listing-signature";
@@ -359,7 +360,9 @@ export async function buildAuditPack(
   // 0119): the search area for metro or not, counted back from the date the
   // ESP was worked out; and on the card, the 3 most comparable, fewer than 3
   // and the information used, where the rules apply or anything was recorded.
-  const comparables = await comparablesFor(supabase, id);
+  const [comparables, comparableChanges] = await Promise.all([comparablesFor(supabase, id), comparableChangesFor(supabase, id)]);
+  // What was changed by hand on each sale, with what the report said (0123).
+  const changeLines = changeLinesBySale(comparableChanges);
   const comparablesKind = areaOf(p.council_area);
   const comparablesAsAt = espDeterminedOn({
     espGivenOn: (byKey["a4"]?.data as { espGivenOn?: unknown } | undefined)?.espGivenOn,
@@ -441,6 +444,7 @@ export async function buildAuditPack(
       weighting: c.weighting,
       agentNote: c.agentNote,
       ruleLines: comparablesApply ? saleRecordLines(c, comparablesKind, comparablesAsAt) : [],
+      changeLines: changeLines.get(c.id) ?? [],
     })),
     comparablesLines,
     soiLines,

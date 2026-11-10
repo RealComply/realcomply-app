@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import type { Weighting } from "@/lib/data/comparables";
 import { MAX_MOST_COMPARABLE, MOST_COMPARABLE_REASON_MISSING, factorsFrom } from "@/lib/rules/comparables-rules";
+import { DETAIL_FIELDS, isDetailKey, parseDetail } from "@/lib/rules/comparable-changes";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 
 // Everything the AGENT does to the comparables. Extraction writes the facts
 // (see extraction.ts); this file writes the judgement.
@@ -114,6 +116,53 @@ export async function setComparableNote(
     .eq("property_id", propertyId);
 
   if (error) return { error: "Couldn't save that note. Try again." };
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return { error: null };
+}
+
+/**
+ * Edit a comparable's details (Adam, 10 Nov 2026; 0123): bedrooms,
+ * bathrooms, parking, land size, floor area, sold price and sale date.
+ *
+ * Only the figures the person changed are sent and written. What the report
+ * said is kept: the database records each change, with who and when, and the
+ * card and the compliance record say it. The edited figures are used from
+ * then on, the drafted reasoning included. Facts, not judgement: a person
+ * correcting what the report read, never a model.
+ */
+export async function updateComparableDetails(
+  propertyId: string,
+  comparableId: string,
+  changed: Record<string, string>,
+): Promise<ComparableActionState> {
+  const { supabase } = await requireAuthContext();
+  const today = sydneyDate(new Date());
+
+  const patch: Record<string, number | string | null> = {};
+  for (const [key, typed] of Object.entries(changed ?? {})) {
+    if (!isDetailKey(key) || typeof typed !== "string") return { error: "Something didn't come through. Reload the page and try again." };
+    const parsed = parseDetail(key, typed, today);
+    if ("error" in parsed) return { error: parsed.error };
+    const column = DETAIL_FIELDS.find((f) => f.key === key)?.column as string;
+    patch[column] = parsed.value;
+  }
+  if (Object.keys(patch).length === 0) return { error: null };
+
+  const { data, error } = await supabase
+    .from("property_comparables")
+    .update(patch)
+    .eq("id", comparableId)
+    .eq("property_id", propertyId)
+    .select("id");
+
+  if (error) {
+    // The database's own plain sentence where it gives one (a signed-off
+    // file, an office whose subscription has ended).
+    const m = (error.message ?? "").trim();
+    return { error: /^(Only |This agency)/.test(m) ? m : "Couldn't save the changes. Try again." };
+  }
+  if (!data || data.length === 0) return { error: "That sale isn't on this listing any more. Reload the page." };
 
   revalidatePath(`/dashboard/${propertyId}`);
   return { error: null };
