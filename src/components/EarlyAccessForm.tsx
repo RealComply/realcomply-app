@@ -223,7 +223,6 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
           removed, and the Privacy policy link now serves as this form's
           collection notice. Same tab, same text style as the line. */}
       <p className={`mt-3 text-sm leading-relaxed ${dark ? "text-rc-ink-muted" : "text-rc-muted"}`}>
-        Card needed to start your trial.{" "}
         <Link href="/privacy" className={`whitespace-nowrap underline underline-offset-2 ${dark ? "hover:text-white" : "hover:text-rc-ink"}`}>
           Privacy policy
         </Link>
