@@ -173,11 +173,13 @@ export const NAV_GROUPS: NavGroup[] = [
     links: [
       {
         href: "/dashboard/sg-manual",
-        label: "SG Manual",
+        // Adam's mockup, 6 Nov 2026: the page is "Supervision guidelines and
+        // operational procedures", shortened here. Was "SG Manual".
+        label: "Supervision guidelines",
         Icon: BookOpen,
         // Read only for anyone but the licensee.
         assistantSees: true,
-        keywords: ["supervision guidelines", "policies", "manual"],
+        keywords: ["sg manual", "operational procedures", "policies", "manual"],
       },
       { href: "/dashboard/team", label: "Team", Icon: Users, keywords: ["staff", "agents", "invite"] },
       // Last in the last group, deliberately. Billing is looked for when
