@@ -15,7 +15,7 @@
 -- Fair Trading's Supervision Guidelines 2.1.2: operational procedures
 -- "should be reviewed and appropriately revised at least every 12 months".
 -- An approved amendment counts as a revision: the app works the next review
--- date out from the latest one (lib/sg-document/review.ts); part 4 sends the
+-- date out from the latest one (lib/sg-document/change-log.ts); part 4 sends the
 -- reminders.
 --
 -- Who can do what:
