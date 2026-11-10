@@ -332,3 +332,33 @@ describe("who each complaint action lets through", () => {
     assert.match(body(registers, "signOffComplaint"), /if \(!access\.officeLicensee\) return \{ error:/);
   });
 });
+
+// Master, 10 Nov 2026: "clearer tile labels with 'Change' for the licensee",
+// and files on the new complaint form.
+describe("the complaints tiles and the new complaint form", () => {
+  it("the licensee sees Change on the resolution target; an office manager doesn't", () => {
+    const lee = panel(true);
+    assert.ok(lee.includes("Resolution target") && lee.includes("30 days") && lee.includes(">Change<"));
+    const max = panel(false);
+    assert.ok(max.includes("Resolution target") && max.includes("30 days"));
+    assert.ok(!max.includes(">Change<"));
+  });
+
+  it("the tiles say what they count, with the days in words", () => {
+    const html = panel(true);
+    for (const words of ["Not yet resolved", "Resolved to date", "Open longer than 30 days", "Since it was received"]) {
+      assert.ok(html.includes(words), words);
+    }
+    assert.ok(!/>\d+d</.test(html), "no bare 'd' for days");
+  });
+
+  it("the new complaint form logs it, then attaches the files chosen on it", () => {
+    const src = readFileSync(new URL("./ComplaintsPanel.tsx", import.meta.url), "utf8");
+    const start = src.indexOf("async function logComplaint(");
+    const fn = src.slice(start, src.indexOf("\n  }\n", start));
+    assert.ok(fn.indexOf("addComplaint(") < fn.indexOf("uploadEvidenceObject("), "logged first");
+    assert.match(fn, /buildComplaintFilePath\(viewerProfile\.agency_id, res\.complaintId, f\.name\)/);
+    assert.match(fn, /addComplaintFile\(res\.complaintId, path, up\.file\.name\)/);
+    assert.match(src, /Not attached yet: /);
+  });
+});

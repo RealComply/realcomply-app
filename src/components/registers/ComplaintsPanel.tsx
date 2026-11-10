@@ -1,18 +1,20 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
-import { addComplaint, updateComplaintStatus, deleteComplaint, type ActionState } from "@/lib/actions/registers";
-import { useOnSaved } from "@/lib/use-on-saved";
+import { addComplaint, setComplaintTargetDays, updateComplaintStatus, deleteComplaint } from "@/lib/actions/registers";
+import { addComplaintFile } from "@/lib/actions/complaint-files";
 import { formatAuDate } from "@/lib/format-date";
-import { Paperclip } from "lucide-react";
-import { complaintFilesFor, filesToggleLabel } from "@/lib/complaint-files";
+import { AlertTriangle, Paperclip, X } from "lucide-react";
+import { FileDropZone } from "@/components/FileDropZone";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { buildComplaintFilePath, uploadEvidenceObject } from "@/lib/storage/evidence";
+import { complaintFilesFor, fileSizeLabel, filesToggleLabel } from "@/lib/complaint-files";
+import { MAX_COMPLAINT_TARGET_DAYS, complaintTiles, targetDaysProblem, type ComplaintTile } from "@/lib/complaint-tiles";
 import { ComplaintFiles } from "@/components/registers/ComplaintFiles";
 import { ComplaintSignOff } from "@/components/registers/ComplaintSignOff";
 import { complaintAwaitsSignOff, complaintRecordLines } from "@/lib/reviews/records";
 import type { Complaint, ComplaintFile, Profile, Property } from "@/lib/types";
-
-const initialState: ActionState = { error: null };
 
 const STATUS_STYLES: Record<string, string> = {
   open: "bg-red-100 text-red-700",
@@ -92,8 +94,47 @@ export function ComplaintsPanel({
       else next.add(id);
       return next;
     });
-  const [state, formAction, pending] = useActionState(addComplaint, initialState);
-  useOnSaved(pending, state.error, () => setAdding(false));
+  // The new complaint form (Master, 10 Nov 2026: "attach files on the new
+  // complaint form"). The files chosen are listed, not yet attached; Save logs
+  // the complaint, then puts each file in its own folder and records it, as
+  // Add a file does on a logged complaint.
+  const [chosen, setChosen] = useState<File[]>([]);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function logComplaint(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    setFormError(null);
+    setNotice(null);
+    setSaving("Saving…");
+    const res = await addComplaint({ error: null }, new FormData(form));
+    if (res.error || !res.complaintId) {
+      setSaving(null);
+      setFormError(res.error ?? "Couldn't save that complaint. Try again.");
+      return;
+    }
+    const failed: string[] = [];
+    for (const [i, f] of chosen.entries()) {
+      setSaving(`Attaching ${i + 1} of ${chosen.length}…`);
+      const path = buildComplaintFilePath(viewerProfile.agency_id, res.complaintId, f.name);
+      const up = await uploadEvidenceObject(createBrowserClient(), { path, file: f });
+      // stored name, not the chosen one: a HEIC photo has become a JPEG by now.
+      const rec = up.error ? up : await addComplaintFile(res.complaintId, path, up.file.name);
+      if (rec.error) failed.push(`${f.name}: ${rec.error}`);
+    }
+    setSaving(null);
+    form.reset();
+    setChosen([]);
+    setAdding(false);
+    if (failed.length > 0) {
+      setNotice(
+        `The complaint is logged, but ${failed.length === 1 ? "one file" : `${failed.length} files`} couldn't be attached. ` +
+          `Open its files and use Add a file. ${failed.join(" ")}`,
+      );
+    }
+  }
 
   const open = complaints.filter((c) => c.status !== "resolved");
   const resolvedThisYear = complaints.filter((c) => c.status === "resolved");
@@ -241,12 +282,26 @@ export function ComplaintsPanel({
   return (
     <div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <Tile n={open.length} l="Open" bad={open.length > 0} />
-        <Tile n={resolvedThisYear.length} l="Resolved" ok />
-        <Tile n={overdue.length} l="Overdue" bad={overdue.length > 0} ok={overdue.length === 0} />
-        <Tile n={`${oldestOpenDays}d`} l="Oldest open" />
-        <Tile n={`${resolutionTargetDays}d`} l="Resolution target" />
+        {complaintTiles({
+          open: open.length,
+          resolved: resolvedThisYear.length,
+          overdue: overdue.length,
+          oldestOpenDays,
+          targetDays: resolutionTargetDays,
+        }).map((t) =>
+          t.key === "target" && canChange ? (
+            <TargetTile key={t.key} tile={t} days={resolutionTargetDays} />
+          ) : (
+            <Tile key={t.key} tile={t} />
+          ),
+        )}
       </div>
+      {notice && (
+        <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-3 py-2 text-xs text-rc-amber-deep">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>{notice}</span>
+        </p>
+      )}
 
       <div className="mt-4 rounded-card border border-rc-border bg-white p-4 shadow-card">
         <div className="flex items-center justify-between">
@@ -265,15 +320,20 @@ export function ComplaintsPanel({
           </div>
           <button
             type="button"
-            onClick={() => setAdding((v) => !v)}
-            className="text-xs font-medium text-rc-green-deep hover:underline"
+            disabled={saving !== null}
+            onClick={() => {
+              setAdding((v) => !v);
+              setChosen([]);
+              setFormError(null);
+            }}
+            className="text-xs font-medium text-rc-green-deep hover:underline disabled:opacity-60"
           >
             {adding ? "Cancel" : "+ Log a complaint"}
           </button>
         </div>
 
         {adding && (
-          <form action={formAction} className="mt-3 space-y-2 rounded-md border border-rc-border p-3">
+          <form onSubmit={logComplaint} className="mt-3 space-y-2 rounded-md border border-rc-border p-3">
             <div className="flex flex-wrap gap-2">
               <input type="date" name="receivedDate" required className="rounded-md border border-rc-border px-2 py-1 text-sm" />
               <input
@@ -310,14 +370,58 @@ export function ComplaintsPanel({
               </select>
             </div>
             <textarea name="notes" placeholder="Notes (optional)" rows={1} className="w-full rounded-md border border-rc-border px-2 py-1 text-sm" />
+            {filesReady && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-rc-ink">Files (optional)</p>
+                <p className="text-[11px] text-rc-muted">
+                  The complaint email, a letter, a photo. PDF, photo, Word, Excel or saved email, up to 150 MB each.
+                </p>
+                {chosen.length > 0 && (
+                  <div className="rounded-md border border-rc-amber-deep/30 bg-rc-amber/10 px-2.5 py-2">
+                    <p className="text-[11px] font-semibold text-rc-amber-deep">
+                      Not attached yet: {chosen.length === 1 ? "it's" : "they're"} attached when you save the complaint.
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                      {chosen.map((f, i) => (
+                        <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2 text-xs text-rc-ink">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <Paperclip size={12} className="shrink-0 text-rc-green-deep" aria-hidden="true" />
+                            <span className="break-words">{f.name}</span>
+                            {fileSizeLabel(f.size) && <span className="shrink-0 text-rc-faint">{fileSizeLabel(f.size)}</span>}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={saving !== null}
+                            onClick={() => setChosen((prev) => prev.filter((_, k) => k !== i))}
+                            aria-label={`Take ${f.name} off`}
+                            className="shrink-0 text-rc-faint hover:text-rc-amber-deep disabled:opacity-60"
+                          >
+                            <X size={13} aria-hidden="true" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <FileDropZone
+                  compact
+                  file={null}
+                  onFile={(f) => {
+                    if (f) setChosen((prev) => [...prev, f]);
+                  }}
+                  disabled={saving !== null}
+                  label={chosen.length > 0 ? "Add another file: drag it here, or click to browse" : "Drag a file here, or click to browse"}
+                />
+              </div>
+            )}
             <button
               type="submit"
-              disabled={pending}
+              disabled={saving !== null}
               className="rounded-md bg-rc-green-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
             >
-              Save
+              {saving ?? (chosen.length > 0 ? `Save and attach ${chosen.length === 1 ? "the file" : `${chosen.length} files`}` : "Save")}
             </button>
-            {state.error && <p className="text-xs text-rc-amber-deep">{state.error}</p>}
+            {formError && <p className="text-xs text-rc-amber-deep">{formError}</p>}
           </form>
         )}
 
@@ -350,12 +454,90 @@ export function ComplaintsPanel({
   );
 }
 
-function Tile({ n, l, ok, bad }: { n: number | string; l: string; ok?: boolean; bad?: boolean }) {
-  const color = bad ? "text-red-700" : ok ? "text-rc-green-deep" : "text-rc-ink";
+const TONE: Record<ComplaintTile["tone"], string> = {
+  bad: "text-red-700",
+  ok: "text-rc-green-deep",
+  plain: "text-rc-ink",
+};
+
+function Tile({ tile, children }: { tile: ComplaintTile; children?: React.ReactNode }) {
   return (
     <div className="rounded-card border border-rc-border bg-white px-3.5 py-2.5 shadow-card">
-      <div className={`text-lg font-bold tracking-tight ${color}`}>{n}</div>
-      <div className="mt-0.5 text-[11px] font-medium text-rc-muted">{l}</div>
+      <div className={`text-lg font-bold tracking-tight ${TONE[tile.tone]}`}>{tile.value}</div>
+      <div className="mt-0.5 text-xs font-semibold text-rc-ink">{tile.label}</div>
+      <div className="text-[11px] leading-snug text-rc-muted">{tile.hint}</div>
+      {children}
+    </div>
+  );
+}
+
+/** The resolution target, with "Change" for the licensee in charge (Master, 10 Nov 2026). */
+function TargetTile({ tile, days }: { tile: ComplaintTile; days: number }) {
+  const [editing, setEditing] = useState(false);
+  const [typed, setTyped] = useState(String(days));
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+  if (!editing) {
+    return (
+      <Tile tile={tile}>
+        <button
+          type="button"
+          onClick={() => {
+            setTyped(String(days));
+            setError(null);
+            setEditing(true);
+          }}
+          className="mt-1 text-[11px] font-semibold text-rc-green-deep hover:underline"
+        >
+          Change
+        </button>
+      </Tile>
+    );
+  }
+  const save = () => {
+    const problem = targetDaysProblem(typed);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const res = await setComplaintTargetDays(typed);
+      if (res.error) setError(res.error);
+      else setEditing(false);
+    });
+  };
+  return (
+    <div className="rounded-card border border-rc-green-deep/40 bg-white px-3.5 py-2.5 shadow-card">
+      <label htmlFor="complaint-target-days" className="text-xs font-semibold text-rc-ink">
+        {tile.label}
+      </label>
+      <div className="mt-1 flex items-center gap-1.5">
+        <input
+          id="complaint-target-days"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={MAX_COMPLAINT_TARGET_DAYS}
+          step={1}
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+          }}
+          className="w-16 rounded-md border border-rc-border px-2 py-1 text-sm"
+        />
+        <span className="text-xs text-rc-muted">days</span>
+      </div>
+      {error && <p className="mt-1 text-[11px] text-rc-amber-deep">{error}</p>}
+      <div className="mt-1.5 flex gap-2 text-[11px] font-semibold">
+        <button type="button" disabled={busy} onClick={save} className="text-rc-green-deep hover:underline disabled:opacity-60">
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button type="button" disabled={busy} onClick={() => setEditing(false)} className="text-rc-muted hover:underline">
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
