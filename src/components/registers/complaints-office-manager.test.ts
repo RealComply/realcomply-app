@@ -107,7 +107,7 @@ describe("the Complaints register for an office manager (adding and read only)",
     assert.ok(html.includes("K. Adams, buyer (made up)"));
     assert.ok(html.includes("Not told about the strata report"));
     assert.ok(html.includes("+ Log a complaint"));
-    assert.ok(html.includes("Add files"));
+    assert.ok(html.includes("Add a file"));
   });
 
   it("has no Review, Resolve or Remove, and says who does those", () => {
@@ -157,6 +157,134 @@ describe("the Complaints register for the licensee in charge (unchanged)", () =>
 
   it("keeps Remove on each file", () => {
     assert.ok(files(true).includes(">Remove</button>"));
+  });
+});
+
+// "Add a file" on every complaint, open or resolved, for the licensee in
+// charge and the office manager (Adam, 10 Nov 2026: he couldn't see it on a
+// logged complaint). It was a button in the far-right column of a table that
+// scrolled sideways, off the edge of anything narrower than about 1,250px.
+// Then: "the columns don't work. the layout needs to be much easier to read".
+// Now one card per complaint, open ones first, nothing sideways.
+describe("Add a file on every complaint", () => {
+  const every = [
+    complaint({ id: "c-open" }),
+    complaint({ id: "c-review", status: "under_review" }),
+    complaint({ id: "c-resolved", status: "resolved", resolved_date: "2026-10-20", resolved_at: "2026-10-20T01:00:00Z" }),
+    complaint({
+      id: "c-signed",
+      status: "resolved",
+      resolved_date: "2026-10-01",
+      resolved_at: "2026-10-01T01:00:00Z",
+      signed_off_by: LEE,
+      signed_off_at: "2026-10-02T01:00:00Z",
+      signed_off_via: "app",
+    }),
+  ];
+  const render = (who: "licensee" | "office manager", withFiles: ComplaintFile[] = []) =>
+    renderToStaticMarkup(
+      createElement(panelUi.ComplaintsPanel, {
+        complaints: every,
+        staff: [],
+        properties: [listing],
+        viewerProfile: viewer,
+        canChange: who === "licensee",
+        canMoveOn: true,
+        canSignOff: who === "licensee",
+        nameOf: { [LEE]: "Lee Licensee", [MAX]: "Max Manager" },
+        resolutionTargetDays: 30,
+        files: withFiles,
+        filesReady: true,
+      }),
+    );
+  const count = (html: string, text: string) => html.split(text).length - 1;
+
+  for (const who of ["licensee", "office manager"] as const) {
+    it(`the ${who}: one on each of the 4 complaints, open, under review, resolved and signed off`, () => {
+      const html = render(who);
+      assert.equal(count(html, "Add a file"), 4);
+      assert.equal(count(html, "data-complaint="), 4, "one card each");
+      assert.ok(!html.includes("<table"), "no columns, nothing to scroll sideways");
+      // Each card's own Add a file, inside that card.
+      for (const id of ["c-open", "c-review", "c-resolved", "c-signed"]) {
+        const at = html.indexOf(`data-complaint="${id}"`);
+        const next = html.indexOf("data-complaint=", at + 1);
+        assert.ok(html.slice(at, next < 0 ? undefined : next).includes("Add a file"), id);
+      }
+    });
+  }
+
+  it("open ones first, under their own headings, with plain dates", () => {
+    const html = render("licensee");
+    const openAt = html.indexOf("Open (2)");
+    const resolvedAt = html.indexOf("Resolved (2)");
+    assert.ok(openAt >= 0 && resolvedAt > openAt);
+    assert.ok(html.indexOf('data-complaint="c-review"') < resolvedAt);
+    assert.ok(html.indexOf('data-complaint="c-resolved"') > resolvedAt);
+    assert.ok(html.includes("Received 12 October 2026"));
+    assert.ok(!html.includes(">2026-10-12<"), "no raw dates");
+  });
+
+  it("says how long an open one has been open, and when it's past the office's target", () => {
+    const html = renderToStaticMarkup(
+      createElement(panelUi.ComplaintsPanel, {
+        complaints: [
+          complaint({ id: "c-late", received_date: "2026-01-05" }),
+          complaint({ id: "c-done", status: "resolved", received_date: "2026-01-05", resolved_at: "2026-01-09T01:00:00Z" }),
+        ],
+        staff: [],
+        properties: [],
+        viewerProfile: viewer,
+        nameOf: {},
+        resolutionTargetDays: 30,
+        files: [],
+        filesReady: true,
+      }),
+    );
+    const late = html.slice(html.indexOf('data-complaint="c-late"'), html.indexOf('data-complaint="c-done"'));
+    assert.match(late, /\d+ days open, past the 30-day target/);
+    assert.ok(!html.slice(html.indexOf('data-complaint="c-done"')).includes("days open"), "not on a resolved one");
+  });
+
+  it("shows the agent, the listing and the notes, which the old table never showed", () => {
+    const html = renderToStaticMarkup(
+      createElement(panelUi.ComplaintsPanel, {
+        complaints: [complaint({ agent_id: LEE, property_id: OWN_LISTING, notes: "Called them back on the 13th." })],
+        staff: [],
+        properties: [listing],
+        viewerProfile: viewer,
+        nameOf: { [LEE]: "Lee Licensee" },
+        resolutionTargetDays: 30,
+        files: [],
+        filesReady: true,
+      }),
+    );
+    assert.ok(html.includes("Agent: Lee Licensee"));
+    assert.ok(html.includes(`href="/dashboard/${OWN_LISTING}"`));
+    assert.ok(html.includes("Called them back on the 13th."));
+  });
+
+  it("with files on it, says how many and still offers Add a file", () => {
+    const html = render("office manager", [file({ complaint_id: "c-signed" })]);
+    assert.ok(html.includes("1 file · Add a file"));
+    assert.equal(count(html, "Add a file"), 4);
+  });
+
+  it("before 0101 has run, no files line at all", () => {
+    const html = renderToStaticMarkup(
+      createElement(panelUi.ComplaintsPanel, {
+        complaints: every,
+        staff: [],
+        properties: [listing],
+        viewerProfile: viewer,
+        canChange: true,
+        nameOf: {},
+        resolutionTargetDays: 30,
+        files: [],
+        filesReady: false,
+      }),
+    );
+    assert.ok(!html.includes("Add a file"));
   });
 });
 

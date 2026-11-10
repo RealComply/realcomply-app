@@ -1,10 +1,12 @@
 "use client";
 
-import { Fragment, useActionState, useState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import { addComplaint, updateComplaintStatus, deleteComplaint, type ActionState } from "@/lib/actions/registers";
 import { useOnSaved } from "@/lib/use-on-saved";
-import { complaintFilesFor } from "@/lib/complaint-files";
+import { formatAuDate } from "@/lib/format-date";
+import { Paperclip } from "lucide-react";
+import { complaintFilesFor, filesToggleLabel } from "@/lib/complaint-files";
 import { ComplaintFiles } from "@/components/registers/ComplaintFiles";
 import { ComplaintSignOff } from "@/components/registers/ComplaintSignOff";
 import { complaintAwaitsSignOff, complaintRecordLines } from "@/lib/reviews/records";
@@ -17,6 +19,9 @@ const STATUS_STYLES: Record<string, string> = {
   under_review: "bg-red-100 text-red-700",
   resolved: "bg-rc-green/10 text-rc-green-deep",
 };
+const ACTION =
+  "rounded-full border border-rc-border px-3 py-1 text-xs font-medium text-rc-green-deep transition hover:bg-rc-green-soft/40";
+
 const STATUS_LABELS: Record<string, string> = {
   open: "Open",
   under_review: "Under review",
@@ -103,6 +108,136 @@ export function ComplaintsPanel({
   // listing says so, without its address.
   const linkedElsewhere = (id: string | null) => Boolean(id) && !addressFor(id);
 
+  function card(c: Complaint) {
+    const { current, removed } = complaintFilesFor(c.id, files);
+    const filesOpen = openFiles.has(c.id);
+    const awaitsSignOff = canSignOff && complaintAwaitsSignOff(c);
+    const days = daysSince(c.received_date);
+    const late = c.status !== "resolved" && days > resolutionTargetDays;
+    const address = addressFor(c.property_id);
+    const agent = c.agent_id ? nameFor(c.agent_id) : null;
+    const lines = complaintRecordLines(c, packMonthOf[c.id] ?? null);
+    return (
+      <article key={c.id} data-complaint={c.id} className="rounded-xl border border-rc-border p-4">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <h5 className="min-w-0 break-words text-sm font-semibold text-rc-ink">{c.complainant}</h5>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[c.status]}`}>
+            {STATUS_LABELS[c.status]}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-rc-muted">
+          Received {formatAuDate(c.received_date)}
+          {c.status !== "resolved" && (
+            <>
+              {" · "}
+              <span className={late ? "font-semibold text-red-700" : undefined}>
+                {days} {days === 1 ? "day" : "days"} open{late ? `, past the ${resolutionTargetDays}-day target` : ""}
+              </span>
+            </>
+          )}
+        </p>
+        {(agent || c.property_id) && (
+          <p className="mt-0.5 text-xs text-rc-muted">
+            {agent && <>Agent: {agent}</>}
+            {agent && c.property_id && " · "}
+            {address ? (
+              <>
+                Listing:{" "}
+                <Link href={`/dashboard/${c.property_id}`} className="text-rc-green-deep hover:underline">
+                  {address}
+                </Link>
+              </>
+            ) : linkedElsewhere(c.property_id) ? (
+              <>Listing: A listing you can&apos;t open</>
+            ) : null}
+          </p>
+        )}
+        <p className="mt-2.5 whitespace-pre-line break-words text-sm leading-relaxed text-rc-ink">{c.nature}</p>
+        {c.notes && (
+          <p className="mt-1.5 whitespace-pre-line break-words text-xs text-rc-muted">
+            <span className="font-medium">Notes:</span> {c.notes}
+          </p>
+        )}
+        {lines.length > 0 && (
+          <ul className="mt-2 space-y-0.5 text-[11px] text-rc-muted">
+            {lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-neutral-100 pt-3">
+          {filesReady ? (
+            <button
+              type="button"
+              onClick={() => toggleFiles(c.id)}
+              aria-expanded={filesOpen}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-rc-green-deep hover:underline"
+            >
+              <Paperclip size={12} className="shrink-0" aria-hidden />
+              {filesToggleLabel(current.length, filesOpen)}
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {canMoveOn && c.status !== "resolved" && (
+              <>
+                {c.status === "open" && (
+                  <form action={updateComplaintStatus.bind(null, c.id, "under_review")}>
+                    <button type="submit" className={ACTION}>
+                      Review
+                    </button>
+                  </form>
+                )}
+                <form action={updateComplaintStatus.bind(null, c.id, "resolved")}>
+                  <button type="submit" className={ACTION}>
+                    Resolve
+                  </button>
+                </form>
+              </>
+            )}
+            {/* A complaint with files on it keeps them until each is
+                removed, and each removal is recorded (0101): the
+                database refuses deleting it before then. */}
+            {canChange &&
+              (current.length > 0 ? (
+                <span
+                  title="Remove its files first. Each removal is recorded."
+                  className="cursor-default px-1 text-xs text-neutral-300"
+                >
+                  Remove
+                </span>
+              ) : (
+                <form action={deleteComplaint.bind(null, c.id)}>
+                  <button type="submit" className="px-1 text-xs text-rc-faint hover:text-rc-amber-deep">
+                    Remove
+                  </button>
+                </form>
+              ))}
+          </div>
+        </div>
+        {filesReady && filesOpen && (
+          <div className="mt-3 rounded-lg bg-rc-bg-alt p-3">
+            <ComplaintFiles
+              agencyId={viewerProfile.agency_id}
+              complaintId={c.id}
+              current={current}
+              removed={removed}
+              urlByPath={fileUrlByPath}
+              nameOf={nameOf}
+              canRemove={canChange}
+            />
+          </div>
+        )}
+        {awaitsSignOff && (
+          <div className="mt-3 rounded-lg border border-rc-green-deep/20 bg-rc-green-soft/40 p-3">
+            <ComplaintSignOff complaintId={c.id} />
+          </div>
+        )}
+      </article>
+    );
+  }
+
   return (
     <div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -186,148 +321,30 @@ export function ComplaintsPanel({
           </form>
         )}
 
-        <div className="mt-3 overflow-x-auto">
-          {complaints.length === 0 ? (
-            <p className="text-sm text-rc-muted">No complaints logged.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-rc-border text-left text-xs uppercase tracking-wide text-rc-faint">
-                  <th className="pb-2 pr-3">Received</th>
-                  <th className="pb-2 pr-3">Complainant</th>
-                  <th className="pb-2 pr-3">Matter</th>
-                  <th className="pb-2 pr-3">Agent</th>
-                  <th className="pb-2 pr-3">Nature</th>
-                  <th className="pb-2 pr-3">Days</th>
-                  <th className="pb-2 pr-3">Status</th>
-                  {filesReady && <th className="pb-2 pr-3">Files</th>}
-                  <th className="pb-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {complaints.map((c) => {
-                  const { current, removed } = complaintFilesFor(c.id, files);
-                  const filesOpen = openFiles.has(c.id);
-                  return (
-                    <Fragment key={c.id}>
-                      <tr className={`align-top ${filesOpen ? "" : "border-b border-neutral-100"}`}>
-                        {/* nowrap: at 1280px the date broke over two lines. */}
-                        <td className="whitespace-nowrap py-2 pr-3">{c.received_date}</td>
-                        <td className="py-2 pr-3">{c.complainant}</td>
-                        <td className="py-2 pr-3">
-                          {addressFor(c.property_id) ? (
-                            <Link href={`/dashboard/${c.property_id}`} className="text-rc-green-deep hover:underline">
-                              {addressFor(c.property_id)}
-                            </Link>
-                          ) : linkedElsewhere(c.property_id) ? (
-                            <span className="text-xs text-rc-muted">A listing you can&apos;t open</span>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td className="py-2 pr-3">{nameFor(c.agent_id)}</td>
-                        <td className="py-2 pr-3 max-w-xs">{c.nature}</td>
-                        <td className="py-2 pr-3">{daysSince(c.received_date)}</td>
-                        <td className="py-2 pr-3">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[c.status]}`}>
-                            {STATUS_LABELS[c.status]}
-                          </span>
-                          {complaintRecordLines(c, packMonthOf[c.id] ?? null).map((line) => (
-                            <span key={line} className="mt-1 block whitespace-nowrap text-[11px] text-rc-muted">
-                              {line}
-                            </span>
-                          ))}
-                        </td>
-                        {filesReady && (
-                          <td className="py-2 pr-3">
-                            <button
-                              type="button"
-                              onClick={() => toggleFiles(c.id)}
-                              aria-expanded={filesOpen}
-                              className="whitespace-nowrap text-xs font-medium text-rc-green-deep hover:underline"
-                            >
-                              {current.length === 0
-                                ? filesOpen
-                                  ? "Close"
-                                  : "Add files"
-                                : `${current.length} ${current.length === 1 ? "file" : "files"}${filesOpen ? " ▴" : " ▾"}`}
-                            </button>
-                          </td>
-                        )}
-                        <td className="py-2 text-right">
-                          <div className="flex justify-end gap-2">
-                            {canMoveOn && c.status !== "resolved" && (
-                              <>
-                                {c.status === "open" && (
-                                  <form action={updateComplaintStatus.bind(null, c.id, "under_review")}>
-                                    <button type="submit" className="text-xs text-rc-green-deep hover:underline">
-                                      Review
-                                    </button>
-                                  </form>
-                                )}
-                                <form action={updateComplaintStatus.bind(null, c.id, "resolved")}>
-                                  <button type="submit" className="text-xs text-rc-green-deep hover:underline">
-                                    Resolve
-                                  </button>
-                                </form>
-                              </>
-                            )}
-                            {/* A complaint with files on it keeps them until each is
-                                removed, and each removal is recorded (0101): the
-                                database refuses deleting it before then. */}
-                            {canChange &&
-                              (current.length > 0 ? (
-                                <span
-                                  title="Remove its files first. Each removal is recorded."
-                                  className="cursor-default text-xs text-neutral-300"
-                                >
-                                  Remove
-                                </span>
-                              ) : (
-                                <form action={deleteComplaint.bind(null, c.id)}>
-                                  <button type="submit" className="text-xs text-rc-faint hover:text-rc-amber-deep">
-                                    Remove
-                                  </button>
-                                </form>
-                              ))}
-                          </div>
-                        </td>
-                      </tr>
-                      {canSignOff && complaintAwaitsSignOff(c) && (
-                        <tr className="border-b border-neutral-100">
-                          <td colSpan={9} className="pb-3">
-                            <div className="sticky left-0 max-w-[calc(100vw-4rem)] rounded-lg border border-rc-green-deep/20 bg-rc-green-soft/40 p-3 sm:max-w-none">
-                              <ComplaintSignOff complaintId={c.id} />
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                      {filesReady && filesOpen && (
-                        <tr className="border-b border-neutral-100">
-                          <td colSpan={9} className="pb-3">
-                            {/* Held to the visible width on a phone, where the
-                                register scrolls sideways under it. */}
-                            <div className="sticky left-0 max-w-[calc(100vw-4rem)] rounded-lg bg-rc-bg-alt p-3 sm:max-w-none">
-                              <ComplaintFiles
-                                agencyId={viewerProfile.agency_id}
-                                complaintId={c.id}
-                                current={current}
-                                removed={removed}
-                                urlByPath={fileUrlByPath}
-                                nameOf={nameOf}
-                                canRemove={canChange}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+        {/* One card per complaint, open ones first (Adam, 10 Nov 2026: "the
+            columns don't work. the layout needs to be much easier to read").
+            Was an 8-column table that scrolled sideways, with Add a file off
+            the right edge below about 1,250px wide. Nothing scrolls sideways
+            now, at any width. */}
+        {complaints.length === 0 ? (
+          <p className="mt-4 text-sm text-rc-muted">No complaints logged.</p>
+        ) : (
+          <div className="mt-4 space-y-6">
+            {[
+              { title: "Open", list: open },
+              { title: "Resolved", list: resolvedThisYear },
+            ]
+              .filter((g) => g.list.length > 0)
+              .map((g) => (
+                <section key={g.title}>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-rc-faint">
+                    {g.title} ({g.list.length})
+                  </h4>
+                  <div className="mt-2 space-y-3">{g.list.map((c) => card(c))}</div>
+                </section>
+              ))}
+          </div>
+        )}
       </div>
     </div>
   );

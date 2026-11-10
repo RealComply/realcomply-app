@@ -6,6 +6,7 @@ import {
   complaintFilesFor,
   fileSizeLabel,
   filesOfDeletedComplaints,
+  filesToggleLabel,
   removedLine,
 } from "@/lib/complaint-files";
 import { buildComplaintFilePath, complaintFolder, isInFolder } from "@/lib/storage/evidence";
@@ -74,6 +75,16 @@ describe("a complaint's files", () => {
     assert.equal(fileSizeLabel(2048), "2 KB");
     assert.equal(fileSizeLabel(4.3 * 1024 * 1024), "4.3 MB");
     assert.equal(fileSizeLabel(150 * 1024 * 1024), "150 MB");
+  });
+});
+
+describe("the files button under each complaint", () => {
+  it("always says Add a file while closed, with how many are on it", () => {
+    assert.equal(filesToggleLabel(0, false), "Add a file");
+    assert.equal(filesToggleLabel(1, false), "1 file · Add a file");
+    assert.equal(filesToggleLabel(3, false), "3 files · Add a file");
+    assert.equal(filesToggleLabel(0, true), "Hide files");
+    assert.equal(filesToggleLabel(2, true), "Hide files");
   });
 });
 
