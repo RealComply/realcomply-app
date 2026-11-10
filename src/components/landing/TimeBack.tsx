@@ -8,9 +8,9 @@ import { makeGate, replay, useInViewOnce } from "./motion";
 // NO HOUR FIGURES, on purpose. Adam: "remove the numbered hours, we can't
 // verify those but the bars are a good visual representation." The bar
 // lengths show the idea only. Don't add numbers here without measured ones.
-// phone: the widths on a phone, where all six sit in one row with smaller
-// text (Adam, 23 Oct 2026): Checklists biggest, then Registers, Chasing
-// documents, Price checks.
+// phone: kept so the relative sizes are still in the data. The phone layout
+// no longer uses them. From 10 Nov 2026 the six labels stack, full width,
+// because one row at 390px hid the words.
 const BEFORE = [
   { label: "Checklists", flex: 3, phone: 2.2 },
   { label: "Chasing documents", flex: 2, phone: 1.8 },

@@ -9,6 +9,7 @@ import { PublicAnalytics } from "@/components/PublicAnalytics";
 import { BeforeAfter } from "@/components/landing/BeforeAfter";
 import { ProductScreen } from "@/components/landing/ProductScreen";
 import { TimeBack } from "@/components/landing/TimeBack";
+import { PAGE_TITLE, heroBadge, heroLead } from "@/lib/landing/hero-copy";
 
 // The public landing page, restored 13 Aug 2026 as the destination for Meta
 // ads. It had been deleted on 12 Aug in favour of a bare redirect to /login,
@@ -63,10 +64,12 @@ import { TimeBack } from "@/components/landing/TimeBack";
 // RealComply-pricing-and-billing-model.md. Keep these two figures in sync
 // with that doc if pricing changes.
 //
-// The sub-headline is duplicated in three places: here, the openGraph block
-// below, and the site-wide fallback in layout.tsx. Change all three together
-// or the ad, the search result and the page start disagreeing.
-
+// The hero lead lives in src/lib/landing/hero-copy.ts and switches at
+// REFORMS_FROM (midnight, 17 November 2026, Sydney). This function runs on
+// each request, with the page, so the title, the share text and the hero
+// change together. The site-wide fallback in layout.tsx stays on the
+// pre-17 November sentence for pages that do not set their own description.
+//
 // REVERSAL, 22 Oct 2026 (Adam). The sub-headline no longer says what the
 // product is. It now leads with momentum, for speed to market against a
 // competitor: "we need to show that we're the bigger, better dog." Adam's
@@ -75,20 +78,39 @@ import { TimeBack } from "@/components/landing/TimeBack";
 // estate agencies. It runs the compliance file for every listing you sell,
 // from the agency agreement through to settlement, and builds the record as
 // you go."
-const DESCRIPTION = "Join agencies around NSW in making compliance simple and stress-free.";
-
-export const metadata: Metadata = {
-  title: "RealComply — Stay on top of compliance, without a full-time hire",
-  description: DESCRIPTION,
-  openGraph: {
-    title: "RealComply — Stay on top of compliance, without a full-time hire",
-    description: DESCRIPTION,
-    url: "https://www.realcomply.com.au",
-    siteName: "RealComply",
-    locale: "en_AU",
-    type: "website",
-  },
-};
+// 10 Nov 2026: the lead is the underquoting change, not "Join agencies around
+// NSW...". That older sentence is gone.
+export async function generateMetadata(): Promise<Metadata> {
+  const description = heroLead();
+  return {
+    title: PAGE_TITLE,
+    description,
+    openGraph: {
+      title: PAGE_TITLE,
+      description,
+      url: "https://www.realcomply.com.au",
+      siteName: "RealComply",
+      locale: "en_AU",
+      type: "website",
+      // public/og.png, not an /opengraph-image route: the sign-in check
+      // (src/proxy.ts) does not run on image files, and a crawler is not signed in.
+      images: [
+        {
+          url: "/og.png",
+          width: 1200,
+          height: 630,
+          alt: "RealComply. Stay on top of compliance, without a full-time hire.",
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: PAGE_TITLE,
+      description,
+      images: ["/og.png"],
+    },
+  };
+}
 
 // The How it works steps and the four AI feature cards were removed on
 // 22 Oct 2026, replaced by the three infographics in src/components/landing
@@ -166,6 +188,8 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
   // "which ad produced this" without relying on Meta's own attribution.
   const rawSrc = (await searchParams).src;
   const src = Array.isArray(rawSrc) ? rawSrc[0] : rawSrc;
+  const badge = heroBadge();
+  const lead = heroLead();
 
   return (
     // flex-1 rather than min-h-full. This page is always far taller than the
@@ -177,22 +201,32 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
     <main className="flex-1 bg-white text-rc-ink">
       <header>
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5 sm:px-6">
-          <Link href="/" aria-label="RealComply home">
-            <Logo size={19} />
+          <Link href="/" aria-label="RealComply home" className="shrink-0">
+            {/* Smaller on a phone so Pricing, Log in and the trial button
+                keep a gap. Same mark at the usual size from 640px up. */}
+            <span className="sm:hidden">
+              <Logo size={15} />
+            </span>
+            <span className="hidden sm:inline-block">
+              <Logo size={19} />
+            </span>
           </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/login" className="text-sm font-medium text-rc-muted hover:text-rc-ink">
+          <nav className="flex items-center gap-2.5 sm:gap-4" aria-label="Page">
+            <a href="#pricing" className="whitespace-nowrap text-sm font-medium text-rc-muted hover:text-rc-ink">
+              Pricing
+            </a>
+            <Link href="/login" className="whitespace-nowrap text-sm font-medium text-rc-muted hover:text-rc-ink">
               Log in
             </Link>
             {/* Added 23 Oct 2026 (trial brief): jumps to the form in the hero.
                 Not a sign-up page; there is still no self-serve sign-up. */}
             <a
               href="#free-trial"
-              className="rounded-full bg-rc-ink px-4 py-2 text-sm font-bold text-white transition hover:bg-rc-green-deep"
+              className="whitespace-nowrap rounded-full bg-rc-ink px-3 py-2 text-sm font-bold text-white transition hover:bg-rc-green-deep sm:px-4"
             >
               Start free trial
             </a>
-          </div>
+          </nav>
         </div>
       </header>
 
@@ -205,29 +239,48 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           reversal line joins the ticks on the left, as in the mockup. */}
       <section className="relative isolate overflow-hidden">
         <div className="rc-mesh-bg" />
-        <div className="mx-auto grid max-w-6xl items-center gap-3 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-14">
+        <div className="mx-auto grid max-w-6xl items-start gap-8 px-4 py-8 sm:px-6 sm:py-14 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-14 lg:py-16">
           <div className="min-w-0 text-center lg:text-left">
-            {/* Trial badge (trial brief, 23 Oct 2026; wording corrected by Adam
-                the same day). Prices include GST, like every price on the site. */}
-            <p className="mb-5 inline-flex items-center gap-2 rounded-full bg-rc-green-soft px-4 py-2 text-sm font-bold text-rc-green-deep">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-rc-green-deep" aria-hidden="true" />
-              14 days free. Agents from $99, offices from $249 a month.
+            {/* Was the price badge ("14 days free. Agents from $99...").
+                10 Nov 2026: the underquoting date is the hook. The 14-day
+                offer sits with the button below. Wording switches at
+                REFORMS_FROM. Pill, no dot. */}
+            <p className="mb-5 inline-flex rounded-full bg-rc-green-soft px-4 py-2 text-sm font-bold text-rc-green-deep">
+              {badge}
             </p>
             <h1 className="text-4xl font-extrabold leading-[1.06] tracking-tight text-rc-ink sm:text-5xl">
-              Stay on top of compliance. <span className="text-rc-green-deep">Without a full-time hire.</span>
+              Stay on top of compliance.{" "}
+              <span className="block text-rc-green-deep sm:inline">
+                Without a <br className="sm:hidden" />
+                full-time hire.
+              </span>
             </h1>
             {/* The most important sentence on the page. It replaced "AI
                 compliance support for NSW agencies", which never said what the
-                product is — a first-time reader could not tell software from a
+                product is. A first-time reader could not tell software from a
                 consultancy from an outsourced compliance officer, and every line
                 after it assumed they had already answered that.
 
                 The AI is deliberately NOT in this sentence any more. It is a
                 feature, not the category, and leading with it made the product
-                harder to place. It gets a band of its own further down. */}
-            <p className="mx-auto mt-4 max-w-lg text-lg text-rc-muted lg:mx-0 lg:text-xl">
-              {DESCRIPTION} Upload your first agency agreement and watch RealComply read and file it.
-            </p>
+                harder to place. It gets a band of its own further down.
+
+                10 Nov 2026: this lead is the underquoting rule, not a category
+                line. RealComply checks the ad. It does not make anyone compliant. */}
+            <p className="mx-auto mt-4 max-w-lg text-lg text-rc-muted lg:mx-0 lg:text-xl">{lead}</p>
+            {/* The ask, in the first screen on a phone and beside the form on
+                a desktop. The form below is where the trial actually starts. */}
+            <div className="mx-auto mt-6 flex w-full max-w-md flex-col items-center gap-3 lg:mx-0 lg:items-start">
+              <a
+                href="#free-trial"
+                className="inline-flex w-full items-center justify-center rounded-full bg-rc-green-deep px-7 py-3.5 text-base font-bold text-white shadow-glow-green transition hover:bg-rc-green-deep-600 sm:w-auto"
+              >
+                Start free trial
+              </a>
+              <p className="text-sm font-semibold text-rc-ink">
+                14 days free. Cancel before day 14 and you won&rsquo;t be charged.
+              </p>
+            </div>
 
             {/* RISK REVERSAL. Adam, 15 Aug 2026: "I really want the person who
                 lands on the landing page to feel like there is absolutely no
@@ -386,7 +439,7 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           (that stays behind login, not on a page a competitor can
           screenshot). Sits right before the final ask, so the price is
           answered before someone is asked for their email. */}
-      <section className="border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20">
+      <section id="pricing" className="scroll-mt-24 border-t border-rc-border bg-rc-bg-alt py-16 sm:py-20">
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
           <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Straightforward pricing</h2>
           <p className="mx-auto mt-4 max-w-lg text-lg leading-relaxed text-rc-muted">
@@ -460,7 +513,10 @@ export default async function RootPage({ searchParams }: PageProps<"/">) {
           relaxed voice everywhere else. It is liability framing, not tone. */}
       <footer className="bg-rc-panel py-8 text-center text-white">
         <div className="mx-auto max-w-2xl px-4 sm:px-6">
-          <p className="mx-auto max-w-xl text-xs leading-relaxed text-rc-ink-muted/80">
+          <p className="mx-auto max-w-xl text-xs font-semibold leading-relaxed text-white">
+            Diligence support, not legal advice.
+          </p>
+          <p className="mx-auto mt-2 max-w-xl text-xs leading-relaxed text-rc-ink-muted/80">
             RealComply Pty Ltd. RealComply provides diligence support to help licensees and agents stay on top of
             their compliance obligations. It is not a law firm and does not provide legal advice; it does not
             guarantee compliance. The licensee remains responsible for decisions and sign-off. © 2026 RealComply Pty
