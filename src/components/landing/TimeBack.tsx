@@ -9,7 +9,7 @@ import { makeGate, replay, useInViewOnce } from "./motion";
 // verify those but the bars are a good visual representation." The bar
 // lengths show the idea only. Don't add numbers here without measured ones.
 // phone: kept so the relative sizes are still in the data. The phone layout
-// no longer uses them. From 10 Nov 2026 the six labels stack, full width,
+// no longer uses them. From 10 Nov 2026 the labels stack, full width,
 // because one row at 390px hid the words.
 const BEFORE = [
   { label: "Checklists", flex: 3, phone: 2.2 },
@@ -17,7 +17,6 @@ const BEFORE = [
   { label: "Price checks", flex: 1.5, phone: 1.6 },
   { label: "Registers", flex: 1, phone: 1.9 },
   { label: "Act questions", flex: 1, phone: 1.6 },
-  { label: "Status", flex: 0.6, phone: 1.3 },
 ];
 
 // Upload is the smallest (Adam, 23 Oct 2026: "it takes such a small amount
