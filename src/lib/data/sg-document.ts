@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sgChecksOf, type SgChecks } from "@/lib/sg-document/checks";
 import { isSgDocType, type SgDocType } from "@/lib/sg-document/fair-trading";
+import { amendmentFrom, type SgAmendment } from "@/lib/sg-document/amendments";
 
 // The office's supervision guidelines as a live document (0122), as the SG
 // page and Home read them. Each person sees what the database lets them: the
@@ -107,4 +108,78 @@ export async function sgDraftWaiting(supabase: SupabaseClient): Promise<{ fileNa
   if (error || !data) return null;
   const r = data as { file_name: string; from_file_on_record: boolean };
   return { fileName: r.file_name, fromFileOnRecord: r.from_file_on_record };
+}
+
+// ── Part 2: quick amendments and staff sign-off of each change (0125) ────
+// Before 0125 has run there's no table: no amendments, and the page is as it was.
+
+const AMENDMENT_COLUMNS =
+  "id, document_id, ref_no, section_position, paragraph_index, section_label, previous_text, new_text, reason, reason_other, starts_on, status, created_by_name, created_at, approved_by_name, approved_as, approved_at";
+
+/** The live document's amendments: approved for everyone, drafts too for whoever runs the office (the database decides). */
+export async function sgAmendmentsFor(supabase: SupabaseClient, documentId: string): Promise<SgAmendment[]> {
+  const { data, error } = await supabase
+    .from("sg_amendments")
+    .select(AMENDMENT_COLUMNS)
+    .eq("document_id", documentId)
+    .in("status", ["draft", "approved"])
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Array<Record<string, unknown>>).map(amendmentFrom).filter((a): a is SgAmendment => a !== null);
+}
+
+/** Who has signed each amendment: amendment id to the people who signed it. */
+export async function sgAmendmentSigners(supabase: SupabaseClient, amendmentIds: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (amendmentIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from("sg_amendment_signatures")
+    .select("amendment_id, profile_id")
+    .in("amendment_id", amendmentIds);
+  if (error || !data) return out;
+  for (const r of data as Array<{ amendment_id: string; profile_id: string }>) {
+    out.set(r.amendment_id, [...(out.get(r.amendment_id) ?? []), r.profile_id]);
+  }
+  return out;
+}
+
+/** Every document saved (live, and those it replaced), oldest first, for the change log. */
+export async function sgSavedDocuments(supabase: SupabaseClient): Promise<
+  Array<{ id: string; docType: SgDocType | null; versionLabel: string | null; savedAt: string; savedByName: string | null; manualVersionId: string | null }>
+> {
+  const { data, error } = await supabase
+    .from("sg_documents")
+    .select("id, doc_type, version_label, saved_at, saved_by_name, manual_version_id")
+    .in("status", ["live", "replaced"])
+    .not("saved_at", "is", null)
+    .order("saved_at", { ascending: true });
+  if (error || !data) return [];
+  return (
+    data as Array<{ id: string; doc_type: string | null; version_label: string | null; saved_at: string; saved_by_name: string | null; manual_version_id: string | null }>
+  ).map((r) => ({
+    id: r.id,
+    docType: isSgDocType(r.doc_type) ? r.doc_type : null,
+    versionLabel: r.version_label,
+    savedAt: r.saved_at,
+    savedByName: r.saved_by_name,
+    manualVersionId: r.manual_version_id,
+  }));
+}
+
+/**
+ * For Home (mockup screen 6): the changes to the live document this person
+ * hasn't signed yet, oldest first, each with the section it's in.
+ */
+export async function sgChangesToSign(supabase: SupabaseClient, profileId: string): Promise<SgAmendment[]> {
+  const { data: live, error } = await supabase.from("sg_documents").select("id").eq("status", "live").limit(1).maybeSingle();
+  if (error || !live) return [];
+  const amendments = (await sgAmendmentsFor(supabase, (live as { id: string }).id)).filter((a) => a.status === "approved");
+  if (amendments.length === 0) return [];
+  const signers = await sgAmendmentSigners(
+    supabase,
+    amendments.map((a) => a.id),
+  );
+  return amendments
+    .filter((a) => !(signers.get(a.id) ?? []).includes(profileId))
+    .sort((x, y) => (x.refNo ?? 0) - (y.refNo ?? 0));
 }
