@@ -172,10 +172,7 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
           {/* Was "Mobile (optional): for a quick call to get you set up"
               (16 Oct 2026). Still optional, still never a reason to refuse. */}
           <label htmlFor={`${uid}-mobile`} className={label}>
-            Mobile{" "}
-            <span className={`font-normal ${dark ? "text-white/70" : "text-rc-muted"}`}>
-              (optional, if you&rsquo;d like a 10-minute walkthrough)
-            </span>
+            Mobile
           </label>
           <input
             id={`${uid}-mobile`}
