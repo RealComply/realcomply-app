@@ -50,7 +50,7 @@ import { EspDraftForm, EspHistoryList, EspNoticeUpload, type EspHistoryView } fr
 import { StatementOfInformationBody } from "@/components/compliance/StatementOfInformation";
 import type { SoiView } from "@/lib/data/soi";
 import { reviseByLine } from "@/lib/rules/soi";
-import { ADD_REVISION, ALL_IN_ERROR_HELP, HISTORY_HELP, pendingFrom } from "@/lib/esp-history";
+import { ADD_REVISION, HISTORY_HELP, pendingFrom } from "@/lib/esp-history";
 import {
   ESP_GIVEN_HINT,
   ESP_GIVEN_LABEL,
@@ -3562,16 +3562,6 @@ function ReductionItem({
   const pending = pendingFrom(current?.data);
   const latestNo = espHistory?.latestNo ?? null;
   const hasRevisions = latestNo !== null;
-  // Every revision entered in error (0124): none stands, so the card asks
-  // again, and the revisions marked stay in view under the question.
-  const inErrorOnly = !hasRevisions && (espHistory?.versions ?? []).some((v) => v.inError);
-  const inErrorHistory =
-    inErrorOnly && espHistory ? (
-      <div className="space-y-2 pt-1">
-        <p className="text-xs leading-relaxed text-rc-muted">{ALL_IN_ERROR_HELP}</p>
-        <EspHistoryList view={espHistory} />
-      </div>
-    ) : null;
   const [reconsidering, setReconsidering] = useState(false);
   const [adding, setAdding] = useState(false);
   // Once the ESP was revised, the answer stays Yes: "No" would write over it.
@@ -3613,7 +3603,6 @@ function ReductionItem({
               </button>
             </form>
           </div>
-          {inErrorHistory}
         </div>
       </ItemShell>
     );
@@ -3628,7 +3617,6 @@ function ReductionItem({
             Change answer
           </button>
         </p>
-        {inErrorHistory}
       </ItemShell>
     );
   }
@@ -3773,7 +3761,6 @@ function ReductionItem({
             Change answer
           </button>
         )}
-        {inErrorHistory}
       </div>
     </ItemShell>
   );

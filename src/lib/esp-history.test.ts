@@ -2,20 +2,17 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   ADD_REVISION,
-  ALL_IN_ERROR_HELP,
-  IN_ERROR_PILL,
   LATEST_PILL,
   approvalLines,
-  cancelledApprovalLines,
   cancelledBecause,
+  deleteButton,
+  deleteLines,
   espPackRows,
   espRange,
   espVersions,
-  inErrorLine,
   recordedLine,
   replaceWarning,
   revisionFrom,
-  revisionsInForce,
   revisionsOrCard,
   type EspRevision,
 } from "@/lib/esp-history";
@@ -228,123 +225,60 @@ describe("market feedback on a revision (Reg s12G(1)(f))", () => {
   });
 });
 
-describe("entered in error (Master, 10 Nov 2026; 0124)", () => {
-  // Revision 2 marked by the agent on 29 Oct, 9:30am in Sydney.
-  const MARKED_AT = "2026-10-28T22:30:00Z";
-  const R2X: EspRevision = { ...R2, inError: { byName: "Ana Agent", at: MARKED_AT, reason: "Typed from the wrong listing's notice." } };
-  const R3 = rev(3, 1280000, 1320000, "2026-11-02", "2026-11-02T01:00:00Z");
+describe("deleting a revision (Adam, 10 Nov 2026; 0124)", () => {
+  const R3 = rev(3, 1150000, 1200000, "2026-11-03", "2026-11-03T01:00:00Z");
 
-  it("reads who marked it, when and why off the database row", () => {
-    const r = revisionFrom({
-      revision_no: 2,
-      esp_low: 1250000,
-      esp_high: 1300000,
-      notice_given_on: "2026-10-28",
-      notice_path: "o/p/d3/2.pdf",
-      notice_file_name: null,
-      entered_manually: false,
-      recorded_by_name: "Dana Whitlock",
-      recorded_at: R2.recordedAt,
-      entered_in_error_at: MARKED_AT,
-      entered_in_error_by_name: "Ana Agent",
-      entered_in_error_reason: "Typed from the wrong listing's notice.",
-    });
-    assert.deepEqual(r?.inError, { byName: "Ana Agent", at: MARKED_AT, reason: "Typed from the wrong listing's notice." });
-    assert.equal(revisionFrom({ revision_no: 1, esp_low: 1, esp_high: 2, notice_path: "x" })?.inError ?? null, null);
+  it("each revision can be deleted, and says what that does before it goes", () => {
+    const v = espVersions(ORIGINAL, [R1, R2, R3]);
+    assert.deepEqual(v.map((x) => x.revisionNo), [3, 2, 1, undefined]);
+    assert.equal(v[3].deleteLines, undefined, "the original ESP isn't a revision");
+    assert.equal(deleteButton(2), "Delete Revision 2");
   });
 
-  it("says it as Master asked: Entered in error by [name], [date]: [reason]", () => {
-    assert.equal(inErrorLine(R2X.inError!), "Entered in error by Ana Agent, 29 October 2026: Typed from the wrong listing's notice.");
-  });
-
-  it("every check uses only the revisions that stand", () => {
-    assert.deepEqual(revisionsInForce([R2X, R1]).map((r) => r.no), [1]);
-    assert.deepEqual(revisionsInForce([R3, R2X, R1]).map((r) => r.no), [1, 3]);
-    assert.deepEqual(revisionsInForce([{ ...R1, inError: R2X.inError }, R2X]), []);
-    // The card's own Revision 1 is never made up while the rows are all marked.
-    assert.equal(revisionsInForce(revisionsOrCard([R2X], { evidence_path: "x", data: { espRevised: true, revisedEspLow: 1, revisedEspHigh: 2 } })).length, 0);
-  });
-
-  it("stays on the card, struck through and marked, and the one before it is the latest again", () => {
-    const v = espVersions(ORIGINAL, [R1, R2X]);
-    assert.deepEqual(
-      v.map((x) => [x.label, x.pill, x.latest, x.inError ?? false]),
-      [
-        ["Revision 2", IN_ERROR_PILL, false, true],
-        ["Revision 1", LATEST_PILL, true, false],
-        ["Original ESP", "Replaced 14 Oct", false, false],
-      ],
-    );
-    assert.deepEqual(v[0].inErrorLines, ["Entered in error by Ana Agent, 29 October 2026: Typed from the wrong listing's notice."]);
-    // Its own details stay, as recorded.
-    assert.deepEqual(v[0].lines, ["Notice given 28 October 2026", "Recorded by Dana Whitlock, 28 Oct, 4:12pm"]);
-    assert.equal(v[0].revisionNo, 2);
-    assert.equal(v[0].file?.path, "o/p/d3/2.pdf");
-  });
-
-  it("a later revision replaces the one before the mark, never the one marked", () => {
-    const v = espVersions(ORIGINAL, [R1, R2X, R3]);
-    assert.deepEqual(
-      v.map((x) => [x.label, x.pill]),
-      [
-        ["Revision 3", LATEST_PILL],
-        ["Revision 2", IN_ERROR_PILL],
-        ["Revision 1", "Replaced 2 Nov"],
-        ["Original ESP", "Replaced 14 Oct"],
-      ],
-    );
-  });
-
-  it("every revision marked: the original ESP is used for checks again", () => {
-    const v = espVersions(ORIGINAL, [{ ...R1, inError: R2X.inError }, R2X]);
-    assert.deepEqual(v.map((x) => [x.label, x.pill]), [
-      ["Revision 2", IN_ERROR_PILL],
-      ["Revision 1", IN_ERROR_PILL],
-      ["Original ESP", LATEST_PILL],
+  it("the newest: the ESP on file goes back to the one before it, and an approval of the new figures goes", () => {
+    assert.deepEqual(deleteLines(R3, [R1, R2, R3], ORIGINAL), [
+      "Revision 3 and its notice are deleted from the listing, the history and the audit pack. This can't be undone.",
+      "The ESP on file goes back to Revision 2: $1,250,000 to $1,300,000.",
+      "A price statement approved against this revision is cancelled, and the card asks you to confirm the advertising matches the ESP on file.",
     ]);
-    assert.equal(v.filter((x) => x.latest).length, 1);
-    assert.match(ALL_IN_ERROR_HELP, /stay on the file, struck through, and no check uses them/);
   });
 
-  it("says when the approval was cancelled by recording it, and by marking it", () => {
+  it("the newest with the same figures as the one before: nothing else changes", () => {
+    const same = { ...R3, low: R2.low, high: R2.high };
+    assert.deepEqual(deleteLines(same, [R1, R2, same], ORIGINAL).slice(1), [
+      "The ESP on file goes back to Revision 2: $1,250,000 to $1,300,000.",
+    ]);
+  });
+
+  it("the only one: back to the agency agreement's ESP, and the card asks again", () => {
+    assert.deepEqual(deleteLines(R1, [R1], ORIGINAL).slice(1), [
+      "The ESP on file goes back to the one in the agency agreement: $1,400,000 to $1,450,000. The card asks again whether the ESP was revised.",
+      "A price statement approved against this revision is cancelled.",
+    ]);
+  });
+
+  it("an earlier one: the later ones move up a number and the ESP on file stays", () => {
+    assert.equal(deleteLines(R2, [R1, R2, R3], ORIGINAL)[1], "Revision 3 becomes Revision 2. The ESP on file doesn't change.");
+    assert.equal(deleteLines(R1, [R1, R2, R3], ORIGINAL)[1], "Revisions 2 to 3 each move up a number. The ESP on file doesn't change.");
+  });
+
+  it("says when recording it cancelled the price statement approval (Master, 10 Nov 2026)", () => {
     const cancellations = [
       { becauseItemKey: "d3", cancelledAt: R2.recordedAt },
-      { becauseItemKey: "d3", cancelledAt: MARKED_AT },
-      { becauseItemKey: "a4", cancelledAt: "2026-10-20T00:00:00Z" },
+      { becauseItemKey: "a4", cancelledAt: R1.recordedAt },
     ];
-    assert.deepEqual(cancelledApprovalLines(R2X, cancellations), [
-      "Recording this revision cancelled the price statement approval on 28 October 2026. Marking it entered in error doesn't bring that approval back.",
-      "Marking it entered in error cancelled the price statement approval on 29 October 2026. Approve the price statement again against the ESP now on file.",
-    ]);
-    // No approval to cancel then: nothing said.
-    assert.deepEqual(cancelledApprovalLines(R2X, [{ becauseItemKey: "a4", cancelledAt: R2.recordedAt }]), []);
-    const v = espVersions(ORIGINAL, [R1, R2X], cancellations.slice(0, 1));
-    assert.equal(v[0].inErrorLines?.length, 2);
-    assert.match(v[0].inErrorLines?.[1] ?? "", /^Recording this revision cancelled/);
-    // Marked a minute after it was recorded: each cancellation is said once, for what it was.
-    const quick: EspRevision = { ...R2, inError: { byName: "Ana Agent", at: "2026-10-28T05:13:00Z", reason: "Wrong notice." } };
-    const once = cancelledApprovalLines(quick, [{ becauseItemKey: "d3", cancelledAt: "2026-10-28T05:13:00Z" }]);
-    assert.equal(once.length, 1);
-    assert.match(once[0], /^Marking it entered in error cancelled/);
+    assert.equal(
+      deleteLines(R2, [R1, R2, R3], ORIGINAL, cancellations).at(-1),
+      "Recording this revision cancelled the price statement approval on 28 October 2026. Deleting it doesn't bring that approval back.",
+    );
+    // Not one it didn't cancel: Revision 1's was the ESP card's, not the revision's.
+    assert.ok(!deleteLines(R1, [R1, R2, R3], ORIGINAL, cancellations).some((l) => l.startsWith("Recording")));
+    const v = espVersions(ORIGINAL, [R1, R2, R3], cancellations);
+    assert.match(v[1].deleteLines?.at(-1) ?? "", /^Recording this revision cancelled/);
   });
 
-  it("the audit pack keeps it, labelled, and names the latest that stands", () => {
-    const rows = espPackRows({ low: 1400000, high: 1450000, agreementDate: "2026-10-02", agreementPath: "o/p/a3/a.pdf" }, [R2X, R1]);
-    assert.deepEqual(
-      rows.map((r) => r.version),
-      ["Original", "Revision 1 (latest)", "Revision 2 (entered in error)"],
-    );
-    assert.equal(rows[2].evidencePath, "o/p/d3/2.pdf");
-  });
-
-  it("an approval cancelled by marking one says so in the pack", () => {
-    assert.equal(
-      cancelledBecause({ because: "esp_changed", becauseItemKey: "d3", cancelledAt: MARKED_AT }, [R1, R2X]),
-      "Revision 2 marked entered in error",
-    );
-    assert.equal(
-      cancelledBecause({ because: "esp_changed", becauseItemKey: "d3", cancelledAt: R2.recordedAt }, [R1, R2X]),
-      "Revision 2 recorded",
-    );
+  it("no em dashes and no internal ids", () => {
+    const all = [R1, R2, R3].flatMap((r) => deleteLines(r, [R1, R2, R3], ORIGINAL, [{ becauseItemKey: "d3", cancelledAt: R1.recordedAt }]));
+    assert.ok(all.every((l) => !l.includes("—") && !/[0-9a-f]{8}-[0-9a-f]{4}/.test(l)));
   });
 });

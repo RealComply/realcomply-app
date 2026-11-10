@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { AlertTriangle, Ban, Check, Paperclip, Sparkles, Info, Star } from "lucide-react";
+import { AlertTriangle, Check, Paperclip, Sparkles, Info, Star, Trash2 } from "lucide-react";
 import { RevisionComparablesFields } from "@/components/compliance/RevisionComparables";
 import { REVISION_COMPARABLES_LABEL, saleLine, type RevisionCandidate } from "@/lib/rules/revision-comparables";
 import { factorsLine } from "@/lib/rules/comparables-rules";
@@ -12,24 +12,14 @@ import { unreadableKind } from "@/lib/storage/accepted-files";
 import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
-import {
-  cancelEspDraft,
-  markEspRevisionInError,
-  readEspNotice,
-  recordEspRevision,
-  undoEspRevisionInError,
-  type EspActionState,
-} from "@/lib/actions/esp-revisions";
+import { cancelEspDraft, deleteEspRevision, readEspNotice, recordEspRevision, type EspActionState } from "@/lib/actions/esp-revisions";
 import {
   ADD_REVISION,
+  DELETE_REVISION,
+  deleteButton,
   EVIDENCE_HINT,
   EVIDENCE_IN_NOTICE_LABEL,
   EVIDENCE_LABEL,
-  IN_ERROR_CONFIRM,
-  IN_ERROR_HELP,
-  IN_ERROR_REASON_LABEL,
-  IN_ERROR_REASON_MAX,
-  MARK_IN_ERROR,
   PREVIOUS_ESP_HINT,
   PREVIOUS_ESP_LABEL,
   UPLOAD_HELP,
@@ -37,8 +27,6 @@ import {
   noticeUnderReforms,
   previousEspDiffers,
   replaceWarning,
-  UNDO_IN_ERROR,
-  undoInErrorHelp,
   type EspVersion,
   type PendingRevision,
 } from "@/lib/esp-history";
@@ -74,11 +62,11 @@ export type EspHistoryView = {
   /** Metro or not (Reg s12A; 0118), for where each sale sits against the search area. */
   areaKind?: AreaKind | null;
   /**
-   * "Entered in error" (Master, 10 Nov 2026; 0124): the listing's agent or the
-   * licensee in charge marks a revision; only the licensee undoes it. Neither
-   * on a signed-off file or a withdrawn listing (page.tsx).
+   * Delete a revision (Adam, 10 Nov 2026; 0124): for the listing's agent or
+   * the licensee in charge, and not on a signed-off file or a withdrawn
+   * listing (page.tsx). Null for everyone else.
    */
-  inError?: { propertyId: string; canMark: boolean; canUndo: boolean } | null;
+  deleting?: { propertyId: string } | null;
 };
 
 /** A file on the card: a link (an hour) when there is one, else its name. */
@@ -125,20 +113,15 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
         <li
           key={v.key}
           className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 px-3.5 py-3 ${i > 0 ? "border-t border-rc-border" : ""} ${
-            v.latest ? "bg-rc-green-soft" : v.inError ? "bg-rc-bg-alt" : "bg-white"
+            v.latest ? "bg-rc-green-soft" : "bg-white"
           }`}
         >
-          <span className={`text-sm font-bold ${v.inError ? "text-rc-muted line-through decoration-1" : "text-rc-ink"}`}>{v.label}</span>
+          <span className="text-sm font-bold text-rc-ink">{v.label}</span>
           <span
             className={`h-fit whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-              v.latest
-                ? "bg-white text-rc-green-deep"
-                : v.inError
-                  ? "inline-flex items-center gap-1 bg-rc-red-soft text-rc-red"
-                  : "border border-rc-border bg-rc-bg-alt text-rc-muted"
+              v.latest ? "bg-white text-rc-green-deep" : "border border-rc-border bg-rc-bg-alt text-rc-muted"
             }`}
           >
-            {v.inError && <Ban size={11} aria-hidden="true" />}
             {v.pill}
           </span>
           <span
@@ -146,16 +129,6 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
           >
             {v.range}
           </span>
-          {/* Entered in error (0124): who, when and why, and the approval. */}
-          {v.inError && (v.inErrorLines?.length ?? 0) > 0 && (
-            <div className="col-span-2 space-y-1 rounded-lg border border-rc-red/25 bg-white px-2.5 py-2 text-xs">
-              {(v.inErrorLines ?? []).map((l, k) => (
-                <p key={l} className={k === 0 ? "font-semibold text-rc-red" : "text-rc-muted"}>
-                  {l}
-                </p>
-              ))}
-            </div>
-          )}
           <span className="col-span-2 flex flex-wrap gap-x-3.5 gap-y-0.5 text-xs text-rc-muted">
             {v.lines.map((l) => (
               <span key={l}>{l}</span>
@@ -228,15 +201,8 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
               )}
             </div>
           )}
-          {view.inError && v.revisionNo !== undefined && (
-            <InErrorControls
-              key={`${v.key}-${v.inError ? "marked" : "stands"}`}
-              propertyId={view.inError.propertyId}
-              no={v.revisionNo}
-              marked={Boolean(v.inError)}
-              canMark={view.inError.canMark}
-              canUndo={view.inError.canUndo}
-            />
+          {view.deleting && v.revisionNo !== undefined && (
+            <DeleteRevision propertyId={view.deleting.propertyId} no={v.revisionNo} lines={v.deleteLines ?? []} />
           )}
         </li>
       ))}
@@ -244,37 +210,11 @@ export function EspHistoryList({ view }: { view: EspHistoryView }) {
   );
 }
 
-/**
- * On a revision: "Entered in error", which opens the required reason, or on
- * one already marked, the licensee's "Undo". The database checks who may.
- */
-function InErrorControls({
-  propertyId,
-  no,
-  marked,
-  canMark,
-  canUndo,
-}: {
-  propertyId: string;
-  no: number;
-  marked: boolean;
-  canMark: boolean;
-  canUndo: boolean;
-}) {
+/** On a revision: "Delete", which says what deleting it does before it goes. */
+function DeleteRevision({ propertyId, no, lines }: { propertyId: string; no: number; lines: string[] }) {
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
-  if (marked ? !canUndo : !canMark) return null;
-
-  const run = (act: () => Promise<EspActionState>) => {
-    setError(null);
-    startTransition(async () => {
-      const res = await act();
-      if (res.error) setError(res.error);
-      else setOpen(false);
-    });
-  };
 
   if (!open) {
     return (
@@ -282,73 +222,43 @@ function InErrorControls({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className={`text-xs font-semibold hover:underline ${marked ? "text-rc-green-deep" : "text-rc-red"}`}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-rc-red hover:underline"
         >
-          {marked ? UNDO_IN_ERROR : `${MARK_IN_ERROR}…`}
+          <Trash2 size={12} aria-hidden="true" /> {DELETE_REVISION}
         </button>
       </div>
     );
   }
 
-  if (marked) {
-    return (
-      <div className="col-span-2 mt-1 space-y-2 rounded-lg border border-rc-border bg-white px-2.5 py-2 text-xs">
-        <p className="text-rc-muted">{undoInErrorHelp(no)}</p>
-        {error && <p className="font-semibold text-rc-red">{error}</p>}
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => run(() => undoEspRevisionInError(propertyId, no))}
-            className="rounded-md bg-rc-green-deep px-3 py-1.5 font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-          >
-            {busy ? "Undoing…" : `Undo: Revision ${no} stands`}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setOpen(false)}
-            className="rounded-md border border-rc-border px-3 py-1.5 font-medium text-rc-muted transition hover:bg-rc-bg-alt"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const id = `in-error-reason-${no}`;
   return (
     <div className="col-span-2 mt-1 space-y-2 rounded-lg border border-rc-red/30 bg-white px-2.5 py-2 text-xs">
-      <label htmlFor={id} className="block font-semibold text-rc-ink">
-        {IN_ERROR_REASON_LABEL}
-      </label>
-      <textarea
-        id={id}
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        maxLength={IN_ERROR_REASON_MAX}
-        rows={2}
-        required
-        className="w-full rounded-md border border-rc-border px-2.5 py-1.5 text-sm text-rc-ink outline-none focus:border-rc-green-deep"
-      />
-      <p className="text-rc-muted">{IN_ERROR_HELP}</p>
+      {lines.map((l, k) => (
+        <p key={l} className={k === 0 ? "font-semibold text-rc-ink" : "text-rc-muted"}>
+          {l}
+        </p>
+      ))}
       {error && <p className="font-semibold text-rc-red">{error}</p>}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={busy || reason.trim() === ""}
-          onClick={() => run(() => markEspRevisionInError(propertyId, no, reason))}
+          disabled={busy}
+          onClick={() => {
+            setError(null);
+            startTransition(async () => {
+              const res = await deleteEspRevision(propertyId, no);
+              if (res.error) setError(res.error);
+              else setOpen(false);
+            });
+          }}
           className="rounded-md bg-rc-red px-3 py-1.5 font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
         >
-          {busy ? "Marking…" : IN_ERROR_CONFIRM}
+          {busy ? "Deleting…" : deleteButton(no)}
         </button>
         <button
           type="button"
           disabled={busy}
           onClick={() => {
             setOpen(false);
-            setReason("");
             setError(null);
           }}
           className="rounded-md border border-rc-border px-3 py-1.5 font-medium text-rc-muted transition hover:bg-rc-bg-alt"

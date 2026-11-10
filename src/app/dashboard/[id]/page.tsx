@@ -33,7 +33,7 @@ import { STAGE_LABELS, type Property, type PropertyItem, type PropertyStage } fr
 import { RoofMark } from "@/components/RoofMark";
 import { espHistoryFor, espRevisionsFor } from "@/lib/data/esp-revisions";
 import { reviseByFor, soiVersionsFor, soiViewFor } from "@/lib/data/soi";
-import { noticeUnderReforms, revisionsInForce, revisionsOrCard } from "@/lib/esp-history";
+import { noticeUnderReforms, revisionsOrCard } from "@/lib/esp-history";
 import { soiApplies } from "@/lib/rules/soi";
 import { espGivenApplies } from "@/lib/rules/esp-given-before-signing";
 import { reformsInForce } from "@/lib/rules/underquoting-reforms";
@@ -249,7 +249,7 @@ export default async function PropertyPage({
   // A council area already saved is kept either way.
   const councilAreaShows =
     espGivenApplies(allItems["a3"]?.event_date ?? null) ||
-    (reformsInForce() && revisionsInForce(await espRevisionsFor(supabase, p.agency_id, p.id)).some((r) => noticeUnderReforms(r.givenOn)));
+    (reformsInForce() && (await espRevisionsFor(supabase, p.agency_id, p.id)).some((r) => noticeUnderReforms(r.givenOn)));
   const councilArea: CouncilAreaView = {
     council: p.council_area ?? null,
     from: p.council_area_from ?? null,
@@ -284,13 +284,10 @@ export default async function PropertyPage({
     ? {
         ...(await espHistoryFor(supabase, p.agency_id, p.id, allItems)),
         areaKind: areaOf(p.council_area),
-        // "Entered in error" (Master, 10 Nov 2026; 0124): the listing's agent
-        // or the licensee in charge marks a revision, the licensee undoes it;
-        // not on a signed-off file or a withdrawn listing.
-        inError:
-          allItems["sign_licensee"]?.status === "done" || withdrawn
-            ? null
-            : { propertyId: p.id, canMark: mayWithdraw, canUndo: !profile.is_assistant && access.actsAsLicensee },
+        // Delete a revision (Adam, 10 Nov 2026; 0124): the listing's agent or
+        // the licensee in charge; not on a signed-off file or a withdrawn listing.
+        deleting:
+          allItems["sign_licensee"]?.status === "done" || withdrawn || !mayWithdraw ? null : { propertyId: p.id },
       }
     : undefined;
   // The Statement of Information (s72C; 0121): on its own card in Listing
@@ -311,7 +308,7 @@ export default async function PropertyPage({
     espHistory && soiApplies(allItems["a3"]?.event_date ?? null)
       ? reviseByFor(
           await soiVersionsFor(supabase, p.id),
-          revisionsInForce(revisionsOrCard(await espRevisionsFor(supabase, p.agency_id, p.id), allItems["d3"])),
+          revisionsOrCard(await espRevisionsFor(supabase, p.agency_id, p.id), allItems["d3"]),
           comparables,
         )
       : null;

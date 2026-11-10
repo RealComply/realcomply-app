@@ -350,7 +350,7 @@ export type ComplianceRecordInput = {
    * the pack, then the price statement approvals and cancellations in date
    * order. Null (or absent) when the ESP was never revised: no page.
    */
-  espHistory?: { rows: EspPackRow[]; approvals: string[]; inError?: string[] } | null;
+  espHistory?: { rows: EspPackRow[]; approvals: string[] } | null;
   /**
    * Complaints the office linked to this listing, with their files (0101,
    * Adam 30 Oct 2026). Only ever given where the caller may see complaints:
@@ -1069,7 +1069,7 @@ async function appendDocuments(
   doc: PDFDocument,
   fonts: Fonts,
   opts: {
-    espHistory?: { rows: EspPackRow[]; approvals: string[]; inError?: string[] } | null;
+    espHistory?: { rows: EspPackRow[]; approvals: string[] } | null;
     documents: PackDocument[];
     loadDocument: (d: PackDocument) => Promise<LoadedDocument>;
     maxDocumentBytes: number;
@@ -1225,7 +1225,7 @@ function drawEspHistoryPage(
   doc: PDFDocument,
   fonts: Fonts,
   page: PDFPage,
-  history: { rows: EspPackRow[]; approvals: string[]; inError?: string[] },
+  history: { rows: EspPackRow[]; approvals: string[] },
   placed: Array<{ d: PackDocument; separator: PDFPage; pageNo: number }>,
   contents: PDFPage | null,
 ) {
@@ -1301,23 +1301,6 @@ function drawEspHistoryPage(
     y -= (lineCount - 1) * 11 + 12;
     page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + width, y }, thickness: 0.4, color: BORDER });
     y -= 16;
-  }
-
-  // Revisions entered in error (0124): kept on the file, never used for checks.
-  if ((history.inError ?? []).length > 0) {
-    y -= 10;
-    page.drawText("Entered in error", { x: MARGIN, y, size: 11, font: fonts.bold, color: INK });
-    y -= 18;
-    for (const line of history.inError ?? []) {
-      if (y < 130) break;
-      for (const part of wrap(pdfText(line, fonts.regular), fonts.regular, 9.5, width)) {
-        page.drawText(part, { x: MARGIN, y, size: 9.5, font: fonts.regular, color: MUTED });
-        y -= 13;
-      }
-      y -= 2;
-    }
-    page.drawText(fit("Kept on the file with their notices. No check used them.", fonts.regular, 8.5, width), { x: MARGIN, y, size: 8.5, font: fonts.regular, color: FAINT });
-    y -= 14;
   }
 
   y -= 10;

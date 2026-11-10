@@ -2,17 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
-import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
+import { EVIDENCE_BUCKET, isInFolder, storedFileProblem } from "@/lib/storage/evidence";
+import { createServiceClient } from "@/lib/supabase/service";
 import { readNoticeIntoPending } from "@/lib/esp-notice";
-import {
-  IN_ERROR_REASON_MAX,
-  noticeUnderReforms,
-  pendingFrom,
-  previousEspProblem,
-  revisionEvidenceProblem,
-  revisionsInForce,
-  typedFigure,
-} from "@/lib/esp-history";
+import { noticeUnderReforms, pendingFrom, previousEspProblem, revisionEvidenceProblem, typedFigure } from "@/lib/esp-history";
 import { feedbackToStore, marketFeedbackFrom } from "@/lib/rules/market-feedback";
 import { espRevisionsFor } from "@/lib/data/esp-revisions";
 import { comparablesFor } from "@/lib/data/comparables";
@@ -152,8 +145,7 @@ export async function recordEspRevision(
   const mostCount = comparables.entries.filter((c) => c.most).length;
   const comparablesFewerReason =
     mostCount < MAX_MOST_COMPARABLE ? String(formData.get("comparablesFewerReason") ?? "").trim().slice(0, 4000) || null : null;
-  // Only the revisions that stand (entered in error, 0124).
-  const earlier = revisionsInForce(await espRevisionsFor(supabase, profile.agency_id, propertyId));
+  const earlier = await espRevisionsFor(supabase, profile.agency_id, propertyId);
   const firstEsp = (await comparablesFor(supabase, propertyId)).filter((c) => c.weighting === "relied").map((c) => c.address);
   const comparablesProblem = revisionComparablesProblem({
     entries: comparables.entries,
@@ -221,66 +213,42 @@ export async function recordEspRevision(
 }
 
 /**
- * "Entered in error" (Master, 10 Nov 2026; 0124). The listing's agent or the
- * licensee in charge marks a revision entered in error, with a reason. It is
- * never deleted: it stays in the history and the audit pack, struck through,
- * and every check leaves it out. The database moves the card to the newest
- * revision that stands, which cancels a price statement approval given
- * against the ESP that changes, as any change of ESP does.
+ * Delete a revision (Adam, 10 Nov 2026: "Just have it deleted cleanly";
+ * 0124). The database checks it's the listing's agent or the licensee in
+ * charge, deletes it, moves the later ones up a number and moves the card,
+ * then hands back the files that went with it. Those are removed here, and
+ * only from this listing's own ESP revision folder: the person may not
+ * otherwise delete files (only the licensee can, 0058), so the removal is
+ * RealComply's, after the database has agreed.
  */
-export async function markEspRevisionInError(
-  propertyId: string,
-  revisionNo: number,
-  reasonTyped: string,
-): Promise<EspActionState> {
-  const { supabase } = await requireAuthContext();
-  const reason = plainReason(reasonTyped);
-  if (!reason) return { error: "Say why it was entered in error." };
-  if (reason.length > IN_ERROR_REASON_MAX) return { error: `Keep the reason to ${IN_ERROR_REASON_MAX} characters.` };
-  if (!Number.isInteger(revisionNo) || revisionNo < 1) return { error: "That revision isn't on this listing." };
-  const { error } = await supabase.rpc("mark_esp_revision_in_error", {
-    p_property_id: propertyId,
-    p_revision_no: revisionNo,
-    p_reason: reason,
-  });
-  if (error) return { error: refusal(error, "Couldn't mark the revision just now. Try again.") };
-  await afterTheEspMoved(propertyId);
-  return { error: null };
-}
+export async function deleteEspRevision(propertyId: string, revisionNo: number): Promise<EspActionState> {
+  const { supabase, profile } = await requireAuthContext();
+  if (!Number.isInteger(revisionNo) || revisionNo < 1) return { error: "That revision isn't on this listing. Reload the page." };
+  const { data, error } = await supabase.rpc("delete_esp_revision", { p_property_id: propertyId, p_revision_no: revisionNo });
+  if (error) {
+    return { error: error.code === "P0001" || error.code === "42501" ? error.message : "Couldn't delete the revision just now. Try again." };
+  }
+  const folder = `${profile.agency_id}/${propertyId}/d3`;
+  const paths = (Array.isArray(data) ? (data as unknown[]) : []).filter(
+    (p): p is string => typeof p === "string" && isInFolder(p, folder),
+  );
+  if (paths.length > 0) {
+    try {
+      const { error: removeError } = await createServiceClient().storage.from(EVIDENCE_BUCKET).remove(paths);
+      // The folder only, never a file's name.
+      if (removeError) console.error("deleted ESP revision's files not removed:", folder, removeError.message);
+    } catch (err) {
+      console.error("deleted ESP revision's files not removed:", folder, err instanceof Error ? err.message : err);
+    }
+  }
 
-/** The licensee in charge undoes it: the revision stands again. */
-export async function undoEspRevisionInError(propertyId: string, revisionNo: number): Promise<EspActionState> {
-  const { supabase } = await requireAuthContext();
-  if (!Number.isInteger(revisionNo) || revisionNo < 1) return { error: "That revision isn't on this listing." };
-  const { error } = await supabase.rpc("undo_esp_revision_in_error", {
-    p_property_id: propertyId,
-    p_revision_no: revisionNo,
-  });
-  if (error) return { error: refusal(error, "Couldn't undo it just now. Try again.") };
-  await afterTheEspMoved(propertyId);
-  return { error: null };
-}
-
-/** Plain text: one line of words, no markup, control characters dropped. */
-function plainReason(typed: string): string {
-  return String(typed ?? "")
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
-    .replace(/[<>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function refusal(error: { code?: string; message: string }, otherwise: string): string {
-  return error.code === "P0001" || error.code === "42501" ? error.message : otherwise;
-}
-
-/** The ESP on foot may have changed: check the live ad again, then the page. */
-async function afterTheEspMoved(propertyId: string): Promise<void> {
+  // The ESP on file may have changed: check the live ad against it again.
   try {
     const { checkListingNow } = await import("@/lib/actions/website-scan");
     await checkListingNow(propertyId);
   } catch (err) {
-    console.error("advertised price recheck after an ESP revision was marked failed:", err instanceof Error ? err.message : err);
+    console.error("advertised price recheck after an ESP revision was deleted failed:", err instanceof Error ? err.message : err);
   }
   revalidatePath(`/dashboard/${propertyId}`);
+  return { error: null };
 }

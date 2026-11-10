@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { EVIDENCE_BUCKET, isInFolder } from "@/lib/storage/evidence";
 import { comparablesFor, type Comparable } from "@/lib/data/comparables";
 import { espRevisionsFor } from "@/lib/data/esp-revisions";
-import { revisionsInForce, revisionsOrCard, type EspRevision } from "@/lib/esp-history";
+import { revisionsOrCard, type EspRevision } from "@/lib/esp-history";
 import { areaOf, type AreaKind } from "@/lib/rules/council-area";
 import { comparablesRecordOf } from "@/lib/rules/comparables-rules";
 import {
@@ -150,8 +150,7 @@ export async function soiViewFor(
     comparablesFor(supabase, p.id),
     espRevisionsFor(supabase, p.agency_id, p.id),
   ]);
-  // Never an ESP revision entered in error (0124).
-  const revisions = revisionsInForce(revisionsOrCard(stored, input.allItems["d3"]));
+  const revisions = revisionsOrCard(stored, input.allItems["d3"]);
   const folder = `${p.agency_id}/${p.id}/soi/`;
   const paths = versions.map((v) => v.pdfPath).filter((path) => isInFolder(path, folder));
   const urls: Record<string, string> = {};
