@@ -13,6 +13,7 @@ import { formatAuDate } from "@/lib/format-date";
 import { fillFromCertificate } from "@/lib/cpd-one-place";
 import { unreadableKind } from "@/lib/storage/accepted-files";
 import type { BreachCategory, BreachSeverity, GiftDirection } from "@/lib/types";
+import { targetDaysProblem } from "@/lib/complaint-tiles";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -864,7 +865,14 @@ export async function updateGiftThreshold(_prev: ActionState, formData: FormData
 
 // ── Complaints register — tracked to resolution, optionally cross-linked to
 // a property file. ─────────────────────────────────────────────────────────
-export async function addComplaint(_prev: ActionState, formData: FormData): Promise<ActionState> {
+/**
+ * A complaint just logged, with its id, so the files chosen on the form can go
+ * into its own folder straight after (Master, 10 Nov 2026: "attach files on
+ * the new complaint form").
+ */
+export type LogComplaintState = ActionState & { complaintId?: string | null };
+
+export async function addComplaint(_prev: ActionState, formData: FormData): Promise<LogComplaintState> {
   const { supabase, profile, access } = await requireAuthContext();
   // REVERSAL (Adam, 9 Oct 2026): complaints are the licensee in charge's,
   // for everyone. "Complaints should go directly to a licensee."
@@ -884,20 +892,45 @@ export async function addComplaint(_prev: ActionState, formData: FormData): Prom
   if (!complainant) return { error: "Enter who the complaint is from." };
   if (!nature) return { error: "Describe the complaint." };
 
-  const { error } = await supabase.from("complaints").insert({
-    agency_id: profile.agency_id,
-    received_date: receivedDate,
-    complainant,
-    nature,
-    agent_id: agentId,
-    property_id: propertyId,
-    status: "open",
-    notes,
-    created_by: profile.id,
-  });
+  const { data: saved, error } = await supabase
+    .from("complaints")
+    .insert({
+      agency_id: profile.agency_id,
+      received_date: receivedDate,
+      complainant,
+      nature,
+      agent_id: agentId,
+      property_id: propertyId,
+      status: "open",
+      notes,
+      created_by: profile.id,
+    })
+    .select("id")
+    .single();
 
-  if (error) return { error: "Couldn't save that complaint — try again." };
+  if (error || !saved) return { error: "Couldn't save that complaint. Try again." };
   revalidatePath("/dashboard/registers");
+  return { error: null, complaintId: (saved as { id: string }).id };
+}
+
+/**
+ * How many days the office allows to resolve a complaint (Master, 10 Nov
+ * 2026: "Change" on the tile, for the licensee). The licensee in charge only;
+ * the database refuses anyone else whatever calls it (0093).
+ */
+export async function setComplaintTargetDays(daysTyped: string): Promise<ActionState> {
+  const { supabase, profile, access } = await requireAuthContext();
+  if (!access.officeLicensee) return { error: "Only the licensee in charge can change the target." };
+  const problem = targetDaysProblem(daysTyped);
+  if (problem) return { error: problem };
+  const days = Number(String(daysTyped).trim());
+  const { error } = await supabase
+    .from("agencies")
+    .update({ complaint_resolution_target_days: days })
+    .eq("id", profile.agency_id);
+  if (error) return { error: "Couldn't change the target just now. Try again." };
+  revalidatePath("/dashboard/registers");
+  revalidatePath("/dashboard/home");
   return ok;
 }
 

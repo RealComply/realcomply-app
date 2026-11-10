@@ -299,7 +299,7 @@ export default async function RegistersPage({
             <h1 className="text-2xl font-bold tracking-tight text-rc-ink">Registers</h1>
             <p className="mt-1 text-sm text-rc-muted">
               {licenseeView
-                ? `Agency-level records the licensee must keep — ${cpdYear.label} CPD year.`
+                ? `Agency-level records the licensee must keep. CPD year ${cpdYear.label}.`
                 : "Your own licence, and the gifts and breaches you have logged. The licensee sees the whole register."}
             </p>
           </div>
