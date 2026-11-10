@@ -122,7 +122,7 @@ export async function generateMetadata(): Promise<Metadata> {
 // agent's runs start of the job, middle, then the weekly loop.
 const FOR_LICENSEE = [
   {
-    title: "You can see the whole office.",
+    title: "Your whole office compliance at a glance.",
     body: "Every listing, every agent, what's done and what's outstanding, without having to chase anyone.",
   },
   {
