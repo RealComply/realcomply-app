@@ -3,6 +3,7 @@
 import { useActionState, useState, type ReactNode } from "react";
 import { saveLicenseeEmail } from "@/lib/actions/team";
 import { LicenseeChangeNotice } from "@/components/team/LicenseeChangeNotice";
+import { OFFICE_PAGE_HELP, OFFICE_PAGE_LABEL } from "@/lib/listings-pages";
 
 // Agency-level licensee email, editable after setup.
 //
@@ -84,13 +85,11 @@ export function LicenseeEmailForm({
           listing. For an individual agent subscription this is their employing
           agency's site — the listings live there either way. */}
       <label htmlFor="websiteUrl" className="mt-4 block text-sm font-medium text-rc-ink">
-        {/* Was "Agency website". Same name as the sign-up box from 23 Oct 2026. */}
-        Link to the page with your listings
+        {/* Was "Agency website", then "Link to the page with your listings". The
+            sign-up's words, 8 Nov 2026 (Adam). */}
+        {OFFICE_PAGE_LABEL}
       </label>
-      <p className="mt-1 text-xs leading-relaxed text-rc-muted">
-        Where your listings are published. RealComply uses it to find each listing&rsquo;s page and check the
-        advertised price against the ESP.
-      </p>
+      <p className="mt-1 text-xs leading-relaxed text-rc-muted">{OFFICE_PAGE_HELP}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
           id="websiteUrl"

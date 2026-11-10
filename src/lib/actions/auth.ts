@@ -133,7 +133,7 @@ async function createAccount(formData: FormData): Promise<ActionState> {
   // scanned). Was optional. Someone joining an existing office by invite is
   // never asked: the office already has it.
   if (!inviteToken && !websiteUrl) {
-    return { error: "Add the link to the page with your listings." };
+    return { error: "Add the link to your office's listings page." };
   }
   // Optional (brief, 14 Oct 2026, Part 4): the company on the corporation
   // licence, if different from the trading name. Saved once the office exists.

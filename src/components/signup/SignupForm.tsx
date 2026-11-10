@@ -2,6 +2,7 @@
 
 import { Suspense, useActionState, useEffect, useState } from "react";
 import { ListingsPageSignupField } from "@/components/signup/ListingsPageSignupField";
+import { OFFICE_PAGE_HELP, OFFICE_PAGE_LABEL } from "@/lib/listings-pages";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -293,8 +294,9 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
               check, so nobody pastes a URL per listing. */}
           {/* Was "Agency website (optional)". Renamed and required, 23 Oct
               2026 (Adam): we need the page their listings are on. */}
+          {/* Adam, 8 Nov 2026: clearly the office's page, beside the personal one below. */}
           <label htmlFor="websiteUrl" className="mt-4 block text-sm font-medium text-rc-ink">
-            Link to the page with your listings
+            {OFFICE_PAGE_LABEL}
           </label>
           <input
             id="websiteUrl"
@@ -313,10 +315,7 @@ function InviteAwareForm({ signupsOpen }: { signupsOpen: boolean }) {
             placeholder="youragency.com.au/buy"
             className="mt-1 w-full rounded-lg border border-rc-border px-3 py-2 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
           />
-          <p className="mt-1 text-xs leading-relaxed text-rc-muted">
-            The page on your agency&rsquo;s website that shows your listings for sale. Used to check advertised
-            prices against the estimated selling price.
-          </p>
+          <p className="mt-1 text-xs leading-relaxed text-rc-muted">{OFFICE_PAGE_HELP}</p>
         </div>
       )}
       <div>

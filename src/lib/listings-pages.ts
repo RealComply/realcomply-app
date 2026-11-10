@@ -75,7 +75,7 @@ export function searchLine(search: { at: string; tries: SearchTry[] } | null | u
   if (!search || search.tries.length === 0 || search.tries.some((t) => t.result === "found")) return null;
   const parts = search.tries.map(
     (t) =>
-      `${t.page === "agent" ? "the agent's own listings page" : "the office listings page"}: ${
+      `${t.page === "agent" ? "the agent's personal listings page" : "the office's listings page"}: ${
         SEARCH_WORDS[t.result as Exclude<SearchResult, "found">]
       }`,
   );
@@ -159,12 +159,24 @@ export function groupWarningText(w: { found: number; inRealcomply: number }): st
   );
 }
 
-/** The help text under "My listings page" and "Your listings page" at sign-up (Adam, 2 Nov 2026). */
-export const MY_LISTINGS_PAGE_HELP =
-  "If you have your own page on the office website (often your agent profile), add it here. RealComply checks it first for your listings. Leave it blank to use the office page.";
+// THE TWO FIELDS, IN THE SAME WORDS EVERYWHERE (Adam, 8 Nov 2026): office
+// sign-up, invited and own-plan sign-up, My details, and Office profile (the
+// office page and the agents' pages card). Was "Link to the page with your
+// listings" and "Your listings page (optional)" / "My listings page".
 
-/** The help text on the Office profile card (Adam, 2 Nov 2026). */
+/** The office page: required. */
+export const OFFICE_PAGE_LABEL = "Link to your office's listings page";
+export const OFFICE_PAGE_HELP =
+  "The page on your office's website that shows all the office's properties for sale. RealComply uses it to check advertised prices against the estimated selling price.";
+
+/** The personal page: not required (Skip at sign-up); the label says so, without "(optional)". */
+export const PERSONAL_PAGE_LABEL = "Link to your personal listings page, if you have one";
+export const PERSONAL_PAGE_HELP =
+  "Your own agent profile page on the office website, if it shows your listings. Leave it blank and RealComply uses your office's page.";
+
+/** The Office profile card: each agent's personal listings page. */
+export const AGENTS_PAGES_TITLE = "Agents' personal listings pages";
 export const AGENTS_PAGES_HELP =
-  "If an agent has their own page, RealComply checks it first for that agent's listings. Agents can add their own; you can add or change anyone's.";
+  "Each agent's own agent profile page on the office website, if it shows their listings. Left blank, RealComply uses your office's page. Agents can add their own; you can add or change anyone's.";
 
-export const NOT_SET_LINE = "Not set. Uses the office page.";
+export const NOT_SET_LINE = "Not set. Uses your office's page.";
