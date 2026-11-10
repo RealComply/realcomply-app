@@ -6,7 +6,7 @@ import { EVIDENCE_BUCKET, isInFolder, storedFileProblem } from "@/lib/storage/ev
 import { comparablesFor } from "@/lib/data/comparables";
 import { espRevisionsFor } from "@/lib/data/esp-revisions";
 import { draftFor, soiVersionsFor } from "@/lib/data/soi";
-import { revisionsOrCard } from "@/lib/esp-history";
+import { revisionsInForce, revisionsOrCard } from "@/lib/esp-history";
 import { areaOf } from "@/lib/rules/council-area";
 import { addressKey } from "@/lib/rules/revision-comparables";
 import { SOI_BAD, SOI_NOT_YET, soiApplies, soiContentFrom } from "@/lib/rules/soi";
@@ -93,7 +93,7 @@ export async function makeStatementOfInformation(propertyId: string, _prev: SoiA
 
   // Made from the file as it is now. The form's properties are the ones the
   // file says (their addresses can't be retyped), for the ESP it says.
-  const draft = draftFor({ property, allItems, listing: comparables, revisions: revisionsOrCard(stored, allItems["d3"]), versions });
+  const draft = draftFor({ property, allItems, listing: comparables, revisions: revisionsInForce(revisionsOrCard(stored, allItems["d3"])), versions });
   let sent: Array<{ address?: unknown }> = [];
   try {
     const raw = JSON.parse(String(formData.get("comparables") ?? "[]"));
@@ -173,7 +173,7 @@ export async function recordUploadedStatement(propertyId: string, _prev: SoiActi
 
   const listing = await listingFor(ctx, propertyId);
   if (!listing) return { error: SOI_BAD };
-  const revisions = revisionsOrCard(await espRevisionsFor(supabase, profile.agency_id, propertyId), listing.allItems["d3"]);
+  const revisions = revisionsInForce(revisionsOrCard(await espRevisionsFor(supabase, profile.agency_id, propertyId), listing.allItems["d3"]));
   if (!Number.isInteger(espRevisionNo) || (espRevisionNo !== 0 && !revisions.some((r) => r.no === espRevisionNo))) {
     return { error: "Choose which ESP the statement is for." };
   }

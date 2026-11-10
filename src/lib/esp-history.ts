@@ -46,6 +46,12 @@ export type EspRevision = {
   comparablesInfoUsed?: string | null;
   /** Why fewer than 3 are comparable (Reg s12G(1)(d); 0120). */
   comparablesFewerReason?: string | null;
+  /**
+   * Marked "Entered in error" (Master, 10 Nov 2026; 0124): who, when (ISO)
+   * and why. Kept on the file and in the audit pack; ignored by every check.
+   * Null when it stands.
+   */
+  inError?: { byName: string | null; at: string; reason: string } | null;
 };
 
 const num = (v: unknown): number | null => {
@@ -80,7 +86,90 @@ export function revisionFrom(row: Record<string, unknown> | null | undefined): E
     comparables: revisionComparablesOf(row.comparables),
     comparablesInfoUsed: typeof row.comparables_info_used === "string" ? row.comparables_info_used : null,
     comparablesFewerReason: typeof row.comparables_fewer_reason === "string" ? row.comparables_fewer_reason : null,
+    inError:
+      typeof row.entered_in_error_at === "string" && typeof row.entered_in_error_reason === "string"
+        ? {
+            byName: typeof row.entered_in_error_by_name === "string" ? row.entered_in_error_by_name : null,
+            at: row.entered_in_error_at,
+            reason: row.entered_in_error_reason,
+          }
+        : null,
   };
+}
+
+// ── Entered in error (Master, 10 Nov 2026; 0124) ─────────────────────────
+//
+// A revision is never deleted. The listing's agent or the licensee in charge
+// marks one "Entered in error", with a reason; the licensee can undo it. It
+// stays on the card, struck through, and in the audit pack, and every check
+// (the latest ESP, the price floor, the price check, the Statement of
+// Information, the comparables per revision) leaves it out. The database
+// moves the card (d3) back to the newest revision that stands (0124).
+
+/** The revisions every check uses: those not entered in error, oldest first. */
+export function revisionsInForce(revisions: EspRevision[]): EspRevision[] {
+  return [...revisions].filter((r) => !r.inError).sort((a, b) => a.no - b.no);
+}
+
+/** The required reason, as typed: one line, trimmed. */
+export const IN_ERROR_REASON_MAX = 500;
+
+/** "Entered in error by Ana Agent, 10 November 2026: wrong listing's notice" */
+export function inErrorLine(e: NonNullable<EspRevision["inError"]>): string {
+  const day = e.at ? formatAuDate(sydneyDate(new Date(e.at))) : "";
+  return `Entered in error${e.byName ? ` by ${e.byName}` : ""}${day ? `, ${day}` : ""}: ${e.reason}`;
+}
+
+export const IN_ERROR_PILL = "Entered in error";
+
+/** The link on a revision, and the form it opens (Master, 10 Nov 2026). */
+export const MARK_IN_ERROR = "Entered in error";
+export const IN_ERROR_REASON_LABEL = "Why was it entered in error?";
+export const IN_ERROR_HELP =
+  "It stays on the file and in the audit pack, struck through, and no check uses it. The licensee in charge can undo it.";
+export const IN_ERROR_CONFIRM = "Mark entered in error";
+export const UNDO_IN_ERROR = "Undo";
+export function undoInErrorHelp(no: number): string {
+  return `Revision ${no} stands again. If it is the newest that stands, every check uses it.`;
+}
+/** Under the question when every revision on the listing was entered in error. */
+export const ALL_IN_ERROR_HELP =
+  "Every revision recorded on this listing was entered in error. They stay on the file, struck through, and no check uses them.";
+
+/**
+ * What happened to the price statement approval, on a revision marked
+ * entered in error (listing_signoff_cancellations, 0100, because d3): when
+ * recording it cancelled the approval, marking it doesn't bring that approval
+ * back; and when marking it cancelled the approval (the ESP on file moved
+ * back), it is approved again against the ESP now on file. Each written in
+ * the same transaction as the cancellation, so at the same moment.
+ */
+export function cancelledApprovalLines(
+  r: Pick<EspRevision, "recordedAt" | "inError">,
+  cancellations: Array<{ becauseItemKey: string | null; cancelledAt: string }>,
+): string[] {
+  const at = (iso: string | undefined | null) => (iso ? Date.parse(iso) : Number.NaN);
+  const recorded = at(r.recordedAt);
+  const marked = at(r.inError?.at);
+  const d3 = cancellations
+    .filter((c) => c.becauseItemKey === "d3" && !Number.isNaN(at(c.cancelledAt)))
+    .map((c) => at(c.cancelledAt));
+  const within = (t: number, from: number) => !Number.isNaN(from) && t >= from - 1000 && t - from < 5 * 60_000;
+  const byRecording = d3.find((t) => within(t, recorded) && (Number.isNaN(marked) || t < marked));
+  const byMarking = d3.find((t) => within(t, marked));
+  const day = (t: number) => formatAuDate(sydneyDate(new Date(t)));
+  const out: string[] = [];
+  if (byRecording !== undefined) {
+    out.push(
+      `Recording this revision cancelled the price statement approval on ${day(byRecording)}. Marking it entered in error doesn't bring that approval back.`,
+    );
+  }
+  if (byMarking !== undefined) {
+    out.push(
+      `Marking it entered in error cancelled the price statement approval on ${day(byMarking)}. Approve the price statement again against the ESP now on file.`,
+    );
+  }
+  return out;
 }
 
 /**
@@ -150,6 +239,12 @@ export type EspVersion = {
   label: string;
   range: string;
   latest: boolean;
+  /** The revision's number, for marking it entered in error. Absent on the original ESP. */
+  revisionNo?: number;
+  /** Entered in error (0124): struck through, never used for checks. */
+  inError?: boolean;
+  /** Who marked it, when and why, then what happened to the price statement approval (0124). */
+  inErrorLines?: string[];
   /** "Latest: used for checks", or "Replaced 28 Oct". */
   pill: string;
   /** The lines under it: when the notice was given, who recorded it. */
@@ -177,17 +272,24 @@ export const LATEST_PILL = "Latest: used for checks";
 export function espVersions(
   original: { low: number | null; high: number | null; agreementDate: string | null; file: { path: string; name: string } | null },
   revisions: EspRevision[],
+  /** The price statement cancellations (0100), to say when a revision entered in error had cancelled the approval. */
+  cancellations: Array<{ becauseItemKey: string | null; cancelledAt: string }> = [],
 ): EspVersion[] {
   const sorted = [...revisions].sort((a, b) => a.no - b.no);
-  const out: EspVersion[] = sorted.map((r, i) => {
-    const next = sorted[i + 1];
-    const latest = !next;
-    const before = i > 0 ? sorted[i - 1] : original;
+  // Only revisions that stand replace one another; one entered in error
+  // replaces nothing and is never the latest (0124).
+  const standing = sorted.filter((r) => !r.inError);
+  const out: EspVersion[] = sorted.map((r) => {
+    const k = standing.indexOf(r);
+    const next = k >= 0 ? standing[k + 1] : undefined;
+    const latest = k >= 0 && !next;
+    const prior = standing.filter((s) => s.no < r.no);
+    const before = prior.length > 0 ? prior[prior.length - 1] : original;
     const stated = { low: r.previousLow ?? null, high: r.previousHigh ?? null };
     const lines = [
       r.givenOn ? `Notice given ${formatAuDate(r.givenOn)}` : "Date the notice was given not recorded",
       stated.low != null && stated.high != null ? `ESP before it, on the notice: ${espRange(stated.low, stated.high)}` : null,
-      previousEspDiffers(stated, before) ? NOT_THE_ESP_ON_FILE : null,
+      !r.inError && previousEspDiffers(stated, before) ? NOT_THE_ESP_ON_FILE : null,
       r.evidenceInNotice ? "Evidence: in the notice" : null,
       recordedLine(r),
       r.enteredManually ? "Figures typed from the notice" : null,
@@ -197,7 +299,14 @@ export function espVersions(
       label: `Revision ${r.no}`,
       range: espRange(r.low, r.high),
       latest,
-      pill: latest ? LATEST_PILL : `Replaced ${next.recordedAt ? shortDay(next.recordedAt) : ""}`.trim(),
+      revisionNo: r.no,
+      inError: Boolean(r.inError),
+      inErrorLines: r.inError ? [inErrorLine(r.inError), ...cancelledApprovalLines(r, cancellations)] : [],
+      pill: r.inError
+        ? IN_ERROR_PILL
+        : latest
+          ? LATEST_PILL
+          : `Replaced ${next?.recordedAt ? shortDay(next.recordedAt) : ""}`.trim(),
       lines,
       file: { path: r.noticePath, name: r.noticeFileName ?? "Revised ESP notice" },
       evidence: r.evidencePath ? { path: r.evidencePath, name: r.evidenceFileName ?? "Evidence" } : null,
@@ -209,13 +318,13 @@ export function espVersions(
     };
   });
   out.reverse();
-  const first = sorted[0];
+  const first = standing[0];
   out.push({
     key: "original",
     label: "Original ESP",
     range: espRange(original.low, original.high),
-    latest: sorted.length === 0,
-    pill: sorted.length === 0 ? LATEST_PILL : `Replaced ${first.recordedAt ? shortDay(first.recordedAt) : ""}`.trim(),
+    latest: standing.length === 0,
+    pill: standing.length === 0 ? LATEST_PILL : `Replaced ${first.recordedAt ? shortDay(first.recordedAt) : ""}`.trim(),
     lines: [original.agreementDate ? `From the agency agreement, ${formatAuDate(original.agreementDate)}` : "From the agency agreement"],
     file: original.file,
   });
@@ -285,9 +394,10 @@ export function espPackRows(
       evidenceLabel: "Agency agreement",
     },
   ];
-  sorted.forEach((r, i) => {
+  const latestNo = revisionsInForce(sorted).pop()?.no ?? null;
+  sorted.forEach((r) => {
     rows.push({
-      version: `Revision ${r.no}${i === sorted.length - 1 ? " (latest)" : ""}`,
+      version: `Revision ${r.no}${r.inError ? " (entered in error)" : r.no === latestNo ? " (latest)" : ""}`,
       esp: espRange(r.low, r.high),
       date: r.givenOn ? formatAuDate(r.givenOn) : "Not recorded",
       recordedBy: r.recordedByName ?? "Not recorded",
@@ -309,9 +419,11 @@ export function cancelledBecause(
   if (c.becauseItemKey === "d3") {
     // Recorded in the same transaction as the cancellation, so at the same time.
     const t = Date.parse(c.cancelledAt);
-    const match = [...revisions]
-      .sort((a, b) => b.no - a.no)
-      .find((r) => Math.abs(Date.parse(r.recordedAt) - t) < 5 * 60_000 && Date.parse(r.recordedAt) <= t + 1000);
+    const near = (iso: string | undefined) => Boolean(iso) && Math.abs(Date.parse(iso as string) - t) < 5 * 60_000 && Date.parse(iso as string) <= t + 1000;
+    // Marking one entered in error moves the ESP back too (0124).
+    const marked = [...revisions].sort((a, b) => b.no - a.no).find((r) => near(r.inError?.at));
+    if (marked) return `Revision ${marked.no} marked entered in error`;
+    const match = [...revisions].sort((a, b) => b.no - a.no).find((r) => near(r.recordedAt));
     return match ? `Revision ${match.no} recorded` : "the ESP revision changed";
   }
   if (c.becauseItemKey === "a4") return "the ESP card was changed";

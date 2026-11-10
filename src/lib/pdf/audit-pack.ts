@@ -36,7 +36,9 @@ import {
   approvalLines,
   cancelledBecause,
   espPackRows,
+  inErrorLine,
   noticeUnderReforms,
+  revisionsInForce,
   revisionsOrCard,
   type ApprovalEvent,
   type EspPackRow,
@@ -400,7 +402,7 @@ export async function buildAuditPack(
     // Under the ESP revision card, each revision's market feedback (Reg
     // s12G(1)(f)) and its own comparable sales (Reg s12G(1)(a), (c), (d); 0120).
     // Only for a revision whose notice falls under the 17 November rules.
-    espFeedbackLines: revisions.filter((r) => noticeUnderReforms(r.givenOn, generatedAt)).flatMap((r) => [
+    espFeedbackLines: revisionsInForce(revisions).filter((r) => noticeUnderReforms(r.givenOn, generatedAt)).flatMap((r) => [
       ...(r.marketFeedback ?? []).map((f) => feedbackRecordLine(r.no, f)),
       ...(r.marketFeedbackRecord ? feedbackRecordLines(r.no, r.marketFeedbackRecord, r.recordedByName) : []),
       ...revisionComparablesLines(r.no, r),
@@ -410,7 +412,8 @@ export async function buildAuditPack(
     // agreement signed) or revised from then (Master, 10 Nov 2026). A council
     // area read off a planning certificate on an earlier listing isn't printed.
     councilAreaLines:
-      espGivenApplies(byKey["a3"]?.event_date, generatedAt) || revisions.some((r) => noticeUnderReforms(r.givenOn, generatedAt))
+      espGivenApplies(byKey["a3"]?.event_date, generatedAt) ||
+      revisionsInForce(revisions).some((r) => noticeUnderReforms(r.givenOn, generatedAt))
         ? councilAreaRecordLines(
             {
               council: p.council_area,
@@ -496,20 +499,22 @@ async function espHistoryPage(
   revisions: EspRevision[],
   documents: PackDocument[],
   uploads: Map<string, { by: string | null; at: string | null }>,
-): Promise<{ rows: EspPackRow[]; approvals: string[] }> {
+): Promise<{ rows: EspPackRow[]; approvals: string[]; inError: string[] }> {
   const folder = listingFolder(agencyId, propertyId);
-  const latest = revisions[revisions.length - 1];
-  const at = documents.findIndex((d) => d.path === latest.noticePath);
+  // The latest is the newest that stands; one entered in error (0124) stays in
+  // the pack with its notice, named as such.
+  const latest = revisionsInForce(revisions).pop() ?? null;
+  const at = latest ? documents.findIndex((d) => d.path === latest.noticePath) : -1;
   const stage = at >= 0 ? documents[at].stage : "Other documents on this listing";
-  if (at >= 0) documents[at] = { ...documents[at], cardTitle: `ESP revision notice, Revision ${latest.no} (latest)` };
+  if (at >= 0 && latest) documents[at] = { ...documents[at], cardTitle: `ESP revision notice, Revision ${latest.no} (latest)` };
   const earlier: PackDocument[] = revisions
-    .slice(0, -1)
+    .filter((r) => r !== latest)
     .filter((r) => isInFolder(r.noticePath, folder) && !documents.some((d) => d.path === r.noticePath))
     .map((r) => {
       const fileName = r.noticeFileName ?? r.noticePath.split("/").pop() ?? "notice";
       return {
         stage,
-        cardTitle: `ESP revision notice, Revision ${r.no}`,
+        cardTitle: `ESP revision notice, Revision ${r.no}${r.inError ? " (entered in error)" : ""}`,
         fileName,
         path: r.noticePath,
         kind: packDocKind(fileName),
@@ -594,7 +599,9 @@ async function espHistoryPage(
     });
   }
   approved(byKey["b4"]);
-  return { rows, approvals: approvalLines(events) };
+  // Each revision entered in error: who, when and why (0124).
+  const inError = revisions.filter((r) => r.inError).map((r) => `Revision ${r.no}: ${inErrorLine(r.inError!)}`);
+  return { rows, approvals: approvalLines(events), inError };
 }
 
 const COMPLAINT_STATUS: Record<string, string> = { open: "Open", under_review: "Under review", resolved: "Resolved" };

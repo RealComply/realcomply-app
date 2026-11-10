@@ -4,7 +4,15 @@ import { revalidatePath } from "next/cache";
 import { requireAuthContext } from "@/lib/actions/compliance";
 import { isInFolder, storedFileProblem } from "@/lib/storage/evidence";
 import { readNoticeIntoPending } from "@/lib/esp-notice";
-import { noticeUnderReforms, pendingFrom, previousEspProblem, revisionEvidenceProblem, typedFigure } from "@/lib/esp-history";
+import {
+  IN_ERROR_REASON_MAX,
+  noticeUnderReforms,
+  pendingFrom,
+  previousEspProblem,
+  revisionEvidenceProblem,
+  revisionsInForce,
+  typedFigure,
+} from "@/lib/esp-history";
 import { feedbackToStore, marketFeedbackFrom } from "@/lib/rules/market-feedback";
 import { espRevisionsFor } from "@/lib/data/esp-revisions";
 import { comparablesFor } from "@/lib/data/comparables";
@@ -144,7 +152,8 @@ export async function recordEspRevision(
   const mostCount = comparables.entries.filter((c) => c.most).length;
   const comparablesFewerReason =
     mostCount < MAX_MOST_COMPARABLE ? String(formData.get("comparablesFewerReason") ?? "").trim().slice(0, 4000) || null : null;
-  const earlier = await espRevisionsFor(supabase, profile.agency_id, propertyId);
+  // Only the revisions that stand (entered in error, 0124).
+  const earlier = revisionsInForce(await espRevisionsFor(supabase, profile.agency_id, propertyId));
   const firstEsp = (await comparablesFor(supabase, propertyId)).filter((c) => c.weighting === "relied").map((c) => c.address);
   const comparablesProblem = revisionComparablesProblem({
     entries: comparables.entries,
@@ -209,4 +218,69 @@ export async function recordEspRevision(
 
   revalidatePath(`/dashboard/${propertyId}`);
   return { error: null };
+}
+
+/**
+ * "Entered in error" (Master, 10 Nov 2026; 0124). The listing's agent or the
+ * licensee in charge marks a revision entered in error, with a reason. It is
+ * never deleted: it stays in the history and the audit pack, struck through,
+ * and every check leaves it out. The database moves the card to the newest
+ * revision that stands, which cancels a price statement approval given
+ * against the ESP that changes, as any change of ESP does.
+ */
+export async function markEspRevisionInError(
+  propertyId: string,
+  revisionNo: number,
+  reasonTyped: string,
+): Promise<EspActionState> {
+  const { supabase } = await requireAuthContext();
+  const reason = plainReason(reasonTyped);
+  if (!reason) return { error: "Say why it was entered in error." };
+  if (reason.length > IN_ERROR_REASON_MAX) return { error: `Keep the reason to ${IN_ERROR_REASON_MAX} characters.` };
+  if (!Number.isInteger(revisionNo) || revisionNo < 1) return { error: "That revision isn't on this listing." };
+  const { error } = await supabase.rpc("mark_esp_revision_in_error", {
+    p_property_id: propertyId,
+    p_revision_no: revisionNo,
+    p_reason: reason,
+  });
+  if (error) return { error: refusal(error, "Couldn't mark the revision just now. Try again.") };
+  await afterTheEspMoved(propertyId);
+  return { error: null };
+}
+
+/** The licensee in charge undoes it: the revision stands again. */
+export async function undoEspRevisionInError(propertyId: string, revisionNo: number): Promise<EspActionState> {
+  const { supabase } = await requireAuthContext();
+  if (!Number.isInteger(revisionNo) || revisionNo < 1) return { error: "That revision isn't on this listing." };
+  const { error } = await supabase.rpc("undo_esp_revision_in_error", {
+    p_property_id: propertyId,
+    p_revision_no: revisionNo,
+  });
+  if (error) return { error: refusal(error, "Couldn't undo it just now. Try again.") };
+  await afterTheEspMoved(propertyId);
+  return { error: null };
+}
+
+/** Plain text: one line of words, no markup, control characters dropped. */
+function plainReason(typed: string): string {
+  return String(typed ?? "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function refusal(error: { code?: string; message: string }, otherwise: string): string {
+  return error.code === "P0001" || error.code === "42501" ? error.message : otherwise;
+}
+
+/** The ESP on foot may have changed: check the live ad again, then the page. */
+async function afterTheEspMoved(propertyId: string): Promise<void> {
+  try {
+    const { checkListingNow } = await import("@/lib/actions/website-scan");
+    await checkListingNow(propertyId);
+  } catch (err) {
+    console.error("advertised price recheck after an ESP revision was marked failed:", err instanceof Error ? err.message : err);
+  }
+  revalidatePath(`/dashboard/${propertyId}`);
 }

@@ -341,6 +341,32 @@ describe("Estimated selling price: every change (Adam, 3 Nov 2026; 0110)", () =>
     assert.ok(!esp.includes("—"));
   });
 
+  it("keeps a revision entered in error, labelled, with who marked it, when and why (0124)", async () => {
+    const recordPages = (await pdfPageTexts(await pack())).length;
+    const agreement = doc();
+    const n1 = doc({ stage: "Campaign", cardTitle: "ESP revision notice, Revision 1", fileName: "Notice 14 Oct.jpg", path: "a/p/d3/1-notice.pdf" });
+    const n2 = doc({ stage: "Campaign", cardTitle: "ESP revision notice, Revision 2 (entered in error)", fileName: "Notice 28 Oct.pdf", path: "a/p/d3/2-notice.pdf" });
+    const bytes = await pack({
+      documents: [agreement, n1, n2],
+      loadDocument: async () => ({ bytes: await onePagePdf() }),
+      espHistory: {
+        rows: [
+          { version: "Original", esp: "$1,400,000 to $1,450,000", date: "2 October 2026", recordedBy: "From the agency agreement", evidencePath: agreement.path, evidenceLabel: "Agency agreement" },
+          { version: "Revision 1 (latest)", esp: "$1,300,000 to $1,360,000", date: "14 October 2026", recordedBy: "Dana Whitlock", evidencePath: n1.path, evidenceLabel: "Revised ESP notice" },
+          { version: "Revision 2 (entered in error)", esp: "$1,250,000 to $1,300,000", date: "28 October 2026", recordedBy: "Dana Whitlock", evidencePath: n2.path, evidenceLabel: "Revised ESP notice" },
+        ],
+        approvals: ["Cancelled 29 October 2026: Revision 2 marked entered in error"],
+        inError: ["Revision 2: Entered in error by Ana Agent, 29 October 2026: Typed from the wrong listing's notice."],
+      },
+    });
+    const esp = (await pdfPageTexts(bytes))[recordPages].replace(/\s+/g, " ");
+    assert.ok(esp.includes("Revision 2 (entered in error)") && esp.includes("Revision 1 (latest)"), esp);
+    assert.ok(esp.includes("Entered in error Revision 2: Entered in error by Ana Agent, 29 October 2026: Typed from the wrong listing's notice."), esp);
+    assert.ok(esp.includes("Kept on the file with their notices. No check used them."), esp);
+    assert.ok(esp.includes("Cancelled 29 October 2026: Revision 2 marked entered in error"), esp);
+    assert.ok(!esp.includes("—"));
+  });
+
   it("no page when the ESP was never revised", async () => {
     const recordPages = (await pdfPageTexts(await pack())).length;
     const pages = await pdfPageTexts(await pack({ documents: [doc()], loadDocument: async () => ({ bytes: await onePagePdf() }) }));

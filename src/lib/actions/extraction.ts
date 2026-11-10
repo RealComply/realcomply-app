@@ -46,6 +46,7 @@ import {
   type PrescribedDoc,
 } from "@/lib/rules/nsw-prescribed-documents";
 import type { PropertyItem } from "@/lib/types";
+import { standingRevisionCount } from "@/lib/data/esp-revisions";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -1345,11 +1346,7 @@ async function readRevisedEspNoticeOnto(propertyId: string): Promise<ActionState
   const item = row as PropertyItem | null;
   const data = (item?.data ?? {}) as Record<string, unknown>;
   if (!item?.evidence_path || data.latestRevision != null) return ok;
-  const { count } = await supabase
-    .from("esp_revisions")
-    .select("id", { count: "exact", head: true })
-    .eq("property_id", propertyId);
-  if ((count ?? 0) > 0) return ok;
+  if ((await standingRevisionCount(supabase, propertyId)) > 0) return ok;
   const fileName =
     (typeof data.evidenceFileName === "string" && data.evidenceFileName) || item.evidence_path.split("/").pop() || "notice";
   const { readNoticeIntoPending } = await import("@/lib/esp-notice");

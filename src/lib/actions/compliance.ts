@@ -80,6 +80,7 @@ import type {
 } from "@/lib/types";
 import { STAGE_LABELS } from "@/lib/types";
 import { photoNoticeFlags, photoNoticeMissing, type TenantPhotoData } from "@/lib/rules/tenant-photo-notice";
+import { standingRevisionCount } from "@/lib/data/esp-revisions";
 
 export type ActionState = { error: string | null };
 const ok: ActionState = { error: null };
@@ -2003,11 +2004,8 @@ export async function markNoPriceRevision(propertyId: string): Promise<void> {
     .eq("item_key", "d3")
     .maybeSingle();
   if ((d3?.data as { latestRevision?: unknown } | null)?.latestRevision != null) return;
-  const { count } = await supabase
-    .from("esp_revisions")
-    .select("id", { count: "exact", head: true })
-    .eq("property_id", propertyId);
-  if ((count ?? 0) > 0) return;
+  // A revision that stands means it was revised; one entered in error doesn't (0124).
+  if ((await standingRevisionCount(supabase, propertyId)) > 0) return;
 
   await upsertItem(supabase, {
     agencyId: profile.agency_id,
