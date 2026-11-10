@@ -8,7 +8,7 @@ import { SgReadingCard } from "@/components/sg/SgReadingCard";
 import { SgDraftReview } from "@/components/sg/SgDraftReview";
 import { SgReadFailedCard } from "@/components/sg/SgReadFailedCard";
 import { SgLiveDocument } from "@/components/sg/SgLiveDocument";
-import { sgAmendmentSigners, sgAmendmentsFor, sgDocumentsFor, sgSavedDocuments } from "@/lib/data/sg-document";
+import { sgAmendmentSigners, sgAmendmentsFor, sgApprovedAmendmentsAll, sgDocumentsFor, sgSavedDocuments } from "@/lib/data/sg-document";
 import { SgChangeLog } from "@/components/sg/SgChangeLog";
 import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
 import { signedOf, todayInSydney } from "@/lib/sg-document/amendments";
@@ -56,14 +56,16 @@ export default async function SgManualPage() {
   // Part 2 (0125): the live document's quick amendments, who has signed each,
   // every document saved, for the change log, and when the next review is due
   // (2.1.2: at least every 12 months).
-  const [amendments, savedDocs] = await Promise.all([
+  // The change log keeps the amendments to earlier versions too (part 3).
+  const [amendments, savedDocs, everyApproved] = await Promise.all([
     sg.live ? sgAmendmentsFor(supabase, sg.live.doc.id) : Promise.resolve([]),
     sgSavedDocuments(supabase),
+    sgApprovedAmendmentsAll(supabase),
   ]);
   const approvedAmendments = amendments.filter((a) => a.status === "approved");
   const signers = await sgAmendmentSigners(
     supabase,
-    approvedAmendments.map((a) => a.id),
+    everyApproved.map((a) => a.id),
   );
 
   // Who still needs to sign or read, for the reminder card (0093): the
@@ -111,18 +113,19 @@ export default async function SgManualPage() {
   };
   const logRows = changeLogRows(
     savedDocs.map((d) => ({ ...d, signed: versionSigned(d.manualVersionId) })),
-    sg.live
-      ? approvedAmendments.map((a) => ({
-          amendment: a,
-          document: { docType: sg.live!.doc.docType, versionLabel: sg.live!.doc.versionLabel },
-          signed: signedOf(signers.get(a.id) ?? [], staffIds),
-        }))
-      : [],
+    everyApproved.map((a) => {
+      const doc = savedDocs.find((d) => d.id === a.documentId);
+      return {
+        amendment: a,
+        document: { docType: doc?.docType ?? null, versionLabel: doc?.versionLabel ?? null },
+        signed: signedOf(signers.get(a.id) ?? [], staffIds),
+      };
+    }),
   );
   const reviewDue = sg.live
     ? nextReviewDue((agency as { created_at?: string } | null)?.created_at ?? null, [
         ...savedDocs.map((d) => d.savedAt),
-        ...approvedAmendments.map((a) => a.approvedAt),
+        ...everyApproved.map((a) => a.approvedAt),
       ])
     : null;
   const myChanges = approvedAmendments.filter((a) => !(signers.get(a.id) ?? []).includes(profile.id));
@@ -162,6 +165,11 @@ export default async function SgManualPage() {
                 versionRead={open.doc.versionRead}
                 checks={open.doc.checks}
                 sections={open.sections}
+                live={
+                  sg.live
+                    ? { versionLabel: sg.live.doc.versionLabel, sections: sg.live.sections, amendments: approvedAmendments }
+                    : null
+                }
               />
             ) : (
               <SgReadFailedCard

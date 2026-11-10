@@ -183,3 +183,14 @@ export async function sgChangesToSign(supabase: SupabaseClient, profileId: strin
     .filter((a) => !(signers.get(a.id) ?? []).includes(profileId))
     .sort((x, y) => (x.refNo ?? 0) - (y.refNo ?? 0));
 }
+
+/** Every approved amendment, on the live document and those it replaced, for the change log (part 3). */
+export async function sgApprovedAmendmentsAll(supabase: SupabaseClient): Promise<SgAmendment[]> {
+  const { data, error } = await supabase
+    .from("sg_amendments")
+    .select(AMENDMENT_COLUMNS)
+    .eq("status", "approved")
+    .order("approved_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Array<Record<string, unknown>>).map(amendmentFrom).filter((a): a is SgAmendment => a !== null);
+}
