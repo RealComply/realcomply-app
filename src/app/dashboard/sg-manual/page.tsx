@@ -8,11 +8,21 @@ import { SgReadingCard } from "@/components/sg/SgReadingCard";
 import { SgDraftReview } from "@/components/sg/SgDraftReview";
 import { SgReadFailedCard } from "@/components/sg/SgReadFailedCard";
 import { SgLiveDocument } from "@/components/sg/SgLiveDocument";
-import { sgAmendmentSigners, sgAmendmentsFor, sgApprovedAmendmentsAll, sgDocumentsFor, sgSavedDocuments } from "@/lib/data/sg-document";
+import {
+  sgAmendmentSigners,
+  sgAmendmentsFor,
+  sgApprovedAmendmentsAll,
+  sgDocumentsFor,
+  sgReviewDueFor,
+  sgReviewsAll,
+  sgSavedDocuments,
+} from "@/lib/data/sg-document";
+import { SgAnnualReviewCard } from "@/components/sg/SgAnnualReviewCard";
+import { reviewCardShows } from "@/lib/sg-document/annual-review";
 import { SgChangeLog } from "@/components/sg/SgChangeLog";
 import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
 import { signedOf, todayInSydney } from "@/lib/sg-document/amendments";
-import { changeLogRows, nextReviewDue } from "@/lib/sg-document/change-log";
+import { changeLogRows } from "@/lib/sg-document/change-log";
 import { sgReadGapLines } from "@/lib/sg-document/checks";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
@@ -39,8 +49,13 @@ import { RoofMark } from "@/components/RoofMark";
 // along while it's open (continueSgDocumentRead), within this limit.
 export const maxDuration = 300;
 
-export default async function SgManualPage() {
+export default async function SgManualPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { profile, access } = await requireAccess();
+  const query = await searchParams;
   const supabase = await createClient();
 
   const [{ data: versionRows }, staff, { data: signoffDocRows }, { data: signoffSigRows }, { data: agency }, sg] = await Promise.all([
@@ -56,11 +71,14 @@ export default async function SgManualPage() {
   // Part 2 (0125): the live document's quick amendments, who has signed each,
   // every document saved, for the change log, and when the next review is due
   // (2.1.2: at least every 12 months).
-  // The change log keeps the amendments to earlier versions too (part 3).
-  const [amendments, savedDocs, everyApproved] = await Promise.all([
+  // The change log keeps the amendments to earlier versions too (part 3),
+  // and every "Reviewed, no changes needed" (part 4, 0126).
+  const [amendments, savedDocs, everyApproved, reviews, review] = await Promise.all([
     sg.live ? sgAmendmentsFor(supabase, sg.live.doc.id) : Promise.resolve([]),
     sgSavedDocuments(supabase),
     sgApprovedAmendmentsAll(supabase),
+    sgReviewsAll(supabase),
+    sgReviewDueFor(supabase, profile.agency_id),
   ]);
   const approvedAmendments = amendments.filter((a) => a.status === "approved");
   const signers = await sgAmendmentSigners(
@@ -121,13 +139,16 @@ export default async function SgManualPage() {
         signed: signedOf(signers.get(a.id) ?? [], staffIds),
       };
     }),
+    reviews.map((r) => {
+      const doc = savedDocs.find((d) => d.id === r.documentId);
+      return { review: r, document: { docType: doc?.docType ?? null, versionLabel: doc?.versionLabel ?? null } };
+    }),
   );
-  const reviewDue = sg.live
-    ? nextReviewDue((agency as { created_at?: string } | null)?.created_at ?? null, [
-        ...savedDocs.map((d) => d.savedAt),
-        ...everyApproved.map((a) => a.approvedAt),
-      ])
-    : null;
+  // When the next review is due (2.1.2): the same date Home and the reminders use.
+  const reviewDue = sg.live ? (review?.dueOn ?? null) : null;
+  const today = todayInSydney();
+  const reviewCard =
+    access.runsOffice && sg.live && review && (reviewCardShows(review.dueOn, today) || review.lastReviewedOn === today) ? review : null;
   const myChanges = approvedAmendments.filter((a) => !(signers.get(a.id) ?? []).includes(profile.id));
 
   return (
@@ -182,6 +203,16 @@ export default async function SgManualPage() {
           </div>
         )}
 
+        {reviewCard && (
+          <SgAnnualReviewCard
+            documentId={reviewCard.documentId}
+            dueOn={reviewCard.dueOn}
+            today={today}
+            reviewedToday={reviewCard.lastReviewedOn === today}
+            onPage
+          />
+        )}
+
         <SgChangesToSign changes={myChanges} />
 
         {sg.live && (
@@ -190,7 +221,8 @@ export default async function SgManualPage() {
               documentId={sg.live.doc.id}
               amendments={amendments}
               nextReviewDue={reviewDue}
-              today={todayInSydney()}
+              today={today}
+              startAmendment={query.amend === "1"}
               docType={sg.live.doc.docType}
               versionLabel={sg.live.doc.versionLabel}
               savedAt={sg.live.doc.savedAt}
@@ -250,6 +282,7 @@ export default async function SgManualPage() {
               id: r.person.id,
               name: r.person.full_name?.trim() || r.person.email,
               kinds: r.kinds,
+              changeRefs: r.changeRefs,
               lastRemindedAt: r.lastRemindedAt,
             }))}
           />

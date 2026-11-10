@@ -79,7 +79,9 @@ export type EmailSection =
   | { kind: "note"; text: string }
   | { kind: "paragraph"; text: string; lead?: boolean }
   | { kind: "counter"; n: number; caption: string; tone: "good" | "warn" }
-  | { kind: "button"; label: string; href: string };
+  | { kind: "button"; label: string; href: string }
+  /** Words quoted exactly from a source, set off by a green edge (the annual review quotes 2.1.2). */
+  | { kind: "quote"; paragraphs: readonly string[]; bullets?: readonly string[]; source: string };
 
 /** A link in a footer line: drawn as a link in HTML, as "text: href" in plain text. */
 export type FooterLink = { text: string; href: string };
@@ -176,6 +178,21 @@ function renderSection(s: EmailSection): string {
         </table></td></tr>`,
         )
         .join("");
+
+    case "quote":
+      return `<tr><td style="padding:0 32px 16px">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+          style="border-left:3px solid ${BRAND.green}">
+          <tr><td style="padding:2px 0 2px 14px;font-family:${FONT};font-size:14px;line-height:1.6;color:${BRAND.ink}">
+            ${s.paragraphs.map((p) => `<div style="padding-bottom:8px">${esc(p)}</div>`).join("")}
+            ${
+              s.bullets && s.bullets.length > 0
+                ? `<ul style="margin:0 0 8px;padding-left:20px">${s.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`
+                : ""
+            }
+            <div style="font-size:12.5px;color:${BRAND.faint}">${esc(s.source)}</div>
+          </td></tr>
+        </table></td></tr>`;
 
     case "button":
       // Table-wrapped rather than a padded <a>. Outlook ignores padding on an
@@ -295,6 +312,11 @@ export function renderEmailText(doc: EmailDocument): string {
         break;
       case "button":
         out.push(`${s.label}: ${s.href}`, "");
+        break;
+      case "quote":
+        for (const p of s.paragraphs) out.push(`  "${p}"`);
+        for (const b of s.bullets ?? []) out.push(`    - ${b}`);
+        out.push(`  (${s.source})`, "");
         break;
     }
   }

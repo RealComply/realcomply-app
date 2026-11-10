@@ -22,8 +22,10 @@ import { ComplaintsWidget } from "@/components/home/ComplaintsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgManualWidget } from "@/components/home/SgManualWidget";
 import { SgDraftReadyCard } from "@/components/home/SgDraftReadyCard";
-import { sgChangesToSign, sgDraftWaiting } from "@/lib/data/sg-document";
+import { sgChangesToSign, sgDraftWaiting, sgReviewDueFor } from "@/lib/data/sg-document";
 import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
+import { SgAnnualReviewCard } from "@/components/sg/SgAnnualReviewCard";
+import { reviewCardShows } from "@/lib/sg-document/annual-review";
 import { AnnexureCard } from "@/components/home/AnnexureCard";
 import { FairTradingCard, NewLicenseeAnnexureCard } from "@/components/home/LicenseeChangeCards";
 import { fairTradingDueSentence, fairTradingReminder, type LicenseeHistoryLine } from "@/lib/licensee-history";
@@ -57,6 +59,20 @@ import { formatAuTimestamp } from "@/lib/format-date";
 // Portfolio and Registers pages. Only the structural pattern (stat-tile row
 // + card grid of metric/breakdown widgets, colour-coded by status) is
 // borrowed, not the look.
+/**
+ * The annual review card (Adam's mockup, screen 7; 0126), for whoever runs
+ * the office: from 90 days before the review is due, or a line saying it was
+ * marked reviewed today.
+ */
+function annualReviewCard(
+  due: { documentId: string; dueOn: string; lastReviewedOn: string | null } | null,
+): { documentId: string; dueOn: string; today: string; reviewedToday: boolean } | null {
+  if (!due) return null;
+  const today = sydneyDate(new Date());
+  const reviewedToday = due.lastReviewedOn === today;
+  return reviewCardShows(due.dueOn, today) || reviewedToday ? { documentId: due.documentId, dueOn: due.dueOn, today, reviewedToday } : null;
+}
+
 export default async function HomeDashboardPage({
   searchParams,
 }: {
@@ -82,13 +98,15 @@ export default async function HomeDashboardPage({
     }
     // Asking to be office manager, and where that is up to (0093); once the
     // approval has been seen, a small line instead (0096).
-    const [officeManager, setup, sgDraft] = await Promise.all([
+    const [officeManager, setup, sgDraft, sgReviewDue] = await Promise.all([
       officeManagerHomeFor(supabase, profile, access),
       // "Set up your office" for an office manager; "Set up your profile" for
       // everyone else here (Adam, 27 Oct 2026).
       setupViewFor(supabase, profile, access),
       // An office manager: a draft of the supervision guidelines waiting to be checked.
       access.runsOffice ? sgDraftWaiting(supabase) : Promise.resolve(null),
+      // An office manager: the annual review (0126).
+      access.runsOffice ? sgReviewDueFor(supabase, profile.agency_id) : Promise.resolve(null),
     ]);
     return (
       <AgentHome
@@ -99,6 +117,7 @@ export default async function HomeDashboardPage({
         officeManager={officeManager}
         setup={setup}
         sgDraft={sgDraft}
+        sgReview={annualReviewCard(sgReviewDue)}
       />
     );
   }
@@ -108,6 +127,8 @@ export default async function HomeDashboardPage({
   const sgDraft = await sgDraftWaiting(supabase);
   // Changes to the supervision guidelines this person hasn't signed (0125).
   const sgChanges = await sgChangesToSign(supabase, profile.id);
+  // The annual review of the supervision guidelines (0126).
+  const sgReview = annualReviewCard(await sgReviewDueFor(supabase, profile.agency_id));
 
   // Until the annexure is adopted (brief, 14 Oct 2026), the Home of an
   // office's licensee in charge asks for it. Shown only on a clean read that
@@ -389,6 +410,7 @@ export default async function HomeDashboardPage({
               there is something in it, so an office with no assistants never
               sees it. */}
           {sgDraft && <SgDraftReadyCard fileName={sgDraft.fileName} fromFileOnRecord={sgDraft.fromFileOnRecord} />}
+          {sgReview && <SgAnnualReviewCard {...sgReview} />}
           <SgChangesToSign changes={sgChanges} />
 
           {awaitingMyReview.length > 0 && (

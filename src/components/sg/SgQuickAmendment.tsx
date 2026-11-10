@@ -33,6 +33,7 @@ export function SgQuickAmendment({
   sections,
   amendments,
   today,
+  startOpen = false,
 }: {
   documentId: string;
   sections: SgSectionView[];
@@ -40,9 +41,23 @@ export function SgQuickAmendment({
   amendments: SgAmendment[];
   /** Today in Sydney, YYYY-MM-DD. */
   today: string;
+  /** Opened from the annual review card (0126): the form starts open on the first section. */
+  startOpen?: boolean;
 }) {
   const drafts = amendments.filter((a) => a.status === "draft");
-  const [form, setForm] = useState<Draft | null>(null);
+  const [form, setForm] = useState<Draft | null>(() =>
+    startOpen && sections.length > 0
+      ? {
+          id: null,
+          section: sections[0].position,
+          paragraph: 0,
+          text: currentWording(sections, amendments, sections[0].position, 0),
+          reason: "",
+          other: "",
+          starts: today,
+        }
+      : null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 

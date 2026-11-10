@@ -9,7 +9,7 @@ export function SgChangeLog({ rows }: { rows: ChangeLogRow[] }) {
   return (
     <section id="sg-change-log" className="scroll-mt-4">
       <h2 className="text-lg font-bold tracking-tight text-rc-ink">Change log</h2>
-      <p className="mt-0.5 text-sm text-rc-muted">Every version and amendment, with the date it starts.</p>
+      <p className="mt-0.5 text-sm text-rc-muted">Every version, amendment and &ldquo;Reviewed, no changes needed&rdquo;, with the date it starts.</p>
       <div className="mt-3 overflow-x-auto rounded-card border border-rc-border bg-white shadow-card">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>

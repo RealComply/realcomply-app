@@ -9,7 +9,8 @@ import { sendEmail } from "@/lib/email/send";
 import { appBaseUrl } from "@/lib/site-url";
 
 // Emails the staff who still need to sign the SG Manual, or read and tick
-// the annexure and the Supervision Guidelines (Adam, 26 Oct 2026; 0093). The
+// the annexure and the Supervision Guidelines (Adam, 26 Oct 2026; 0093), or
+// sign a change to the supervision guidelines (0125; 0126). The
 // licensee or an office manager. Each send is claimed in the database first
 // (claim_staff_reminder), which refuses anyone reminded in the last 20 hours,
 // so two presses or two people send one email. A reminder whose email failed
@@ -54,6 +55,7 @@ export async function sendStaffReminders(): Promise<ReminderSendState> {
       senderRole,
       officeName,
       kinds: item.kinds,
+      changeRefs: item.changeRefs,
       sgVersionLabel,
       appUrl: appBaseUrl(),
     });

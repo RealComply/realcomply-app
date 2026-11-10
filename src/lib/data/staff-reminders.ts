@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types";
 import { officeAdoption } from "@/lib/sg-annexure/office-read";
 import { staffStillToDo, type ReminderPerson, type StillToDo } from "@/lib/staff-reminders/outstanding";
+import { sgAmendmentSigners, sgAmendmentsFor } from "@/lib/data/sg-document";
+import { amendmentRef } from "@/lib/sg-document/amendments";
 
 // What the reminder card and the send action read (0093). With the reader's
 // own access: the licensee or an office manager sees every row these need.
@@ -48,6 +50,24 @@ export async function staffReminderData(supabase: SupabaseClient, profile: Profi
   const { data: sigs } = docId
     ? await supabase.from("signoff_signatures").select("document_id, signer_id, signed_at").eq("document_id", docId)
     : { data: [] };
+  // Changes to the live supervision guidelines still to sign (0125). Before
+  // 0125 there's no table: none.
+  const { data: liveDoc } = await supabase
+    .from("sg_documents")
+    .select("id")
+    .eq("agency_id", profile.agency_id)
+    .eq("status", "live")
+    .limit(1)
+    .maybeSingle();
+  const changes = liveDoc
+    ? (await sgAmendmentsFor(supabase, (liveDoc as { id: string }).id))
+        .filter((a) => a.status === "approved")
+        .sort((x, y) => (x.refNo ?? 0) - (y.refNo ?? 0))
+    : [];
+  const changeSigners = await sgAmendmentSigners(
+    supabase,
+    changes.map((a) => a.id),
+  );
   return {
     stillToDo: staffStillToDo({
       staff: (staffRows ?? []) as ReminderPerson[],
@@ -56,6 +76,8 @@ export async function staffReminderData(supabase: SupabaseClient, profile: Profi
       signatures: (sigs ?? []) as Array<{ document_id: string; signer_id: string; signed_at: string | null }>,
       adoptedVersion: adoption?.version ?? null,
       readConfirmations: (reads ?? []) as Array<{ confirmed_by: string | null; annexure_version: string }>,
+      changes: changes.map((a) => ({ id: a.id, ref: amendmentRef(a) })),
+      changeSignatures: changes.flatMap((a) => (changeSigners.get(a.id) ?? []).map((profile_id) => ({ amendment_id: a.id, profile_id }))),
       reminders: ((reminders ?? []) as Array<{ profile_id: string; email_sent_at: string }>).map((r) => ({
         profile_id: r.profile_id,
         created_at: r.email_sent_at,
