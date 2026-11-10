@@ -9,6 +9,7 @@ import { SgDraftReview } from "@/components/sg/SgDraftReview";
 import { SgReadFailedCard } from "@/components/sg/SgReadFailedCard";
 import { SgLiveDocument } from "@/components/sg/SgLiveDocument";
 import { sgDocumentsFor } from "@/lib/data/sg-document";
+import { sgReadGapLines } from "@/lib/sg-document/checks";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
@@ -133,6 +134,7 @@ export default async function SgManualPage() {
               savedByName={sg.live.doc.savedByName}
               sections={sg.live.sections}
               canUpload={access.runsOffice}
+              gaps={sgReadGapLines(sg.live.doc.checks)}
             />
           </div>
         )}

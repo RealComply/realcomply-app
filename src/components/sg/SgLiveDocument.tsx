@@ -15,6 +15,7 @@ export function SgLiveDocument({
   savedByName,
   sections,
   canUpload,
+  gaps = [],
 }: {
   docType: SgDocType | null;
   versionLabel: string | null;
@@ -22,6 +23,8 @@ export function SgLiveDocument({
   savedByName: string | null;
   sections: SgSectionView[];
   canUpload: boolean;
+  /** What couldn't be read from the file, in plain words (lib/sg-document/checks.ts sgReadGapLines). */
+  gaps?: string[];
 }) {
   return (
     <section>
@@ -43,6 +46,19 @@ export function SgLiveDocument({
           </a>
         )}
       </div>
+
+      {/* What couldn't be read (Adam, 10 Nov 2026): named, so the office
+          checks those pages by hand. Never hidden, and saving isn't blocked. */}
+      {gaps.length > 0 && (
+        <div role="note" className="mt-4 rounded-xl border border-rc-amber-deep/25 bg-rc-amber/10 px-3.5 py-2.5 text-sm text-rc-ink">
+          <p className="font-semibold text-rc-amber-deep">Not everything could be read</p>
+          {gaps.map((g) => (
+            <p key={g} className="mt-0.5">
+              {g}
+            </p>
+          ))}
+        </div>
+      )}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
         <nav aria-label="Sections" className="h-fit rounded-card border border-rc-border bg-white p-2 text-sm shadow-card lg:sticky lg:top-4">

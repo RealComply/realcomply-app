@@ -1,8 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { logReadFailure } from "@/lib/documents/read-core";
 import { UnfinishedAnswer } from "@/lib/documents/reader-answer";
 import { mapWithLimit, READER_PARTS_AT_ONCE } from "@/lib/documents/reader-parts";
 import { sgChecks, type SgChecks } from "@/lib/sg-document/checks";
-import { openSgFile, partCount, readerAsker, readSgPart, SgFileUnreadable, type SgFile } from "@/lib/sg-document/read";
+import {
+  openSgFile,
+  partCount,
+  readerAsker,
+  readerBusy,
+  readSgPart,
+  SgFileUnreadable,
+  unreadablePart,
+  type SgFile,
+} from "@/lib/sg-document/read";
 import { assembleSections, documentText, readPartOf, versionOf, type ReadPartResult, type SgSection } from "@/lib/sg-document/sections";
 
 // Moving a read along (part 1, 10 Nov 2026). Called by the page while
@@ -13,8 +23,11 @@ import { assembleSections, documentText, readPartOf, versionOf, type ReadPartRes
 // soon as it's read.
 //
 // The reader being busy or out of reach is not a failed read: what was read
-// is kept and the next call carries on. Anything else that stops it fails
-// the read, in plain words, and the draft says so.
+// is kept and the next call carries on. One part the reader can't answer
+// never stops the rest (Adam, 10 Nov 2026): it is read again in smaller
+// pieces (lib/sg-document/read.ts), and pages that still can't be read are
+// named on the draft. Only the file itself (missing, locked, damaged, too
+// long, or no words at all) fails the read, in plain words.
 
 export const MAX_PARTS = 200;
 
@@ -45,15 +58,6 @@ export type SgReadStore = {
 
 type Ask = Parameters<typeof readSgPart>[3];
 
-/** Busy or out of reach: try again later, nothing lost. */
-function passing(err: unknown): boolean {
-  if (err instanceof Anthropic.APIConnectionError) return true;
-  if (err instanceof Anthropic.APIError) {
-    const s = err.status;
-    return s === undefined || s === 408 || s === 409 || s === 429 || s >= 500;
-  }
-  return false;
-}
 
 /** What a read that stopped says on the draft. */
 export function sgReadFailureText(err: unknown): string {
@@ -117,17 +121,20 @@ export async function advanceSgRead(
       try {
         parts[i] = await readSgPart(file, i, doc.file_name, ask);
       } catch (err) {
-        stop.err ??= err;
+        if (readerBusy(err)) {
+          stop.err ??= err;
+          return;
+        }
+        // Anything else about this one part: its pages are named as not
+        // read, and the rest carry on.
+        logReadFailure("sg_manual", err);
+        parts[i] = unreadablePart(file, i);
       }
     });
     await store.saveParts(id, parts, total);
-    const stopped = stop.err;
-    if (stopped) {
-      if (passing(stopped)) {
-        await store.release(id);
-        return { status: "reading", done: parts.filter(Boolean).length, total };
-      }
-      return fail(stopped);
+    if (stop.err) {
+      await store.release(id);
+      return { status: "reading", done: parts.filter(Boolean).length, total };
     }
   }
 
@@ -138,14 +145,30 @@ export async function advanceSgRead(
   }
 
   const read = parts as ReadPartResult[];
+  const pagesNotRead = [...new Set(read.flatMap((p) => p.unreadPages ?? []))].sort((a, b) => a - b);
+  const unmarked = read.reduce((n, p) => n + (p.unmarked ?? 0), 0);
   const sections = assembleSections(read);
   if (sections.every((s) => s.paragraphs.length === 0 && s.title === "The whole document")) {
-    await store.fail(id, "No words could be read from this file. Check it opens, then upload it again.");
-    await store.note(doc.agency_id, doc.file_name, "nothing_found");
+    const nonePages = file.kind === "pdf" && pagesNotRead.length === file.pages;
+    await store.fail(
+      id,
+      nonePages
+        ? "None of its pages could be read. Try reading it again in a while, or upload the Word version."
+        : "No words could be read from this file. Check it opens, then upload it again.",
+    );
+    await store.note(doc.agency_id, doc.file_name, nonePages ? "failed" : "nothing_found", nonePages ? new UnfinishedAnswer("unparseable") : undefined);
     return { status: "read_failed", done, total };
   }
-  const checks = sgChecks(documentText(sections), await store.officeNames(doc.agency_id));
+  const checks: SgChecks = {
+    ...sgChecks(documentText(sections), await store.officeNames(doc.agency_id)),
+    ...(pagesNotRead.length > 0 ? { pages_not_read: pagesNotRead } : {}),
+    ...(unmarked > 0 ? { unmarked_stretches: unmarked } : {}),
+  };
   await store.finish(id, doc.agency_id, { sections, version: versionOf(read), checks });
   await store.note(doc.agency_id, doc.file_name, "read");
+  if (pagesNotRead.length > 0 || unmarked > 0) {
+    // Read, with gaps the draft names. Logged so it's seen, never the file's name.
+    console.error(`document read in part: sg_manual (${pagesNotRead.length} pages not read, ${unmarked} stretches without headings)`);
+  }
   return { status: "draft", done, total };
 }
