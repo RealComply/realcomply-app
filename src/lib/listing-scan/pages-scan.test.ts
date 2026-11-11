@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { checkListingsPages, decodeHref, findListingPage, linksFrom, pageCache } from "@/lib/listing-scan/pages-scan";
+import { checkListingsPages, dataEntries, decodeHref, findListingPage, linksFrom, pageCache, sameWebsite } from "@/lib/listing-scan/pages-scan";
 import { groupWarning, pageCheckFrom } from "@/lib/listings-pages";
 
 // The 7am check's page-finding with stand-in pages and a stand-in reader (Adam,
@@ -253,4 +253,81 @@ test("found in the page's data: a listings page that draws its listings in after
   const url = await findListingPage(db, anthropic, LISTING, fetchPage);
   assert.equal(url, `${SITE}/listing/8-smith/`);
   assert.equal(tables.properties[0].listing_url, `${SITE}/listing/8-smith/`);
+});
+
+// NESTED, AND NOT CROWDED OUT (Adam, 11 Nov 2026, through Master). Global
+// Property's page (Rex Websites), as Master described it on 11 Nov: no listing
+// links in the page as sent (the tiles are drawn by JavaScript), but a script
+// block for the map holding 37 entries, each with "url" (slashes escaped) and
+// "address". Made-up website and addresses here, the same shape.
+const rexMapPage = (host: string, n = 37) => {
+  const entries = Array.from({ length: n }, (_, i) => ({
+    id: 5316291 + i,
+    position: { lat: -32.96 - i / 1000, lng: 151.69 },
+    url: `https://www.example-agency.invalid/listings/residential_sale-${5316291 + i}-testville/`,
+    address: `${i + 1} Made Up Street, Testville NSW 2000`,
+    photo: { url: `https://cdn.photos.invalid/${i}.jpg`, width: 800 },
+    price: { display: "Contact agent" },
+  }));
+  return (
+    `<html><body><nav>${page(["/", "/about", "/listings", "/sold", "/rent", "/contact"])}</nav>` +
+    `<div id="tiles"></div>` +
+    `<script>window.mapInit && mapInit({"zoom":12,"centre":{"lat":-32.9,"lng":151.7}});` +
+    `var MapDataStore = ${JSON.stringify(entries).replace(/\//g, "\\/")};</script>` +
+    `<script>function draw(){ var o = { url: "x" }; return {"url": "/not-json" + o}; }</script>` +
+    `<script type="application/ld+json">{"@context":"https:\\/\\/schema.org","@type":"RealEstateAgent","url":"https:\\/\\/${host}\\/","name":"Example Agency (made up)"}</script>` +
+    `</body></html>`
+  );
+};
+
+test("Global's page shape: 37 listings in the map data, each with nested parts, read as 37 links", () => {
+  const links = linksFrom(rexMapPage("www.example-agency.invalid"), new URL(`${SITE}/listings`));
+  const listings = links.filter((l) => /\/listings\/residential_sale-/.test(l.href));
+  assert.equal(listings.length, 37);
+  assert.deepEqual(listings[0], {
+    href: `${SITE}/listings/residential_sale-5316291-testville/`,
+    text: "1 Made Up Street, Testville NSW 2000",
+  });
+  assert.ok(!links.some((l) => l.href.includes("photos.invalid")), "another website's photos are left out");
+  assert.ok(!links.some((l) => l.href.includes("not-json")), "script that isn't data is passed over");
+  assert.ok(links.some((l) => l.href === `${SITE}/`), "the page's own data about the office: a link like any other (the menu's own words kept)");
+});
+
+test("the same website with or without www", () => {
+  // The page answers at the bare address; its data names the www one (or the other way round).
+  const bare = new URL("https://example-agency.invalid/listings");
+  const links = linksFrom(rexMapPage("example-agency.invalid"), bare);
+  assert.equal(links.filter((l) => /residential_sale-/.test(l.href)).length, 37);
+  assert.equal(sameWebsite("www.example-agency.invalid", "example-agency.invalid"), true);
+  assert.equal(sameWebsite("example-agency.invalid", "WWW.Example-Agency.invalid"), true);
+  assert.equal(sameWebsite("example-agency.invalid", "shop.example-agency.invalid"), false, "another part of it is not the same website");
+  assert.equal(sameWebsite("example-agency.invalid", "example-agency.invalid.evil.invalid"), false);
+});
+
+test("a page with 400 links in its menus still has its listings data read", () => {
+  const menu = page(Array.from({ length: 450 }, (_, i) => `/suburb/${i}`));
+  const links = linksFrom(menu + rexMapPage("www.example-agency.invalid", 5), new URL(`${SITE}/listings`));
+  assert.equal(links.filter((l) => l.href.includes("/suburb/")).length, 400);
+  assert.equal(links.filter((l) => /residential_sale-/.test(l.href)).length, 5);
+});
+
+test("the map entries, read whole: nested parts, escaped slashes, braces in words", () => {
+  const html = `<script>var d = [{"a":{"b":{"c":1}},"url":"https:\\/\\/www.example-agency.invalid\\/l\\/1\\/","address":"Unit {2}, 3 Made Up Street"}];</script>`;
+  const entries = dataEntries(html);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].url, "https://www.example-agency.invalid/l/1/");
+  assert.equal(entries[0].address, "Unit {2}, 3 Made Up Street");
+});
+
+test("counted on the morning check: Global's page shape reads 37 listings, not 0", async () => {
+  const { db, tables } = fakeDb({
+    agencies: [{ id: AGENCY, website_url: `${SITE}/listings` }],
+    agent_listing_pages: [],
+    listings_page_checks: [],
+  });
+  const { anthropic } = fakeReader();
+  // The stand-in reader counts links with "/listing/" in them; the shape uses "/listings/residential_sale-".
+  const html = rexMapPage("www.example-agency.invalid").replace(/\\\/listings\\\/residential_sale-/g, "\\/listing\\/residential_sale-");
+  await checkListingsPages(db, anthropic, fakeWeb({ [`${SITE}/listings`]: html }).fetchPage, [], new Set());
+  assert.equal(pageCheckFrom(tables.listings_page_checks.find((r) => r.page_key === `office:${AGENCY}`))?.listingsFound, 37);
 });
