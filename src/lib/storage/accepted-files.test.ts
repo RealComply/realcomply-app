@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   ACCEPTED_FILES,
+  ACCEPTED_FILES_WITH_WORD,
   UPLOAD_A_PDF,
   cantReadMessage,
   savedButCantRead,
@@ -15,6 +16,10 @@ describe("the words", () => {
     assert.equal(ACCEPTED_FILES, "Accepted files: Clear photo or PDF.");
   });
 
+  it("on listing cards, Word too (Adam, 11 Nov 2026)", () => {
+    assert.equal(ACCEPTED_FILES_WITH_WORD, "Accepted files: PDF, clear photo or Word.");
+  });
+
   it("names the button exactly", () => {
     assert.equal(UPLOAD_A_PDF, "Upload a PDF");
   });
@@ -23,6 +28,10 @@ describe("the words", () => {
     assert.equal(
       savedButCantRead("Word files"),
       "Saved, but we can't read Word files. Save it as a PDF and upload that, and we'll fill in the details for you.",
+    );
+    assert.equal(
+      savedButCantRead("older Word files (.doc)"),
+      "Saved, but we can't read older Word files (.doc). Save it as a PDF and upload that, and we'll fill in the details for you.",
     );
     assert.equal(
       savedButCantRead("Excel files"),
@@ -35,7 +44,7 @@ describe("the words", () => {
   });
 
   it("uses no dashes and never the word compliant", () => {
-    for (const text of [ACCEPTED_FILES, UPLOAD_A_PDF, ...(["Word files", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
+    for (const text of [ACCEPTED_FILES, ACCEPTED_FILES_WITH_WORD, UPLOAD_A_PDF, ...(["Word files", "older Word files (.doc)", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
       assert.doesNotMatch(text, /[\u2013\u2014]/);
       assert.doesNotMatch(text, /compliant/i);
     }
@@ -85,6 +94,23 @@ describe("which files the reader can't open, by the name's extension", () => {
     assert.equal(unreadableKind("docx"), null);
     assert.equal(unreadableKind("contract."), null);
     assert.equal(unreadableKind("folder.docx/contract"), null);
+  });
+});
+
+describe("on a listing card, where Word is read (Adam, 11 Nov 2026)", () => {
+  it("a Word file (.docx) is read; only the old format (.doc) isn't", () => {
+    const card = { listingCard: true };
+    assert.equal(unreadableKind("ID check form.docx", card), null);
+    assert.equal(unreadableKind("agency/property/a1/1730000000000-ID_check.DOCX", card), null);
+    assert.equal(unreadableKind("Covering letter.doc", card), "older Word files (.doc)");
+    assert.equal(unreadableKind("Comparables.xlsx", card), "Excel files");
+    assert.equal(unreadableKind("Letter.eml", card), "saved emails");
+    assert.equal(unreadableKind("contract.pdf", card), null);
+    assert.equal(cantReadMessage("ID check form.docx", card), null);
+    assert.equal(
+      cantReadMessage("Covering letter.doc", card),
+      "Saved, but we can't read older Word files (.doc). Save it as a PDF and upload that, and we'll fill in the details for you.",
+    );
   });
 });
 

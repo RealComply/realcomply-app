@@ -22,11 +22,18 @@
 /** Under every upload RealComply reads (moved here from lib/esp-history.ts, 3 Nov 2026). */
 export const ACCEPTED_FILES = "Accepted files: Clear photo or PDF.";
 
+/**
+ * Under every reading upload on a listing card (Adam, 11 Nov 2026): Word is
+ * read there too (lib/documents/word-read.ts). The registers and CPD don't
+ * read Word, and keep the line above.
+ */
+export const ACCEPTED_FILES_WITH_WORD = "Accepted files: PDF, clear photo or Word.";
+
 /** The button on the notice: straight to choosing a replacement at the same spot. */
 export const UPLOAD_A_PDF = "Upload a PDF";
 
 /** The kinds of file an upload takes but the reader can't open, as the notice names them. */
-export type UnreadableKind = "Word files" | "Excel files" | "saved emails";
+export type UnreadableKind = "Word files" | "older Word files (.doc)" | "Excel files" | "saved emails";
 
 const KIND_BY_EXTENSION: Record<string, UnreadableKind> = {
   doc: "Word files",
@@ -43,12 +50,21 @@ const KIND_BY_EXTENSION: Record<string, UnreadableKind> = {
  * with no extension. A storage path works too: only the part after the last
  * "/" is looked at.
  */
-export function unreadableKind(fileName: string | null | undefined): UnreadableKind | null {
+export function unreadableKind(
+  fileName: string | null | undefined,
+  where: { listingCard?: boolean } = {},
+): UnreadableKind | null {
   if (!fileName) return null;
   const base = fileName.slice(fileName.lastIndexOf("/") + 1).trim();
   const dot = base.lastIndexOf(".");
   if (dot < 0) return null;
-  return KIND_BY_EXTENSION[base.slice(dot + 1).toLowerCase()] ?? null;
+  const ext = base.slice(dot + 1).toLowerCase();
+  // On a listing card a Word file (.docx) is read (Adam, 11 Nov 2026;
+  // lib/documents/word-read.ts); the old format (.doc) isn't. The registers
+  // and CPD don't read Word, as before.
+  if (where.listingCard && ext === "docx") return null;
+  if (where.listingCard && ext === "doc") return "older Word files (.doc)";
+  return KIND_BY_EXTENSION[ext] ?? null;
 }
 
 /** What the spot says, word for word, about a file of that kind (Adam, 3 Nov 2026). */
@@ -57,7 +73,7 @@ export function savedButCantRead(kind: UnreadableKind): string {
 }
 
 /** The sentence for a stored file the reader can't open, or null when it can be read. */
-export function cantReadMessage(fileName: string | null | undefined): string | null {
-  const kind = unreadableKind(fileName);
+export function cantReadMessage(fileName: string | null | undefined, where: { listingCard?: boolean } = {}): string | null {
+  const kind = unreadableKind(fileName, where);
   return kind ? savedButCantRead(kind) : null;
 }

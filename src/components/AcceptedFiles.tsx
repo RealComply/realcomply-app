@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
-import { ACCEPTED_FILES, UPLOAD_A_PDF, savedButCantRead, unreadableKind } from "@/lib/storage/accepted-files";
+import { ACCEPTED_FILES, ACCEPTED_FILES_WITH_WORD, UPLOAD_A_PDF, savedButCantRead, unreadableKind } from "@/lib/storage/accepted-files";
 
 // The two pieces every upload RealComply reads shares (Adam, 2 to 3 Nov 2026;
 // mockup approved). The words and the rule are in lib/storage/accepted-files.ts.
@@ -11,8 +11,8 @@ import { ACCEPTED_FILES, UPLOAD_A_PDF, savedButCantRead, unreadableKind } from "
  * "Accepted files: Clear photo or PDF.", small and grey, right under the
  * upload. Styled as it was first built for the ESP notice upload.
  */
-export function AcceptedFilesLine({ className = "" }: { className?: string }) {
-  return <p className={`text-[11px] text-rc-muted ${className}`.trim()}>{ACCEPTED_FILES}</p>;
+export function AcceptedFilesLine({ className = "", word = false }: { className?: string; word?: boolean }) {
+  return <p className={`text-[11px] text-rc-muted ${className}`.trim()}>{word ? ACCEPTED_FILES_WITH_WORD : ACCEPTED_FILES}</p>;
 }
 
 /**
@@ -32,13 +32,16 @@ export function CantReadNotice({
   onUploadPdf,
   disabled = false,
   className = "",
+  listingCard = false,
 }: {
   fileName: string | null | undefined;
   onUploadPdf?: () => void;
   disabled?: boolean;
   className?: string;
+  /** On a listing card, where a Word file (.docx) is read (Adam, 11 Nov 2026). */
+  listingCard?: boolean;
 }) {
-  const kind = unreadableKind(fileName);
+  const kind = unreadableKind(fileName, { listingCard });
   if (!kind) return null;
   return (
     <div
