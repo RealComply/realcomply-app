@@ -698,14 +698,24 @@ function EditComparableDetails({
         {DETAIL_FIELDS.map((f) => (
           <label key={f.key} className="block text-[11px] font-medium text-rc-muted">
             {f.label}
-            <input
-              type={f.key === "saleDate" ? "date" : "text"}
-              inputMode={f.key === "saleDate" ? undefined : f.key === "bedrooms" || f.key === "bathrooms" || f.key === "carSpaces" ? "numeric" : "decimal"}
-              name={f.key}
-              value={values[f.key]}
-              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-              className="mt-1 w-full min-w-0 rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm text-rc-ink"
-            />
+            {/* The sale date in the RealComply date box, always dd/mm/yyyy (Adam, 11 Nov 2026). */}
+            {f.key === "saleDate" ? (
+              <DateBox
+                name={f.key}
+                value={values[f.key]}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                className="mt-1 w-full min-w-0 rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm text-rc-ink"
+              />
+            ) : (
+              <input
+                type="text"
+                inputMode={f.key === "bedrooms" || f.key === "bathrooms" || f.key === "carSpaces" ? "numeric" : "decimal"}
+                name={f.key}
+                value={values[f.key]}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                className="mt-1 w-full min-w-0 rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm text-rc-ink"
+              />
+            )}
             {f.key === "landSizeSqm" && comparable.landSizeHidden && !values.landSizeSqm.trim() && (
               <span className="mt-0.5 block text-[10px] font-normal text-rc-faint">{STRATA_LAND_NOT_SHOWN}</span>
             )}

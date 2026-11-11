@@ -2,6 +2,7 @@
 
 import { useActionState, useRef, useState, useTransition, type ChangeEvent } from "react";
 import { AlertTriangle, Paperclip } from "lucide-react";
+import { DateBox } from "@/components/DateBox";
 import {
   attachInsuranceCertificate,
   attachOtherInsuranceCertificate,
@@ -460,13 +461,23 @@ function DetailInput({
   return (
     <label className="flex flex-col gap-0.5 text-xs text-rc-muted">
       {label}
-      <input
-        id={`${idPrefix}-${field}`}
-        type={field === "expiry" ? "date" : "text"}
-        name={field}
-        defaultValue={defaultValue ?? ""}
-        className={`rounded-md border border-rc-border bg-white px-2 py-1 text-sm text-rc-ink ${field === "insurer" ? "w-44" : field === "policyNumber" ? "w-36" : ""}`}
-      />
+      {/* The expiry in the RealComply date box, always dd/mm/yyyy (Adam, 11 Nov 2026). */}
+      {field === "expiry" ? (
+        <DateBox
+          id={`${idPrefix}-${field}`}
+          name={field}
+          defaultValue={defaultValue ?? ""}
+          className="rounded-md border border-rc-border bg-white px-2 py-1 text-sm text-rc-ink"
+        />
+      ) : (
+        <input
+          id={`${idPrefix}-${field}`}
+          type="text"
+          name={field}
+          defaultValue={defaultValue ?? ""}
+          className={`rounded-md border border-rc-border bg-white px-2 py-1 text-sm text-rc-ink ${field === "insurer" ? "w-44" : "w-36"}`}
+        />
+      )}
     </label>
   );
 }
