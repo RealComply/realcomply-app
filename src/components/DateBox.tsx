@@ -168,7 +168,9 @@ export function DateBox({
   const outer = classes.filter((c) => /^-?m[trblxy]?-/.test(c) || c === "block" || c === "w-full" || c === "flex-1");
   const inner = classes.filter((c) => !outer.includes(c) || c === "w-full");
   const width = WIDTH.test(inner.join(" ")) ? "" : "w-36";
-  const display = outer.includes("block") || outer.includes("w-full") ? "block" : "inline-block";
+  // On its own line, as before, but only as wide as the box, so the calendar
+  // button sits inside it. Full width only when the box was.
+  const display = outer.includes("w-full") ? "block" : outer.includes("block") ? "block w-fit" : "inline-block";
 
   return (
     <div ref={wrapper} className={["relative", display, ...outer.filter((c) => c !== "block")].join(" ")}>
