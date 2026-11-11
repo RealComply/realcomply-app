@@ -19,3 +19,11 @@ test("only about that file: a file that replaced it, or one that was checked, sa
   assert.equal(idScreenNote(null, PATH), null);
   assert.equal(idScreenNote({ idScreenSkipped: { path: PATH } }, null), null);
 });
+
+test("an old Word file (.doc) never says it couldn't be checked just now: it is never read (Master, 11 Nov 2026)", () => {
+  const doc = "agency/listing/a1/1730000000000-Identity check form.DOC";
+  assert.equal(idScreenNote({ idScreenSkipped: { path: doc } }, doc), null);
+  // A .docx is read, so one the check couldn't look at still says so.
+  const docx = "agency/listing/a1/1730000000000-Identity check form.docx";
+  assert.deepEqual(idScreenNote({ idScreenSkipped: { path: docx } }, docx), { tone: "warn", text: ID_SCREEN_SKIPPED });
+});

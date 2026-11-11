@@ -55,6 +55,29 @@ export function zipEntry(zip: Uint8Array, name: string): Uint8Array | null {
   return null;
 }
 
+/** Every file's name in a zip, in order (the listing card reader looks for Word's pictures). */
+export function zipEntryNames(zip: Uint8Array): string[] {
+  const buf = Buffer.from(zip.buffer, zip.byteOffset, zip.byteLength);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new DocxUnreadable("not a zip");
+  const names: string[] = [];
+  const entries = buf.readUInt16LE(eocd + 10);
+  let at = buf.readUInt32LE(eocd + 16);
+  for (let e = 0; e < entries; e++) {
+    if (at + 46 > buf.length || buf.readUInt32LE(at) !== 0x02014b50) throw new DocxUnreadable("damaged zip");
+    const nameLength = buf.readUInt16LE(at + 28);
+    names.push(buf.toString("utf8", at + 46, at + 46 + nameLength));
+    at += 46 + nameLength + buf.readUInt16LE(at + 30) + buf.readUInt16LE(at + 32);
+  }
+  return names;
+}
+
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 
 function decode(xml: string): string {

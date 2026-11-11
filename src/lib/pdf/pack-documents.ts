@@ -61,6 +61,20 @@ export function fileTypeLabel(fileName: string): string {
   return TYPE_LABEL[ext] ?? (ext && ext !== fileName.toLowerCase() ? `.${ext} file` : "file of an unknown type");
 }
 
+/**
+ * The separator page's words for a file the pack can't hold. A Word file
+ * (.doc or .docx) never goes into the pack (Adam, 11 Nov 2026), so its page
+ * says, in Master's words, how to get it in: as a PDF, which the card's
+ * "Upload a PDF" asks for. Every other kind is named by its type, as before.
+ */
+export function notIncludedNote(fileName: string): string {
+  const ext = fileName.toLowerCase().split(".").pop() ?? "";
+  if (ext === "doc" || ext === "docx") {
+    return "Not included in this PDF: Word document. Kept in RealComply. Upload it as a PDF to include it here.";
+  }
+  return `Not included in this PDF: ${fileTypeLabel(fileName)}. Kept in RealComply.`;
+}
+
 /** Where a file stands in the pack, by its storage path. Paths are unique; the first card to name one keeps it. */
 type Uploads = Map<string, { by: string | null; at: string | null }>;
 

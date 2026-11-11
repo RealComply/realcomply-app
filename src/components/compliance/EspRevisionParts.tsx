@@ -7,7 +7,7 @@ import { REVISION_COMPARABLES_LABEL, saleLine, type RevisionCandidate } from "@/
 import { factorsLine } from "@/lib/rules/comparables-rules";
 import type { AreaKind } from "@/lib/rules/council-area";
 import { FileDropZone } from "@/components/FileDropZone";
-import { AcceptedFilesLine, CantReadNotice } from "@/components/AcceptedFiles";
+import { AcceptedFilesLine, CantReadNotice, WordFileNotice } from "@/components/AcceptedFiles";
 import { unreadableKind } from "@/lib/storage/accepted-files";
 import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -309,7 +309,7 @@ export function EspNoticeUpload({
       {title && <p className="text-sm font-bold text-rc-ink">{title}</p>}
       <p className="text-xs leading-relaxed text-rc-muted">{UPLOAD_HELP}</p>
       <FileDropZone compact file={file} onFile={setFile} disabled={busy !== null} label="Drag the notice here, or click to browse" />
-      <AcceptedFilesLine />
+      <AcceptedFilesLine word />
       {error && (
         <p role="alert" className="text-xs font-medium text-rc-amber-deep">
           {error}
@@ -443,7 +443,7 @@ export function EspDraftForm({
     else setEvidence(stored);
   };
   const cancel = () => startCancel(async () => void (await cancelEspDraft(propertyId)));
-  const cantRead = !pending.notRecognised && unreadableKind(pending.fileName) !== null;
+  const cantRead = !pending.notRecognised && unreadableKind(pending.fileName, { listingCard: true }) !== null;
   const uploadPdf = () =>
     startCancel(async () => {
       const { error } = await cancelEspDraft(propertyId);
@@ -473,7 +473,7 @@ export function EspDraftForm({
           </span>
         </p>
       ) : cantRead ? (
-        <CantReadNotice fileName={pending.fileName} onUploadPdf={uploadPdf} disabled={saving || cancelling} />
+        <CantReadNotice listingCard fileName={pending.fileName} onUploadPdf={uploadPdf} disabled={saving || cancelling} />
       ) : pending.readFailed ? (
         <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-2 text-xs text-rc-amber-deep">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
@@ -486,6 +486,10 @@ export function EspDraftForm({
           <Sparkles size={13} className="mt-0.5 shrink-0" />
           <span>Read from the notice. Check these against it before you save.</span>
         </p>
+      )}
+      {/* A revision can't be changed once recorded, so a Word notice is swapped for its PDF here, before it is. */}
+      {!pending.notRecognised && !cantRead && (
+        <WordFileNotice read fileName={pending.fileName} onUploadPdf={uploadPdf} disabled={saving || cancelling} />
       )}
 
       {!pending.notRecognised && (

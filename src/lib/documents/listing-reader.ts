@@ -655,7 +655,8 @@ export async function readListingDocument(args: {
   prescribedDocs: PrescribedDoc[];
 }): Promise<DraftPatch[]> {
   const { anthropic, blob, fileName, source, prescribedDocs } = args;
-  const prepared = await prepareRead(blob, fileName);
+  // A listing document: Word (.docx) is read too (Adam, 11 Nov 2026).
+  const prepared = await prepareRead(blob, fileName, { word: true });
   if (!prepared.ok) {
     if (prepared.problem === "too_large") throw new TooLargeToRead();
     throw new FileCantBeRead("unsupported", `file type not supported for extraction yet (${prepared.contentType})`);
@@ -668,7 +669,8 @@ export async function readListingDocument(args: {
   // confirmed hallucination (invented document names) that survived two
   // rounds of prompt-only fixes on a one-line placeholder test file.
   const MIN_TEXT_CHARS = 400;
-  if (prepared.contentType === "text/plain") {
+  // Not a Word file with pictures: its words can be few and its pictures the record.
+  if (prepared.contentType === "text/plain" && !prepared.pictures) {
     const text = Buffer.from(prepared.bytes).toString("utf-8");
     if (text.trim().length < MIN_TEXT_CHARS) {
       return [];

@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readableBytes } from "@/lib/documents/readable-bytes";
+import { isReadableWord, pictureBlocks, wordForReader } from "@/lib/documents/word-read";
+import { DocxUnreadable } from "@/lib/sg-document/docx";
 import { UnfinishedAnswer, toolAnswer, unfinishedMessage, type UnfinishedWhy } from "@/lib/documents/reader-answer";
 import {
   TOO_LARGE_TO_READ,
@@ -55,17 +57,54 @@ export function buildDocumentBlock(
 // over about 24 MB failed and the screen showed the reader's own error, which
 // is where an agent read "32 MB" and shrank her scans to fit.
 
-export type ReadPart = { block: Anthropic.Messages.ContentBlockParam; note: string | null };
+export type ReadPart = {
+  block: Anthropic.Messages.ContentBlockParam;
+  note: string | null;
+  /** Shown after the block: a Word file's pictures (lib/documents/word-read.ts). */
+  extra?: Anthropic.Messages.ContentBlockParam[];
+};
 
 export type PreparedRead =
-  | { ok: true; contentType: string; bytes: Uint8Array; parts: ReadPart[] }
+  /**
+   * A Word file is read as its words (contentType text/plain, bytes the
+   * words), with its pictures, if any, counted in `pictures` and shown after.
+   */
+  | { ok: true; contentType: string; bytes: Uint8Array; parts: ReadPart[]; pictures?: number }
   | { ok: false; problem: "too_large" }
   | { ok: false; problem: "unsupported"; contentType: string };
 
-export async function prepareRead(blob: Blob, fileName: string): Promise<PreparedRead> {
+export async function prepareRead(
+  blob: Blob,
+  fileName: string,
+  /** word: a listing card's reader, where Word (.docx) is read (Adam, 11 Nov 2026). */
+  options: { word?: boolean } = {},
+): Promise<PreparedRead> {
   // readableBytes rather than a plain arrayBuffer: a phone photo can arrive as
   // HEIC, which nothing downstream can open. See lib/documents/readable-bytes.
   const { bytes, contentType } = await readableBytes(blob, fileName);
+
+  // Word (.docx) on a listing card (Adam, 11 Nov 2026): its words, each
+  // table row on a line, and its pictures (lib/documents/word-read.ts). One
+  // that won't open as Word is a file the reader can't take, said in plain
+  // words. The registers and CPD don't read Word, as before.
+  if (options.word && isReadableWord({ contentType, fileName, bytes })) {
+    let word;
+    try {
+      word = wordForReader(bytes, fileName, { pictureMaxBytes: READER_IMAGE_MAX_BYTES, totalMaxBytes: READER_PART_MAX_BYTES });
+    } catch (err) {
+      if (err instanceof DocxUnreadable) return { ok: false, problem: "unsupported", contentType: "a Word file that couldn't be opened" };
+      throw err;
+    }
+    if (new TextEncoder().encode(word.text).length > READER_PART_MAX_BYTES) return { ok: false, problem: "too_large" };
+    return {
+      ok: true,
+      contentType: "text/plain",
+      // The file's own words: what "too short to be a real document" counts.
+      bytes: new TextEncoder().encode(word.words),
+      pictures: word.pictures.length,
+      parts: [{ block: { type: "text", text: word.text }, note: null, extra: pictureBlocks(word.pictures) }],
+    };
+  }
 
   if (contentType === "application/pdf") {
     const split = await splitPdfForReader(bytes);
@@ -119,7 +158,7 @@ export async function askParts(
       model: READER_MODEL,
       max_tokens: question.maxTokens,
       system: part.note ? `${question.system} ${part.note}` : question.system,
-      messages: [{ role: "user", content: [part.block, { type: "text", text }] }],
+      messages: [{ role: "user", content: [part.block, ...(part.extra ?? []), { type: "text", text }] }],
       tools: [question.tool],
       tool_choice: { type: "tool", name: question.tool.name },
     });

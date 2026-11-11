@@ -803,7 +803,7 @@ export async function extractRevisedEspNotice(
     // photograph taken on an iPhone — IMG_9352.HEIC — and HEIC was not a format
     // this could open, so the block came back null, the read returned null, and
     // the revised figures were never recorded. readableBytes converts it.
-    const prepared = await prepareRead(blob, fileName);
+    const prepared = await prepareRead(blob, fileName, { word: true });
     if (!prepared.ok) return failed(prepared.problem === "too_large" ? "too_large" : "unsupported");
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -880,7 +880,7 @@ export async function extractCoveringLetterDate(
     const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
     if (error || !blob) return failed("file");
 
-    const prepared = await prepareRead(blob, fileName);
+    const prepared = await prepareRead(blob, fileName, { word: true });
     if (!prepared.ok) return failed(prepared.problem === "too_large" ? "too_large" : "unsupported");
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -1016,7 +1016,7 @@ export async function screenForIdDocument(
     const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
     if (error || !blob) return failed("file");
 
-    const prepared = await prepareRead(blob, fileName);
+    const prepared = await prepareRead(blob, fileName, { word: true });
     // A file type we cannot read cannot be screened. Let it through rather
     // than refusing on the basis of not having looked. The same for a file
     // too large to read at all (a large PDF is read in parts, every part
@@ -1093,7 +1093,7 @@ export async function extractReportDetails(
     return { error: unreadable };
   }
 
-  const prepared = await prepareRead(blob, fileName);
+  const prepared = await prepareRead(blob, fileName, { word: true });
   if (!prepared.ok) {
     await failed(prepared.problem === "too_large" ? "too_large" : "unsupported");
     return prepared.problem === "too_large"
@@ -1102,7 +1102,8 @@ export async function extractReportDetails(
   }
 
   const MIN_TEXT_CHARS = 400;
-  if (prepared.contentType === "text/plain") {
+  // Not a Word file with pictures: its words can be few and its pictures the record.
+  if (prepared.contentType === "text/plain" && !prepared.pictures) {
     const text = Buffer.from(prepared.bytes).toString("utf-8");
     if (text.trim().length < MIN_TEXT_CHARS) {
       await noteRead(supabase, { ...where, outcome: "nothing_found" });
@@ -1289,7 +1290,7 @@ async function readCoveringLetterOnto(propertyId: string): Promise<ActionState> 
     // A saved email or a Word file (Adam, 3 Nov 2026): said in his words, not
     // as "Couldn't read the covering letter. Check it opens". The card says
     // the same beside the file, by its name.
-    const cantRead = result.why === "unsupported" ? cantReadMessage(fileName) : null;
+    const cantRead = result.why === "unsupported" ? cantReadMessage(fileName, { listingCard: true }) : null;
     return { error: cantRead ? `Covering letter: ${cantRead}` : reason };
   }
   const fields = result.fields;
@@ -1496,7 +1497,7 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
       // (application/...)". What is kept on the card is unchanged; the card
       // says the same, by the file's name.
       const cantRead =
-        err instanceof FileCantBeRead && err.why === "unsupported" ? cantReadMessage(evidenceFileNameOf(item)) : null;
+        err instanceof FileCantBeRead && err.why === "unsupported" ? cantReadMessage(evidenceFileNameOf(item), { listingCard: true }) : null;
       failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${cantRead ?? why}`);
       if (item.item_key === "a4") reportRead = reportReadFailed(why, item.evidence_path!, readAt);
       if (item.item_key === "b1") contractRead = contractReadFailed(cantRead ?? why, item.evidence_path!, readAt);
