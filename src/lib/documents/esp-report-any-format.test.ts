@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
 import { readListingDocument, type SourceKey } from "@/lib/documents/listing-reader";
 import { reportReadFrom } from "@/lib/documents/report-read";
+import { addReportRows } from "@/lib/documents/report-rows";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // The ESP card reads any format for sales (Adam, 11 Nov 2026): an agent's own
 // appraisal, a letter, a few pages cut from a bigger report. It is the wrong
@@ -85,5 +87,50 @@ describe("the ESP card reads any format for sales", () => {
     assert.match(contract.asked, /only if it really is the contract/);
     const agreement = await readAs("a3", { documentIs: "comparable_sales", patches: [{ itemKey: "a3", note: "x" }] });
     assert.ok(agreement.patches[0].wrongDocument);
+  });
+});
+
+describe("beds, baths and cars of 0 are read and kept (Adam, 11 Nov 2026)", () => {
+  it("the reader is told a 0 is an answer, and its 0s come through", async () => {
+    const { patches, asked } = await readAs("a4", {
+      documentIs: "comparable_sales",
+      patches: [
+        {
+          itemKey: "a4c",
+          comparableSales: [{ address: "1/2 Studio Lane, Testville (made up)", salePrice: 450000, bedrooms: 0, bathrooms: 1, carSpaces: 0 }],
+          marketListings: [{ address: "3/2 Studio Lane, Testville (made up)", bedrooms: 0, bathrooms: 1, carSpaces: 0 }],
+          subjectProperty: { bedrooms: 1, bathrooms: 1, carSpaces: 0 },
+        },
+      ],
+    });
+    assert.match(asked, /a 0 is an answer, not a gap/);
+    const a4c = patches.find((p) => p.itemKey === "a4c")!;
+    assert.deepEqual(
+      [a4c.comparableSales?.[0].bedrooms, a4c.comparableSales?.[0].carSpaces, a4c.marketListings?.[0].bedrooms, a4c.subjectProperty?.carSpaces],
+      [0, 0, 0, 0],
+    );
+  });
+
+  it("a 0 is saved as 0, not as 'not known'", async () => {
+    const inserted: Record<string, unknown[]> = {};
+    // Nothing on file yet: every filter step answers with no rows.
+    const none = { eq: () => none, is: () => none, then: (resolve: (v: unknown) => void) => resolve({ data: [], error: null }) };
+    const from = (table: string) => ({
+      select: () => none,
+      insert: async (rows: unknown[]) => {
+        inserted[table] = rows;
+        return { error: null };
+      },
+    });
+    const added = await addReportRows({ from } as unknown as SupabaseClient, { agencyId: "agency-1", propertyId: "listing-1" }, {
+      comparableSales: [{ address: "1/2 Studio Lane, Testville (made up)", bedrooms: 0, bathrooms: 1, carSpaces: 0 }],
+      marketListings: [{ address: "3/2 Studio Lane, Testville (made up)", bedrooms: 0, bathrooms: 1, carSpaces: 0 }],
+    });
+    assert.equal(added.salesAdded, 1);
+    const sale = inserted.property_comparables[0] as Record<string, unknown>;
+    assert.deepEqual([sale.bedrooms, sale.bathrooms, sale.car_spaces], [0, 1, 0]);
+    assert.equal(added.listingsAdded, 1);
+    const listing = inserted.property_market_listings[0] as Record<string, unknown>;
+    assert.deepEqual([listing.bedrooms, listing.car_spaces], [0, 0]);
   });
 });

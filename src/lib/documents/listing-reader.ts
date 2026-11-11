@@ -234,6 +234,16 @@ export type SubjectAttributesRead = {
   internalAreaSqm?: number;
 };
 
+// BEDS, BATHS AND CARS, 0 INCLUDED (Adam, 11 Nov 2026: "read and record
+// number of bed, bath and car. still allow even if those data points read
+// 0"). A 0 is an answer: a studio has 0 bedrooms, a unit with no parking 0
+// car spaces. Left out, it reads as "not known", and the agent is asked to
+// fill in a figure the document gave. The app already keeps a 0 from here
+// to the comparables table and the statement of information.
+const COUNT_ZERO_TOO =
+  " A whole number, as printed. Record 0 when the document shows 0, 'nil' or 'none': 0 is a real answer, never leave it out. Leave it out only when the document doesn't give it (blank, a dash, or not shown).";
+const countField = (what: string) => ({ type: "number", description: `Number of ${what}.${COUNT_ZERO_TOO}` });
+
 export const EXTRACTION_TOOL: Anthropic.Tool = {
   name: "record_findings",
   description:
@@ -378,9 +388,9 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
                   },
                   salePrice: { type: "number", description: "Sale price in dollars, digits only. Omit if the report withholds it." },
                   saleDate: { type: "string", description: "Date of sale, YYYY-MM-DD. Omit unless a specific date is printed — a month alone is not a date." },
-                  bedrooms: { type: "number" },
-                  bathrooms: { type: "number" },
-                  carSpaces: { type: "number", description: "Garage or carport spaces." },
+                  bedrooms: countField("bedrooms"),
+                  bathrooms: countField("bathrooms"),
+                  carSpaces: countField("car spaces (garage, carport or parking spaces)"),
                   landSizeSqm: { type: "number", description: "Land size in square metres. Convert hectares only where the report itself gives both; otherwise omit." },
                   internalAreaSqm: { type: "number", description: "Internal or building area in square metres, if stated separately from land." },
                   distanceM: { type: "number", description: "Distance from the subject property in METRES, only if the report states a distance. Convert a printed kilometre figure to metres; do not calculate one from addresses." },
@@ -400,9 +410,9 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
                   askingPrice: { type: "string", description: "The advertised price or guide exactly as printed, e.g. '$1,200,000 - $1,300,000', 'Contact Agent'. Omit if none is shown." },
                   saleMethod: { type: "string", description: "e.g. 'Auction', 'Private treaty', 'Expressions of interest', only as printed." },
                   listedDate: { type: "string", description: "Date first listed, YYYY-MM-DD, only if a specific date is printed. Do not calculate it from a days-on-market figure." },
-                  bedrooms: { type: "number" },
-                  bathrooms: { type: "number" },
-                  carSpaces: { type: "number" },
+                  bedrooms: countField("bedrooms"),
+                  bathrooms: countField("bathrooms"),
+                  carSpaces: countField("car spaces (garage, carport or parking spaces)"),
                   landSizeSqm: { type: "number", description: "Land size in square metres, only as printed." },
                   internalAreaSqm: { type: "number" },
                   distanceM: { type: "number", description: "Distance from the subject in METRES, only if printed. Convert a printed km figure; do not calculate one." },
@@ -416,9 +426,9 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
               description:
                 "Item a4c only, and ONLY from a comparable-sales report. The attributes of the SUBJECT property — the one the report was prepared for, usually named on its first page — not of any comparable. Everything optional; omit anything not printed. These are shown to the agent for confirmation, never used as fact until they accept them.",
               properties: {
-                bedrooms: { type: "number" },
-                bathrooms: { type: "number" },
-                carSpaces: { type: "number" },
+                bedrooms: countField("bedrooms"),
+                bathrooms: countField("bathrooms"),
+                carSpaces: countField("car spaces (garage, carport or parking spaces)"),
                 landSizeSqm: { type: "number" },
                 internalAreaSqm: { type: "number" },
               },
@@ -576,7 +586,9 @@ export const COMPARABLES_PROMPT =
   "(a table, a list, a paragraph, a caption under a photo, a map key), as one entry each, in the " +
   "document's own order. This is the main job. Transcribe what is printed and nothing else: address, price, date of " +
   "sale, beds, baths, car, land size, internal area, distance. Leave a field out rather than " +
-  "estimating it. Include every sale, even ones that look unlike the subject — deciding which sales " +
+  "estimating it, except that beds, baths and car spaces of 0 (or 'nil', 'none') are recorded as 0: a 0 " +
+  "is an answer, not a gap. The same goes for the subject property and the listings for sale. " +
+  "Include every sale, even ones that look unlike the subject — deciding which sales " +
   "count is the agent's job, and a sale you silently omitted is one they cannot consider.\n\n" +
   "(2) subjectProperty — the attributes of the property the report was prepared FOR, which these " +
   "reports normally state on the first page. Beds, baths, car, land, internal area. Omit anything not " +
