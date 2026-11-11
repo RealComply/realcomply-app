@@ -74,8 +74,12 @@ describe("what the cards say", () => {
   it("when nothing was found, on both cards", () => {
     const r = reportReadFrom([], PATH, AT);
     assert.equal(reportReadNote(r, "report")?.tone, "warn");
-    assert.ok(reportReadNote(r, "report")?.text.startsWith("Read, but no sales or listings were found in it."));
-    assert.ok(reportReadNote(r, "reasoning")?.text.includes("was read, but no sales or listings were found in it"));
+    // Master, 11 Nov 2026: the same words as a file that didn't look like a report.
+    assert.equal(
+      reportReadNote(r, "report")?.text,
+      "We couldn't find comparable sales in this file. Upload your comparable sales report, or confirm this is it.",
+    );
+    assert.ok(reportReadNote(r, "reasoning")?.text.startsWith("We couldn't find comparable sales in the report on the ESP card."));
   });
 
   it("when it couldn't be read, with the reason once and one full stop", () => {
@@ -98,9 +102,11 @@ describe("what the cards say", () => {
       PATH,
       AT,
     );
+    // Master, 11 Nov 2026: the reader can be wrong, so the same words as no
+    // sales found, never "Replace the file".
     assert.equal(
       reportReadNote(r, "report")?.text,
-      "Comparable sales not read: this file looks like a contract for sale of land, not a comparable-sales report, so nothing was taken from it. Replace the file.",
+      "We couldn't find comparable sales in this file. Upload your comparable sales report, or confirm this is it.",
     );
     assert.equal(reportReadNote(r, "reasoning")?.tone, "warn");
   });

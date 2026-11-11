@@ -12,6 +12,7 @@ import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
+import { REPORT_TO_CHECK_BADGE } from "@/lib/documents/report-choice";
 import { GiftsWidget } from "@/components/home/GiftsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgReadCard } from "@/components/home/SgReadCard";
@@ -104,7 +105,7 @@ export async function AgentHome({
   const nameOf = (id: string | null) => people.find((x) => x.id === id)?.full_name ?? "Unknown";
 
   const needs: NeedsAttentionItem[] = counts.listingRows
-    .filter((r) => r.outstanding > 0 || r.flagged > 0)
+    .filter((r) => r.outstanding > 0 || r.flagged > 0 || r.reportToCheck)
     .map((r) => ({
       propertyId: r.id,
       address: r.address,
@@ -113,6 +114,7 @@ export async function AgentHome({
       badges: [
         ...(r.outstanding > 0 ? [`${r.outstanding} to do`] : []),
         ...(r.flagged > 0 ? [`${r.flagged} flagged`] : []),
+        ...(r.reportToCheck ? [REPORT_TO_CHECK_BADGE] : []),
       ],
     }));
 

@@ -114,6 +114,15 @@ import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { advertisingFixLine, reformsInForce } from "@/lib/rules/underquoting-reforms";
 import { lowestPriceFromItems } from "@/lib/data/lowest-price";
 import { sydneyDate } from "@/lib/subscription-end/dates";
+import { confirmMyReport } from "@/lib/actions/report-choice";
+import {
+  NO_SALES_PROMPT,
+  THIS_IS_MY_REPORT,
+  UPLOAD_REPORT,
+  confirmedAsReport,
+  reportPromptFor,
+  type ReportPrompt,
+} from "@/lib/documents/report-choice";
 import {
   ADS_UPDATED_LABEL,
   OTHER_ADS_LINE,
@@ -243,6 +252,7 @@ function ItemShell({
   evidenceReadOnly = false,
   optional = false,
   evidenceReadNote = null,
+  reportPrompt = null,
   hideReopen = false,
   children,
 }: {
@@ -252,6 +262,8 @@ function ItemShell({
   current?: PropertyItem;
   /** What the last read of the attached file came to, said beside it (a4). */
   evidenceReadNote?: ReadNote | null;
+  /** a4: no comparable sales found in the report: upload another, or confirm it (Master, 11 Nov 2026). */
+  reportPrompt?: ReportPrompt | null;
   /** Passed through to the pill — see StatusPill. */
   optional?: boolean;
   /** Passed through to the pill — see StatusPill. */
@@ -479,6 +491,7 @@ function ItemShell({
           replaceOnly={item.evidenceReplaceOnly}
           onUnsavedChange={setEvidenceUnsaved}
           readNote={evidenceReadNote}
+          reportPrompt={reportPrompt}
         />
       )}
       </fieldset>
@@ -559,6 +572,46 @@ function RereadButton({ propertyId, itemKey }: { propertyId: string; itemKey: st
 // do about it, quiet when the read went well.
 type ReadNote = { tone: "ok" | "warn"; text: string };
 
+// NO COMPARABLE SALES FOUND IN THE REPORT (Master, 11 Nov 2026; see
+// lib/documents/report-choice.ts). The card stays as it is and nothing holds
+// the stage, since the reader can be wrong: the agent uploads their report, or
+// says this is it and enters the sales on the ESP reasoning card.
+function NoSalesPrompt({ propertyId, onUpload }: { propertyId: string; onUpload: () => void }) {
+  const action = confirmMyReport.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(action, initialState);
+  return (
+    <div
+      role="status"
+      className="flex w-full items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-2 text-xs text-rc-amber-deep"
+    >
+      <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+      <div className="min-w-0 space-y-1.5">
+        <p>{NO_SALES_PROMPT}</p>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={onUpload}
+            disabled={pending}
+            className="rounded-md border border-rc-border bg-white px-2.5 py-1 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20 disabled:opacity-60"
+          >
+            {UPLOAD_REPORT}
+          </button>
+          <form action={formAction}>
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md border border-rc-border bg-white px-2.5 py-1 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20 disabled:opacity-60"
+            >
+              {pending ? "Saving…" : THIS_IS_MY_REPORT}
+            </button>
+          </form>
+        </div>
+        {state.error && <p>{state.error}</p>}
+      </div>
+    </div>
+  );
+}
+
 function ReadNoteLine({ note }: { note: ReadNote }) {
   return (
     <p
@@ -587,6 +640,7 @@ function EvidenceUploader({
   replaceOnly = false,
   onUnsavedChange,
   readNote = null,
+  reportPrompt = null,
 }: {
   propertyId: string;
   itemKey: string;
@@ -597,6 +651,8 @@ function EvidenceUploader({
   warning?: string;
   /** What the last read of this file came to, under it. */
   readNote?: ReadNote | null;
+  /** a4: in place of readNote when no comparable sales were found in the report. */
+  reportPrompt?: ReportPrompt | null;
   /**
    * Swap Remove for Replace. For the documents collected at listing setup,
    * which are mandatory there: a file the listing could not have been created
@@ -788,6 +844,10 @@ function EvidenceUploader({
           )}
           {cantRead ? (
             <CantReadNotice fileName={attachedName} onUploadPdf={uploadPdf} className="w-full" />
+          ) : reportPrompt?.kind === "ask" ? (
+            <NoSalesPrompt propertyId={propertyId} onUpload={uploadPdf} />
+          ) : reportPrompt?.kind === "confirmed" ? (
+            <ReadNoteLine note={{ tone: "ok", text: reportPrompt.text }} />
           ) : (
             readNote && <ReadNoteLine note={readNote} />
           )}
@@ -887,6 +947,7 @@ function ChecklistItem({
   allEsp,
   comparablesReportRead = false,
   reportRead = null,
+  reportConfirmed = false,
   doneLine = null,
   keepUntil = null,
   councilArea,
@@ -903,6 +964,8 @@ function ChecklistItem({
   comparablesArea?: ComparablesArea;
   /** a4 and a4c: what the last read of the comparable-sales report on a4 came to. */
   reportRead?: ReportRead | null;
+  /** a4c: "This is my report" was said on a4 about the report there now (11 Nov 2026). */
+  reportConfirmed?: boolean;
   // The listing's own attributes and its comparable sales. Read once by the
   // page and passed down, like amlPreCommencementEnabled — only a4 and a4c
   // use them, and neither should be asking the database on its own.
@@ -1169,7 +1232,10 @@ function ChecklistItem({
     item.key === "a4c" &&
     !comparables.some((c) => c.source === "report") &&
     !marketListings.some((l) => l.source === "report")
-      ? reportReadNote(reportRead, "reasoning")
+      ? reportConfirmed
+        ? // "This is my report" on the ESP card (Master, 11 Nov 2026): the sales go in by hand here.
+          { tone: "ok" as const, text: "Add the sales from the report on the ESP card below. Each sale shows any details still to fill in." }
+        : reportReadNote(reportRead, "reasoning")
       : null;
   // The report on the ESP card is a Word, Excel or saved email file (Adam,
   // 3 Nov 2026): said in his words, not as "No sales from the comparable-sales
@@ -1184,6 +1250,11 @@ function ChecklistItem({
       propertyId={propertyId}
       current={current}
       awaitingReview={showsDraft}
+      reportPrompt={
+        item.key === "a4"
+          ? reportPromptFor(current?.data, current?.evidence_path, (iso) => formatAuDate(sydneyDate(new Date(iso))))
+          : null
+      }
       evidenceReadNote={
         item.key === "a4"
           ? reportReadNote(reportRead, "report")
@@ -1255,7 +1326,9 @@ function ChecklistItem({
         onSubmit={keepOnRefusal ? submitKeepingFields : undefined}
         className="space-y-3"
       >
-        {wrongDocument ? (
+        {/* Not on the ESP card: there, no sales found is said beside the
+            report, with Upload report and This is my report (11 Nov 2026). */}
+        {wrongDocument && item.key !== "a4" ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             <span>
@@ -5084,6 +5157,9 @@ function ItemCardBody({
               reportReadFinished(a4ReportRead))
           }
           reportRead={item.key === "a4" || item.key === "a4c" ? a4ReportRead : null}
+          reportConfirmed={
+            item.key === "a4c" && Boolean(confirmedAsReport(allItems["a4"]?.data, allItems["a4"]?.evidence_path))
+          }
         />
       );
     }

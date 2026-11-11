@@ -13,6 +13,7 @@ import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
+import { REPORT_TO_CHECK_BADGE } from "@/lib/documents/report-choice";
 import { WeeklyReviewWidget } from "@/components/home/WeeklyReviewWidget";
 import { TeamWidget } from "@/components/home/TeamWidget";
 import { LicenceCpdWidget } from "@/components/home/LicenceCpdWidget";
@@ -291,13 +292,13 @@ export default async function HomeDashboardPage({
   const licenseeIds = new Set((await agencyPeople(supabase)).filter((r) => r.is_licensee_in_charge).map((r) => r.id));
 
   const digests = computePropertyDigests(propertyList, itemsByProperty, licenseeIds);
-  const needsYouDigests = digests.filter((d) => d.pendingSignoff.length > 0 || d.flagged.length > 0);
+  const needsYouDigests = digests.filter((d) => d.pendingSignoff.length > 0 || d.flagged.length > 0 || d.reportToCheck);
   const needsAttentionItems: NeedsAttentionItem[] = needsYouDigests.map((d) => ({
     propertyId: d.property.id,
     address: d.property.address,
     stageLabel: STAGE_LABELS[d.property.stage],
     agentName: agentNames.get(d.property.created_by) ?? "Unknown agent",
-    badges: [...d.pendingSignoff, ...d.flagged].map((item) => item.label),
+    badges: [...[...d.pendingSignoff, ...d.flagged].map((item) => item.label), ...(d.reportToCheck ? [REPORT_TO_CHECK_BADGE] : [])],
   }));
   const dueForReview = digests.filter((d) => {
     const days = daysSinceActivity(d.lastActivityAt);
