@@ -5,6 +5,8 @@ import {
   findOnPages,
   groupWarning,
   groupWarningText,
+  PAGE_NOT_READ_THIS_MORNING,
+  pageNotRead,
   pagesToTry,
   searchLine,
   type PageCheck,
@@ -54,11 +56,9 @@ test("found nowhere: every look is kept, and the listing says why", async () => 
     page.kind === "agent" ? { url: null, result: "no_links" } : { url: null, result: "refused" },
   );
   assert.equal(result.url, null);
-  const line = searchLine({ at: "2026-11-02T20:00:30Z", tries: result.tries });
-  assert.equal(
-    line,
-    "This listing's page wasn't found on 3 November 2026. Looked at the agent's personal listings page: the page had no links to listings that RealComply could read; the office's listings page: the website turned RealComply's check away.",
-  );
+  // Neither page could be read (no links; turned away): Adam's sentence, not "didn't include" (11 Nov 2026).
+  const line = searchLine({ at: "2026-11-02T20:00:30Z", tries: result.tries }, {}, new Date("2026-11-02T21:30:00Z"));
+  assert.equal(line, "We couldn't read the listings on your website page this morning, so this listing wasn't checked against it.");
   assert.equal(searchLine({ at: "2026-11-02T20:00:30Z", tries: [{ page: "office", result: "found" }] }), null);
   assert.equal(searchLine(null), null);
 });
@@ -110,4 +110,80 @@ test("the sign-up field is optional and never stops a sign-up", () => {
   assert.equal(signupListingsPage("   "), null);
   assert.equal(signupListingsPage("not a page"), null);
   assert.equal(signupListingsPage(null), null);
+});
+
+// NO FALSE "DIDN'T INCLUDE THIS PROPERTY" (Adam, 11 Nov 2026). Global
+// Property's page draws its listings in after it loads: the morning read found
+// 0 listings, and 13 listings said "the listings on it didn't include this
+// property". A page whose read found none, or turned the check away, is said
+// to be unread instead.
+test("a page whose morning read found 0 listings: the listing isn't said to be missing from it", () => {
+  const at = "2026-11-10T20:01:10Z"; // 7:01am, 11 Nov 2026 in Sydney
+  const morning = new Date("2026-11-10T23:00:00Z"); // 10am the same day
+  const read0 = (pageKey: string, url: string): PageCheck => ({
+    pageKey, url, checkedAt: "2026-11-10T20:00:25Z", outcome: "read", listingsFound: 0, inRealcomply: 12, keptUrl: null,
+  });
+  const reads = { agent: read0("agent:p1", AGENT), office: read0("office:a1", OFFICE) };
+  const tries = [{ page: "agent" as const, result: "no_match" as const }, { page: "office" as const, result: "no_match" as const }];
+  assert.equal(searchLine({ at, tries }, reads, morning), PAGE_NOT_READ_THIS_MORNING);
+  assert.equal(PAGE_NOT_READ_THIS_MORNING, "We couldn't read the listings on your website page this morning, so this listing wasn't checked against it.");
+  // Seen on a later day: the day it was looked, not "this morning".
+  assert.equal(
+    searchLine({ at, tries }, reads, new Date("2026-11-12T00:00:00Z")),
+    "We couldn't read the listings on your website page on 11 November 2026, so this listing wasn't checked against it.",
+  );
+  // Without what the page read found, as before.
+  assert.match(searchLine({ at, tries }, {}, morning) ?? "", /didn't include this property/);
+});
+
+test("a page that turned the check away, the same", () => {
+  const refused: PageCheck = { pageKey: "office:a1", url: OFFICE, checkedAt: "2026-11-10T20:00:25Z", outcome: "refused", listingsFound: null, inRealcomply: 1, keptUrl: null };
+  assert.equal(pageNotRead(refused), true);
+  const at = "2026-11-10T20:01:10Z";
+  assert.equal(searchLine({ at, tries: [{ page: "office", result: "refused" }] }, { office: refused }, new Date("2026-11-10T23:00:00Z")), PAGE_NOT_READ_THIS_MORNING);
+});
+
+test("a page whose read found listings, none of them this one: still said, as it's true", () => {
+  const found: PageCheck = { pageKey: "office:a1", url: OFFICE, checkedAt: "2026-11-10T20:00:25Z", outcome: "read", listingsFound: 37, inRealcomply: 17, keptUrl: null };
+  assert.equal(pageNotRead(found), false);
+  const line = searchLine({ at: "2026-11-10T20:01:10Z", tries: [{ page: "office", result: "no_match" }] }, { office: found }, new Date("2026-11-10T23:00:00Z"));
+  assert.equal(line, "This listing's page wasn't found on 11 November 2026. Looked at the office's listings page: the listings on it didn't include this property.");
+});
+
+test("one page unread, the other read: each says what it came to", () => {
+  const at = "2026-11-10T20:01:10Z";
+  const reads = {
+    agent: { pageKey: "agent:p1", url: AGENT, checkedAt: "2026-11-10T20:00:20Z", outcome: "read" as const, listingsFound: 0, inRealcomply: 2, keptUrl: null },
+    office: { pageKey: "office:a1", url: OFFICE, checkedAt: "2026-11-10T20:00:25Z", outcome: "read" as const, listingsFound: 37, inRealcomply: 17, keptUrl: null },
+  };
+  const line = searchLine({ at, tries: [{ page: "agent", result: "no_match" }, { page: "office", result: "no_match" }] }, reads, new Date("2026-11-10T23:00:00Z"));
+  assert.equal(
+    line,
+    "This listing's page wasn't found on 11 November 2026. Looked at the agent's personal listings page: RealComply couldn't read the listings on it; the office's listings page: the listings on it didn't include this property.",
+  );
+});
+
+test("a look from an earlier day: the page's latest read speaks for it", () => {
+  // Looked for on 9 Nov ("Check now"); the page read 0 listings this morning, 11 Nov.
+  const today: PageCheck = { pageKey: "office:a1", url: OFFICE, checkedAt: "2026-11-10T20:00:25Z", outcome: "read", listingsFound: 0, inRealcomply: 17, keptUrl: null };
+  const old = { at: "2026-11-09T04:04:12Z", tries: [{ page: "office" as const, result: "no_match" as const }] };
+  assert.equal(searchLine(old, { office: today }, new Date("2026-11-10T23:00:00Z")), PAGE_NOT_READ_THIS_MORNING);
+  // Seen the next day, before that morning's read: as of the read's day.
+  assert.equal(
+    searchLine(old, { office: today }, new Date("2026-11-11T19:00:00Z")),
+    "We couldn't read the listings on your website page on 11 November 2026, so this listing wasn't checked against it.",
+  );
+  // The page read listings this morning: the old look stands, with its day.
+  const readable = { ...today, listingsFound: 37 };
+  assert.equal(
+    searchLine(old, { office: readable }, new Date("2026-11-10T23:00:00Z")),
+    "This listing's page wasn't found on 9 November 2026. Looked at the office's listings page: the listings on it didn't include this property.",
+  );
+});
+
+test("the words: no dashes, never 'compliant'", () => {
+  for (const t of [PAGE_NOT_READ_THIS_MORNING]) {
+    assert.doesNotMatch(t, /[\u2013\u2014]/);
+    assert.doesNotMatch(t, /compliant/i);
+  }
 });

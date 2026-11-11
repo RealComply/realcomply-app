@@ -61,25 +61,75 @@ export async function findOnPages(
 
 const SEARCH_WORDS: Record<Exclude<SearchResult, "found">, string> = {
   no_match: "the listings on it didn't include this property",
-  no_links: "the page had no links to listings that RealComply could read",
-  refused: "the website turned RealComply's check away",
+  no_links: "RealComply couldn't read the listings on it",
+  refused: "RealComply couldn't read the listings on it",
   failed: "RealComply's reader failed",
 };
+
+// NO FALSE "DIDN'T INCLUDE THIS PROPERTY" (Adam, 11 Nov 2026). A listings page
+// whose morning read found no listings, or that turned the check away, can't
+// say anything about whether this listing is on it. Global Property's page
+// draws its listings in after it loads: the morning read found 0 listings,
+// and 13 of its listings said "the listings on it didn't include this
+// property", which was never true. Now such a page is said to be unread, in
+// Adam's words, and the listing is not said to be missing from it.
+
+/** Said on a listing when the listings page it was looked for on couldn't be read this morning (Adam, 11 Nov 2026). */
+export const PAGE_NOT_READ_THIS_MORNING =
+  "We couldn't read the listings on your website page this morning, so this listing wasn't checked against it.";
+
+/** The same, for a look on an earlier day. */
+export const pageNotReadOn = (day: string) =>
+  `We couldn't read the listings on your website page on ${formatAuDate(day)}, so this listing wasn't checked against it.`;
+
+/** Whether a page's morning read found no listings on it, or was turned away. */
+export function pageNotRead(check: PageCheck | null | undefined): boolean {
+  return Boolean(check && (check.outcome === "refused" || (check.outcome === "read" && check.listingsFound === 0)));
+}
+
+/** What the morning's read of each page made of it: the listing agent's own page and the office's (listings_page_checks). */
+export type PageReads = Partial<Record<PageKind, PageCheck | null>>;
+
+/**
+ * A look that couldn't see the listings. Judged by the page's latest read
+ * when there is one: if that found no listings or was turned away, nothing
+ * the listing's look said about it can be relied on. (A look is kept until
+ * the listing is next looked for, which can be days old, while the page is
+ * read every morning: on 11 Nov 2026, 4 of Global's 13 listings had looks
+ * from earlier days.) Otherwise by the look itself.
+ */
+function lookedButUnread(t: SearchTry, reads: PageReads): boolean {
+  if (t.result === "found" || t.result === "failed") return false;
+  if (pageNotRead(reads[t.page])) return true;
+  return t.result === "refused" || t.result === "no_links";
+}
 
 /**
  * One line for the listing, when its page hasn't been found: where the
  * morning's check looked and what each page came to. Null when nothing was
- * looked at, or the page was found.
+ * looked at, or the page was found. When none of the pages could be read,
+ * Adam's sentence alone, as of the page's latest read.
  */
-export function searchLine(search: { at: string; tries: SearchTry[] } | null | undefined): string | null {
+export function searchLine(
+  search: { at: string; tries: SearchTry[] } | null | undefined,
+  reads: PageReads = {},
+  now = new Date(),
+): string | null {
   if (!search || search.tries.length === 0 || search.tries.some((t) => t.result === "found")) return null;
+  const day = sydneyDate(new Date(search.at));
+  const unread = search.tries.map((t) => lookedButUnread(t, reads));
+  if (unread.every(Boolean)) {
+    const readDays = search.tries.map((t) => reads[t.page]).filter(pageNotRead).map((c) => sydneyDate(new Date(c!.checkedAt)));
+    const asOf = readDays.length > 0 ? readDays.sort().at(-1)! : day;
+    return asOf === sydneyDate(now) ? PAGE_NOT_READ_THIS_MORNING : pageNotReadOn(asOf);
+  }
   const parts = search.tries.map(
-    (t) =>
+    (t, i) =>
       `${t.page === "agent" ? "the agent's personal listings page" : "the office's listings page"}: ${
-        SEARCH_WORDS[t.result as Exclude<SearchResult, "found">]
+        unread[i] ? SEARCH_WORDS.refused : SEARCH_WORDS[t.result as Exclude<SearchResult, "found">]
       }`,
   );
-  return `This listing's page wasn't found on ${formatAuDate(sydneyDate(new Date(search.at)))}. Looked at ${parts.join("; ")}.`;
+  return `This listing's page wasn't found on ${formatAuDate(day)}. Looked at ${parts.join("; ")}.`;
 }
 
 /** What a page showed at the morning's check (listings_page_checks, 0105). */

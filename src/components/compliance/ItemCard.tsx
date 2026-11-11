@@ -62,7 +62,7 @@ import {
   espNoticeOf,
 } from "@/lib/rules/esp-given-before-signing";
 import { espFrom } from "@/lib/data/effective-esp";
-import type { SearchTry } from "@/lib/listings-pages";
+import type { PageReads, SearchTry } from "@/lib/listings-pages";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
@@ -2112,12 +2112,15 @@ function GuideItem({
   revisionItem,
   agreementItem,
   lowest,
+  listingsPageReads,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   /** The lowest price the ads can start at (lib/rules/lowest-advertised-price.ts). */
   lowest?: LowestPrice;
+  /** What the morning's read made of the agent's listings page and the office's (11 Nov 2026). */
+  listingsPageReads?: PageReads;
   espItem?: PropertyItem;
   /** The ESP revision card (d3): its latest revision is the ESP now (Adam, 3 Nov 2026). */
   revisionItem?: PropertyItem;
@@ -2371,7 +2374,7 @@ function GuideItem({
       {/* The independent read of the live page. Sits below the agent's own
           record rather than replacing it: the form above is what the agent
           says is advertised, this is what the website actually shows. */}
-      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} pageSearch={data.pageSearch} />
+      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} pageSearch={data.pageSearch} pageReads={listingsPageReads} />
     </ItemShell>
   );
 }
@@ -4956,6 +4959,8 @@ type ItemCardProps = {
   soi?: SoiView;
   /** The ESP revision card (d3): when the statement has to be revised by (Reg s12I; 0121). */
   soiReviseBy?: { revisionNo: number; dueBy: string } | null;
+  /** The advertised price card (c1): what the morning's read made of the listing agent's listings page and the office's (11 Nov 2026). */
+  listingsPageReads?: PageReads;
 };
 
 export function ItemCard(props: ItemCardProps) {
@@ -4981,6 +4986,7 @@ function ItemCardBody({
   comparablesArea,
   soi,
   soiReviseBy = null,
+  listingsPageReads,
 }: ItemCardProps) {
   // A card added after this file was signed off (the order on the agent,
   // 6 Nov 2026) was never asked for here: it says so, with nothing to do.
@@ -5075,6 +5081,7 @@ function ItemCardBody({
           espItem={allItems["a4"]}
           revisionItem={allItems["d3"]}
           agreementItem={allItems["a3"]}
+          listingsPageReads={listingsPageReads}
           lowest={lowestPriceFromItems({
             a4: allItems["a4"]?.data,
             d3: allItems["d3"]?.data,
