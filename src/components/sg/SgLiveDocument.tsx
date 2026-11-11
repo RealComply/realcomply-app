@@ -28,6 +28,7 @@ export function SgLiveDocument({
   today,
   gaps = [],
   startAmendment = false,
+  exportHref = null,
 }: {
   documentId: string;
   docType: SgDocType | null;
@@ -47,6 +48,8 @@ export function SgLiveDocument({
   gaps?: string[];
   /** From the annual review card's "Quick amendment" (0126): the form starts open. */
   startAmendment?: boolean;
+  /** Export PDF (part 4b), for whoever runs the office. */
+  exportHref?: string | null;
 }) {
   const live = withAmendments(sections, amendments);
   const approved = amendments.filter((a) => a.status === "approved").length;
@@ -70,13 +73,26 @@ export function SgLiveDocument({
             </p>
           )}
         </div>
-        {canUpload && (
-          <a
-            href="#sg-upload"
-            className="rounded-full border border-rc-border bg-white px-4 py-2 text-sm font-semibold text-rc-ink transition hover:border-rc-green-deep"
-          >
-            Upload new version
-          </a>
+        {(canUpload || exportHref) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {canUpload && (
+              <a
+                href="#sg-upload"
+                className="rounded-full border border-rc-border bg-white px-4 py-2 text-sm font-semibold text-rc-ink transition hover:border-rc-green-deep"
+              >
+                Upload new version
+              </a>
+            )}
+            {exportHref && (
+              <a
+                href={exportHref}
+                download
+                className="rounded-full border border-rc-border bg-white px-4 py-2 text-sm font-semibold text-rc-ink transition hover:border-rc-green-deep"
+              >
+                Export PDF
+              </a>
+            )}
+          </div>
         )}
       </div>
 

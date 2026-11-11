@@ -3,13 +3,27 @@ import type { ChangeLogRow } from "@/lib/sg-document/change-log";
 // The change log (Adam's mockup, screen 5): every version and every
 // amendment, newest first, with when it starts, what changed, why, who
 // approved it and how many staff have signed. "Reviewed, no changes needed"
-// joins it in part 4, and the Export PDF puts it at the back.
-export function SgChangeLog({ rows }: { rows: ChangeLogRow[] }) {
+// joins it in part 4, and the Export PDF puts it at the back (part 4b).
+export function SgChangeLog({ rows, exportHref = null }: { rows: ChangeLogRow[]; exportHref?: string | null }) {
   if (rows.length === 0) return null;
   return (
     <section id="sg-change-log" className="scroll-mt-4">
-      <h2 className="text-lg font-bold tracking-tight text-rc-ink">Change log</h2>
-      <p className="mt-0.5 text-sm text-rc-muted">Every version, amendment and &ldquo;Reviewed, no changes needed&rdquo;, with the date it starts.</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-bold tracking-tight text-rc-ink">Change log</h2>
+        {exportHref && (
+          <a
+            href={exportHref}
+            download
+            className="rounded-full border border-rc-border bg-white px-4 py-2 text-sm font-semibold text-rc-ink transition hover:border-rc-green-deep"
+          >
+            Export PDF
+          </a>
+        )}
+      </div>
+      <p className="mt-0.5 text-sm text-rc-muted">
+        Every version, amendment and &ldquo;Reviewed, no changes needed&rdquo;, with the date it starts. Export PDF has the current
+        document with amendments merged in, then this log at the back.
+      </p>
       <div className="mt-3 overflow-x-auto rounded-card border border-rc-border bg-white shadow-card">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>

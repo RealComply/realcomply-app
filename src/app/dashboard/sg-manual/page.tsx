@@ -21,8 +21,8 @@ import { SgAnnualReviewCard } from "@/components/sg/SgAnnualReviewCard";
 import { reviewCardShows } from "@/lib/sg-document/annual-review";
 import { SgChangeLog } from "@/components/sg/SgChangeLog";
 import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
-import { signedOf, todayInSydney } from "@/lib/sg-document/amendments";
-import { changeLogRows } from "@/lib/sg-document/change-log";
+import { todayInSydney } from "@/lib/sg-document/amendments";
+import { sgChangeLog, versionSignedOf } from "@/lib/sg-document/change-log";
 import { sgReadGapLines } from "@/lib/sg-document/checks";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
@@ -48,6 +48,9 @@ import { RoofMark } from "@/components/RoofMark";
 // Reading a long document runs past a normal request: the page moves it
 // along while it's open (continueSgDocumentRead), within this limit.
 export const maxDuration = 300;
+
+/** Export PDF (part 4b): the document with its amendments merged in, then the change log. */
+const SG_PDF_HREF = "/dashboard/sg-manual/pdf";
 
 export default async function SgManualPage({
   searchParams,
@@ -121,29 +124,16 @@ export default async function SgManualPage({
       : signedUrls[versions.findIndex((v) => v.file_path === currentSignoff.file_path)]?.data?.signedUrl ?? null
     : null;
 
-  // Each saved version's sign-off: its file's sign-off document (0009), matched by path.
-  const versionSigned = (manualVersionId: string | null) => {
-    const file = versions.find((v) => v.id === manualVersionId)?.file_path;
-    const doc = file ? signoffDocs.find((d) => d.file_path === file) : undefined;
-    if (!doc) return null;
-    const sigs = signoffSigs.filter((x) => x.document_id === doc.id);
-    return { signed: sigs.filter((x) => x.signed_at).length, of: sigs.length };
-  };
-  const logRows = changeLogRows(
-    savedDocs.map((d) => ({ ...d, signed: versionSigned(d.manualVersionId) })),
-    everyApproved.map((a) => {
-      const doc = savedDocs.find((d) => d.id === a.documentId);
-      return {
-        amendment: a,
-        document: { docType: doc?.docType ?? null, versionLabel: doc?.versionLabel ?? null },
-        signed: signedOf(signers.get(a.id) ?? [], staffIds),
-      };
-    }),
-    reviews.map((r) => {
-      const doc = savedDocs.find((d) => d.id === r.documentId);
-      return { review: r, document: { docType: doc?.docType ?? null, versionLabel: doc?.versionLabel ?? null } };
-    }),
-  );
+  // The change log (screen 5): every version, with its file's sign-off
+  // (0009), every amendment and every review. The same rows Export PDF prints.
+  const logRows = sgChangeLog({
+    savedDocs,
+    approved: everyApproved,
+    reviews,
+    signers,
+    staffIds,
+    versionSigned: versionSignedOf(versions, signoffDocs, signoffSigs),
+  });
   // When the next review is due (2.1.2): the same date Home and the reminders use.
   const reviewDue = sg.live ? (review?.dueOn ?? null) : null;
   const today = todayInSydney();
@@ -229,6 +219,7 @@ export default async function SgManualPage({
               savedByName={sg.live.doc.savedByName}
               sections={sg.live.sections}
               canUpload={access.runsOffice}
+              exportHref={access.runsOffice ? SG_PDF_HREF : null}
               gaps={sgReadGapLines(sg.live.doc.checks)}
             />
           </div>
@@ -236,7 +227,7 @@ export default async function SgManualPage({
 
         {sg.live && logRows.length > 0 && (
           <div className="mt-8">
-            <SgChangeLog rows={logRows} />
+            <SgChangeLog rows={logRows} exportHref={access.runsOffice ? SG_PDF_HREF : null} />
           </div>
         )}
 
