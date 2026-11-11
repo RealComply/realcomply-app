@@ -10,7 +10,11 @@ const nextConfig: NextConfig = {
     // The headless browser for listings pages drawn by JavaScript (11 Nov
     // 2026; lib/listing-scan/render-page.ts), with the 7am check only. Its
     // compressed Chromium is read from disk at run time, so it is named here.
-    "/api/cron/listing-scan": ["./node_modules/@sparticuz/chromium/bin/**"],
+    // So is all of playwright-core: it loads browsers.json (and other files)
+    // by a path worked out at run time, which the build can't follow. On
+    // 12 Nov 2026 the 7am job couldn't start the browser without it
+    // (lib/listing-scan/browser-bundle.test.ts).
+    "/api/cron/listing-scan": ["./node_modules/@sparticuz/chromium/bin/**", "./node_modules/playwright-core/**"],
   },
   async redirects() {
     return [
