@@ -3,7 +3,7 @@ import { sgChecksOf, type SgChecks } from "@/lib/sg-document/checks";
 import { isSgDocType, type SgDocType } from "@/lib/sg-document/fair-trading";
 import { amendmentFrom, type SgAmendment } from "@/lib/sg-document/amendments";
 import { reviewFrom, type SgReview } from "@/lib/sg-document/annual-review";
-import { nextReviewDue } from "@/lib/sg-document/change-log";
+import { nextReviewDue, sgChangeLog, versionSignedOf, type ChangeLogRow } from "@/lib/sg-document/change-log";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 
 // The office's supervision guidelines as a live document (0122), as the SG
@@ -247,4 +247,49 @@ export async function sgReviewDueFor(
   const reviewedAt = ((reviews ?? []) as Array<{ reviewed_at: string }>).map((r) => r.reviewed_at).sort();
   const last = reviewedAt.at(-1);
   return dueOn ? { documentId: live.id, dueOn, lastReviewedOn: last ? sydneyDate(new Date(last)) : null } : null;
+}
+
+// ── Part 4b: the change log, for Export PDF ──────────────────────────────
+
+/**
+ * The change log as the page shows it (screen 5), for the export. With the
+ * reader's own access: whoever runs the office reads every signature.
+ */
+export async function sgChangeLogFor(supabase: SupabaseClient, agencyId: string): Promise<ChangeLogRow[]> {
+  const [savedDocs, approved, reviews, { data: staff }, { data: versions }, { data: docs }] = await Promise.all([
+    sgSavedDocuments(supabase),
+    sgApprovedAmendmentsAll(supabase),
+    sgReviewsAll(supabase),
+    supabase.from("profiles").select("id, archived_at").eq("agency_id", agencyId),
+    supabase.from("sg_manual_versions").select("id, file_path"),
+    supabase.from("signoff_documents").select("id, file_path").eq("category", "sg_manual"),
+  ]);
+  const docRows = (docs ?? []) as Array<{ id: string; file_path: string | null }>;
+  const [signers, { data: sigs }] = await Promise.all([
+    sgAmendmentSigners(
+      supabase,
+      approved.map((a) => a.id),
+    ),
+    docRows.length > 0
+      ? supabase
+          .from("signoff_signatures")
+          .select("document_id, signed_at")
+          .in(
+            "document_id",
+            docRows.map((d) => d.id),
+          )
+      : Promise.resolve({ data: [] }),
+  ]);
+  return sgChangeLog({
+    savedDocs,
+    approved,
+    reviews,
+    signers,
+    staffIds: ((staff ?? []) as Array<{ id: string; archived_at: string | null }>).filter((p) => !p.archived_at).map((p) => p.id),
+    versionSigned: versionSignedOf(
+      (versions ?? []) as Array<{ id: string; file_path: string }>,
+      docRows,
+      (sigs ?? []) as Array<{ document_id: string; signed_at: string | null }>,
+    ),
+  });
 }

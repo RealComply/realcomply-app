@@ -1,7 +1,7 @@
 import { formatAuDate } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { SG_DOC_TYPES, type SgDocType } from "@/lib/sg-document/fair-trading";
-import { amendmentRef, approvedBySaid, reasonSaid, whatChanged, type SgAmendment } from "@/lib/sg-document/amendments";
+import { amendmentRef, approvedBySaid, reasonSaid, signedOf, whatChanged, type SgAmendment } from "@/lib/sg-document/amendments";
 import type { SgReview } from "@/lib/sg-document/annual-review";
 
 // The change log (Adam's mockup, screen 5) and the next review date
@@ -134,4 +134,50 @@ export function nextReviewDue(signedUpAt: string | null, reviewedAt: Array<strin
 /** "Next review due 14 August 2027". */
 export function nextReviewSaid(due: string | null): string | null {
   return due ? `Next review due ${formatAuDate(due)}` : null;
+}
+
+// ── The whole log, for the page and the export (part 4b) ─────────────────
+
+/**
+ * Staff who have signed each saved version's file (0009), worked out from
+ * the SG Manual versions and their sign-off documents, matched by file path.
+ */
+export function versionSignedOf(
+  versions: Array<{ id: string; file_path: string }>,
+  signoffDocs: Array<{ id: string; file_path: string | null }>,
+  signoffSigs: Array<{ document_id: string; signed_at: string | null }>,
+): (manualVersionId: string | null) => { signed: number; of: number } | null {
+  return (manualVersionId) => {
+    const file = versions.find((v) => v.id === manualVersionId)?.file_path;
+    const doc = file ? signoffDocs.find((d) => d.file_path === file) : undefined;
+    if (!doc) return null;
+    const sigs = signoffSigs.filter((x) => x.document_id === doc.id);
+    return { signed: sigs.filter((x) => x.signed_at).length, of: sigs.length };
+  };
+}
+
+/** Every version, amendment and review, each named by the document it was on, newest first. */
+export function sgChangeLog(input: {
+  savedDocs: Array<Omit<SgSavedVersion, "signed"> & { manualVersionId: string | null }>;
+  approved: SgAmendment[];
+  reviews: SgReview[];
+  /** Amendment id to the people who signed it. */
+  signers: Map<string, string[]>;
+  /** Everyone in the office now. */
+  staffIds: string[];
+  versionSigned: (manualVersionId: string | null) => { signed: number; of: number } | null;
+}): ChangeLogRow[] {
+  const docOf = (id: string) => {
+    const d = input.savedDocs.find((x) => x.id === id);
+    return { docType: d?.docType ?? null, versionLabel: d?.versionLabel ?? null };
+  };
+  return changeLogRows(
+    input.savedDocs.map((d) => ({ ...d, signed: input.versionSigned(d.manualVersionId) })),
+    input.approved.map((a) => ({
+      amendment: a,
+      document: docOf(a.documentId),
+      signed: signedOf(input.signers.get(a.id) ?? [], input.staffIds),
+    })),
+    input.reviews.map((r) => ({ review: r, document: docOf(r.documentId) })),
+  );
 }
