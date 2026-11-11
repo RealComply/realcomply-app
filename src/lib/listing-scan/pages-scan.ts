@@ -43,27 +43,74 @@ export type ListingCandidate = { url: string; label: string; why: string };
 
 const LINK_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 
-/** Same-host links with their anchor text, deduplicated, capped. */
+const NAMED: Record<string, string> = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" };
+
+/**
+ * An href as the browser reads it: character references decoded. A page
+ * writes "&" in a link as "&amp;", or "&#038;" as WordPress does (an
+ * office's listings page, 4 Nov 2026). Read raw,
+ * "?saleOrRental=Sale&#038;order=..." turned everything after the "#" into a
+ * fragment, which was then dropped, so the check followed a link that wasn't
+ * the page's own.
+ */
+export function decodeHref(raw: string): string {
+  return raw.replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|(amp|quot|apos|lt|gt));/gi, (whole, dec, hex, name) => {
+    if (name) return NAMED[name.toLowerCase()];
+    const code = dec ? Number(dec) : parseInt(hex, 16);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
+}
+
+// LISTINGS THE PAGE CARRIES AS DATA (Adam, 4 Nov 2026: an office entered its
+// listings page and "the AI isn't reading it"). Some websites draw their
+// listings in after the page loads, from a list inside the page itself, so
+// the page as sent has no links to them. That office's page had 39, each
+// like {"url":"https:\/\/...\/listings\/residential_sale-...\/","address":
+// "3/5 Margaret Street, Warners Bay","price":"..."}, and the morning's check
+// read "0 listings found". Any flat object in the page with a "url" is read
+// as a link, with its address (or title, or name) as the link's words. The
+// same rules apply as to any link: this website only, https only, and the
+// link must be written out in full.
+const DATA_RE = /\{[^{}]*"url"\s*:\s*"[^{}]*\}/g;
+const DATA_WORDS = ["address", "title", "name"] as const;
+
+/** Same-host links with their anchor text, deduplicated, capped. Listings the page carries as data come after its links. */
 export function linksFrom(html: string, base: URL): Array<{ href: string; text: string }> {
   const seen = new Set<string>();
   const out: Array<{ href: string; text: string }> = [];
+  const add = (href: string, text: string): boolean => {
+    let abs: URL;
+    try {
+      abs = new URL(href, base);
+    } catch {
+      return false;
+    }
+    if (abs.protocol !== "https:" || abs.hostname !== base.hostname) return false;
+    abs.hash = "";
+    const key = abs.toString();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    out.push({ href: key, text: text.replace(/\s+/g, " ").trim().slice(0, 120) });
+    return out.length >= 400;
+  };
+
   let m: RegExpExecArray | null;
   LINK_RE.lastIndex = 0;
   while ((m = LINK_RE.exec(html)) !== null) {
-    let abs: URL;
+    if (add(decodeHref(m[1]), m[2].replace(/<[^>]+>/g, " "))) return out;
+  }
+  DATA_RE.lastIndex = 0;
+  while ((m = DATA_RE.exec(html)) !== null) {
+    let item: Record<string, unknown>;
     try {
-      abs = new URL(m[1], base);
+      item = JSON.parse(m[0]);
     } catch {
       continue;
     }
-    if (abs.protocol !== "https:" || abs.hostname !== base.hostname) continue;
-    abs.hash = "";
-    const key = abs.toString();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
-    out.push({ href: key, text });
-    if (out.length >= 400) break;
+    // A full address only: a script's "url" can be anything, a listing's is the whole link.
+    if (typeof item.url !== "string" || !/^https:\/\//i.test(item.url)) continue;
+    const words = DATA_WORDS.map((k) => item[k]).find((v): v is string => typeof v === "string") ?? "";
+    if (add(item.url, words)) return out;
   }
   return out;
 }
@@ -97,18 +144,42 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
   },
 };
 
-/** Reads a page once per run, however many listings look at it. A refusal is remembered too. */
+/**
+ * Reads a page once per run, however many listings look at it. A refusal is
+ * remembered too, and logged once with why.
+ *
+ * WHY A PAGE WAS TURNED AWAY GOES IN THE LOG (4 Nov 2026). The listing and
+ * listings_page_checks only say "refused", so the 7am run on 4 Nov showed 11
+ * pages refused with nothing to say why. They were: a "checking your
+ * browser" screen, which returns 403 to anything that isn't a person in a
+ * browser; website addresses that don't exist; and a website whose https is
+ * broken. One line per page, with the website's name
+ * only, never the rest of the address: an agent's own page can carry their
+ * name.
+ */
 export type FetchPage = (url: string) => Promise<{ url: URL; html: string }>;
-export function pageCache(fetch: (url: string) => Promise<{ url: URL; html: string }> = fetchPublicPage): FetchPage {
+export function pageCache(
+  fetch: (url: string) => Promise<{ url: URL; html: string }> = fetchPublicPage,
+  log: (line: string) => void = console.log,
+): FetchPage {
   const seen = new Map<string, Promise<{ url: URL; html: string }>>();
   return (url) => {
     let page = seen.get(url);
     if (!page) {
       page = fetch(url);
+      page.catch((err: unknown) => log(`listing-scan: ${websiteOf(url)} turned the check away: ${err instanceof Error ? err.message : String(err)}`));
       seen.set(url, page);
     }
     return page;
   };
+}
+
+function websiteOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "an address that isn't valid";
+  }
 }
 
 /**
