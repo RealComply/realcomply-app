@@ -19,8 +19,6 @@ import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
 import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
 import { checkedPdf } from "@/lib/pdf/checked-pdf";
 import { notIncludedNote, type PackDocument } from "@/lib/pdf/pack-documents";
-import { WORD_COPY_NOTE, wordCopyPdf } from "@/lib/pdf/word-copy";
-import { isReadableWord } from "@/lib/documents/word-read";
 import type { EspPackRow } from "@/lib/esp-history";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { copiedLinkLine, emailedLinkLine } from "@/lib/links/delivery";
@@ -1064,9 +1062,6 @@ const uploadLine = (d: PackDocument) => {
   return day ? `Uploaded ${day}` : "Upload not recorded";
 };
 
-/** A Word file that couldn't be drawn as a plain copy: named on its separator page instead. */
-class WordNotDrawn extends Error {}
-
 /** Why a PDF that came through whole still couldn't go in. */
 function whyNotAdded(err: unknown): string {
   const message = err instanceof Error ? `${err.name} ${err.message}` : String(err);
@@ -1105,14 +1100,12 @@ async function appendDocuments(
   const contentsPages = Array.from({ length: Math.ceil(documents.length / CONTENTS_LINES_PER_PAGE) }, () =>
     doc.addPage([PAGE_W, PAGE_H]),
   );
-  const placed: Array<{ d: PackDocument; separator: PDFPage; pageNo: number; note: string | null; converted: boolean }> = [];
+  const placed: Array<{ d: PackDocument; separator: PDFPage; pageNo: number; note: string | null }> = [];
 
   for (const [n, d] of documents.entries()) {
     const separator = doc.addPage([PAGE_W, PAGE_H]);
     const pageNo = doc.getPageCount();
     let note: string | null = null;
-    // A Word file drawn as a plain copy (Adam, 11 Nov 2026; lib/pdf/word-copy.ts).
-    let converted = false;
     if (d.kind === "other") {
       note = notIncludedNote(d.fileName);
     } else {
@@ -1130,16 +1123,6 @@ async function appendDocuments(
             if (src.getPageCount() === 0) throw new Error("no pages");
             const copied = await doc.copyPages(src, src.getPageIndices());
             copied.forEach((pg) => doc.addPage(pg));
-          } else if (d.kind === "word") {
-            // Drawn on its own first, so a file that fails part way adds
-            // nothing; it is then named as any Word file the pack can't hold.
-            if (!isReadableWord({ contentType: "", fileName: d.fileName, bytes: loaded.bytes })) throw new WordNotDrawn();
-            const copy = await wordCopyPdf(loaded.bytes, d.fileName).catch(() => {
-              throw new WordNotDrawn();
-            });
-            const copied = await doc.copyPages(copy, copy.getPageIndices());
-            copied.forEach((pg) => doc.addPage(pg));
-            converted = true;
           } else {
             // A photo, one to a page, as large as fits. A HEIC was converted
             // to a JPEG by the loader (lib/documents/readable-bytes.ts).
@@ -1156,10 +1139,7 @@ async function appendDocuments(
           }
           addedBytes += loaded.bytes.length;
         } catch (err) {
-          note =
-            err instanceof WordNotDrawn
-              ? notIncludedNote(d.fileName)
-              : `This document couldn't be added: ${whyNotAdded(err)}. Kept in RealComply.`;
+          note = `This document couldn't be added: ${whyNotAdded(err)}. Kept in RealComply.`;
         }
       }
     }
@@ -1188,16 +1168,11 @@ async function appendDocuments(
         } else line = next;
       }
       if (line) separator.drawText(line, { x: MARGIN, y, size: 11, font: fonts.bold, color: AMBER });
-    } else if (converted) {
-      // Said, not warned: the copy is in the pack, after this page.
-      wrap(pdfText(WORD_COPY_NOTE, fonts.regular), fonts.regular, 10.5, width).forEach((line, i) => {
-        separator.drawText(line, { x: MARGIN, y: PAGE_H - 252 - i * 15, size: 10.5, font: fonts.regular, color: MUTED });
-      });
     }
     const back = "Back to contents";
     separator.drawText(back, { x: MARGIN, y: 72, size: 10, font: fonts.bold, color: LINK });
     linkTo(doc, separator, { x: MARGIN - 2, y: 68, w: fonts.bold.widthOfTextAtSize(back, 10) + 4, h: 16 }, contentsPages[0]);
-    placed.push({ d, separator, pageNo, note, converted });
+    placed.push({ d, separator, pageNo, note });
   }
 
   // The contents: one line per document, each a link to its separator page.
@@ -1222,12 +1197,12 @@ async function appendDocuments(
       page.drawText("Contents, continued", { x: MARGIN, y, size: 12, font: fonts.bold, color: INK });
       y -= 26;
     }
-    for (const { d, separator, pageNo, note, converted } of placed.slice(p * CONTENTS_LINES_PER_PAGE, (p + 1) * CONTENTS_LINES_PER_PAGE)) {
+    for (const { d, separator, pageNo, note } of placed.slice(p * CONTENTS_LINES_PER_PAGE, (p + 1) * CONTENTS_LINES_PER_PAGE)) {
       const pageLabel = `page ${pageNo}`;
       const labelW = fonts.regular.widthOfTextAtSize(pageLabel, 9);
       page.drawText(fit(`${d.stage} · ${d.cardTitle}`, fonts.bold, 9.5, width - labelW - 16), { x: MARGIN, y, size: 9.5, font: fonts.bold, color: INK });
       page.drawText(pageLabel, { x: PAGE_W - MARGIN - labelW, y, size: 9, font: fonts.regular, color: LINK });
-      const detail = `${d.fileName} · ${uploadLine(d)}${note ? (note.startsWith("Not included") ? " · not included in this PDF" : " · couldn't be added") : converted ? " · plain copy from Word" : ""}`;
+      const detail = `${d.fileName} · ${uploadLine(d)}${note ? (note.startsWith("Not included") ? " · not included in this PDF" : " · couldn't be added") : ""}`;
       page.drawText(fit(detail, fonts.regular, 8.5, width - labelW - 16), { x: MARGIN, y: y - 13, size: 8.5, font: fonts.regular, color: note ? AMBER : MUTED });
       linkTo(doc, page, { x: MARGIN - 2, y: y - 17, w: width + 4, h: 30 }, separator);
       y -= 44;

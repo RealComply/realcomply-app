@@ -6,8 +6,7 @@ import {
   ACCEPTED_FILES,
   ACCEPTED_FILES_WITH_WORD,
   UPLOAD_A_PDF,
-  savedButCantRead,
-  unreadableKind,
+  cantReadMessage,
   wordFileNotice,
 } from "@/lib/storage/accepted-files";
 
@@ -48,8 +47,8 @@ export function CantReadNotice({
   /** On a listing card, where a Word file (.docx) is read (Adam, 11 Nov 2026). */
   listingCard?: boolean;
 }) {
-  const kind = unreadableKind(fileName, { listingCard });
-  if (!kind) return null;
+  const text = cantReadMessage(fileName, { listingCard });
+  if (!text) return null;
   return (
     <div
       role="status"
@@ -57,7 +56,7 @@ export function CantReadNotice({
     >
       <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
       <div className="min-w-0 space-y-1.5">
-        <p>{savedButCantRead(kind)}</p>
+        <p>{text}</p>
         {onUploadPdf && (
           <button
             type="button"
@@ -74,9 +73,8 @@ export function CantReadNotice({
 }
 
 /**
- * A Word file on a listing card (Adam, 11 Nov 2026): read (or kept), and in
- * the audit pack only as a plain copy (a .docx) or not at all (a .doc), so the
- * card says so, with "Upload a PDF" to replace it.
+ * A Word file on a listing card (Adam, 11 Nov 2026): read (or kept), but never
+ * in the audit pack, so the card says so, with "Upload a PDF" to replace it.
  * The PDF replaces the file as Replace does, and is read in its turn; what
  * was read from the Word file stays on the card, since a read adds to what is
  * there. Nothing for any other file.

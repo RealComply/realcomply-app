@@ -45,7 +45,7 @@ export function isReadableWord(args: { contentType: string; fileName: string; by
 }
 
 /** The elements of one kind at the top level of some XML (a table inside a table stays inside its cell). */
-export function topLevel(xml: string, tag: string): Array<{ start: number; end: number; inner: string }> {
+function topLevel(xml: string, tag: string): Array<{ start: number; end: number; inner: string }> {
   const open = new RegExp(`<${tag}(?=[\\s>])[^>]*>|</${tag}>`, "g");
   const out: Array<{ start: number; end: number; inner: string }> = [];
   let depth = 0;
@@ -103,7 +103,7 @@ export function documentXmlLines(xml: string): string[] {
 
 type Picture = { mediaType: "image/png" | "image/jpeg" | "image/gif"; bytes: Uint8Array };
 
-export function pictureType(b: Uint8Array): Picture["mediaType"] | null {
+function pictureType(b: Uint8Array): Picture["mediaType"] | null {
   if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "image/png";
   if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
   if (b.length > 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return "image/gif";

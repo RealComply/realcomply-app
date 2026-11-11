@@ -84,10 +84,7 @@ test("kinds and file type words", () => {
   assert.equal(packDocKind("a.PDF"), "pdf");
   assert.equal(packDocKind("IMG_1.HEIC"), "heic");
   assert.equal(packDocKind("photo.jpeg"), "image");
-  // A .docx is drawn into the pack as a plain copy (Adam, 11 Nov 2026); an old .doc isn't.
-  assert.equal(packDocKind("letter.docx"), "word");
-  assert.equal(packDocKind("LETTER.DOCX"), "word");
-  assert.equal(packDocKind("letter.doc"), "other");
+  assert.equal(packDocKind("letter.docx"), "other");
   assert.equal(fileTypeLabel("letter.docx"), "Word document (.docx)");
   assert.equal(fileTypeLabel("forwarded.msg"), "saved Outlook email (.msg)");
   assert.equal(fileTypeLabel("notes.txt"), ".txt file");

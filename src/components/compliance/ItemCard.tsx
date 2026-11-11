@@ -862,7 +862,7 @@ function EvidenceUploader({
           ) : (
             readNote && <ReadNoteLine note={readNote} />
           )}
-          {/* A Word file is in the audit pack only as a plain copy (Adam, 11 Nov 2026). */}
+          {/* A Word file isn't in the audit pack (Adam, 11 Nov 2026). */}
           {!cantRead && (
             <WordFileNotice fileName={attachedName} read={readsOrChecks} onUploadPdf={uploadPdf} className="w-full" />
           )}
