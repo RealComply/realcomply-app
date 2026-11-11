@@ -9,6 +9,7 @@ import {
   afterAgentSave,
   afterLetterRead,
   afterLetterReadFailed,
+  afterLetterRemoved,
   coveringLetterDate,
   readReceivedDate,
   receivedDateLines,
@@ -158,4 +159,95 @@ test("a read that finishes, or a date the agent saves, replaces the failure", ()
   assert.equal(lines(noDate.data).noDate, true);
   const saved = { ...failed, ...afterAgentSave({ event_date: null, data: failed }, "2026-10-14", "done", jo, T3) };
   assert.equal(JSON.parse(JSON.stringify(saved)).coveringLetterReadFailed, undefined, "gone once saved");
+});
+
+// WHAT THE CARD SAID ABOUT AN EARLIER FILE GOES WITH IT (Adam, 11 Nov 2026).
+// A letter read for its date, then replaced by a file that couldn't be read,
+// left "No date found in the covering letter." and "Read by AI from the
+// covering letter. Check it against the letter, then save." on the card about
+// a letter that was no longer there.
+const A = "ag/p1/b1a/1-letter.pdf";
+const B = "ag/p1/b1a/2-letter.doc";
+const C = "ag/p1/b1a/3-letter.pdf";
+
+test("a dated letter, then a file that can't be read: the Read by AI line goes; the date and its history stay", () => {
+  const read = afterLetterRead({ event_date: null, status: "open", data: {}, evidence_path: A }, "2026-11-04", T1);
+  assert.equal(lines(read.data).readByAi, true);
+  const why = "Couldn't read the covering letter. Check it opens, then try again.";
+  const data = afterLetterReadFailed({ event_date: "2026-11-04", status: "open", data: read.data, evidence_path: B }, why, T2);
+  const shown = lines(data);
+  assert.equal(shown.readByAi, false, "not said of a letter that isn't on the card");
+  assert.equal(shown.changedFrom, null);
+  assert.equal(shown.noDate, false);
+  assert.equal(shown.readFailed, why, "what is said is about the file on the card now");
+  assert.deepEqual(shown.history, ["01:00. Read by AI from the covering letter: set to 4 November 2026."]);
+});
+
+test("a letter with no date, then a file that can't be read: the No date line goes", () => {
+  const noDate = afterLetterRead({ event_date: null, status: "open", data: {}, evidence_path: A }, null, T1);
+  assert.equal(lines(noDate.data).noDate, true);
+  const data = afterLetterReadFailed({ event_date: null, status: "open", data: noDate.data, evidence_path: B }, "couldn't be read", T2);
+  assert.equal(lines(data).noDate, false);
+  assert.equal(lines(data).readFailed, "couldn't be read");
+});
+
+test("a dated letter, then a different letter with no date: No date found, and no Read by AI line", () => {
+  const read = afterLetterRead({ event_date: null, status: "open", data: {}, evidence_path: A }, "2026-11-04", T1);
+  const next = afterLetterRead({ event_date: "2026-11-04", status: "open", data: read.data, evidence_path: C }, null, T2);
+  assert.equal(next.eventDate, "2026-11-04", "the date stays");
+  assert.equal(lines(next.data).readByAi, false);
+  assert.equal(lines(next.data).noDate, true);
+});
+
+test("a different letter with the same date: the Read by AI line stays (the new letter says the same)", () => {
+  const read = afterLetterRead({ event_date: null, status: "open", data: {}, evidence_path: A }, "2026-11-04", T1);
+  const next = afterLetterRead({ event_date: "2026-11-04", status: "open", data: read.data, evidence_path: C }, "2026-11-04", T2);
+  assert.equal(next.changed, false);
+  assert.equal(lines(next.data).readByAi, true);
+  assert.equal(readReceivedDate(next.data).history.length, 1);
+});
+
+test("Read again on the same file that fails keeps what the good read said", () => {
+  const read = afterLetterRead({ event_date: null, status: "open", data: {}, evidence_path: A }, "2026-11-04", T1);
+  const data = afterLetterReadFailed({ event_date: "2026-11-04", status: "open", data: read.data, evidence_path: A }, "cut off", T2);
+  assert.equal(lines(data).readByAi, true);
+  assert.equal(lines(data).readFailed, "cut off");
+  const noDate = afterLetterRead({ event_date: null, status: "open", data: {}, evidence_path: A }, null, T1);
+  const failedAgain = afterLetterReadFailed({ event_date: null, status: "open", data: noDate.data, evidence_path: A }, "cut off", T2);
+  assert.equal(lines(failedAgain).noDate, true);
+});
+
+test("an agent's date is never touched by a new file", () => {
+  const typed = afterAgentSave({ event_date: null, data: {} }, "2026-11-02", "done", jo, T1);
+  const data = afterLetterReadFailed({ event_date: "2026-11-02", status: "done", data: typed, evidence_path: B }, "couldn't be read", T2);
+  assert.equal(readReceivedDate(data).source, "agent");
+});
+
+test("the letter removed: nothing said about it stays; the date's history does", () => {
+  const read = afterLetterRead({ event_date: null, status: "open", data: { evidenceFileName: "letter.pdf" }, evidence_path: A }, "2026-11-04", T1);
+  const failed = afterLetterReadFailed({ event_date: "2026-11-04", status: "open", data: read.data, evidence_path: A }, "cut off", T2);
+  const data = afterLetterRemoved(failed);
+  const shown = lines(data);
+  assert.equal(shown.readByAi, false);
+  assert.equal(shown.noDate, false);
+  assert.equal(shown.readFailed, null);
+  assert.equal(shown.history.length, 1);
+  assert.equal("coveringLetterFile" in data, false);
+  const typed = afterAgentSave({ event_date: null, data: {} }, "2026-11-02", "done", jo, T1);
+  assert.equal(readReceivedDate(afterLetterRemoved(typed)).source, "agent", "an agent's date stays theirs");
+});
+
+test("the letter removed, then a letter with the date already on the card: Read by AI again, nothing new in the history", () => {
+  const read = afterLetterRead({ event_date: null, status: "open", data: {}, evidence_path: A }, "2026-11-04", T1);
+  const removed = afterLetterRemoved(read.data);
+  const again = afterLetterRead({ event_date: "2026-11-04", status: "open", data: removed, evidence_path: C }, "2026-11-04", T2);
+  assert.equal(again.changed, false);
+  assert.equal(lines(again.data).readByAi, true);
+  assert.equal(readReceivedDate(again.data).history.length, 1);
+  // Not on a card marked done, and never over an agent's date.
+  const done = afterLetterRead({ event_date: "2026-11-04", status: "done", data: removed, evidence_path: C }, "2026-11-04", T2);
+  assert.equal(lines(done.data).readByAi, false);
+  const typed = afterAgentSave({ event_date: null, data: {} }, "2026-11-04", "open", jo, T1);
+  const agentDate = afterLetterRead({ event_date: "2026-11-04", status: "open", data: typed, evidence_path: C }, "2026-11-04", T2);
+  assert.equal(readReceivedDate(agentDate.data).source, "agent");
 });

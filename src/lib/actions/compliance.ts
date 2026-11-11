@@ -39,7 +39,7 @@ import {
   type Answer,
 } from "@/lib/rules/question-card";
 import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/rules/not-applicable";
-import { COVERING_LETTER_KEY, afterAgentSave } from "@/lib/documents/covering-letter";
+import { COVERING_LETTER_KEY, afterAgentSave, afterLetterRemoved } from "@/lib/documents/covering-letter";
 import { REPORT_NEEDED, hasReport, reportToCheck, withReportChoice } from "@/lib/documents/report-choice";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { checkSalePrice } from "@/lib/rules/sale-price";
@@ -3038,9 +3038,12 @@ export async function removeEvidence(propertyId: string, itemKey: string): Promi
     await supabase.storage.from(EVIDENCE_BUCKET).remove([existing.evidence_path]);
   }
 
-  const { evidenceFileName: _drop, ...restData } = existing.data as Record<string, unknown> & {
+  const { evidenceFileName: _drop, ...keptData } = existing.data as Record<string, unknown> & {
     evidenceFileName?: string;
   };
+  // The covering letter card (b1a): nothing it said about the letter stays
+  // once the letter is gone (Adam, 11 Nov 2026). The date and its history do.
+  const restData = itemKey === COVERING_LETTER_KEY ? afterLetterRemoved(keptData) : keptData;
 
   // A document card with its copy removed has nothing on it again (15 Oct
   // 2026): back to open, and who uploaded it goes with the file.
