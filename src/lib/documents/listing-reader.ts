@@ -256,7 +256,15 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
           "of Documents page followed by annexures. CRITICAL: a contract prepared for a new listing has NO " +
           "purchaser named, NO agreed price and NO settlement date, because it must exist before the property " +
           "is offered for sale. Those absences are normal and must NEVER lead you to call it something else. " +
-          "'comparable_sales' — a comparable-sales or market-appraisal report (Cotality, PropTrack or similar). " +
+          // Judged by what it holds, not how it looks (Adam, 11 Nov 2026):
+          // what makes comparable sales is the properties, each with an
+          // address and a price, and their beds, baths, cars and land.
+          "'comparable_sales' — judge this one by its CONTENTS, not its heading or layout: a document that " +
+          "lists other properties, each with an address and a price (sold, or advertised for sale), usually " +
+          "with beds, baths, car spaces, land size or a sale date. Any format counts: a provider's report " +
+          "(Cotality, PropTrack, Pricefinder or similar), an agent's own appraisal or comparative market " +
+          "analysis, a letter or proposal to the vendor, a table or a list, or a few pages taken from any of " +
+          "these. " +
           "'other' — anything else. " +
           "These two are genuinely easy to confuse and the consequences of getting it wrong are real, so look " +
           "at the heading and the parties before you answer.",
@@ -564,8 +572,9 @@ export const AGENCY_AGREEMENT_PROMPT =
 // agreed. SOURCE_TARGETS enforces that in code; this is only the reminder.
 export const COMPARABLES_PROMPT =
   "a4c, and on a4c please do these things.\n\n" +
-  "(1) comparableSales — every sold property this report lists, as one entry each, in the report's own " +
-  "order. This is the main job. Transcribe what is printed and nothing else: address, price, date of " +
+  "(1) comparableSales — every sold property this document shows, wherever and however it is set out " +
+  "(a table, a list, a paragraph, a caption under a photo, a map key), as one entry each, in the " +
+  "document's own order. This is the main job. Transcribe what is printed and nothing else: address, price, date of " +
   "sale, beds, baths, car, land size, internal area, distance. Leave a field out rather than " +
   "estimating it. Include every sale, even ones that look unlike the subject — deciding which sales " +
   "count is the agent's job, and a sale you silently omitted is one they cannot consider.\n\n" +
@@ -677,7 +686,14 @@ export async function readListingDocument(args: {
       "normal, successful, and common outcome — do not stretch to fill the array with a weak or unsupported " +
       "finding just because you're calling the tool.",
     text: (partIndex) =>
-      (partIndex === 1
+      (partIndex === 1 && source === "a4"
+        ? // Any format (Adam, 11 Nov 2026): see READ_FOR_SALES_WHATEVER_IT_IS below.
+          "This document was uploaded as the evidence for the estimated selling price. That evidence comes in " +
+          "every format: a provider's report, the agent's own appraisal or comparative market analysis, a letter " +
+          "or proposal to the vendor, a few pages taken from any of these, or a scan. FIRST set documentIs from " +
+          "what the document actually is. THEN, whatever its format, call record_findings with any facts it " +
+          "explicitly and literally states "
+        : partIndex === 1
         ? `This document was uploaded as the ${sourceLabel}, but do not take that on trust — the wrong ` +
           "file is uploaded often enough to matter, and reading the wrong document produces answers that " +
           "look right and are not. FIRST set documentIs from what the document actually is. THEN, only if " +
@@ -714,18 +730,28 @@ export async function readListingDocument(args: {
   // green ticks against s52A on the strength of a document that is not a
   // contract. Both halves came back in the same tool call and nothing
   // reconciled them.
+  //
+  // READ_FOR_SALES_WHATEVER_IT_IS. Not on the ESP card (Adam, 11 Nov 2026:
+  // "We can't have people uploading CMA files... they're always all going to
+  // be different... the AI just needs to read it and pull out the relevant
+  // data"). REVERSAL of the 20 Aug rule for the ESP card only. Four reports
+  // from four offices (5 and 11 Nov) were judged "a different kind of
+  // document" and nothing was taken from them: an agent's own appraisal, a
+  // few pages cut from a bigger report. Now every file on the ESP card is read
+  // for sales. It is the wrong file only when it is plainly the agreement or
+  // the contract AND no sales were found in it (wrongFileOnEspCard below). A
+  // file with no sales is "no sales found", and the agent can add them. The
+  // comparables are the agent's to check and weigh either way. The agreement
+  // and the contract keep the rule: there a wrong document gives false ticks.
   const actual = input.documentIs;
-  if (actual && actual !== expected) {
-    return [
-      {
-        itemKey: source,
-        wrongDocument: { expected: KIND_LABELS[expected], actual: KIND_LABELS[actual] },
-        // Kept in step with the older flag so a b1 card written either side of
-        // this change behaves the same way.
-        ...(source === "b1" ? { notAContract: true } : {}),
-      },
-    ];
-  }
+  const wrongDocument = (kind: DocumentKind): DraftPatch => ({
+    itemKey: source,
+    wrongDocument: { expected: KIND_LABELS[expected], actual: KIND_LABELS[kind] },
+    // Kept in step with the older flag so a b1 card written either side of
+    // this change behaves the same way.
+    ...(source === "b1" ? { notAContract: true } : {}),
+  });
+  if (actual && actual !== expected && source !== "a4") return [wrongDocument(actual)];
 
   // The rest of a split file, then every part's answers as one answer per
   // item (lib/documents/reader-parts mergeReads: a prescribed document found
@@ -745,7 +771,7 @@ export async function readListingDocument(args: {
     patches = [...byItem.values()].map((list) => (list.length === 1 ? list[0] : mergeReads(list)));
   }
 
-  return patches
+  const kept = patches
     .filter((p) => TARGET_ITEM_KEYS.has(p.itemKey))
     // The rule this file exists to enforce. A document only speaks to the
     // items it can actually evidence, whatever the model chose to return.
@@ -766,4 +792,17 @@ export async function readListingDocument(args: {
     .map((p) =>
       source === "a4" ? p : { ...p, comparableSales: undefined, subjectProperty: undefined, marketListings: undefined },
     );
+
+  if (source === "a4" && wrongFileOnEspCard(actual, kept)) return [wrongDocument(actual!)];
+  return kept;
+}
+
+/**
+ * The ESP card's one wrong file (READ_FOR_SALES_WHATEVER_IT_IS above): the
+ * agency agreement or the contract, with no sales in it. An agreement with
+ * the comparable sales attached to it is read for them.
+ */
+export function wrongFileOnEspCard(actual: DocumentKind | undefined, patches: DraftPatch[]): boolean {
+  if (actual !== "agency_agreement" && actual !== "contract_for_sale") return false;
+  return !patches.some((p) => (p.comparableSales?.length ?? 0) > 0 || (p.marketListings?.length ?? 0) > 0);
 }
