@@ -707,7 +707,15 @@ export async function checkListingNow(propertyId: string): Promise<{ error: stri
  * Most mornings most pages have not changed, and those cost a page fetch and
  * no model call — see priceArea and MAX_REUSE_MS.
  */
-export async function runDailyListingScan(): Promise<{
+export async function runDailyListingScan(
+  /**
+   * The browser for listings pages that draw their listings in after they
+   * load (11 Nov 2026; lib/listing-scan/render-page.ts). The cron route passes
+   * it in, so it is bundled with that function only. Without it, those pages
+   * read as they always have.
+   */
+  options: { openRenderer?: () => Promise<{ render: (url: string) => Promise<{ url: URL; html: string }>; close: () => Promise<void> } | null> } = {},
+): Promise<{
   discovered: number;
   checked: number;
   read: number;
@@ -721,6 +729,8 @@ export async function runDailyListingScan(): Promise<{
   pagesChecked: number;
   pagesRefused: number;
   pagesFailed: number;
+  /** Listings pages whose listings were found only once drawn in a browser (11 Nov 2026). */
+  pagesDrawn: number;
   /** Listings with no page yet whose page wasn't found this morning; why is recorded on each listing. */
   notFound: number;
 }> {
@@ -736,6 +746,7 @@ export async function runDailyListingScan(): Promise<{
     pagesChecked: 0,
     pagesRefused: 0,
     pagesFailed: 0,
+    pagesDrawn: 0,
     notFound: 0,
   };
   if (!process.env.ANTHROPIC_API_KEY) return none;
@@ -774,8 +785,19 @@ export async function runDailyListingScan(): Promise<{
   const fetchPage = pageCache();
 
   // Every office page and every agent's own page first: what each showed is
-  // the line under its field, and the group-page warning (2 Nov 2026).
-  const pageChecks = await checkListingsPages(db, anthropic, fetchPage, properties, ended);
+  // the line under its field, and the group-page warning (2 Nov 2026). A page
+  // that reads as no listings is drawn in a browser, once (11 Nov 2026); the
+  // browser starts only if one does, and is closed straight after.
+  const renderer = (await options.openRenderer?.().catch((err: unknown) => {
+    console.log(`listing-scan: no browser this morning: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  })) ?? null;
+  let pageChecks: Awaited<ReturnType<typeof checkListingsPages>>;
+  try {
+    pageChecks = await checkListingsPages(db, anthropic, fetchPage, properties, ended, renderer?.render ?? null);
+  } finally {
+    await renderer?.close();
+  }
   let notFound = 0;
   // Until 31 October: the weekly check on Mondays, page-finding only on other
   // mornings. From 1 November: the daily check. See lib/listing-scan-schedule.

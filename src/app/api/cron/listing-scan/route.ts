@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runDailyListingScan } from "@/lib/actions/website-scan";
+import { openRenderer } from "@/lib/listing-scan/render-page";
 import { scanModeAt, sydneyHour } from "@/lib/listing-scan-schedule";
 import { listingScanProblems, monitoredJob } from "@/lib/monitoring/check-in";
 
@@ -40,7 +41,10 @@ export async function GET(request: Request) {
   // count as the job having run.
   const result = {
     mode: scanModeAt(now),
-    ...(await monitoredJob("listing-scan", () => runDailyListingScan(), listingScanProblems)),
+    // A listings page that draws its listings in after it loads is read in a
+    // headless browser (11 Nov 2026), passed in from here so the browser is
+    // bundled with this function alone (lib/listing-scan/render-page.ts).
+    ...(await monitoredJob("listing-scan", () => runDailyListingScan({ openRenderer }), listingScanProblems)),
   };
   // One line per run in the Vercel logs. Each finding keeps only its latest
   // check, so this is the record of how many pages were read vs skipped, and

@@ -230,12 +230,18 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
  * name.
  */
 export type FetchPage = (url: string) => Promise<{ url: URL; html: string }>;
+/**
+ * The morning's pages. `use` puts a page in place of the plain read of that
+ * address, for the rest of the run: the drawn page, when a browser found the
+ * listings the plain read couldn't (11 Nov 2026).
+ */
+export type PageCache = FetchPage & { use: (url: string, page: { url: URL; html: string }) => void };
 export function pageCache(
   fetch: (url: string) => Promise<{ url: URL; html: string }> = fetchPublicPage,
   log: (line: string) => void = console.log,
-): FetchPage {
+): PageCache {
   const seen = new Map<string, Promise<{ url: URL; html: string }>>();
-  return (url) => {
+  const get = (url: string) => {
     let page = seen.get(url);
     if (!page) {
       page = fetch(url);
@@ -244,7 +250,11 @@ export function pageCache(
     }
     return page;
   };
+  return Object.assign(get, { use: (url: string, page: { url: URL; html: string }) => void seen.set(url, Promise.resolve(page)) });
 }
+
+/** A page drawn in a browser (render-page.ts), when the plain read found no listings. */
+export type DrawPage = (url: string) => Promise<{ url: URL; html: string }>;
 
 function websiteOf(url: string): string {
   try {
@@ -442,10 +452,12 @@ async function countListings(anthropic: Anthropic, pageUrl: URL, links: Array<{ 
 export async function checkListingsPages(
   supabase: Db,
   anthropic: Anthropic,
-  fetchPage: FetchPage,
+  fetchPage: FetchPage | PageCache,
   live: Array<{ agency_id: string; created_by: string | null }>,
   ended: Set<string>,
-): Promise<{ pagesChecked: number; pagesRefused: number; pagesFailed: number }> {
+  draw?: DrawPage | null,
+  log: (line: string) => void = console.log,
+): Promise<{ pagesChecked: number; pagesRefused: number; pagesFailed: number; pagesDrawn: number }> {
   const [{ data: agencyRows }, { data: agentRows }, { data: previousRows }] = await Promise.all([
     supabase.from("agencies").select("id, website_url").not("website_url", "is", null),
     supabase.from("agent_listing_pages").select("profile_id, agency_id, url, profiles!agent_listing_pages_profile_id_fkey(archived_at)"),
@@ -482,25 +494,49 @@ export async function checkListingsPages(
   let pagesChecked = 0;
   let pagesRefused = 0;
   let pagesFailed = 0;
+  let pagesDrawn = 0;
   for (const page of pages) {
     const before = previous.get(page.pageKey);
     let outcome: "read" | "refused" | "failed" = "read";
     let listingsFound: number | null = null;
     let linksHash: string | null = null;
+    // What a set of links counts to: the morning before's count when the links
+    // are the same (not counted again), else the AI's count.
+    const countOf = async (at: URL, links: Array<{ href: string; text: string }>) => {
+      const hash = createHash("sha256").update(links.map((l) => l.href).sort().join("\n")).digest("hex");
+      if (before && before.url === page.url && before.outcome === "read" && before.links_hash === hash) {
+        return { hash, count: before.listings_found };
+      }
+      return { hash, count: links.length === 0 ? 0 : await countListings(anthropic, at, links) };
+    };
     try {
       const fetched = await fetchPage(page.url);
-      const links = linksFrom(fetched.html, fetched.url);
-      linksHash = createHash("sha256").update(links.map((l) => l.href).sort().join("\n")).digest("hex");
-      if (before && before.url === page.url && before.outcome === "read" && before.links_hash === linksHash) {
-        listingsFound = before.listings_found;
-      } else if (links.length === 0) {
-        listingsFound = 0;
-      } else {
+      try {
+        ({ hash: linksHash, count: listingsFound } = await countOf(fetched.url, linksFrom(fetched.html, fetched.url)));
+      } catch (err) {
+        if (err instanceof UnfinishedAnswer || err instanceof Anthropic.APIError) logReadFailure("listings_page_counter", err);
+        outcome = "failed";
+      }
+      // THE HEADLESS FALLBACK (Adam, 11 Nov 2026; render-rules.ts). The plain
+      // read and the data read both found 0 listings: the page is opened once
+      // in a browser and read when it has drawn, by the same rules. Its count
+      // stands only if it found some; then the drawn page is the one each
+      // listing is looked for on this morning. Never for a page that turned
+      // the plain read away, and never past a challenge.
+      if (outcome === "read" && listingsFound === 0 && draw) {
         try {
-          listingsFound = await countListings(anthropic, fetched.url, links);
+          const drawn = await draw(page.url);
+          const result = await countOf(drawn.url, linksFrom(drawn.html, drawn.url));
+          if ((result.count ?? 0) > 0) {
+            listingsFound = result.count;
+            linksHash = result.hash;
+            if ("use" in fetchPage) fetchPage.use(page.url, drawn);
+            pagesDrawn += 1;
+          }
+          log(`listing-scan: ${websiteOf(page.url)} drawn in a browser: ${result.count ?? 0} listings`);
         } catch (err) {
           if (err instanceof UnfinishedAnswer || err instanceof Anthropic.APIError) logReadFailure("listings_page_counter", err);
-          outcome = "failed";
+          log(`listing-scan: ${websiteOf(page.url)} not drawn: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     } catch {
@@ -524,5 +560,5 @@ export async function checkListingsPages(
       { onConflict: "page_key" },
     );
   }
-  return { pagesChecked, pagesRefused, pagesFailed };
+  return { pagesChecked, pagesRefused, pagesFailed, pagesDrawn };
 }
