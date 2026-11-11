@@ -18,6 +18,11 @@ const LICENCE_TYPE_LABELS: Record<string, string> = {
   certificate_of_registration: "Certificate of registration",
 };
 
+/** An insurance expiry, as a written date, or that it isn't on file. Was the stored date as it is (2027-08-31), and a dash when missing. */
+function expiryText(expiry: string | null | undefined): string {
+  return expiry ? `expires ${formatAuDate(expiry)}` : "expiry not on file";
+}
+
 // A plain, printable export of all three registers, printed or saved as PDF
 // from the browser's print dialog (PrintButton opens it). The per-property
 // summary has its own PDF route now (src/app/dashboard/[id]/summary/pdf); a
@@ -100,9 +105,9 @@ export default async function RegistersExportPage() {
     const certificates = (cpdByProfile[s.id] ?? []).length;
     return (
       <li key={s.id} className="text-sm">
-        <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>{" "}
+        <span className="font-medium text-rc-ink">{s.full_name ?? s.email}</span>
         <span className="text-rc-muted">
-          — {s.licence_type ? LICENCE_TYPE_LABELS[s.licence_type] : "no licence on file"}
+          , {s.licence_type ? LICENCE_TYPE_LABELS[s.licence_type] : "no licence on file"}
           {s.licence_number ? ` · ${s.licence_number}` : ""}
           {s.licence_expiry ? ` · expires ${formatAuDate(s.licence_expiry)}` : ""} ·{" "}
           {categories.length > 0 ? `${categories.join(", ")} · ` : ""}
@@ -123,13 +128,13 @@ export default async function RegistersExportPage() {
       </div>
 
       <h1 className="mt-6 text-2xl font-bold text-rc-ink">
-        Real<span className="text-rc-green-deep">Comply</span> — Registers export
+        Real<span className="text-rc-green-deep">Comply</span>: Registers export
       </h1>
       {/* Sydney time, named (check, 10 Oct 2026). Left to the runtime it was
           the server's UTC: the wrong time all day, and before 11 am the
           wrong date on a printed register. */}
       <p className="mt-1 text-xs text-rc-faint">
-        Generated {formatAuDateTimeShort(new Date().toISOString())} · {cpdYear.label} CPD year · diligence support — verify with your
+        Generated {formatAuDateTimeShort(new Date().toISOString())} · {cpdYear.label} CPD year · diligence support. Verify with your
         adviser; the licensee decides.
       </p>
 
@@ -152,7 +157,7 @@ export default async function RegistersExportPage() {
               <span className="font-medium text-rc-ink">Professional indemnity:</span>{" "}
               <span className="text-rc-muted">
                 {agency.pi_insurer
-                  ? `${agency.pi_insurer} · ${agency.pi_policy_number ?? "no policy #"} · expires ${agency.pi_expiry ?? "—"}`
+                  ? `${agency.pi_insurer} · ${agency.pi_policy_number ?? "no policy #"} · ${expiryText(agency.pi_expiry)}`
                   : "not on file"}
               </span>
             </li>
@@ -160,7 +165,7 @@ export default async function RegistersExportPage() {
               <span className="font-medium text-rc-ink">Cybersecurity:</span>{" "}
               <span className="text-rc-muted">
                 {agency.cyber_insurer
-                  ? `${agency.cyber_insurer} · ${agency.cyber_policy_number ?? "no policy #"} · expires ${agency.cyber_expiry ?? "—"}`
+                  ? `${agency.cyber_insurer} · ${agency.cyber_policy_number ?? "no policy #"} · ${expiryText(agency.cyber_expiry)}`
                   : "not on file"}
               </span>
             </li>
@@ -168,7 +173,7 @@ export default async function RegistersExportPage() {
               <span className="font-medium text-rc-ink">iCare workers:</span>{" "}
               <span className="text-rc-muted">
                 {agency.icare_insurer
-                  ? `${agency.icare_insurer} · ${agency.icare_policy_number ?? "no policy #"} · expires ${agency.icare_expiry ?? "—"}`
+                  ? `${agency.icare_insurer} · ${agency.icare_policy_number ?? "no policy #"} · ${expiryText(agency.icare_expiry)}`
                   : "not on file"}
               </span>
             </li>
@@ -176,7 +181,7 @@ export default async function RegistersExportPage() {
               <li key={p.id} className="text-sm">
                 <span className="font-medium text-rc-ink">{otherInsuranceTitle(p.kind, p.name)}:</span>{" "}
                 <span className="text-rc-muted">
-                  {`${p.insurer ?? "insurer not on file"} · ${p.policy_number ?? "no policy #"} · expires ${p.expiry ?? "—"}`}
+                  {`${p.insurer ?? "insurer not on file"} · ${p.policy_number ?? "no policy #"} · ${expiryText(p.expiry)}`}
                 </span>
               </li>
             ))}
@@ -190,9 +195,9 @@ export default async function RegistersExportPage() {
           {gifts.length === 0 && <li className="text-sm text-rc-muted">No entries.</li>}
           {gifts.map((g) => (
             <li key={g.id} className="text-sm">
-              <span className="font-medium text-rc-ink">{formatAuShortDate(g.gift_date)}</span>{" "}
+              <span className="font-medium text-rc-ink">{formatAuShortDate(g.gift_date)}</span>
               <span className="text-rc-muted">
-                — {nameFor(g.profile_id)} · {g.description} ({g.direction}){g.value ? ` · ~$${g.value}` : ""} · {g.status}
+                , {nameFor(g.profile_id)} · {g.description} ({g.direction}){g.value ? ` · ~$${g.value}` : ""} · {g.status}
               </span>
             </li>
           ))}
@@ -208,9 +213,9 @@ export default async function RegistersExportPage() {
               const { current, removed } = complaintFilesFor(c.id, complaintFiles);
               return (
                 <li key={c.id} className="text-sm">
-                  <span className="font-medium text-rc-ink">{formatAuShortDate(c.received_date)}</span>{" "}
+                  <span className="font-medium text-rc-ink">{formatAuShortDate(c.received_date)}</span>
                   <span className="text-rc-muted">
-                    — {c.complainant} · {c.nature} · {c.status}
+                    , {c.complainant} · {c.nature} · {c.status}
                     {c.resolved_date ? ` (resolved ${formatAuDate(c.resolved_date)})` : ""}
                   </span>
                   {/* Each file by name, and every removal with who and when (0101). */}
@@ -251,9 +256,9 @@ export default async function RegistersExportPage() {
           {breaches.length === 0 && <li className="text-sm text-rc-muted">No breaches logged.</li>}
           {breaches.map((b) => (
             <li key={b.id} className="text-sm">
-              <span className="font-medium text-rc-ink">{formatAuShortDate(b.identified_date)}</span>{" "}
+              <span className="font-medium text-rc-ink">{formatAuShortDate(b.identified_date)}</span>
               <span className="text-rc-muted">
-                — {BREACH_CATEGORY_LABELS[b.category] ?? b.category} · {b.severity} · {b.description} · {b.status}
+                , {BREACH_CATEGORY_LABELS[b.category] ?? b.category} · {b.severity} · {b.description} · {b.status}
                 {b.corrective_action ? ` · action: ${b.corrective_action}` : " · no corrective action recorded"}
                 {b.notifiable ? (b.notified_date ? ` · notified ${formatAuDate(b.notified_date)}` : " · NOTIFICATION OUTSTANDING") : ""}
               </span>
