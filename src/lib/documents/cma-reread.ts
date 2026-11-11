@@ -380,20 +380,27 @@ export type CmaTestRead = {
 };
 
 /**
- * Reads the report on the listing's ESP card with the reader as it is now and
+ * Reads the report on the listing's ESP card, or the agency agreement for its
+ * own sales page (decision 6, 11 Nov 2026), with the reader as it is now and
  * says what it would take. Writes nothing (see CMA_TEST_READS).
  */
 export async function testReadComparablesReport(
   service: SupabaseClient,
   anthropic: Anthropic,
   propertyId: string,
+  from: "report" | "agreement" = "report",
 ): Promise<CmaTestRead | { error: string }> {
   if (!isCmaTestRead(propertyId)) return { error: "That listing isn't one RealComply staff can test-read." };
   const found = await loadListing(service, propertyId);
   if (!found) return { error: "That listing isn't on RealComply any more." };
-  const path = found.a4?.evidence_path;
-  if (!path) return { error: "There's no comparable-sales report on that listing's ESP card." };
-  const fileName = fileNameOf(found.a4)!;
+  const card = from === "agreement" ? found.a3 : found.a4;
+  const path = card?.evidence_path;
+  if (!path) {
+    return {
+      error: from === "agreement" ? "There's no agency agreement on that listing." : "There's no comparable-sales report on that listing's ESP card.",
+    };
+  }
+  const fileName = fileNameOf(card)!;
   const base = { propertyId, address: String(found.row.address ?? ""), office: found.office, fileName };
   const at = new Date().toISOString();
   const strata = isStrataDwelling(found.row.property_type as string | null, found.row.is_strata as boolean | null);
@@ -406,10 +413,10 @@ export async function testReadComparablesReport(
       anthropic,
       blob,
       fileName,
-      source: ESP_CARD,
+      source: from === "agreement" ? "a3" : ESP_CARD,
       prescribedDocs: prescribedDocumentsFor({ isStrata: (found.row.is_strata as boolean | null) ?? false }),
     });
-    const rows = patches.find((p) => p.itemKey === "a4c");
+    const rows = patches.find((p) => p.itemKey === "a4c" && (p.comparableSales?.length ?? 0) > 0) ?? patches.find((p) => p.itemKey === "a4c");
     const sales = (rows?.comparableSales ?? []).map((c) => {
       const figures = {
         salePrice: c.salePrice ?? null,

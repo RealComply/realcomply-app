@@ -53,10 +53,13 @@ export async function testReadCmaReport(_prev: CmaRereadState, formData: FormDat
   if (!isCmaTestRead(propertyId)) return { error: "That listing isn't one RealComply staff can test-read." };
   if (!process.env.ANTHROPIC_API_KEY) return { error: "The reader isn't set up here: ANTHROPIC_API_KEY is missing." };
 
+  // The ESP card's report, or the agency agreement for its own sales page (decision 6).
+  const from = formData.get("from") === "agreement" ? "agreement" : "report";
   const result = await testReadComparablesReport(
     createServiceClient(),
     new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }),
     propertyId,
+    from,
   );
   if ("error" in result) return { error: result.error };
   const summary = cmaTestReadSummary(result);

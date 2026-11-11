@@ -53,7 +53,10 @@ function Said({ state }: { state: CmaRereadState }) {
 function Reread({ listing }: { listing: CmaRereadListing }) {
   const [state, reread, reading] = useActionState(rereadCmaReport, { error: null } as CmaRereadState);
   const [tested, testRead, testing] = useActionState(testReadCmaReport, { error: null } as CmaRereadState);
-  const busy = reading || testing;
+  const [agreementTested, testReadAgreement, testingAgreement] = useActionState(testReadCmaReport, {
+    error: null,
+  } as CmaRereadState);
+  const busy = reading || testing || testingAgreement;
   return (
     <li className="rounded-lg border border-rc-border px-3 py-2.5">
       <p className="text-sm font-semibold text-rc-ink">{listing.address}</p>
@@ -78,10 +81,19 @@ function Reread({ listing }: { listing: CmaRereadListing }) {
               {testing ? "Test reading…" : "Test read (nothing saved)"}
             </button>
           </form>
+          {/* The agency agreement's own sales page (decision 6, 11 Nov 2026). */}
+          <form action={testReadAgreement}>
+            <input type="hidden" name="propertyId" value={listing.propertyId} />
+            <input type="hidden" name="from" value="agreement" />
+            <button type="submit" disabled={busy} className={quietButton}>
+              {testingAgreement ? "Test reading the agreement…" : "Test read agreement (nothing saved)"}
+            </button>
+          </form>
         </div>
       )}
       <Said state={state} />
       <Said state={tested} />
+      <Said state={agreementTested} />
     </li>
   );
 }
@@ -95,7 +107,8 @@ export function CmaRereads({ listings }: { listings: CmaRereadListing[] }) {
         McGoldrick&rsquo;s, to test the reader that takes any format (Master, 11 Nov). A re-read adds the
         report&rsquo;s sales and listings on the market and puts the read&rsquo;s result on the ESP card. It never
         changes the ESP, a note, the reasoning, a tick, a card&rsquo;s status or the listing&rsquo;s details. A test
-        read only says what the reader would take: nothing is saved. Each takes up to a minute or two.
+        read only says what the reader would take from the report, or from the agency agreement&rsquo;s own sales page:
+        nothing is saved. Each takes up to a minute or two.
       </p>
       <ul className="mt-3 space-y-2">
         {listings.map((l) => (

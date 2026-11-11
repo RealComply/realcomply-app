@@ -120,6 +120,7 @@ import {
   THIS_IS_MY_REPORT,
   UPLOAD_REPORT,
   confirmedAsReport,
+  reportInAgreementOf,
   reportPromptFor,
   type ReportPrompt,
 } from "@/lib/documents/report-choice";
@@ -486,7 +487,7 @@ function ItemShell({
           evidencePath={current?.evidence_path ?? null}
           evidenceFileName={(current?.data as { evidenceFileName?: string } | undefined)?.evidenceFileName}
           label={item.evidenceLabel}
-          required={item.evidenceRequired}
+          required={item.evidenceRequired && reportPrompt?.kind !== "agreement"}
           warning={item.evidenceWarning}
           replaceOnly={item.evidenceReplaceOnly}
           onUnsavedChange={setEvidenceUnsaved}
@@ -783,6 +784,12 @@ function EvidenceUploader({
         {label ?? "Evidence"}
         {!required && <span className="font-normal text-rc-faint"> (optional)</span>}
       </p>
+      {/* a4: the agency agreement's own sales page is the report (decision 6, 11 Nov 2026). */}
+      {!evidencePath && reportPrompt?.kind === "agreement" && (
+        <div className="mt-1">
+          <ReadNoteLine note={{ tone: "ok", text: reportPrompt.text }} />
+        </div>
+      )}
       {/* Rendered above the control, and above the attached-file row too, so
           it is still visible to whoever looks at the file later — not just to
           the person uploading.
@@ -846,7 +853,7 @@ function EvidenceUploader({
             <CantReadNotice fileName={attachedName} onUploadPdf={uploadPdf} className="w-full" />
           ) : reportPrompt?.kind === "ask" ? (
             <NoSalesPrompt propertyId={propertyId} onUpload={uploadPdf} />
-          ) : reportPrompt?.kind === "confirmed" ? (
+          ) : reportPrompt?.kind === "confirmed" || reportPrompt?.kind === "agreement" ? (
             <ReadNoteLine note={{ tone: "ok", text: reportPrompt.text }} />
           ) : (
             readNote && <ReadNoteLine note={readNote} />
@@ -948,6 +955,7 @@ function ChecklistItem({
   comparablesReportRead = false,
   reportRead = null,
   reportConfirmed = false,
+  agreementPath = null,
   doneLine = null,
   keepUntil = null,
   councilArea,
@@ -966,6 +974,8 @@ function ChecklistItem({
   reportRead?: ReportRead | null;
   /** a4c: "This is my report" was said on a4 about the report there now (11 Nov 2026). */
   reportConfirmed?: boolean;
+  /** a4: the agency agreement on a3, whose own sales page can stand as the report (decision 6, 11 Nov 2026). */
+  agreementPath?: string | null;
   // The listing's own attributes and its comparable sales. Read once by the
   // page and passed down, like amlPreCommencementEnabled — only a4 and a4c
   // use them, and neither should be asking the database on its own.
@@ -1252,7 +1262,12 @@ function ChecklistItem({
       awaitingReview={showsDraft}
       reportPrompt={
         item.key === "a4"
-          ? reportPromptFor(current?.data, current?.evidence_path, (iso) => formatAuDate(sydneyDate(new Date(iso))))
+          ? reportPromptFor(
+              current?.data,
+              current?.evidence_path,
+              (iso) => formatAuDate(sydneyDate(new Date(iso))),
+              agreementPath,
+            )
           : null
       }
       evidenceReadNote={
@@ -5150,7 +5165,8 @@ function ItemCardBody({
           // never came.
           comparablesReportRead={
             item.key === "a4c" &&
-            Boolean(allItems["a4"]?.evidence_path) &&
+            (Boolean(allItems["a4"]?.evidence_path) ||
+              reportInAgreementOf(allItems["a4"]?.data, allItems["a3"]?.evidence_path) !== null) &&
             ((comparables ?? []).some((c) => c.source === "report") ||
               (marketListings ?? []).some((l) => l.source === "report") ||
               Boolean((current?.data as { aiDraft?: { generatedAt?: string } } | undefined)?.aiDraft?.generatedAt) ||
@@ -5160,6 +5176,7 @@ function ItemCardBody({
           reportConfirmed={
             item.key === "a4c" && Boolean(confirmedAsReport(allItems["a4"]?.data, allItems["a4"]?.evidence_path))
           }
+          agreementPath={item.key === "a4" ? (allItems["a3"]?.evidence_path ?? null) : null}
         />
       );
     }

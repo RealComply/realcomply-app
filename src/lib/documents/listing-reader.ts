@@ -378,7 +378,7 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
             comparableSales: {
               type: "array",
               description:
-                "Item a4c only, and ONLY when reading a comparable-sales report. One entry for every sold property the report lists — all of them, in the order the report presents them. Record only what is printed: leave a field out rather than estimating, converting or inferring it. Do NOT include the subject property itself, do NOT include properties listed as currently for sale or under offer rather than sold, and do NOT rank, score or judge them — which sales matter is the agent's decision and recording an opinion here would put words in their mouth on the one figure they may be asked to substantiate under s74.",
+                "Item a4c only, and ONLY when reading a comparable-sales report, or an agency agreement's own page of comparable sales given to the vendor. One entry for every sold property the report lists — all of them, in the order the report presents them. Record only what is printed: leave a field out rather than estimating, converting or inferring it. Do NOT include the subject property itself, do NOT include properties listed as currently for sale or under offer rather than sold, and do NOT rank, score or judge them — which sales matter is the agent's decision and recording an opinion here would put words in their mouth on the one figure they may be asked to substantiate under s74.",
               items: {
                 type: "object",
                 properties: {
@@ -490,6 +490,19 @@ export function prescribedDocsPrompt(docs: PrescribedDoc[]): string {
 // SOURCE_TARGETS is still the thing that enforces it — this just stops us
 // inviting the wrong answer in the first place, and costs fewer tokens.
 
+// The comparable sales an agency agreement carries (Adam, 11 Nov 2026,
+// decision 6): a page of sold properties given to the vendor as evidence for
+// the ESP, such as Realtair's "Relevant Sales" page or a pricing annexure.
+// From that page only: a sale named anywhere else in the agreement is not the
+// evidence the vendor was given.
+export const AGREEMENT_SALES_PROMPT =
+  "ALSO on a4c, comparableSales: ONLY if the agreement includes a page or schedule listing comparable " +
+  "sold properties given as evidence for the estimated selling price (for example a 'Relevant Sales' " +
+  "page, a pricing annexure or a comparable sales schedule), one entry for every sold property on it, " +
+  "in its own order: address, sold price, sale date, beds, baths, car spaces and land size, as printed. " +
+  "Beds, baths and car spaces of 0 (or 'nil', 'none') are recorded as 0. Leave out any field it doesn't " +
+  "give, and never take a sale from anywhere else in the agreement. No such page: no comparableSales.";
+
 export const AGENCY_AGREEMENT_PROMPT =
   "a1 (whether the vendor's identity was verified. LOOK IN TWO PLACES, and the second is the one " +
   "that is usually there. FIRST, the vendor declarations and signing pages: a proof-of-identity or " +
@@ -549,7 +562,9 @@ export const AGENCY_AGREEMENT_PROMPT =
   "elsewhere, and is not your job), " +
   "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
   "note-flagging rule: if the document contains that reasoning text, copy it in the document's own " +
-  "words, not paraphrased or summarised, for the agent to confirm, not just a gap-flag), " +
+  "words, not paraphrased or summarised, for the agent to confirm, not just a gap-flag. " +
+  AGREEMENT_SALES_PROMPT +
+  "), " +
   "a3 (set offerPrice from the private-treaty offering price the agreement is required to specify " +
   "under Schedule 6 section 5 of the Regulation, copied exactly as written. This is NOT the estimated " +
   "selling price and must not be taken from the ESP field, and an auction agreement has none, so leave " +
@@ -801,8 +816,22 @@ export async function readListingDocument(args: {
     // without this an agreement that happened to mention a nearby sale could
     // put a row in the comparison table — a sale that is not in the report the
     // file holds as evidence, appearing in the record as though it were.
+    //
+    // REVERSAL for the agreement's own sales page (Adam, 11 Nov 2026,
+    // decision 6: "Yes, counts as report"). An agency agreement often carries
+    // the comparable sales the agent gave the vendor: a Realtair "Relevant
+    // Sales" page, a pricing annexure. McGoldrick's agent cut that page out
+    // and uploaded it again as the report. Now the agreement's sales are read
+    // from it (asked only for such a page, AGREEMENT_SALES_PROMPT), and that
+    // page stands as the comparable sales report (lib/documents/report-choice
+    // reportInAgreement). Its listings for sale and the subject's details
+    // still come off a report only.
     .map((p) =>
-      source === "a4" ? p : { ...p, comparableSales: undefined, subjectProperty: undefined, marketListings: undefined },
+      source === "a4"
+        ? p
+        : source === "a3"
+          ? { ...p, subjectProperty: undefined, marketListings: undefined }
+          : { ...p, comparableSales: undefined, subjectProperty: undefined, marketListings: undefined },
     );
 
   if (source === "a4" && wrongFileOnEspCard(actual, kept)) return [wrongDocument(actual!)];

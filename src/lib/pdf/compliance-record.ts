@@ -24,6 +24,7 @@ import { sydneyDate } from "@/lib/subscription-end/dates";
 import { copiedLinkLine, emailedLinkLine } from "@/lib/links/delivery";
 import { signedInPackLine } from "@/lib/licensee-signoff/model";
 import { ESP_GIVEN_LABEL, espGivenOf } from "@/lib/rules/esp-given-before-signing";
+import { recordInAgreementLine } from "@/lib/documents/report-choice";
 
 /** The answer, tick or upload under a question or document card, with who and when (Sydney). */
 const questionAndDocumentLines = (item: ComplianceItem, current: PropertyItem | undefined): string[] =>
@@ -700,6 +701,10 @@ export async function buildComplianceRecordPdf(input: ComplianceRecordInput): Pr
       if (item.key === "a3" && input.agreementKeepUntil) {
         c.text(input.agreementKeepUntil, { size: 8.5, color: MUTED, indent: 12 });
       }
+      // The comparable sales report is the agency agreement's own sales page
+      // (decision 6, 11 Nov 2026), when no report of its own is on the card.
+      const inAgreement = item.key === "a4" && !current?.evidence_path ? recordInAgreementLine(current?.data) : null;
+      if (inAgreement) c.text(inAgreement, { size: 8.5, color: MUTED, indent: 12 });
       // The date the ESP and evidence were given to the vendor (s72A(2), from 17 Nov 2026).
       if (item.key === "a4" && espGivenOf(current)) {
         c.text(`${ESP_GIVEN_LABEL}: ${formatAuDate(espGivenOf(current) as string)}`, {

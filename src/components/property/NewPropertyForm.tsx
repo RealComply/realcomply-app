@@ -27,10 +27,23 @@ const initialState: ActionState = { error: null };
 // its card in Pre-market (b1), and the listing can't go on the market until
 // it's there. Why: agents often list and organise marketing while still
 // waiting on the contract, and couldn't start the compliance file.
-const DOC_FIELDS: Array<{ field: string; itemKey: string; label: string }> = [
+//
+// REVERSAL (Adam, 11 Nov 2026, decision 6). Was: both needed. Now the
+// comparable sales report may be left off when the agency agreement carries
+// the sales (a Realtair "Relevant Sales" page, a pricing annexure): they're
+// read from the agreement, and that page stands as the report. With neither,
+// the ESP card asks for the report and can't be ticked without one.
+const DOC_FIELDS: Array<{ field: string; itemKey: string; label: string; optional?: boolean; help?: string }> = [
   { field: "agencyAgreementFile", itemKey: "a3", label: "Agency agreement" },
-  { field: "comparableSalesFile", itemKey: "a4", label: "Comparable sales report" },
+  {
+    field: "comparableSalesFile",
+    itemKey: "a4",
+    label: "Comparable sales report",
+    optional: true,
+    help: "Not needed if the comparable sales are in the agency agreement, for example its Relevant Sales page.",
+  },
 ];
+const REQUIRED_DOCS = DOC_FIELDS.filter((d) => !d.optional);
 
 function YesNo({ name, label, help }: { name: string; label: string; help?: string }) {
   return (
@@ -64,6 +77,8 @@ function DocUpload({
   field,
   name,
   label,
+  optional = false,
+  help,
   file,
   onChange,
   error,
@@ -71,16 +86,22 @@ function DocUpload({
   field: string;
   name: string;
   label: string;
+  optional?: boolean;
+  help?: string;
   file: File | null;
   onChange: (file: File | null) => void;
   error?: string | null;
 }) {
   return (
     <div id={docAnchorId(field)} tabIndex={-1} className="scroll-mt-24 focus:outline-none">
-      <p className="mb-1.5 text-sm font-medium text-rc-ink">{label}</p>
+      <p className="mb-1.5 text-sm font-medium text-rc-ink">
+        {label}
+        {optional && <span className="font-normal text-rc-faint"> (optional)</span>}
+      </p>
+      {help && <p className="-mt-1 mb-1.5 text-xs text-rc-muted">{help}</p>}
       <FileDropZone
         name={name}
-        required
+        required={!optional}
         file={file}
         onFile={onChange}
         label={`Drag the ${label.toLowerCase()} here, or click to browse`}
@@ -109,7 +130,7 @@ function listOut(items: string[]): string {
 // Named, not counted. "Attach both documents" makes the person audit their
 // own form to work out which one they are being told about.
 function missingDocsMessage(missing: typeof DOC_FIELDS): string {
-  return missing.length === DOC_FIELDS.length
+  return missing.length > 1 && missing.length === REQUIRED_DOCS.length
     ? "Both documents are needed to create the listing."
     : `Still to attach: ${listOut(missing.map((m) => m.label.toLowerCase()))}.`;
 }
@@ -242,7 +263,7 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
     const form = formRef.current;
     if (!form) return;
 
-    const missing = DOC_FIELDS.filter(({ field }) => !files[field]);
+    const missing = REQUIRED_DOCS.filter(({ field }) => !files[field]);
     if (missing.length > 0) {
       setDocErrors(
         Object.fromEntries(missing.map(({ field }) => [field, "This document is needed to create the listing."])),
@@ -260,7 +281,7 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
     const fd = new FormData(form);
     for (const { field, itemKey } of DOC_FIELDS) {
       const file = files[field];
-      if (!file) continue; // unreachable, guarded above
+      if (!file) continue; // an optional document left off (the report, 11 Nov 2026)
       const path = buildStagingPath(agencyId, stagingId, itemKey, file.name);
       const { error } = await uploadEvidenceObject(supabase, { path, file });
       if (error) {
@@ -389,12 +410,14 @@ export function NewPropertyForm({ agencyId, agents = [] }: { agencyId: string; a
               for here (Adam, 5 Nov 2026): it goes on its card in Pre-market. */}
           <AcceptedFilesLine className="mt-1" />
           <div className="mt-4 space-y-4">
-            {DOC_FIELDS.map(({ field, label }) => (
+            {DOC_FIELDS.map(({ field, label, optional, help }) => (
               <DocUpload
                 key={field}
                 field={field}
                 name={field}
                 label={label}
+                optional={optional}
+                help={help}
                 file={files[field] ?? null}
                 error={docErrors[field]}
                 onChange={(file) => {
