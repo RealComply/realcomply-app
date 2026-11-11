@@ -172,7 +172,7 @@ test("each listings page is counted every morning; the group-page warning; an un
     { agency_id: AGENCY, created_by: AGENT },
   ];
   const first = await checkListingsPages(db, anthropic, fakeWeb(web).fetchPage, live, new Set());
-  assert.deepEqual(first, { pagesChecked: 2, pagesRefused: 0, pagesFailed: 0 }, "the archived agent's page isn't read");
+  assert.deepEqual(first, { pagesChecked: 2, pagesRefused: 0, pagesFailed: 0, pagesDrawn: 0 }, "the archived agent's page isn't read");
   const officeCheck = pageCheckFrom(tables.listings_page_checks.find((r) => r.page_key === `office:${AGENCY}`));
   const agentCheck = pageCheckFrom(tables.listings_page_checks.find((r) => r.page_key === `agent:${AGENT}`));
   assert.equal(officeCheck?.listingsFound, 20);
@@ -190,9 +190,9 @@ test("each listings page is counted every morning; the group-page warning; an un
 
   // An office whose subscription has ended isn't read; a page turned away says so.
   const refused = await checkListingsPages(db, anthropic, fakeWeb({}).fetchPage, live, new Set());
-  assert.deepEqual(refused, { pagesChecked: 2, pagesRefused: 2, pagesFailed: 0 });
+  assert.deepEqual(refused, { pagesChecked: 2, pagesRefused: 2, pagesFailed: 0, pagesDrawn: 0 });
   const ended = await checkListingsPages(db, anthropic, fakeWeb(web).fetchPage, live, new Set([AGENCY]));
-  assert.deepEqual(ended, { pagesChecked: 0, pagesRefused: 0, pagesFailed: 0 });
+  assert.deepEqual(ended, { pagesChecked: 0, pagesRefused: 0, pagesFailed: 0, pagesDrawn: 0 });
 });
 
 test("a link's &amp; and &#038; are read as the browser reads them", () => {
@@ -330,4 +330,83 @@ test("counted on the morning check: Global's page shape reads 37 listings, not 0
   const html = rexMapPage("www.example-agency.invalid").replace(/\\\/listings\\\/residential_sale-/g, "\\/listing\\/residential_sale-");
   await checkListingsPages(db, anthropic, fakeWeb({ [`${SITE}/listings`]: html }).fetchPage, [], new Set());
   assert.equal(pageCheckFrom(tables.listings_page_checks.find((r) => r.page_key === `office:${AGENCY}`))?.listingsFound, 37);
+});
+
+// THE HEADLESS FALLBACK (Adam, 11 Nov 2026, through Master; fix 3 of 3). A page
+// whose plain read and data read both find 0 listings is drawn in a browser,
+// once, and read by the same rules. Here the browser is a stand-in.
+test("a page that draws its listings after it loads: drawn once, and its listings counted and used", async () => {
+  const { db, tables } = fakeDb({
+    agencies: [{ id: AGENCY, website_url: `${SITE}/Properties` }],
+    agent_listing_pages: [],
+    listings_page_checks: [],
+    properties: [{ id: LISTING.id, listing_url: null }],
+    property_items: [],
+  });
+  const { anthropic } = fakeReader();
+  const shell = `<html><body><div id="root"></div><script src="/assets/index.js"></script></body></html>`;
+  const drawnHtml = page(["/", "/Properties", "/listing/8-smith", "/listing/9-jones", "/listing/10-brown"]);
+  const web = fakeWeb({ [`${SITE}/Properties`]: shell });
+  const drawn: string[] = [];
+  const logged: string[] = [];
+  const draw = async (url: string) => {
+    drawn.push(url);
+    return { url: new URL(url), html: drawnHtml };
+  };
+  const result = await checkListingsPages(db, anthropic, web.fetchPage, [{ agency_id: AGENCY, created_by: AGENT }], new Set(), draw, (l) => logged.push(l));
+  assert.deepEqual(result, { pagesChecked: 1, pagesRefused: 0, pagesFailed: 0, pagesDrawn: 1 });
+  assert.deepEqual(drawn, [`${SITE}/Properties`], "drawn once");
+  assert.equal(pageCheckFrom(tables.listings_page_checks[0])?.listingsFound, 3);
+  assert.deepEqual(logged, ["listing-scan: www.example-agency.invalid drawn in a browser: 3 listings"]);
+  // The listing is then looked for on the drawn page, not the empty shell.
+  const url = await findListingPage(db, anthropic, LISTING, web.fetchPage);
+  assert.equal(url, `${SITE}/listing/8-smith`);
+  assert.equal(web.fetched.length, 1, "the website is fetched once all morning");
+});
+
+test("not drawn: a page with listings, a page that turned the read away, and a browser that met a challenge", async () => {
+  const setup = () =>
+    fakeDb({ agencies: [{ id: AGENCY, website_url: `${SITE}/sale` }], agent_listing_pages: [], listings_page_checks: [] });
+  const { anthropic } = fakeReader();
+  let calls = 0;
+  const draw = async (url: string) => {
+    calls += 1;
+    return { url: new URL(url), html: page(["/listing/1-a"]) };
+  };
+  // Listings in the page as sent: no browser.
+  const a = setup();
+  await checkListingsPages(a.db, anthropic, fakeWeb({ [`${SITE}/sale`]: page(["/listing/1-a", "/listing/2-b"]) }).fetchPage, [], new Set(), draw, () => {});
+  assert.equal(calls, 0);
+  assert.equal(pageCheckFrom(a.tables.listings_page_checks[0])?.listingsFound, 2);
+  // Turned away: no browser, and said so.
+  const b = setup();
+  const refused = await checkListingsPages(b.db, anthropic, fakeWeb({}).fetchPage, [], new Set(), draw, () => {});
+  assert.equal(calls, 0);
+  assert.equal(refused.pagesRefused, 1);
+  // The browser met a challenge: left there, still 0, and logged.
+  const c = setup();
+  const logged: string[] = [];
+  const challenged = async () => {
+    calls += 1;
+    throw new Error("The website answered the browser with a check or a refusal, so it was left there.");
+  };
+  const r = await checkListingsPages(c.db, anthropic, fakeWeb({ [`${SITE}/sale`]: "<div id=root></div>" }).fetchPage, [], new Set(), challenged, (l) => logged.push(l));
+  assert.equal(calls, 1, "tried once, not again");
+  assert.equal(r.pagesDrawn, 0);
+  assert.equal(pageCheckFrom(c.tables.listings_page_checks[0])?.listingsFound, 0);
+  assert.match(logged[0], /not drawn: The website answered the browser with a check/);
+  // Drawn but still no listings: the plain read's 0 stands.
+  const d = setup();
+  const empty = async (url: string) => ({ url: new URL(url), html: page(["/about"]) });
+  const r2 = await checkListingsPages(d.db, anthropic, fakeWeb({ [`${SITE}/sale`]: page(["/about"]) }).fetchPage, [], new Set(), empty, () => {});
+  assert.equal(r2.pagesDrawn, 0);
+  assert.equal(pageCheckFrom(d.tables.listings_page_checks[0])?.listingsFound, 0);
+});
+
+test("without a browser, as before", async () => {
+  const { db, tables } = fakeDb({ agencies: [{ id: AGENCY, website_url: `${SITE}/sale` }], agent_listing_pages: [], listings_page_checks: [] });
+  const { anthropic } = fakeReader();
+  const r = await checkListingsPages(db, anthropic, fakeWeb({ [`${SITE}/sale`]: "<div id=root></div>" }).fetchPage, [], new Set());
+  assert.equal(r.pagesDrawn, 0);
+  assert.equal(pageCheckFrom(tables.listings_page_checks[0])?.listingsFound, 0);
 });
