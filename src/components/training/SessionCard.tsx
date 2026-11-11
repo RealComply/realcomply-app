@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { recordAttendance, deleteTrainingSession, type ActionState } from "@/lib/actions/registers";
 import type { Profile, TrainingSession } from "@/lib/types";
+import { formatAuDate } from "@/lib/format-date";
 
 const initialState: ActionState = { error: null };
 
@@ -40,7 +41,7 @@ export function SessionCard({
         <div>
           <h3 className="text-sm font-semibold text-rc-ink">{session.title}</h3>
           <p className="mt-0.5 text-xs text-rc-muted">
-            {session.session_date}
+            {formatAuDate(session.session_date)}
             {session.trainer_name && ` · ${session.trainer_name}${session.is_external ? " (external)" : ""}`}
             {session.is_cpd_eligible && ` · ${session.cpd_hours}h CPD-eligible`}
           </p>

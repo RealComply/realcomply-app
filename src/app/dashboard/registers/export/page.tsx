@@ -7,7 +7,7 @@ import { BREACH_CATEGORY_LABELS } from "@/lib/types";
 import type { Agency, Breach, Complaint, ComplaintFile, CpdRecord, Gift, InsurancePolicy, Profile } from "@/lib/types";
 import { addedLine, complaintFilesFor, filesOfDeletedComplaints, removedLine } from "@/lib/complaint-files";
 import { otherInsuranceTitle } from "@/lib/insurance-read";
-import { formatAuDateTimeShort } from "@/lib/format-date";
+import { formatAuDate, formatAuDateTimeShort, formatAuShortDate } from "@/lib/format-date";
 import { complaintsRegisterShown } from "@/lib/data/complaints-register";
 import { PrintButton } from "./PrintButton";
 import { RoofMark } from "@/components/RoofMark";
@@ -104,7 +104,7 @@ export default async function RegistersExportPage() {
         <span className="text-rc-muted">
           — {s.licence_type ? LICENCE_TYPE_LABELS[s.licence_type] : "no licence on file"}
           {s.licence_number ? ` · ${s.licence_number}` : ""}
-          {s.licence_expiry ? ` · expires ${s.licence_expiry}` : ""} ·{" "}
+          {s.licence_expiry ? ` · expires ${formatAuDate(s.licence_expiry)}` : ""} ·{" "}
           {categories.length > 0 ? `${categories.join(", ")} · ` : ""}
           CPD {cpdDone.has(s.id) ? "done" : "not confirmed"}
           {certificates > 0 ? ` (${certificates} ${certificates === 1 ? "certificate" : "certificates"})` : ""}
@@ -190,7 +190,7 @@ export default async function RegistersExportPage() {
           {gifts.length === 0 && <li className="text-sm text-rc-muted">No entries.</li>}
           {gifts.map((g) => (
             <li key={g.id} className="text-sm">
-              <span className="font-medium text-rc-ink">{g.gift_date}</span>{" "}
+              <span className="font-medium text-rc-ink">{formatAuShortDate(g.gift_date)}</span>{" "}
               <span className="text-rc-muted">
                 — {nameFor(g.profile_id)} · {g.description} ({g.direction}){g.value ? ` · ~$${g.value}` : ""} · {g.status}
               </span>
@@ -208,10 +208,10 @@ export default async function RegistersExportPage() {
               const { current, removed } = complaintFilesFor(c.id, complaintFiles);
               return (
                 <li key={c.id} className="text-sm">
-                  <span className="font-medium text-rc-ink">{c.received_date}</span>{" "}
+                  <span className="font-medium text-rc-ink">{formatAuShortDate(c.received_date)}</span>{" "}
                   <span className="text-rc-muted">
                     — {c.complainant} · {c.nature} · {c.status}
-                    {c.resolved_date ? ` (resolved ${c.resolved_date})` : ""}
+                    {c.resolved_date ? ` (resolved ${formatAuDate(c.resolved_date)})` : ""}
                   </span>
                   {/* Each file by name, and every removal with who and when (0101). */}
                   {current.map((f) => (
@@ -251,11 +251,11 @@ export default async function RegistersExportPage() {
           {breaches.length === 0 && <li className="text-sm text-rc-muted">No breaches logged.</li>}
           {breaches.map((b) => (
             <li key={b.id} className="text-sm">
-              <span className="font-medium text-rc-ink">{b.identified_date}</span>{" "}
+              <span className="font-medium text-rc-ink">{formatAuShortDate(b.identified_date)}</span>{" "}
               <span className="text-rc-muted">
                 — {BREACH_CATEGORY_LABELS[b.category] ?? b.category} · {b.severity} · {b.description} · {b.status}
                 {b.corrective_action ? ` · action: ${b.corrective_action}` : " · no corrective action recorded"}
-                {b.notifiable ? (b.notified_date ? ` · notified ${b.notified_date}` : " · NOTIFICATION OUTSTANDING") : ""}
+                {b.notifiable ? (b.notified_date ? ` · notified ${formatAuDate(b.notified_date)}` : " · NOTIFICATION OUTSTANDING") : ""}
               </span>
             </li>
           ))}

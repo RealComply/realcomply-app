@@ -21,6 +21,7 @@ import type { AuctionOutcomeData, Property, PropertyItem, PropertyStage } from "
 import { readQuestion, type QuestionSpec } from "@/lib/rules/question-card";
 import type { NotApplicableSpec } from "@/lib/rules/not-applicable";
 import { soiApplies } from "@/lib/rules/soi";
+import { formatSydney } from "@/lib/format-date";
 
 // ── Auction visibility ──────────────────────────────────────────────────────
 // Every x-series item is conditional on the listing being an auction. The trap
@@ -280,12 +281,7 @@ export const NOT_ON_THIS_FILE = "Not on this file";
 
 /** The line under it: when the card was added, in plain words. */
 export function addedAfterSignOffLine(addedAt: string): string {
-  const day = new Intl.DateTimeFormat("en-AU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "Australia/Sydney",
-  }).format(new Date(addedAt));
+  const day = formatSydney(addedAt, { day: "numeric", month: "long", year: "numeric" });
   return `This card was added on ${day}, after this file was signed off.`;
 }
 

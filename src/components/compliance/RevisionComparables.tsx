@@ -24,6 +24,8 @@ import {
   saleLine,
   type RevisionCandidate,
 } from "@/lib/rules/revision-comparables";
+import { DateBox } from "@/components/DateBox";
+import { sydneyDate } from "@/lib/format-date";
 
 // A revision's own comparable sales (Reg s12G(1)(a), (c), (d); 0120), in the
 // form that records the revision. Sent as one JSON list (revisionComparables)
@@ -55,8 +57,7 @@ const fromCandidate = (c: RevisionCandidate): Row => ({
   distanceText: "",
 });
 
-const sydneyToday = () =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const sydneyToday = () => sydneyDate();
 
 const inputClass =
   "w-full rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm text-rc-ink focus:border-rc-green-deep focus:outline-none";
@@ -158,7 +159,7 @@ export function RevisionComparablesFields({
                 <div className="grid grid-cols-3 gap-2">
                   <label className="text-[11px] text-rc-muted">
                     Date sold
-                    <input type="date" value={r.soldOn ?? ""} onChange={(e) => set(r.key, { soldOn: e.target.value || null })} className={inputClass} />
+                    <DateBox value={r.soldOn ?? ""} onChange={(e) => set(r.key, { soldOn: e.target.value || null })} className={inputClass} />
                   </label>
                   <label className="text-[11px] text-rc-muted">
                     Sold price

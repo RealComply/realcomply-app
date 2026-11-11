@@ -35,6 +35,7 @@ import {
   type SubjectAttributes,
   type Weighting,
 } from "@/lib/data/comparables";
+import { DateBox } from "@/components/DateBox";
 
 // The comparable sales, stacked against this listing.
 //
@@ -766,8 +767,7 @@ function AddComparable({ propertyId, onDone }: { propertyId: string; onDone: () 
         <Field name="salePrice" label="Sale price" defaultValue="" />
         <label className="block text-[11px] font-medium text-rc-muted">
           Sale date
-          <input
-            type="date"
+          <DateBox
             name="saleDate"
             className="mt-1 w-full rounded-md border border-rc-border px-2 py-1.5 text-sm text-rc-ink"
           />

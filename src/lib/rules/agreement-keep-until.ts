@@ -16,7 +16,7 @@
 // years after it ends.
 
 import type { PropertyItem } from "@/lib/types";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, sydneyDate } from "@/lib/format-date";
 import { addYears } from "@/lib/subscription-end/dates";
 import { settlementDateOf } from "./nsw-sales";
 
@@ -26,8 +26,7 @@ export const KEEP_AGREEMENT_YEARS = 3;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const isoDate = (v: unknown): string | null => (typeof v === "string" && ISO_DATE.test(v) ? v : null);
-const sydneyToday = (now: Date) =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+const sydneyToday = (now: Date) => sydneyDate(now);
 
 /**
  * Whether s8A covers the agreement: signed from 17 November, or amended from

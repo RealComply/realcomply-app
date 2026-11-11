@@ -32,6 +32,7 @@ import { staffReminderData } from "@/lib/data/staff-reminders";
 import { StaffRemindersCard } from "@/components/registers/StaffRemindersCard";
 import type { SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
+import { formatAuShortDate } from "@/lib/format-date";
 
 // Supervision guidelines and operational procedures (was "SG Manual").
 //
@@ -244,7 +245,7 @@ export default async function SgManualPage({
               ) : (
                 current.file_name
               )}{" "}
-              · uploaded {new Date(current.created_at).toLocaleDateString("en-AU")} by {nameFor(current.uploaded_by)}
+              · uploaded {formatAuShortDate(current.created_at)} by {nameFor(current.uploaded_by)}
             </p>
             {current.notes && <p className="mt-1 text-xs text-rc-muted">{current.notes}</p>}
           </div>
@@ -307,7 +308,7 @@ export default async function SgManualPage({
                 <li key={v.id} className="px-4 py-3 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-rc-ink">{v.version_label ?? "Untitled version"}</span>
-                    <span className="text-xs text-rc-faint">{new Date(v.created_at).toLocaleDateString("en-AU")}</span>
+                    <span className="text-xs text-rc-faint">{formatAuShortDate(v.created_at)}</span>
                   </div>
                   <p className="mt-0.5 text-xs text-rc-muted">
                     {url ? (

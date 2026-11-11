@@ -18,6 +18,7 @@ import {
 import { PmChoicePills } from "@/components/pm/PmChoicePills";
 import { todayInSydney } from "@/components/pm/pm-dates";
 import { LegalReference } from "@/components/LegalReference";
+import { DateBox } from "@/components/DateBox";
 
 // Things recorded rather than ticked (brief B6, B7). Each press records the
 // person and the time, stamped by the database (0053). Nothing here counts
@@ -348,8 +349,7 @@ function PetForm({ propertyId, kind }: { propertyId: string; kind: "pet_request"
       {kind === "pet_request" && (
         <label className="flex items-center gap-2 text-[13px] text-rc-muted">
           Date received
-          <input
-            type="date"
+          <DateBox
             name="received"
             required
             defaultValue={todayInSydney()}

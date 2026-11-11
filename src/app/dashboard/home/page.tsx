@@ -42,7 +42,7 @@ import { SetupCard, SetupDoneLine } from "@/components/home/SetupCard";
 import { UnopenedSignoffLinks } from "@/components/home/LinkNudges";
 import { unopenedSignoffLinksFor } from "@/lib/data/link-nudges";
 import { getItem } from "@/lib/rules/nsw-sales";
-import { formatAuTimestamp } from "@/lib/format-date";
+import { formatAuDayMonthTime, formatAuTimestamp } from "@/lib/format-date";
 
 // Home — the single consolidated landing dashboard a licensee sees after
 // login, replacing "check five different pages" with one page of widgets
@@ -241,7 +241,7 @@ export default async function HomeDashboardPage({
   };
   const handedOver = (at: string | null) =>
     at
-      ? `handed over ${new Date(at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`
+      ? `handed over ${formatAuDayMonthTime(at)}`
       : "handed over";
   const agency = agencyRow as Agency | null;
   const pendingInviteCount = (pendingInviteRows ?? []).length;

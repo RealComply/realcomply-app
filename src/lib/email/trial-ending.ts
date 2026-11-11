@@ -9,6 +9,7 @@ import {
 } from "./layout";
 import { PLANS, type Plan } from "@/lib/billing/entitlement";
 import type { Interval } from "@/lib/billing/stripe";
+import { formatSydney } from "@/lib/format-date";
 
 // The trial-ending reminder.
 //
@@ -76,13 +77,7 @@ function formatAmount(cents: number): string {
  * cl 2.10(b) makes.
  */
 function chargeDate(when: Date): string {
-  return new Intl.DateTimeFormat("en-AU", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "Australia/Sydney",
-  }).format(when);
+  return formatSydney(when, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
 /**

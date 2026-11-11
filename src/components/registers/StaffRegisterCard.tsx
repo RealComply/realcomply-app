@@ -25,6 +25,7 @@ import { useViewerAccess } from "@/components/ViewerAccess";
 import Link from "next/link";
 import { Paperclip } from "lucide-react";
 import type { CpdRecord, Profile } from "@/lib/types";
+import { DateBox } from "@/components/DateBox";
 
 const initialState: ActionState = { error: null };
 
@@ -147,8 +148,7 @@ export function StaffRegisterCard({
                 defaultValue={profile.licence_number ?? ""}
                 className="w-40 rounded-md border border-rc-border px-2 py-1 text-sm"
               />
-              <input
-                type="date"
+              <DateBox
                 name="licenceExpiry"
                 defaultValue={profile.licence_expiry ?? ""}
                 className="rounded-md border border-rc-border px-2 py-1 text-sm"

@@ -1,4 +1,5 @@
 import { BellRing } from "lucide-react";
+import { formatAuMediumDate } from "@/lib/format-date";
 
 // The one-line "we'll tell you / we told you" strip that sits under every
 // credential in the Licences & certificates register.
@@ -19,7 +20,7 @@ export type ReminderInfo = {
 };
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  return formatAuMediumDate(iso);
 }
 
 export function ReminderLine({ info, hasExpiry }: { info: ReminderInfo; hasExpiry: boolean }) {

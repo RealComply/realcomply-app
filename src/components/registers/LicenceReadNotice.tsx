@@ -15,6 +15,7 @@ import { CantReadNotice } from "@/components/AcceptedFiles";
 import { unreadableKind } from "@/lib/storage/accepted-files";
 import { formatAuTimestamp } from "@/lib/format-date";
 import { LICENCE_FIELD_LABELS, type LicenceField, type LicenceReadState } from "@/lib/licence-read";
+import { DateBox } from "@/components/DateBox";
 
 // What the register says about a licence record that was read off a document.
 //
@@ -222,7 +223,7 @@ function GapForm({
         {missing.includes("expiry") && (
           <label className="flex items-center gap-1 text-rc-muted">
             Expiry
-            <input type="date" name="expiry" className="rounded-md border border-rc-border px-2 py-0.5 text-xs" />
+            <DateBox name="expiry" className="rounded-md border border-rc-border px-2 py-0.5 text-xs" />
           </label>
         )}
         <button

@@ -6,6 +6,8 @@ import { useViewerAccess } from "@/components/ViewerAccess";
 import { useOnSaved } from "@/lib/use-on-saved";
 import type { Gift, Profile } from "@/lib/types";
 import { giftReviewedLine } from "@/lib/reviews/records";
+import { DateBox } from "@/components/DateBox";
+import { formatAuShortDate } from "@/lib/format-date";
 
 const initialState: ActionState = { error: null };
 
@@ -127,7 +129,7 @@ export function GiftsPanel({
                   </option>
                 ))}
               </select>
-              <input type="date" name="giftDate" required className="rounded-md border border-rc-border px-2 py-1 text-sm" />
+              <DateBox name="giftDate" required className="rounded-md border border-rc-border px-2 py-1 text-sm" />
               <select name="direction" className="rounded-md border border-rc-border px-2 py-1 text-sm">
                 <option value="received">Received</option>
                 <option value="given">Given</option>
@@ -186,7 +188,7 @@ export function GiftsPanel({
               <tbody>
                 {gifts.map((g) => (
                   <tr key={g.id} className="border-b border-neutral-100">
-                    <td className="py-2 pr-3">{g.gift_date}</td>
+                    <td className="py-2 pr-3">{formatAuShortDate(g.gift_date)}</td>
                     <td className="py-2 pr-3">{nameFor(g.profile_id)}</td>
                     <td className="py-2 pr-3">
                       {g.description} <span className="text-xs text-rc-faint">({g.direction})</span>

@@ -16,6 +16,7 @@ import {
 import { sectionHeading } from "@/lib/sg-document/sections";
 import { formatAuDate } from "@/lib/format-date";
 import type { SgSectionView } from "@/lib/data/sg-document";
+import { DateBox } from "@/components/DateBox";
 
 // Quick amendment (Adam's mockup, screen 3; 0125). Pick the section and the
 // paragraph, change the wording (it starts as the current wording), see the
@@ -248,8 +249,7 @@ export function SgQuickAmendment({
       </fieldset>
       <label className="block text-sm">
         <span className="font-semibold text-rc-ink">Starts</span>
-        <input
-          type="date"
+        <DateBox
           value={form.starts}
           onChange={(e) => setForm({ ...form, starts: e.target.value })}
           className="mt-1 block rounded-md border border-rc-border px-2 py-1.5 text-sm"

@@ -20,6 +20,7 @@ import {
   type ListingWeighting,
   type MarketListing,
 } from "@/lib/data/market-listings";
+import { DateBox } from "@/components/DateBox";
 
 // Properties on the market, under the comparable sales on the ESP reasoning
 // card. Stephen Borg, 28 Sep 2026: the price reasoning should consider the
@@ -364,8 +365,7 @@ function AddListing({ propertyId, onDone }: { propertyId: string; onDone: () => 
         </label>
         <label className="block text-[11px] font-medium text-rc-muted">
           Listed
-          <input
-            type="date"
+          <DateBox
             name="listedDate"
             className="mt-1 w-full rounded-md border border-rc-border px-2 py-1.5 text-sm text-rc-ink"
           />

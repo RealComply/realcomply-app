@@ -28,6 +28,7 @@ import { requireAuthContext } from "@/lib/actions/compliance";
 import { buildProductGuide } from "@/lib/help/product-guide";
 import { sendEmail } from "@/lib/email/send";
 import type { ChatMessage, ChatResult } from "@/lib/actions/legislation-chat";
+import { formatAuDateTime } from "@/lib/format-date";
 
 const MAX_TURNS = 20;
 
@@ -222,7 +223,7 @@ async function sendEscalation(input: {
       "The help assistant couldn't answer a question and escalated it.",
       "",
       `From: ${input.askedBy} (${input.askedByEmail})`,
-      `When: ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney" })} (Sydney)`,
+      `When: ${formatAuDateTime(new Date())} (Sydney)`,
       "",
       "THEY ASKED",
       input.verbatim,

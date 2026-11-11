@@ -14,6 +14,8 @@ import { useViewerAccess } from "@/components/ViewerAccess";
 import { useOnSaved } from "@/lib/use-on-saved";
 import { BREACH_CATEGORY_LABELS as CATEGORY_LABELS } from "@/lib/types";
 import type { Breach, Profile, Property } from "@/lib/types";
+import { DateBox } from "@/components/DateBox";
+import { formatAuDate } from "@/lib/format-date";
 
 const initialState: ActionState = { error: null };
 
@@ -127,8 +129,7 @@ export function BreachesPanel({
         {adding && (
           <form action={formAction} className="mt-3 space-y-2 rounded-md border border-rc-border p-3">
             <div className="flex flex-wrap gap-2">
-              <input
-                type="date"
+              <DateBox
                 name="identifiedDate"
                 required
                 className="rounded-md border border-rc-border px-2 py-1 text-sm"
@@ -268,7 +269,7 @@ function BreachRow({
           </div>
           <p className="mt-1 text-sm text-neutral-700">{b.description}</p>
           <p className="mt-1 text-xs text-rc-faint">
-            Identified {b.identified_date} ({days}d ago) · {agentName}
+            Identified {formatAuDate(b.identified_date)} ({days}d ago) · {agentName}
             {address && (
               <>
                 {" · "}
@@ -277,7 +278,7 @@ function BreachRow({
                 </Link>
               </>
             )}
-            {b.notified_date && <> · Fair Trading notified {b.notified_date}</>}
+            {b.notified_date && <> · Fair Trading notified {formatAuDate(b.notified_date)}</>}
           </p>
           {b.notes && <p className="mt-1 text-xs text-rc-muted">{b.notes}</p>}
         </div>
@@ -313,7 +314,7 @@ function BreachRow({
         <div className="mt-2 rounded-md bg-neutral-50 px-3 py-2 text-sm">
           <span className="text-xs font-semibold uppercase tracking-wide text-rc-faint">Corrective action</span>
           <p className="mt-0.5 text-neutral-700">{b.corrective_action}</p>
-          {b.corrective_action_date && <p className="mt-0.5 text-xs text-rc-faint">{b.corrective_action_date}</p>}
+          {b.corrective_action_date && <p className="mt-0.5 text-xs text-rc-faint">{formatAuDate(b.corrective_action_date)}</p>}
         </div>
       )}
 
@@ -327,7 +328,7 @@ function BreachRow({
             className="w-full rounded-md border border-rc-border px-2 py-1 text-sm"
           />
           <div className="flex flex-wrap items-center gap-2">
-            <input type="date" name="correctiveActionDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
+            <DateBox name="correctiveActionDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
             <button
               type="submit"
               disabled={actionPending}
@@ -343,7 +344,7 @@ function BreachRow({
       {notificationDue && (
         <form action={notifyForm} className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-neutral-50 px-3 py-2">
           <span className="text-xs text-rc-muted">Notified NSW Fair Trading on</span>
-          <input type="date" name="notifiedDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
+          <DateBox name="notifiedDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
           <button
             type="submit"
             disabled={notifyPending}

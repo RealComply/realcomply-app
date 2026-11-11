@@ -9,6 +9,7 @@ import {
   earlyAccessAcknowledgementHtml,
 } from "@/lib/email/early-access-ack";
 import { ADMIN_COPY_ADDRESS, SENDER_NAME } from "@/lib/email/early-access-invite";
+import { formatAuDateTime } from "@/lib/format-date";
 
 // Early-access signup from the public landing page. Runs unauthenticated —
 // this is the one action in the app reachable by a stranger — so it stays
@@ -217,7 +218,7 @@ async function notifyEarlyAccessSignup(
       // ?src= on the ad's link, so a run of these reads as which ad is working
       // without going to Meta's own attribution for it.
       `Came from: ${source ?? "no source recorded (typed the address in, or an ad with no ?src= tag)"}`,
-      `When: ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney" })} (Sydney)`,
+      `When: ${formatAuDateTime(new Date())} (Sydney)`,
       "",
       trapped ? "Not saved, so not on your staff page." : "The full list is on your staff page, under Sign-ups.",
     ].join("\n"),

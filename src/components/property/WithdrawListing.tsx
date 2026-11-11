@@ -11,6 +11,7 @@ import {
   WITHDRAW_REASONS,
   WITHDRAW_WARNING,
 } from "@/lib/rules/listing-tabs";
+import { DateBox } from "@/components/DateBox";
 
 // Withdraw from market, and the banner on a withdrawn listing (Job B, mockup
 // v6; 0114). The evidence is stored, not read, so there is no "Accepted files"
@@ -80,9 +81,8 @@ export function WithdrawFromMarket({
         <label htmlFor="withdrawn-on" className="block text-sm font-medium text-rc-ink">
           Date withdrawn
         </label>
-        <input
+        <DateBox
           id="withdrawn-on"
-          type="date"
           name="withdrawnOn"
           required
           defaultValue={today}

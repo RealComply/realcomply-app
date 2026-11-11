@@ -13,6 +13,7 @@ import { SOI_BAD, SOI_NOT_YET, soiApplies, soiContentFrom } from "@/lib/rules/so
 import { buildSoiPdf, soiFilename } from "@/lib/pdf/soi";
 import type { Property, PropertyItem } from "@/lib/types";
 import { isStrataDwelling } from "@/lib/rules/strata-land";
+import { sydneyDate } from "@/lib/format-date";
 
 // The Statement of Information card (s72C; Reg s12H, s12I; 0121): make one
 // from the file, record one made elsewhere, and switch the link for online
@@ -25,8 +26,7 @@ export type SoiActionState = { error: string | null; done?: boolean };
 const RELOAD = "This listing's ESP or comparable sales changed while the form was open. Reload the page to make the statement from them.";
 const SAVE_FAILED = "Couldn't save the statement just now. Try again.";
 
-const sydneyToday = () =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const sydneyToday = () => sydneyDate();
 
 /** The database's own refusals are already in plain words; anything else isn't shown. */
 const plainError = (error: { code?: string; message?: string } | null): string =>

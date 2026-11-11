@@ -22,6 +22,8 @@ import { useFileDrop } from "@/lib/use-file-drop";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { buildPlanItemDocPath, uploadEvidenceObject } from "@/lib/storage/evidence";
 import type { CpdRecord, Profile, TrainingPlan, TrainingPlanItem } from "@/lib/types";
+import { DateBox } from "@/components/DateBox";
+import { formatAuDate } from "@/lib/format-date";
 
 const initial: ActionState = { error: null };
 
@@ -204,7 +206,7 @@ function Consultation({ plan, canEdit }: { plan: TrainingPlan; canEdit: boolean 
             {plan.identified_gaps ? (
               <>
                 <p className="mt-1 whitespace-pre-wrap">{plan.identified_gaps}</p>
-                {plan.consultation_date && <p className="mt-1 text-rc-faint">Discussed {plan.consultation_date}</p>}
+                {plan.consultation_date && <p className="mt-1 text-rc-faint">Discussed {formatAuDate(plan.consultation_date)}</p>}
               </>
             ) : (
               <p className="mt-1 text-rc-faint">
@@ -226,8 +228,7 @@ function Consultation({ plan, canEdit }: { plan: TrainingPlan; canEdit: boolean 
     <form action={action} className="space-y-2 rounded-md bg-neutral-50 px-3 py-2">
       <label className="block text-xs text-rc-muted">
         Date you met
-        <input
-          type="date"
+        <DateBox
           name="consultationDate"
           defaultValue={plan.consultation_date ?? ""}
           className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm"
@@ -299,7 +300,7 @@ function PlanItemRow({
           </p>
           {item.gap_reason && <p className="mt-1 text-rc-muted">Gap: {item.gap_reason}</p>}
           <p className="mt-0.5 text-rc-faint">
-            {done ? `Completed ${item.completed_date}` : item.due_date ? `Due ${item.due_date}` : "No due date"}
+            {done ? `Completed ${formatAuDate(item.completed_date)}` : item.due_date ? `Due ${formatAuDate(item.due_date)}` : "No due date"}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -329,7 +330,7 @@ function PlanItemRow({
           }}
           className="mt-2 flex flex-wrap items-center gap-2"
         >
-          <input type="date" name="completedDate" required className="rounded-md border border-rc-border px-2 py-1 text-xs" />
+          <DateBox name="completedDate" required className="rounded-md border border-rc-border px-2 py-1 text-xs" />
           <button
             type="submit"
             disabled={pending}
@@ -557,7 +558,7 @@ function AddItemForm({ planId, onDone }: { planId: string; onDone: () => void })
           placeholder="Provider"
           className="w-36 rounded-md border border-rc-border px-2 py-1 text-sm"
         />
-        <input type="date" name="dueDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
+        <DateBox name="dueDate" className="rounded-md border border-rc-border px-2 py-1 text-sm" />
       </div>
       {/* Off by default. Internal coaching belongs on the plan — Requirement
           2.4 is broader than CPD — but it must never accrue CPD hours. */}

@@ -24,6 +24,7 @@ import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
 import { licenceSummary } from "@/lib/rules/nsw-cpd";
 import { CPD_SOURCE_LABEL, cpdRowSource, type CpdRowSource } from "@/lib/cpd-one-place";
 import type { CpdRecord, CpdYearSignoff, Profile } from "@/lib/types";
+import { DateBox } from "@/components/DateBox";
 
 const initial: ActionState = { error: null };
 
@@ -361,9 +362,8 @@ function CertificateRow({
             placeholder={isUnit ? "Units" : "Hours"}
             className="w-24 rounded-md border border-rc-border px-2 py-1 text-sm"
           />
-          <input
+          <DateBox
             name="completedDate"
-            type="date"
             defaultValue={record.completed_date ?? ""}
             className="rounded-md border border-rc-border px-2 py-1 text-sm"
           />
@@ -651,7 +651,7 @@ function MissingCpdFields({
             />
           )}
           {missingDate && (
-            <input name="completedDate" type="date" className="rounded-md border border-rc-border px-2 py-0.5 text-xs" />
+            <DateBox name="completedDate" className="rounded-md border border-rc-border px-2 py-0.5 text-xs" />
           )}
           <button
             type="submit"

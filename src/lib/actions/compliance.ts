@@ -1376,8 +1376,8 @@ function assessOffers(entries: OfferEntry[], threshold: number | null, threshold
 
   const guideAmendmentPrompt =
     highestRejectedAtOrAbove > 0 && threshold != null
-      ? `An offer of $${highestRejectedAtOrAbove.toLocaleString()} was at or above your ${thresholdSource} of ` +
-        `$${threshold.toLocaleString()} and was rejected, so the property will not sell at the figure being ` +
+      ? `An offer of $${highestRejectedAtOrAbove.toLocaleString("en-AU")} was at or above your ${thresholdSource} of ` +
+        `$${threshold.toLocaleString("en-AU")} and was rejected, so the property will not sell at the figure being ` +
         `quoted. Amend the price guide to no less than the rejected offer, and make sure nobody is still ` +
         `quoting the old figure verbally. Continuing to quote a price the vendor has already refused is ` +
         `quoting a price that will not buy the property.`

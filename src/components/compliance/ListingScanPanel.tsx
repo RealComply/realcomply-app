@@ -5,6 +5,7 @@ import { Globe, AlertTriangle, Check } from "lucide-react";
 import { checkListingNow } from "@/lib/actions/website-scan";
 import { searchLine, type SearchTry } from "@/lib/listings-pages";
 import { reformsInForce } from "@/lib/rules/underquoting-reforms";
+import { formatAuDayMonthTime } from "@/lib/format-date";
 
 // The advertised-price check, as shown on c1.
 //
@@ -37,7 +38,7 @@ export type ScanFinding = {
 function when(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  return formatAuDayMonthTime(d);
 }
 
 export function ListingScanPanel({
