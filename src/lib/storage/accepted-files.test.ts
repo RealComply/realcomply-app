@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   ACCEPTED_FILES,
   ACCEPTED_FILES_WITH_WORD,
+  KEPT_AS_OLD_WORD,
   KEPT_AS_WORD,
   READ_FROM_WORD,
   UPLOAD_A_PDF,
@@ -20,12 +21,13 @@ describe("the words", () => {
   });
 
   it("on listing cards, Word too (Adam, 11 Nov 2026)", () => {
-    assert.equal(ACCEPTED_FILES_WITH_WORD, "Accepted files: PDF, clear photo or Word. Only PDFs and photos go into the audit pack.");
+    assert.equal(ACCEPTED_FILES_WITH_WORD, "Accepted files: PDF, clear photo or Word.");
   });
 
-  it("says a Word file on a card isn't in the audit pack (Adam, 11 Nov 2026)", () => {
-    assert.equal(READ_FROM_WORD, "Read from your Word file. To include it in the audit pack, upload it as a PDF.");
-    assert.equal(KEPT_AS_WORD, "Kept as a Word file. To include it in the audit pack, upload it as a PDF.");
+  it("says a Word file is in the audit pack as a plain copy, and an old one not at all (Adam, 11 Nov 2026)", () => {
+    assert.equal(READ_FROM_WORD, "Read from your Word file. The audit pack has a plain copy of it. To keep its own layout, upload it as a PDF.");
+    assert.equal(KEPT_AS_WORD, "Kept as a Word file. The audit pack has a plain copy of it. To keep its own layout, upload it as a PDF.");
+    assert.equal(KEPT_AS_OLD_WORD, "Kept as an older Word file (.doc). To include it in the audit pack, upload it as a PDF.");
   });
 
   it("names the button exactly", () => {
@@ -52,7 +54,7 @@ describe("the words", () => {
   });
 
   it("uses no dashes and never the word compliant", () => {
-    for (const text of [ACCEPTED_FILES, ACCEPTED_FILES_WITH_WORD, READ_FROM_WORD, KEPT_AS_WORD, UPLOAD_A_PDF, ...(["Word files", "older Word files (.doc)", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
+    for (const text of [ACCEPTED_FILES, ACCEPTED_FILES_WITH_WORD, READ_FROM_WORD, KEPT_AS_WORD, KEPT_AS_OLD_WORD, UPLOAD_A_PDF, ...(["Word files", "older Word files (.doc)", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
       assert.doesNotMatch(text, /[\u2013\u2014]/);
       assert.doesNotMatch(text, /compliant/i);
     }
@@ -137,18 +139,18 @@ describe("the sentence for a stored file", () => {
 });
 
 describe("what a listing card says about a Word file on it", () => {
-  it("a Word file a card reads: read from it, and how to get it into the pack", () => {
+  it("a Word file a card reads: read from it, with its plain copy in the pack", () => {
     assert.equal(wordFileNotice("Covering letter (made up).docx", { read: true }), READ_FROM_WORD);
     assert.equal(wordFileNotice("agency/property/a1/1730000000000-ID CHECK.DOCX", { read: true }), READ_FROM_WORD);
   });
 
-  it("a Word file on a card nothing reads: kept, and how to get it into the pack", () => {
+  it("a Word file on a card nothing reads: kept, with its plain copy in the pack", () => {
     assert.equal(wordFileNotice("Pool certificate.docx", { read: false }), KEPT_AS_WORD);
-    assert.equal(wordFileNotice("Pool certificate.doc", { read: false }), KEPT_AS_WORD);
   });
 
-  it("an old Word file (.doc) is kept, never read", () => {
-    assert.equal(wordFileNotice("Covering letter.doc", { read: true }), KEPT_AS_WORD);
+  it("an old Word file (.doc) is kept, never read or drawn", () => {
+    assert.equal(wordFileNotice("Pool certificate.doc", { read: false }), KEPT_AS_OLD_WORD);
+    assert.equal(wordFileNotice("Covering letter.doc", { read: true }), KEPT_AS_OLD_WORD);
     // On a card that reads, the can't-read notice is shown for it instead.
     assert.equal(unreadableKind("Covering letter.doc", { listingCard: true }), "older Word files (.doc)");
   });

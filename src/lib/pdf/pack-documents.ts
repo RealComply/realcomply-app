@@ -14,7 +14,9 @@ import { espNoticeOf } from "@/lib/rules/esp-given-before-signing";
 // No database and no network: the pack builder (lib/pdf/audit-pack.ts) reads
 // the rows and fetches the bytes.
 
-export type PackDocKind = "pdf" | "image" | "heic" | "other";
+// "word": a .docx, drawn into the pack as a plain copy (lib/pdf/word-copy.ts;
+// Adam, 11 Nov 2026). The old Word format (.doc) is "other": named, not drawn.
+export type PackDocKind = "pdf" | "image" | "heic" | "word" | "other";
 
 export type PackDocument = {
   /** The stage's name, as the record heads it ("Pre-market"), or "Complaints". */
@@ -38,6 +40,7 @@ const EXTENSION_KIND: Record<string, PackDocKind> = {
   png: "image",
   heic: "heic",
   heif: "heic",
+  docx: "word",
 };
 
 /** What kind of document a file name says it is. */
@@ -64,7 +67,8 @@ export function fileTypeLabel(fileName: string): string {
 /**
  * The separator page's words for a file the pack can't hold. A Word file
  * (Adam, 11 Nov 2026) says how to get it in: as a PDF, which the card's
- * "Upload a PDF" asks for. Every other kind is named by its type, as before.
+ * "Upload a PDF" asks for. That is an old .doc, or a .docx that couldn't be
+ * drawn as a plain copy. Every other kind is named by its type, as before.
  */
 export function notIncludedNote(fileName: string): string {
   const ext = fileName.toLowerCase().split(".").pop() ?? "";

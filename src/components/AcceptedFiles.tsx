@@ -74,8 +74,9 @@ export function CantReadNotice({
 }
 
 /**
- * A Word file on a listing card (Adam, 11 Nov 2026): read (or kept), but not
- * in the audit pack, so the card says so, with "Upload a PDF" to replace it.
+ * A Word file on a listing card (Adam, 11 Nov 2026): read (or kept), and in
+ * the audit pack only as a plain copy (a .docx) or not at all (a .doc), so the
+ * card says so, with "Upload a PDF" to replace it.
  * The PDF replaces the file as Replace does, and is read in its turn; what
  * was read from the Word file stays on the card, since a read adds to what is
  * there. Nothing for any other file.

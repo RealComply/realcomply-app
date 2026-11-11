@@ -6,6 +6,8 @@ import { buildComplianceRecordPdf, type ComplianceRecordInput } from "@/lib/pdf/
 import type { PackDocument } from "@/lib/pdf/pack-documents";
 import { allItemsInRuleset } from "@/lib/rules/nsw-sales";
 import { pdfPageTexts, pdfText } from "@/lib/testing/pdf-text";
+import { WORD_COPY_HEADER, WORD_COPY_NOTE } from "@/lib/pdf/word-copy";
+import { zip } from "@/lib/testing/zip";
 import type { Property } from "@/lib/types";
 
 // The audit pack's masthead and footer, to the design Adam approved on 12 Oct
@@ -165,6 +167,48 @@ describe("every document on the listing, inside the one PDF (2 Nov 2026)", () =>
       [doc().path, true],
       ["a/p/b1/2-contract.pdf", true],
       ["a/p/f3/3-proposal.docx", false],
+    ]);
+  });
+
+  it("a Word file goes in as a plain copy, said on its separator page; one that can't be drawn is named (Adam, 11 Nov 2026)", async () => {
+    const recordPages = (await pdfPageTexts(await pack())).length;
+    const letterXml =
+      '<?xml version="1.0"?><w:document><w:body>' +
+      ["Harbour Conveyancing (made up)", "4 November 2026", "We enclose the draft contract for sale."]
+        .map((t) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`)
+        .join("") +
+      "</w:body></w:document>";
+    const report: Array<[string, boolean]> = [];
+    const bytes = await pack({
+      documents: [
+        doc({ stage: "Pre-market", cardTitle: "Covering letter", fileName: "Covering letter (made up).docx", path: "a/p/b1a/1-letter.docx", kind: "word" }),
+        doc({ stage: "Pre-market", cardTitle: "Covering letter", fileName: "Not really Word (made up).docx", path: "a/p/b1a/2-broken.docx", kind: "word" }),
+        doc({ fileName: "fine.pdf", path: "a/p/d3/3-fine.pdf" }),
+      ],
+      loadDocument: async (d) =>
+        d.path.endsWith("letter.docx")
+          ? { bytes: zip({ "word/document.xml": letterXml }) }
+          : d.path.endsWith("broken.docx")
+            ? { bytes: new TextEncoder().encode("this was never a Word file") }
+            : { bytes: await onePagePdf() },
+      report: (path, included) => report.push([path, included]),
+    });
+    const pages = (await pdfPageTexts(bytes)).map((t) => t.replace(/\s+/g, " "));
+    // Record, contents, then: separator + the copy's page, separator only, separator + 1 page.
+    const first = recordPages + 2;
+    assert.equal(pages.length, recordPages + 1 + 2 + 1 + 2);
+    assert.ok(pages[first - 1].includes(WORD_COPY_NOTE), pages[first - 1]);
+    assert.ok(!pages[first - 1].includes("Not included in this PDF"));
+    assert.ok(pages[first].includes(`${WORD_COPY_HEADER} · Covering letter (made up).docx`), pages[first]);
+    assert.ok(pages[first].includes("We enclose the draft contract for sale."));
+    assert.ok(pages[first + 1].includes("Not included in this PDF: Word document. Kept in RealComply. Upload it as a PDF to include it here."), pages[first + 1]);
+    assert.ok(pages[first + 3].includes("Someone else's document"), "the documents after it still go in");
+    assert.ok(pages[recordPages].includes("Covering letter (made up).docx · Uploaded by Ana Agent, 1 October 2026 · plain copy from Word"), pages[recordPages]);
+    assert.ok(pages[recordPages].includes("Not really Word (made up).docx · Uploaded by Ana Agent, 1 October 2026 · not included in this PDF"));
+    assert.deepEqual(report, [
+      ["a/p/b1a/1-letter.docx", true],
+      ["a/p/b1a/2-broken.docx", false],
+      ["a/p/d3/3-fine.pdf", true],
     ]);
   });
 
