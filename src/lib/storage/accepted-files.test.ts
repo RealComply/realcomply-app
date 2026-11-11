@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 import {
   ACCEPTED_FILES,
   ACCEPTED_FILES_WITH_WORD,
+  KEPT_AS_WORD,
+  READ_FROM_WORD,
   UPLOAD_A_PDF,
   cantReadMessage,
   savedButCantRead,
   unreadableKind,
+  wordFileNotice,
 } from "@/lib/storage/accepted-files";
 
 // The approved words (Adam, 2 to 3 Nov 2026), word for word.
@@ -17,7 +20,12 @@ describe("the words", () => {
   });
 
   it("on listing cards, Word too (Adam, 11 Nov 2026)", () => {
-    assert.equal(ACCEPTED_FILES_WITH_WORD, "Accepted files: PDF, clear photo or Word.");
+    assert.equal(ACCEPTED_FILES_WITH_WORD, "Accepted files: PDF, clear photo or Word. Only PDFs and photos go into the audit pack.");
+  });
+
+  it("says a Word file on a card isn't in the audit pack (Adam, 11 Nov 2026)", () => {
+    assert.equal(READ_FROM_WORD, "Read from your Word file. To include it in the audit pack, upload it as a PDF.");
+    assert.equal(KEPT_AS_WORD, "Kept as a Word file. To include it in the audit pack, upload it as a PDF.");
   });
 
   it("names the button exactly", () => {
@@ -44,7 +52,7 @@ describe("the words", () => {
   });
 
   it("uses no dashes and never the word compliant", () => {
-    for (const text of [ACCEPTED_FILES, ACCEPTED_FILES_WITH_WORD, UPLOAD_A_PDF, ...(["Word files", "older Word files (.doc)", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
+    for (const text of [ACCEPTED_FILES, ACCEPTED_FILES_WITH_WORD, READ_FROM_WORD, KEPT_AS_WORD, UPLOAD_A_PDF, ...(["Word files", "older Word files (.doc)", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
       assert.doesNotMatch(text, /[\u2013\u2014]/);
       assert.doesNotMatch(text, /compliant/i);
     }
@@ -125,5 +133,30 @@ describe("the sentence for a stored file", () => {
   it("is null for one it can", () => {
     assert.equal(cantReadMessage("Comparables.pdf"), null);
     assert.equal(cantReadMessage(null), null);
+  });
+});
+
+describe("what a listing card says about a Word file on it", () => {
+  it("a Word file a card reads: read from it, and how to get it into the pack", () => {
+    assert.equal(wordFileNotice("Covering letter (made up).docx", { read: true }), READ_FROM_WORD);
+    assert.equal(wordFileNotice("agency/property/a1/1730000000000-ID CHECK.DOCX", { read: true }), READ_FROM_WORD);
+  });
+
+  it("a Word file on a card nothing reads: kept, and how to get it into the pack", () => {
+    assert.equal(wordFileNotice("Pool certificate.docx", { read: false }), KEPT_AS_WORD);
+    assert.equal(wordFileNotice("Pool certificate.doc", { read: false }), KEPT_AS_WORD);
+  });
+
+  it("an old Word file (.doc) is kept, never read", () => {
+    assert.equal(wordFileNotice("Covering letter.doc", { read: true }), KEPT_AS_WORD);
+    // On a card that reads, the can't-read notice is shown for it instead.
+    assert.equal(unreadableKind("Covering letter.doc", { listingCard: true }), "older Word files (.doc)");
+  });
+
+  it("says nothing for any other file, or none", () => {
+    for (const name of ["contract.pdf", "photo.jpg", "sheet.xlsx", "fwd.msg", "letter.docx.pdf", "", null, undefined]) {
+      assert.equal(wordFileNotice(name, { read: true }), null);
+      assert.equal(wordFileNotice(name, { read: false }), null);
+    }
   });
 });

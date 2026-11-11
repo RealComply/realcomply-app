@@ -18,7 +18,7 @@ import { formatAuDate } from "@/lib/format-date";
 import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
 import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
 import { checkedPdf } from "@/lib/pdf/checked-pdf";
-import { fileTypeLabel, type PackDocument } from "@/lib/pdf/pack-documents";
+import { notIncludedNote, type PackDocument } from "@/lib/pdf/pack-documents";
 import type { EspPackRow } from "@/lib/esp-history";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { copiedLinkLine, emailedLinkLine } from "@/lib/links/delivery";
@@ -1107,7 +1107,7 @@ async function appendDocuments(
     const pageNo = doc.getPageCount();
     let note: string | null = null;
     if (d.kind === "other") {
-      note = `Not included in this PDF: ${fileTypeLabel(d.fileName)}. Kept in RealComply.`;
+      note = notIncludedNote(d.fileName);
     } else {
       const loaded = await loadDocument(d).catch(() => ({ problem: "it couldn't be read" }) as LoadedDocument);
       if ("problem" in loaded) {

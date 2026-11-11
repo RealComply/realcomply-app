@@ -18,6 +18,7 @@ import {
   ORDER_ON_AGENT_KEY,
   SETTLEMENT_DATE_LABEL,
   addedAfterSignOffLine,
+  getItem,
   selfManaged,
   settlementDateOf,
 } from "@/lib/rules/nsw-sales";
@@ -37,7 +38,7 @@ import {
   agreementPredatesAml,
 } from "@/lib/rules/aml-precommencement";
 import { FileDropZone, type FilePicker } from "@/components/FileDropZone";
-import { AcceptedFilesLine, CantReadNotice, askForPdfAt, useUploadPdfAsk } from "@/components/AcceptedFiles";
+import { AcceptedFilesLine, CantReadNotice, WordFileNotice, askForPdfAt, useUploadPdfAsk } from "@/components/AcceptedFiles";
 import { unreadableKind } from "@/lib/storage/accepted-files";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
 import { FlagNote, useFlagFor } from "@/components/compliance/SendBack";
@@ -688,6 +689,9 @@ function EvidenceUploader({
   // (application/vnd...)") and of Read again, which can't read it either. By
   // the attached file's name, so it is said again on reload.
   const reads = isAiReadItem(itemKey);
+  // The identity card checks its file (screenForIdDocument), Word included
+  // (Adam, 11 Nov 2026), so it says what a reading card says about Word.
+  const readsOrChecks = reads || Boolean(getItem(itemKey)?.rejectIdDocuments);
   const picker = useRef<FilePicker>(null);
   const attachedName = evidencePath ? (evidenceFileName ?? evidencePath.split("/").pop() ?? null) : null;
   const cantRead = reads && unreadableKind(attachedName, { listingCard: true }) !== null;
@@ -858,6 +862,10 @@ function EvidenceUploader({
           ) : (
             readNote && <ReadNoteLine note={readNote} />
           )}
+          {/* A Word file isn't in the audit pack (Adam, 11 Nov 2026). */}
+          {!cantRead && (
+            <WordFileNotice fileName={attachedName} read={readsOrChecks} onUploadPdf={uploadPdf} className="w-full" />
+          )}
         </div>
       ) : (
         // Choosing a file and attaching it are two steps, and missing the
@@ -884,8 +892,8 @@ function EvidenceUploader({
               label="Drag a file here, or click to browse"
               pickerRef={picker}
             />
-            {/* Only where RealComply reads the file (Adam, 3 Nov 2026). */}
-            {reads && <AcceptedFilesLine word />}
+            {/* Only where RealComply reads the file (Adam, 3 Nov 2026), or checks it. */}
+            {readsOrChecks && <AcceptedFilesLine word />}
             <button
               type="submit"
               disabled={uploading || uploadPending}
@@ -3264,6 +3272,9 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
             <AcceptedFilesLine word />
             {cantRead && !uploading && !extracting && (
               <CantReadNotice listingCard fileName={evidence?.fileName} onUploadPdf={() => reportPicker.current?.open()} />
+            )}
+            {evidence && !cantRead && !uploading && !extracting && (
+              <WordFileNotice read fileName={evidence.fileName} onUploadPdf={() => reportPicker.current?.open()} />
             )}
             {(uploading || extracting) && (
               <span className="text-xs text-rc-faint">{uploading ? "Uploading…" : "Reading report…"}</span>

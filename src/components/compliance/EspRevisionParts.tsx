@@ -7,7 +7,7 @@ import { REVISION_COMPARABLES_LABEL, saleLine, type RevisionCandidate } from "@/
 import { factorsLine } from "@/lib/rules/comparables-rules";
 import type { AreaKind } from "@/lib/rules/council-area";
 import { FileDropZone } from "@/components/FileDropZone";
-import { AcceptedFilesLine, CantReadNotice } from "@/components/AcceptedFiles";
+import { AcceptedFilesLine, CantReadNotice, WordFileNotice } from "@/components/AcceptedFiles";
 import { unreadableKind } from "@/lib/storage/accepted-files";
 import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -486,6 +486,10 @@ export function EspDraftForm({
           <Sparkles size={13} className="mt-0.5 shrink-0" />
           <span>Read from the notice. Check these against it before you save.</span>
         </p>
+      )}
+      {/* A revision can't be changed once recorded, so a Word notice is swapped for its PDF here, before it is. */}
+      {!pending.notRecognised && !cantRead && (
+        <WordFileNotice read fileName={pending.fileName} onUploadPdf={uploadPdf} disabled={saving || cancelling} />
       )}
 
       {!pending.notRecognised && (

@@ -23,11 +23,39 @@
 export const ACCEPTED_FILES = "Accepted files: Clear photo or PDF.";
 
 /**
- * Under every reading upload on a listing card (Adam, 11 Nov 2026): Word is
- * read there too (lib/documents/word-read.ts). The registers and CPD don't
- * read Word, and keep the line above.
+ * Under every reading upload on a listing card (Adam, 11 Nov 2026, "free for
+ * now, no conversion service"): Word is read there too
+ * (lib/documents/word-read.ts), but only PDFs and photos go into the audit
+ * pack. The registers and CPD don't read Word, and keep the line above.
  */
-export const ACCEPTED_FILES_WITH_WORD = "Accepted files: PDF, clear photo or Word.";
+export const ACCEPTED_FILES_WITH_WORD = "Accepted files: PDF, clear photo or Word. Only PDFs and photos go into the audit pack.";
+
+/** On the card after a Word file is read (Adam, 11 Nov 2026), with "Upload a PDF" to replace it. */
+export const READ_FROM_WORD = "Read from your Word file. To include it in the audit pack, upload it as a PDF.";
+
+/**
+ * On a card nothing reads, after a Word file is uploaded: kept, but, as on
+ * every card, not in the audit pack. With "Upload a PDF" to replace it.
+ */
+export const KEPT_AS_WORD = "Kept as a Word file. To include it in the audit pack, upload it as a PDF.";
+
+/**
+ * What a listing card says about its Word file (.docx or .doc), or null for
+ * any other file. `read`: the card reads its file (or checks it, as the
+ * identity card does). The old format (.doc) is never read, so it is kept.
+ *
+ * Where a card already says it can't read the file (cantReadMessage, for a
+ * .doc on a card that reads), that notice speaks for it and this isn't shown.
+ */
+export function wordFileNotice(fileName: string | null | undefined, where: { read: boolean }): string | null {
+  if (!fileName) return null;
+  const base = fileName.slice(fileName.lastIndexOf("/") + 1).trim();
+  const dot = base.lastIndexOf(".");
+  const ext = dot < 0 ? "" : base.slice(dot + 1).toLowerCase();
+  if (ext === "docx") return where.read ? READ_FROM_WORD : KEPT_AS_WORD;
+  if (ext === "doc") return KEPT_AS_WORD;
+  return null;
+}
 
 /** The button on the notice: straight to choosing a replacement at the same spot. */
 export const UPLOAD_A_PDF = "Upload a PDF";
