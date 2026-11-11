@@ -40,6 +40,7 @@ import {
 } from "@/lib/rules/question-card";
 import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/rules/not-applicable";
 import { COVERING_LETTER_KEY, afterAgentSave } from "@/lib/documents/covering-letter";
+import { reportToCheck, withReportChoice } from "@/lib/documents/report-choice";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { checkSalePrice } from "@/lib/rules/sale-price";
 import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
@@ -123,7 +124,8 @@ const CARRIED_BY_ITEM: Record<string, string[]> = {
   a3: ["aiDraft"],
   b1: ["aiDraft", "contractRead"],
   // espGivenOn and the ESP notice: s72A(2), from 17 Nov 2026 (Adam, 9 Nov 2026).
-  a4: ["reportRead", "espGivenOn", "espNoticePath", "espNoticeFileName"],
+  // reportChoices: "Upload report" or "This is my report", who and when (Master, 11 Nov 2026).
+  a4: ["reportRead", "espGivenOn", "espNoticePath", "espNoticeFileName", "reportChoices"],
   // Fewer than 3 comparable, and the information used (Reg s12C(2), s12F; 0119).
   a4c: ["comparablesRecord"],
   // The settlement date, kept when a save doesn't send it (a reopen, say).
@@ -2855,6 +2857,17 @@ export async function uploadEvidence(
     }
   }
 
+  // The ESP card was asking for the comparable sales report (no sales found
+  // in the file on it, not confirmed): this upload is "Upload report", and is
+  // recorded as the choice, who and when (Master, 11 Nov 2026). Looked at
+  // before the file changes; written before the new file is read below, so
+  // the read's own write keeps it.
+  const { data: espBefore } =
+    itemKey === "a4"
+      ? await supabase.from("property_items").select("data, evidence_path").eq("property_id", propertyId).eq("item_key", "a4").maybeSingle()
+      : { data: null };
+  const replacingRefusedReport = reportToCheck(espBefore as { data?: unknown; evidence_path?: string | null } | null);
+
   const { error } = await finalizeEvidenceRecord(supabase, {
     agencyId: profile.agency_id,
     propertyId,
@@ -2862,6 +2875,29 @@ export async function uploadEvidence(
     path,
     fileName,
   });
+
+  if (!error && replacingRefusedReport) {
+    const before = espBefore as { data?: unknown; evidence_path: string };
+    const { data: espNow } = await supabase
+      .from("property_items")
+      .select("data")
+      .eq("property_id", propertyId)
+      .eq("item_key", "a4")
+      .maybeSingle();
+    await supabase
+      .from("property_items")
+      .update({
+        data: withReportChoice((espNow as { data?: unknown } | null)?.data ?? before.data, {
+          path: before.evidence_path,
+          choice: "uploaded",
+          by: user.id,
+          byName: profile.full_name ?? profile.email,
+          at: new Date().toISOString(),
+        }),
+      })
+      .eq("property_id", propertyId)
+      .eq("item_key", "a4");
+  }
 
   if (error) {
     revalidatePath(`/dashboard/${propertyId}`);

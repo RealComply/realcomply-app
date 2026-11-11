@@ -11,7 +11,8 @@ import {
   type ComparablesArea,
 } from "@/components/comparables/MostComparable";
 import type { ComparablesRecord } from "@/lib/rules/comparables-rules";
-import { STRATA_LAND_NOT_SHOWN } from "@/lib/rules/strata-land";
+import { STRATA_LAND_NOT_SHOWN, isStrataDwelling } from "@/lib/rules/strata-land";
+import { missingSaleDetails, missingSaleLine } from "@/lib/rules/sale-details";
 import { DETAIL_FIELDS, type DetailKey } from "@/lib/rules/comparable-changes";
 import { DictateButton, DictationSuspended, appendDictated } from "@/components/Dictate";
 import {
@@ -327,6 +328,10 @@ function ComparableRow({
 
   const similar = similaritiesFrom(subject, comparable);
   const different = differencesFrom(subject, comparable);
+  // What this sale is still missing, to fill in with Edit details (Master, 11 Nov 2026).
+  const stillToAdd = missingSaleLine(
+    missingSaleDetails(comparable, isStrataDwelling(subject.propertyType ?? null, subject.isStrata ?? null)),
+  );
   const canCompare = similar.length > 0 || different.length > 0;
   const dimmed = comparable.weighting === "not_comparable";
 
@@ -443,6 +448,7 @@ function ComparableRow({
             {spec(comparable) ? ` · ${spec(comparable)}` : ""}
             {comparable.distanceM !== null ? ` · ${formatDistance(comparable.distanceM)}` : ""}
           </p>
+          {stillToAdd && <p className="mt-0.5 text-[11px] font-medium text-rc-amber-deep">{stillToAdd}</p>}
           {comparable.source === "agent" && (
             <p className="mt-0.5 text-[11px] text-rc-faint">Added by you, not from the report.</p>
           )}

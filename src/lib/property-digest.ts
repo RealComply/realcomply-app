@@ -5,6 +5,7 @@
 import { allItemsFor, itemsForStage, type ComplianceItem } from "@/lib/rules/nsw-sales";
 import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
 import { withEffectiveEspStatus } from "@/lib/rules/esp-reasoning-gate";
+import { reportToCheck } from "@/lib/documents/report-choice";
 import type { Property, PropertyItem } from "@/lib/types";
 
 export type PropertyDigest = {
@@ -29,6 +30,13 @@ export type PropertyDigest = {
    * stops reminding about these (Adam, 5 Nov 2026).
    */
   onMarketComplete: boolean;
+  /**
+   * No comparable sales were found in the report on the ESP card, and the
+   * agent hasn't uploaded another or said "This is my report" (Master, 11 Nov
+   * 2026; lib/documents/report-choice). Needs attention, but holds nothing:
+   * the reader can be wrong.
+   */
+  reportToCheck: boolean;
 };
 
 /** On market, as stored on properties.stage. */
@@ -123,6 +131,7 @@ export function computePropertyDigests(
       awaiting,
       lastActivityAt,
       onMarketComplete: hold.stage > ON_MARKET_STAGE,
+      reportToCheck: reportToCheck(rows.get("a4")),
     };
   });
 }
