@@ -4,7 +4,7 @@ import {
   ACCEPTED_FILES,
   ACCEPTED_FILES_WITH_WORD,
   KEPT_AS_WORD,
-  OLD_WORD_NOT_IN_PACK,
+  OLD_WORD_ON_READING_CARD,
   READ_FROM_WORD,
   UPLOAD_A_PDF,
   cantReadMessage,
@@ -27,14 +27,15 @@ describe("the words", () => {
   it("says a Word file on a card isn't in the audit pack (Master's words, 11 Nov 2026)", () => {
     assert.equal(READ_FROM_WORD, "Read from your Word file. Word files aren't included in the audit pack. To include it, upload it as a PDF.");
     assert.equal(KEPT_AS_WORD, "Kept as a Word file. Word files aren't included in the audit pack. To include it, upload it as a PDF.");
-    assert.equal(OLD_WORD_NOT_IN_PACK, "To include it in the audit pack, upload it as a PDF.");
+    assert.equal(
+      OLD_WORD_ON_READING_CARD,
+      "Saved, but we can't read older Word files (.doc), and Word files aren't included in the audit pack. Save it as a PDF and upload that, and we'll fill in the details and include it in the pack.",
+    );
   });
 
-  it("an old Word file (.doc) on a listing card: the can't-read notice and how to get it into the pack, as one notice", () => {
-    assert.equal(
-      cantReadMessage("Covering letter.doc", { listingCard: true }),
-      "Saved, but we can't read older Word files (.doc). Save it as a PDF and upload that, and we'll fill in the details for you. To include it in the audit pack, upload it as a PDF.",
-    );
+  it("an old Word file (.doc) on a listing card: one notice, saying \"upload it as a PDF\" once (Master, 11 Nov 2026)", () => {
+    assert.equal(cantReadMessage("Covering letter.doc", { listingCard: true }), OLD_WORD_ON_READING_CARD);
+    assert.equal(OLD_WORD_ON_READING_CARD.match(/as a PDF/g)?.length, 1);
     // Off a listing card (the registers), and for other kinds, as before.
     assert.equal(cantReadMessage("Certificate.doc"), savedButCantRead("Word files"));
     assert.equal(cantReadMessage("Comparables.xlsx", { listingCard: true }), savedButCantRead("Excel files"));
@@ -65,7 +66,7 @@ describe("the words", () => {
   });
 
   it("uses no dashes and never the word compliant", () => {
-    for (const text of [ACCEPTED_FILES, ACCEPTED_FILES_WITH_WORD, READ_FROM_WORD, KEPT_AS_WORD, OLD_WORD_NOT_IN_PACK, UPLOAD_A_PDF, ...(["Word files", "older Word files (.doc)", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
+    for (const text of [ACCEPTED_FILES, ACCEPTED_FILES_WITH_WORD, READ_FROM_WORD, KEPT_AS_WORD, OLD_WORD_ON_READING_CARD, UPLOAD_A_PDF, ...(["Word files", "older Word files (.doc)", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
       assert.doesNotMatch(text, /[\u2013\u2014]/);
       assert.doesNotMatch(text, /compliant/i);
     }
@@ -128,10 +129,7 @@ describe("on a listing card, where Word is read (Adam, 11 Nov 2026)", () => {
     assert.equal(unreadableKind("Letter.eml", card), "saved emails");
     assert.equal(unreadableKind("contract.pdf", card), null);
     assert.equal(cantReadMessage("ID check form.docx", card), null);
-    assert.equal(
-      cantReadMessage("Covering letter.doc", card),
-      "Saved, but we can't read older Word files (.doc). Save it as a PDF and upload that, and we'll fill in the details for you. To include it in the audit pack, upload it as a PDF.",
-    );
+    assert.equal(cantReadMessage("Covering letter.doc", card), OLD_WORD_ON_READING_CARD);
   });
 });
 

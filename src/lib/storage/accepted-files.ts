@@ -38,8 +38,13 @@ export const READ_FROM_WORD =
 export const KEPT_AS_WORD =
   "Kept as a Word file. Word files aren't included in the audit pack. To include it, upload it as a PDF.";
 
-/** Added to the can't-read notice for an old Word file (.doc) on a listing card: one notice, not two. */
-export const OLD_WORD_NOT_IN_PACK = "To include it in the audit pack, upload it as a PDF.";
+/**
+ * An old Word file (.doc) on a card that reads, in place of the usual
+ * can't-read sentence: one notice that says both, and says "upload it as a
+ * PDF" once (Master, 11 Nov 2026).
+ */
+export const OLD_WORD_ON_READING_CARD =
+  "Saved, but we can't read older Word files (.doc), and Word files aren't included in the audit pack. Save it as a PDF and upload that, and we'll fill in the details and include it in the pack.";
 
 /**
  * What a listing card says about its Word file (.docx or .doc), or null for
@@ -104,11 +109,11 @@ export function savedButCantRead(kind: UnreadableKind): string {
 
 /**
  * The sentence for a stored file the reader can't open, or null when it can
- * be read. An old Word file (.doc) on a listing card also says how to get it
- * into the audit pack (Master, 11 Nov 2026), in the same notice.
+ * be read. An old Word file (.doc) on a listing card also says it isn't in
+ * the audit pack (OLD_WORD_ON_READING_CARD).
  */
 export function cantReadMessage(fileName: string | null | undefined, where: { listingCard?: boolean } = {}): string | null {
   const kind = unreadableKind(fileName, where);
   if (!kind) return null;
-  return where.listingCard && kind === "older Word files (.doc)" ? `${savedButCantRead(kind)} ${OLD_WORD_NOT_IN_PACK}` : savedButCantRead(kind);
+  return where.listingCard && kind === "older Word files (.doc)" ? OLD_WORD_ON_READING_CARD : savedButCantRead(kind);
 }
