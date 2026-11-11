@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SaleMethod } from "@/lib/types";
+import { DateBox } from "@/components/DateBox";
 
 /**
  * How the property is being sold — the one new question at listing set-up,
@@ -67,8 +68,7 @@ export function SaleMethodFields({
           <div className="flex flex-wrap gap-2">
             <label className="min-w-[9rem] flex-1">
               <span className="block text-xs text-rc-muted">Auction date</span>
-              <input
-                type="date"
+              <DateBox
                 name="auctionDate"
                 defaultValue={defaultDate ?? ""}
                 className="mt-1 w-full rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm"

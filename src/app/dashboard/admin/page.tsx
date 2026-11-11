@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { KeyRound, Users, Building2, Ticket, Inbox } from "lucide-react";
 import { requireProfile } from "@/lib/data/current-profile";
 import { createServiceClient } from "@/lib/supabase/service";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, formatAuDateTime, formatAuDayMonthTime, formatSydney } from "@/lib/format-date";
 import { FounderInvites, type FounderInvite } from "@/components/admin/FounderInvites";
 import { EarlyAccessQueue, type EarlyAccessRow } from "@/components/admin/EarlyAccessQueue";
 import { WelcomeTest } from "@/components/admin/WelcomeTest";
@@ -220,12 +220,7 @@ export default async function AdminPage() {
   );
 
   const sydneyShort = (iso: string, withYear: boolean) =>
-    new Intl.DateTimeFormat("en-AU", {
-      timeZone: "Australia/Sydney",
-      day: "numeric",
-      month: "short",
-      ...(withYear ? { year: "numeric" } : {}),
-    }).format(new Date(iso));
+    formatSydney(iso, { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
 
   const inviteList: FounderInvite[] = invites.map((invite) => ({
     token: invite.token,
@@ -313,14 +308,7 @@ export default async function AdminPage() {
 
   // The property management announcement (Adam, 22 Oct 2026): the five
   // offices as they stand now, and what's recorded for each.
-  const sydneyWhen = (iso: string) =>
-    new Intl.DateTimeFormat("en-AU", {
-      timeZone: "Australia/Sydney",
-      day: "numeric",
-      month: "short",
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date(iso));
+  const sydneyWhen = (iso: string) => formatAuDayMonthTime(iso);
   const pmAnnouncementRows: PmAnnouncementListRow[] = (await pmAnnouncementList(supabase)).map((r) => ({
     office: r.office,
     licenseeName: r.record ? r.record.recipient_name : r.licenseeName,
@@ -564,7 +552,7 @@ export default async function AdminPage() {
               {r.step && r.status === "started" ? ` (waiting at ${r.step})` : ""}
             </span>{" "}
             <span className="text-rc-muted">
-              {nameFor(r.agency_ref)} · {new Date(r.started_at).toLocaleString("en-AU", { timeZone: "Australia/Sydney" })}
+              {nameFor(r.agency_ref)} · {formatAuDateTime(r.started_at)}
               {r.certificate_number ? ` · certificate ${r.certificate_number}` : ""}
             </span>
             {r.reason && <p className="mt-0.5 text-rc-amber-deep">{r.reason}</p>}

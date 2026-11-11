@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { FileSignature, Landmark } from "lucide-react";
 import { recordLicenseeHistoryDate, type HistoryDateState } from "@/lib/actions/licensee";
 import { openAnnexureSigning } from "@/lib/actions/sg-annexure";
+import { DateBox } from "@/components/DateBox";
 
 // The new licensee in charge's two Home cards after a change (0080; mockup
 // approved by Adam, 16 Oct 2026).
@@ -68,8 +69,7 @@ export function FairTradingCard({
               <input type="hidden" name="which" value="fair_trading" />
               <label className="grid gap-1 text-xs font-semibold text-rc-ink">
                 Date Fair Trading was told
-                <input
-                  type="date"
+                <DateBox
                   name="date"
                   defaultValue={todayIso}
                   max={todayIso}

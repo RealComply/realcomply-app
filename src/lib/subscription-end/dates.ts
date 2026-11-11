@@ -6,22 +6,16 @@
 // job, which runs in the small hours of Sydney's morning, deletes them in the
 // first run on 22 October. "Download them before then" is then true to the day.
 
+import { formatAuDate, formatSydney, sydneyDate as sharedSydneyDate } from "@/lib/format-date";
+
 export const RECORDS_WINDOW_DAYS = 14;
 export const REMINDER_DAY = 7;
 /** How long RealComply keeps its own activity record (DPA cl 4.9). */
 export const ACTIVITY_RECORD_YEARS = 7;
 
-const SYDNEY = "Australia/Sydney";
-
-/** "2026-10-08": the Sydney calendar date of an instant. */
+/** "2026-10-08": the Sydney calendar date of an instant (lib/format-date.ts, where every date is formatted). */
 export function sydneyDate(instant: Date): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: SYDNEY,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(instant);
-  return parts; // en-CA formats as YYYY-MM-DD
+  return sharedSydneyDate(instant);
 }
 
 /** Adds whole calendar days to a YYYY-MM-DD date. */
@@ -67,23 +61,10 @@ export function onOrAfter(date: string, now: Date): boolean {
 
 /** "22 October 2026". */
 export function longDate(date: string): string {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(Date.UTC(y, m - 1, d)));
+  return formatAuDate(date);
 }
 
 /** "22 October 2026, 2:04 am" in Sydney. */
 export function longDateTime(instant: Date): string {
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: SYDNEY,
-  }).format(instant);
+  return formatSydney(instant, { day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
 }

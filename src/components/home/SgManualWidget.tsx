@@ -1,5 +1,6 @@
 import { BookOpen } from "lucide-react";
 import { WidgetCard } from "./WidgetCard";
+import { formatAuShortDate } from "@/lib/format-date";
 
 export function SgManualWidget({
   hasVersion,
@@ -19,7 +20,7 @@ export function SgManualWidget({
       metric={hasVersion ? "On file" : "Not uploaded"}
       caption={
         hasVersion
-          ? `${versionLabel ?? "Current version"}${uploadedAt ? ` · ${new Date(uploadedAt).toLocaleDateString("en-AU")}` : ""}`
+          ? `${versionLabel ?? "Current version"}${uploadedAt ? ` · ${formatAuShortDate(uploadedAt)}` : ""}`
           : "Upload your manual to keep it on file"
       }
       tone={hasVersion ? "ok" : "warn"}

@@ -9,6 +9,7 @@ import {
   type ActionState,
 } from "@/lib/actions/trust-account";
 import type { TrustAccount } from "@/lib/types";
+import { DateBox } from "@/components/DateBox";
 
 // Which trust account you are looking at, and the controls for managing them.
 //
@@ -260,8 +261,7 @@ function OpenedOnField({ defaultValue = "" }: { defaultValue?: string }) {
       title="Only if it opened recently. Months before this date are not asked for. Leave it blank if it was already open."
     >
       Opened on
-      <input
-        type="date"
+      <DateBox
         name="openedOn"
         defaultValue={defaultValue}
         className="rounded-lg border border-rc-border px-2 py-1.5 text-sm text-rc-ink outline-none focus:border-rc-green-deep"

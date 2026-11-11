@@ -1,6 +1,6 @@
 import { addNswBusinessDays } from "@/lib/licensee-history";
 import { sydneyDate } from "@/lib/subscription-end/dates";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, formatAuTime } from "@/lib/format-date";
 
 // EMAIL THAT GETS THROUGH (Adam, 2 Nov 2026, queue item 2; 0107).
 //
@@ -40,15 +40,7 @@ export type LinkDelivery = {
 export function formatAuDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const time = new Intl.DateTimeFormat("en-AU", {
-    timeZone: "Australia/Sydney",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  })
-    .format(d)
-    .replace(/\s/g, "")
-    .toLowerCase();
+  const time = formatAuTime(d).replace(/\s/g, "");
   return `${formatAuDate(sydneyDate(d))}, ${time}`;
 }
 

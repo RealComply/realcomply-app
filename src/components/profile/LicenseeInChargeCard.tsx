@@ -9,6 +9,7 @@ import {
   type HistoryDateState,
 } from "@/lib/actions/licensee";
 import { changeConfirmation, changeHint } from "@/lib/licensee-history";
+import { DateBox } from "@/components/DateBox";
 
 // "Licensee in charge" in Office profile (0080; mockup approved by Adam, 16
 // Oct 2026): who it is, their licence, since when and when Fair Trading was
@@ -276,8 +277,7 @@ function ChangeForm({
       </label>
       <label className="grid gap-1.5 text-sm font-semibold text-rc-ink">
         Date the change took effect
-        <input
-          type="date"
+        <DateBox
           name="tookEffect"
           value={tookEffect}
           max={todayIso}
@@ -292,8 +292,7 @@ function ChangeForm({
       </label>
       <label className="grid gap-1.5 text-sm font-semibold text-rc-ink">
         Date Fair Trading was told
-        <input
-          type="date"
+        <DateBox
           name="fairTradingTold"
           value={told}
           max={todayIso}
@@ -398,8 +397,7 @@ export function AddDate({
     <form action={formAction} className="mt-1.5 flex flex-wrap items-center gap-2">
       <input type="hidden" name="lineId" value={lineId} />
       <input type="hidden" name="which" value={which} />
-      <input
-        type="date"
+      <DateBox
         name="date"
         defaultValue={todayIso}
         max={todayIso}

@@ -1,3 +1,4 @@
+import { formatSydney } from "@/lib/format-date";
 // The licensee sign-off statement.
 //
 // This is the text a licensee in charge reads and puts their name to, often
@@ -46,7 +47,7 @@ function formatDate(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  return formatSydney(d, { day: "numeric", month: "long", year: "numeric" });
 }
 
 function formatMoney(n: number): string {

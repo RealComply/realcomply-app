@@ -15,6 +15,7 @@ import {
 import { accessFrom } from "@/lib/access";
 import { POLICIES, otherInsuranceTitle } from "@/lib/insurance-read";
 import type { Agency, InsurancePolicy, InsurancePolicyType, LicenceReminder, Profile } from "@/lib/types";
+import { formatAuDate } from "@/lib/format-date";
 
 // Expiry reminders: the daily job. Every item in RealComply with an expiry
 // date (a person's licence, the corporation licence, and since 23 Oct 2026
@@ -245,8 +246,8 @@ export function holderDocument(subject: Subject, days: number, licenseeCopied = 
 
   return {
     preheader: expired
-      ? `Your ${subject.credential} expired on ${subject.expiry}.`
-      : `Expires ${expiryPhrase(days)}, on ${subject.expiry}.`,
+      ? `Your ${subject.credential} expired on ${formatAuDate(subject.expiry)}.`
+      : `Expires ${expiryPhrase(days)}, on ${formatAuDate(subject.expiry)}.`,
     title: `Hi ${subject.holderName.split(" ")[0]},`,
     sections: [
       {
@@ -254,7 +255,7 @@ export function holderDocument(subject: Subject, days: number, licenseeCopied = 
         rows: [
           {
             title: subject.credential,
-            sub: subject.licenceNumber ? `No. ${subject.licenceNumber} · ${subject.expiry}` : subject.expiry,
+            sub: subject.licenceNumber ? `No. ${subject.licenceNumber} · ${formatAuDate(subject.expiry)}` : formatAuDate(subject.expiry),
             detail: expired
               ? `Expired ${expiryPhrase(days)}.`
               : `Expires ${expiryPhrase(days)}.`,
@@ -287,7 +288,7 @@ export function licenseeDocument(subject: Subject, days: number, agency: Agency)
         : "They've had the same notice. Nothing needed from you unless the date passes without a renewed licence being uploaded.";
 
   return {
-    preheader: expired ? `${who} has expired.` : `${who} expires on ${subject.expiry}.`,
+    preheader: expired ? `${who} has expired.` : `${who} expires on ${formatAuDate(subject.expiry)}.`,
     title: expired ? "A credential has expired" : "A credential is expiring",
     meta: agency.name,
     sections: [
@@ -296,7 +297,7 @@ export function licenseeDocument(subject: Subject, days: number, agency: Agency)
         rows: [
           {
             title: who,
-            sub: subject.licenceNumber ? `No. ${subject.licenceNumber} · ${subject.expiry}` : subject.expiry,
+            sub: subject.licenceNumber ? `No. ${subject.licenceNumber} · ${formatAuDate(subject.expiry)}` : formatAuDate(subject.expiry),
             detail: expired ? `Expired ${expiryPhrase(days)}.` : `Expires ${expiryPhrase(days)}.`,
             tone: expired ? "risk" : "attention",
           },
@@ -316,14 +317,14 @@ export function insuranceDocument(subject: Subject, days: number, agency: Agency
     : days <= 14
       ? "This one's close. If it's already renewed, upload the new certificate of currency to the Insurance register. RealComply reads the new date and these reminders stop."
       : "Worth starting the renewal with your insurer or broker. When the new certificate of currency comes through, upload it to the Insurance register. RealComply reads the new date and these reminders stop.";
-  const sub = [subject.issuer, subject.licenceNumber ? `No. ${subject.licenceNumber}` : null, subject.expiry]
+  const sub = [subject.issuer, subject.licenceNumber ? `No. ${subject.licenceNumber}` : null, formatAuDate(subject.expiry)]
     .filter(Boolean)
     .join(" · ");
 
   return {
     preheader: expired
-      ? `${subject.credential} expired on ${subject.expiry}.`
-      : `${subject.credential} expires on ${subject.expiry}.`,
+      ? `${subject.credential} expired on ${formatAuDate(subject.expiry)}.`
+      : `${subject.credential} expires on ${formatAuDate(subject.expiry)}.`,
     title: expired ? "An insurance policy has expired" : "An insurance policy is expiring",
     meta: agency.name,
     sections: [

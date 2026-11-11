@@ -34,7 +34,7 @@
 
 import { addNswBusinessDays } from "@/lib/licensee-history";
 import { SOI_FROM } from "@/lib/rules/underquoting-reforms";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, sydneyDate } from "@/lib/format-date";
 import type { AreaKind } from "@/lib/rules/council-area";
 import { MAX_MOST_COMPARABLE } from "@/lib/rules/comparables-rules";
 import { addressKey, type RevisionComparable } from "@/lib/rules/revision-comparables";
@@ -44,8 +44,7 @@ import { strataLandHidden } from "@/lib/rules/strata-land";
 export const SOI_STARTS_ON = "2027-02-08";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
-const sydneyToday = (now: Date) =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+const sydneyToday = (now: Date) => sydneyDate(now);
 
 /**
  * Whether the statement is switched on for the listing: never before midnight

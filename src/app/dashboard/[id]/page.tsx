@@ -45,7 +45,7 @@ import type { CouncilAreaView } from "@/components/property/CouncilArea";
 import type { ComparablesArea } from "@/components/comparables/MostComparable";
 import { areaOf } from "@/lib/rules/council-area";
 import { comparablesRulesApply, espDeterminedOn } from "@/lib/rules/comparables-rules";
-import { formatAuDate, formatAuTimestamp } from "@/lib/format-date";
+import { formatAuDate, formatAuTimestamp, formatSydney } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 
 // "Read uploaded documents" and "Read again" run from this page. A large PDF
@@ -55,11 +55,7 @@ import { sydneyDate } from "@/lib/subscription-end/dates";
 export const maxDuration = 300;
 
 function auctionDateLabel(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString("en-AU", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  return formatSydney(date, { weekday: "long", day: "numeric", month: "long" });
 }
 
 // Days until the auction, as a short phrase. Null when there is no date (TBC)

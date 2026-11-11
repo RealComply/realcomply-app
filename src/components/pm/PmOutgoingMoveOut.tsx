@@ -5,6 +5,7 @@ import { moveOutOutgoingTenant } from "@/lib/actions/pm";
 import type { ActionState } from "@/lib/actions/auth";
 import { todayInSydney } from "@/components/pm/pm-dates";
 import { RoofMark } from "@/components/RoofMark";
+import { DateBox } from "@/components/DateBox";
 
 // "Tenant has moved out" for an outgoing tenancy (brief B2), with the date.
 // The property stays where it is; only the old tenancy is updated.
@@ -31,8 +32,7 @@ export function PmOutgoingMoveOut({ propertyId, tenancyId }: { propertyId: strin
     <form action={formAction} className="flex flex-wrap items-center gap-2">
       <label className="flex items-center gap-2 text-[13px] text-rc-muted">
         Move-out date
-        <input
-          type="date"
+        <DateBox
           name="date"
           required
           defaultValue={todayInSydney()}

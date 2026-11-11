@@ -15,6 +15,7 @@ import { ComplaintFiles } from "@/components/registers/ComplaintFiles";
 import { ComplaintSignOff } from "@/components/registers/ComplaintSignOff";
 import { complaintAwaitsSignOff, complaintRecordLines } from "@/lib/reviews/records";
 import type { Complaint, ComplaintFile, Profile, Property } from "@/lib/types";
+import { DateBox } from "@/components/DateBox";
 
 const STATUS_STYLES: Record<string, string> = {
   open: "bg-red-100 text-red-700",
@@ -335,7 +336,7 @@ export function ComplaintsPanel({
         {adding && (
           <form onSubmit={logComplaint} className="mt-3 space-y-2 rounded-md border border-rc-border p-3">
             <div className="flex flex-wrap gap-2">
-              <input type="date" name="receivedDate" required className="rounded-md border border-rc-border px-2 py-1 text-sm" />
+              <DateBox name="receivedDate" required className="rounded-md border border-rc-border px-2 py-1 text-sm" />
               <input
                 type="text"
                 name="complainant"

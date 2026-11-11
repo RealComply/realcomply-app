@@ -3,6 +3,7 @@ import { SignatureBox } from "@/components/registers/SignatureBox";
 import { AskToSignButton } from "@/components/registers/AskToSignButton";
 import { notNeededReason, signoffTally } from "@/lib/signoff/awaiting";
 import type { Profile, SignoffDocument, SignoffSignature } from "@/lib/types";
+import { formatAuShortDate } from "@/lib/format-date";
 
 const CATEGORY_LABEL: Record<string, string> = {
   sg_manual: "SG Manual",
@@ -111,7 +112,7 @@ export function DocumentSignoffCard({
               <li key={sig.id} className="flex items-center justify-between py-1.5">
                 <span className={reason ? "text-rc-muted" : "text-rc-ink"}>{nameFor(sig.signer_id)}</span>
                 {sig.signed_at ? (
-                  <span className="text-xs text-rc-muted">Signed {new Date(sig.signed_at).toLocaleDateString("en-AU")}</span>
+                  <span className="text-xs text-rc-muted">Signed {formatAuShortDate(sig.signed_at)}</span>
                 ) : reason === "another_licensee_signed" ? (
                   <span className="text-xs text-rc-faint">Not needed — another licensee signed it off</span>
                 ) : reason === "left_the_office" ? (
@@ -140,7 +141,7 @@ export function DocumentSignoffCard({
         </div>
       )}
       {ownOnly && mine?.signed_at && (
-        <p className="mt-2 text-xs text-rc-muted">Signed {new Date(mine.signed_at).toLocaleDateString("en-AU")}</p>
+        <p className="mt-2 text-xs text-rc-muted">Signed {formatAuShortDate(mine.signed_at)}</p>
       )}
 
       {needsMySignature && <SignatureBox documentId={document.id} />}

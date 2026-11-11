@@ -29,7 +29,7 @@ import {
   daysBetween,
   type TenantPhotoData,
 } from "@/lib/rules/tenant-photo-notice";
-import { formatAuDate, formatAuDateTimeShort, formatAuTimestamp } from "@/lib/format-date";
+import { formatAuDate, formatAuDateTime, formatAuDateTimeShort, formatAuShortDate, formatAuTimestamp } from "@/lib/format-date";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
 import {
@@ -175,6 +175,7 @@ import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 import { reportReadFinished, reportReadNote, reportReadOf, type ReportRead } from "@/lib/documents/report-read";
 import { RoofMark } from "@/components/RoofMark";
 import { CardReopenArea, useReopen, useWaitingRequest } from "@/components/compliance/Reopen";
+import { DateBox } from "@/components/DateBox";
 
 const initialState: ActionState = { error: null };
 
@@ -1634,12 +1635,12 @@ function ChecklistItem({
                   {spreadMarginal ? (
                     <>
                       Just over the 10% limit in s72A. The highest this range can go on a $
-                      {lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
+                      {lowNum.toLocaleString("en-AU")} low is ${maxHigh?.toLocaleString("en-AU")}.
                     </>
                   ) : spreadOver ? (
                     <>
                       {spreadPct.toFixed(1)}% spread. Over the 10% limit in s72A. The highest this range can go
-                      on a ${lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
+                      on a ${lowNum.toLocaleString("en-AU")} low is ${maxHigh?.toLocaleString("en-AU")}.
                     </>
                   ) : (
                     <>{spreadPct.toFixed(1)}% spread. Within the 10% limit in s72A.</>
@@ -1666,9 +1667,8 @@ function ChecklistItem({
             <label className="block text-xs text-rc-muted" htmlFor="settlement-date">
               {SETTLEMENT_DATE_LABEL}
             </label>
-            <input
+            <DateBox
               id="settlement-date"
-              type="date"
               name="settlementDate"
               defaultValue={settlementDateOf(current) ?? ""}
               className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
@@ -1678,8 +1678,7 @@ function ChecklistItem({
         {item.requiresDate && item.key !== "t5" && (
           <div>
             <label className="block text-xs text-rc-muted">{item.dateLabel ?? "Event date"}</label>
-            <input
-              type="date"
+            <DateBox
               name="eventDate"
               defaultValue={current?.event_date ?? draft?.eventDate ?? ""}
               className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
@@ -2011,9 +2010,8 @@ function TenantPhotoFields({ item, current }: { item: ComplianceItem; current?: 
           <label className="block text-xs text-rc-muted" htmlFor="t5-notice">
             {item.dateLabel ?? "Event date"}
           </label>
-          <input
+          <DateBox
             id="t5-notice"
-            type="date"
             name="eventDate"
             value={notice}
             onChange={(e) => setNotice(e.target.value)}
@@ -2024,9 +2022,8 @@ function TenantPhotoFields({ item, current }: { item: ComplianceItem; current?: 
           <label className="block text-xs text-rc-muted" htmlFor="t5-shoot">
             Date of the photo or video shoot
           </label>
-          <input
+          <DateBox
             id="t5-shoot"
-            type="date"
             name="shootDate"
             value={shoot}
             onChange={(e) => setShoot(e.target.value)}
@@ -2073,9 +2070,8 @@ function TenantPhotoFields({ item, current }: { item: ComplianceItem; current?: 
             <label className="block text-xs text-rc-muted" htmlFor="t5-permission">
               Date permission was given
             </label>
-            <input
+            <DateBox
               id="t5-permission"
-              type="date"
               name="permissionDate"
               defaultValue={saved.permissionDate ?? ""}
               className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
@@ -2226,8 +2222,8 @@ function GuideItem({
         <p className="text-xs text-rc-muted">
           {latestEsp.revised ? "Latest ESP (revised)" : "Recorded ESP"}{" "}
           <span className="font-semibold text-rc-ink">
-            ${esp.espLow.toLocaleString()}
-            {esp.espHigh && esp.espHigh !== esp.espLow ? ` to $${esp.espHigh.toLocaleString()}` : ""}
+            ${esp.espLow.toLocaleString("en-AU")}
+            {esp.espHigh && esp.espHigh !== esp.espLow ? ` to $${esp.espHigh.toLocaleString("en-AU")}` : ""}
           </span>
           . The advertised price can&rsquo;t be below it.
         </p>
@@ -2322,8 +2318,7 @@ function GuideItem({
               <div className="space-y-2 border-l-2 border-rc-green-deep/30 pl-3">
                 <label className="block text-xs font-semibold text-rc-ink">
                   Date updated
-                  <input
-                    type="date"
+                  <DateBox
                     name="adsUpdatedOn"
                     defaultValue={sydneyDate(new Date())}
                     className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
@@ -2609,11 +2604,11 @@ function OfferRow({ propertyId, entry }: { propertyId: string; entry: LoggedOffe
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {/* No dashes in what people read (Adam, 9 Nov 2026). */}
-            <span className="font-medium text-rc-ink">${entry.amount.toLocaleString()}</span>, {offerSummary(entry)}
+            <span className="font-medium text-rc-ink">${entry.amount.toLocaleString("en-AU")}</span>, {offerSummary(entry)}
             {entry.note && <> · {entry.note}</>}
             {entry.updatedAt && (
               <span className="ml-1 text-[11px] text-rc-faint">
-                (edited {new Date(entry.updatedAt).toLocaleDateString("en-AU")})
+                (edited {formatAuShortDate(entry.updatedAt)})
               </span>
             )}
           </div>
@@ -2748,8 +2743,7 @@ function OfferFields({ defaults }: { defaults?: LoggedOffer }) {
               <WhyRejected defaultValue={defaults?.rejectedFor ?? null} />
               <label className="block text-xs font-semibold text-rc-ink">
                 Date the vendor rejected it
-                <input
-                  type="date"
+                <DateBox
                   name="rejectedOn"
                   defaultValue={defaults?.rejectedOn ?? ""}
                   className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
@@ -2897,8 +2891,7 @@ function ElsewhereOfferQuestion({
             </label>
             <label className="block text-xs font-semibold text-rc-ink">
               Date the vendor rejected it
-              <input
-                type="date"
+              <DateBox
                 name="rejectedOn"
                 defaultValue={answer?.rejectedOn ?? ""}
                 className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
@@ -2990,9 +2983,8 @@ function EspGivenFields({
         <label className="block text-xs text-rc-muted" htmlFor="esp-given-on">
           {ESP_GIVEN_LABEL}
         </label>
-        <input
+        <DateBox
           id="esp-given-on"
-          type="date"
           name="espGivenOn"
           value={givenOn}
           onChange={(e) => setGivenOn(e.target.value)}
@@ -3334,8 +3326,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
             </div>
             <label className="mt-2.5 block text-[11px] text-rc-muted">
               Date carried out
-              <input
-                type="date"
+              <DateBox
                 name="inspectionDate"
                 className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm"
               />
@@ -3944,7 +3935,7 @@ function VerbalQuoteLogItem({ item, propertyId, current }: { item: ComplianceIte
         <ul className="mt-3 space-y-2 text-sm text-rc-muted">
           {entries.map((e, i) => (
             <li key={i} className="border-t border-rc-border pt-2">
-              ${Number(e.amount).toLocaleString()} — {String(e.context)}
+              ${Number(e.amount).toLocaleString("en-AU")} — {String(e.context)}
             </li>
           ))}
         </ul>
@@ -4062,7 +4053,7 @@ function SignItem({
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
         <p className="text-sm text-rc-muted">
           Signed <span className="font-medium text-rc-ink">{signature.typedName}</span>
-          {signature.signedAt && <> on {new Date(signature.signedAt).toLocaleString("en-AU")}</>}
+          {signature.signedAt && <> on {formatAuDateTime(signature.signedAt)}</>}
         </p>
       </ItemShell>
     );
@@ -4448,7 +4439,7 @@ function ExportItem({
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       {current?.status === "done" ? (
         <p className="text-sm text-rc-muted">
-          Generated {new Date((current.data as { generatedAt?: string }).generatedAt ?? current.created_at).toLocaleString("en-AU")}.{" "}
+          Generated {formatAuDateTime((current.data as { generatedAt?: string }).generatedAt ?? current.created_at)}.{" "}
           <a href={`/dashboard/${propertyId}/summary`} className="text-rc-green-deep hover:underline">
             View the finalised summary
           </a>

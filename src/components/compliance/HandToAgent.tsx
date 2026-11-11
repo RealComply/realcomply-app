@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { Send, Undo2 } from "lucide-react";
 import { requestAgentReview, clearAgentReview } from "@/lib/actions/compliance";
+import { formatAuDayMonthTime } from "@/lib/format-date";
 
 /**
  * The assistant's hand-over, and the agent's way of sending it back.
@@ -33,12 +34,7 @@ export function HandToAgent({
   const [pending, start] = useTransition();
 
   if (requestedAt) {
-    const when = new Date(requestedAt).toLocaleString("en-AU", {
-      day: "numeric",
-      month: "short",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    const when = formatAuDayMonthTime(requestedAt);
 
     return (
       <div className="mt-6 rounded-card border border-rc-amber-deep/25 bg-rc-amber/10 px-4 py-3 shadow-card">

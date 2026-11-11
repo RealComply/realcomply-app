@@ -1,5 +1,6 @@
 import { sendEmail } from "@/lib/email/send";
 import { renderEmailHtml, renderEmailText, type EmailDocument } from "./layout";
+import { formatAuDateTimeShort } from "@/lib/format-date";
 
 export type NewAgencySignup = {
   agencyName: string;
@@ -19,7 +20,7 @@ export async function notifyNewAgencySignup(signup: NewAgencySignup) {
     return;
   }
 
-  const when = new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney", dateStyle: "medium", timeStyle: "short" });
+  const when = formatAuDateTimeShort(new Date().toISOString());
 
   // Internal, but branded like everything else. Adam, 3 Sep: "I think it's
   // important to be consistent." A notification that looks unlike the product

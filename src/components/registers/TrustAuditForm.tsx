@@ -9,6 +9,7 @@ import { readTrustAuditReport, saveTrustAudit, type ActionState } from "@/lib/ac
 import { formatAuDate } from "@/lib/format-date";
 import { monthName } from "@/lib/licensee-signoff/model";
 import type { TrustAudit } from "@/lib/types";
+import { DateBox } from "@/components/DateBox";
 
 // The annual trust account audit — s111 and s112, Property and Stock Agents
 // Act 2002 (NSW).
@@ -174,8 +175,7 @@ export function TrustAuditForm({
         </label>
         <label className="text-xs font-medium text-rc-muted">
           Date the report was received
-          <input
-            type="date"
+          <DateBox
             name="reportReceivedOn"
             defaultValue={audit?.report_received_on ?? ""}
             disabled={!canEdit}

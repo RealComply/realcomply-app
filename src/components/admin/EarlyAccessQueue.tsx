@@ -11,6 +11,7 @@ import {
 } from "@/lib/actions/early-access-decisions";
 import { earlyAccessStatus, type EarlyAccessStatus } from "@/lib/early-access/rules";
 import { looksAustralianPhone } from "@/lib/early-access/phone";
+import { formatSydney } from "@/lib/format-date";
 
 // The early access list, on the staff page. Rebuilt 10 Oct 2026 to the early
 // access invites brief and its approved mockup.
@@ -60,9 +61,7 @@ const statusOf = (r: EarlyAccessRow) => earlyAccessStatus(r);
 const pill = "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-[12.5px] font-semibold";
 
 function sydneyShort(iso: string): string {
-  return new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", day: "numeric", month: "short" }).format(
-    new Date(iso),
-  );
+  return formatSydney(iso, { day: "numeric", month: "short" });
 }
 
 export function EarlyAccessQueue({ rows: initialRows }: { rows: EarlyAccessRow[] }) {
