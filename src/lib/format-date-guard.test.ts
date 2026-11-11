@@ -52,7 +52,12 @@ export function findDateProblems(file: string, source: string): Finding[] {
   const lines = codeLines(source);
   const add = (n: number, rule: string, text: string) => found.push({ file, line: n, rule, text: text.trim().slice(0, 140) });
   for (const { n, text } of lines) {
-    if (/type\s*=\s*\{?\s*["'](date|datetime-local|month|week)["']\s*\}?|type\s*:\s*["'](date|datetime-local|month|week)["']/.test(text)) {
+    // Written straight, or chosen in an expression: type={kind === "expiry" ? "date" : "text"}
+    // slipped past the first version of this guard in two places (11 Nov 2026).
+    if (
+      /type\s*=\s*\{?\s*["'](date|datetime-local|month|week)["']\s*\}?|type\s*:\s*["'](date|datetime-local|month|week)["']/.test(text) ||
+      /type\s*=\s*\{[^}]*["'](date|datetime-local|month|week)["']/.test(text)
+    ) {
       add(n, "a native date box: use <DateBox> (components/DateBox.tsx)", text);
     }
     if (file === FORMATTER) continue;
@@ -95,6 +100,7 @@ describe("every date in Australian format (the guard)", () => {
     const bad = [
       '<input type="date" name="x" />',
       "<input type={'date'} />",
+      '<input type={f.key === "saleDate" ? "date" : "text"} />',
       "const d = new Date(x).toLocaleDateString();",
       'const d = new Date(x).toLocaleDateString("en-AU");',
       'const t = when.toLocaleTimeString("en-AU", { hour: "numeric" });',
@@ -114,6 +120,7 @@ describe("every date in Australian format (the guard)", () => {
       "// toLocaleDateString is banned, but saying so in a comment is fine",
       "const d = formatAuShortDate(iso);",
       '<input type="text" />',
+      "<input type={type} />",
     ];
     for (const line of good) assert.deepEqual(findDateProblems("components/X.tsx", line), [], line);
     assert.deepEqual(findDateProblems(FORMATTER, 'new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney" })'), []);
