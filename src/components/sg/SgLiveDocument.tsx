@@ -12,8 +12,9 @@ import type { SgSectionView } from "@/lib/data/sg-document";
 // Everyone in the office reads it. Part 2 (0125): an approved amendment shows
 // in place, highlighted, with its number, when it starts, why and who
 // approved it, and the previous wording behind "Show previous wording"; the
-// side list marks the sections amended. A new full version compared, the
-// annual review and Export PDF come in the next parts.
+// side list marks the sections amended. A new full version is compared in
+// part 3; the annual review (part 4, 0126) is a card above this one, and the
+// next review date shows here.
 export function SgLiveDocument({
   documentId,
   docType,
@@ -26,6 +27,7 @@ export function SgLiveDocument({
   canUpload,
   today,
   gaps = [],
+  startAmendment = false,
 }: {
   documentId: string;
   docType: SgDocType | null;
@@ -43,6 +45,8 @@ export function SgLiveDocument({
   today: string;
   /** What couldn't be read from the file, in plain words (lib/sg-document/checks.ts sgReadGapLines). */
   gaps?: string[];
+  /** From the annual review card's "Quick amendment" (0126): the form starts open. */
+  startAmendment?: boolean;
 }) {
   const live = withAmendments(sections, amendments);
   const approved = amendments.filter((a) => a.status === "approved").length;
@@ -77,8 +81,8 @@ export function SgLiveDocument({
       </div>
 
       {canUpload && (
-        <div className="mt-3">
-          <SgQuickAmendment documentId={documentId} sections={sections} amendments={amendments} today={today} />
+        <div id="sg-quick-amendment" className="mt-3 scroll-mt-4">
+          <SgQuickAmendment documentId={documentId} sections={sections} amendments={amendments} today={today} startOpen={startAmendment} />
         </div>
       )}
 

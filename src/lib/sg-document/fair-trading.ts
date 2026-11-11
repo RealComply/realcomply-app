@@ -12,9 +12,20 @@
 // covered by the procedures, by considering the following Acts and
 // Regulations/subordinate instruments made under those Acts, at a minimum".
 
-/** 2.1.2, word for word, for the annual review (part 4). */
-export const SG_2_1_2_REVIEW =
-  "Operational procedures should be reviewed and appropriately revised at least every 12 months to ensure they remain current and emerging risks are addressed.";
+/**
+ * 2.1.2 Guidance, word for word, for the annual review (part 4; Master, 10
+ * Nov 2026: "Quote 2.1.2 word for word from Fair Trading's Supervision
+ * Guidelines in Drive"). Three paragraphs, then the four critical areas.
+ */
+export const SG_2_1_2 = {
+  source: "NSW Fair Trading, Supervision Guidelines, 2.1.2",
+  paragraphs: [
+    "Supervision Requirement 2 is a requirement to establish procedures designed to ensure that the provisions of the Act and any other laws relevant to the conduct of that business are complied with.",
+    "A failure to prepare and maintain operational procedures for this purpose is an offence.",
+    "Operational procedures should be reviewed and appropriately revised at least every 12 months to ensure they remain current and emerging risks are addressed. In drafting their operational procedures, licensees in charge should identify key risks to non-compliance with laws applicable to the business, in four critical areas:",
+  ],
+  areas: ["financial", "licensing", "qualifications, education and training", "professional conduct within the business"],
+} as const;
 
 /**
  * The 22 Acts in 2.1.3(c), named as Fair Trading names them, each with the

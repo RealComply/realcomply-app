@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sgChecksOf, type SgChecks } from "@/lib/sg-document/checks";
 import { isSgDocType, type SgDocType } from "@/lib/sg-document/fair-trading";
 import { amendmentFrom, type SgAmendment } from "@/lib/sg-document/amendments";
+import { reviewFrom, type SgReview } from "@/lib/sg-document/annual-review";
+import { nextReviewDue } from "@/lib/sg-document/change-log";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 
 // The office's supervision guidelines as a live document (0122), as the SG
 // page and Home read them. Each person sees what the database lets them: the
@@ -193,4 +196,55 @@ export async function sgApprovedAmendmentsAll(supabase: SupabaseClient): Promise
     .order("approved_at", { ascending: true });
   if (error || !data) return [];
   return (data as Array<Record<string, unknown>>).map(amendmentFrom).filter((a): a is SgAmendment => a !== null);
+}
+
+// ── Part 4: the annual review (0126) ─────────────────────────────────────
+// Before 0126 has run there's no sg_reviews table: no reviews, and the date
+// is worked out from the rest.
+
+/** Every "Reviewed, no changes needed", oldest first, for the change log. */
+export async function sgReviewsAll(supabase: SupabaseClient): Promise<SgReview[]> {
+  const { data, error } = await supabase
+    .from("sg_reviews")
+    .select("id, document_id, note, reviewed_by_name, reviewed_as, reviewed_at")
+    .order("reviewed_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Array<Record<string, unknown>>).map(reviewFrom).filter((r): r is SgReview => r !== null);
+}
+
+/**
+ * An office's live document and when its next review is due (2.1.2): 12
+ * months after the latest of its sign-up, a version saved, an amendment
+ * approved and a "Reviewed, no changes needed". Null with no live document.
+ * lastReviewedOn: the Sydney day of the latest "Reviewed, no changes needed".
+ * Every query names the office, so the daily job can use it with the
+ * service key; signed in, the database narrows it the same way.
+ */
+export async function sgReviewDueFor(
+  supabase: SupabaseClient,
+  agencyId: string,
+): Promise<{ documentId: string; dueOn: string; lastReviewedOn: string | null } | null> {
+  const [{ data: agency }, { data: docs, error: docsError }, { data: approved }, { data: reviews }] = await Promise.all([
+    supabase.from("agencies").select("created_at").eq("id", agencyId).maybeSingle(),
+    supabase
+      .from("sg_documents")
+      .select("id, status, saved_at")
+      .eq("agency_id", agencyId)
+      .in("status", ["live", "replaced"])
+      .not("saved_at", "is", null),
+    supabase.from("sg_amendments").select("approved_at").eq("agency_id", agencyId).eq("status", "approved"),
+    supabase.from("sg_reviews").select("reviewed_at").eq("agency_id", agencyId),
+  ]);
+  if (docsError || !docs) return null;
+  const rows = docs as Array<{ id: string; status: string; saved_at: string }>;
+  const live = rows.find((d) => d.status === "live");
+  if (!live) return null;
+  const dueOn = nextReviewDue((agency as { created_at?: string } | null)?.created_at ?? null, [
+    ...rows.map((d) => d.saved_at),
+    ...((approved ?? []) as Array<{ approved_at: string | null }>).map((a) => a.approved_at),
+    ...((reviews ?? []) as Array<{ reviewed_at: string }>).map((r) => r.reviewed_at),
+  ]);
+  const reviewedAt = ((reviews ?? []) as Array<{ reviewed_at: string }>).map((r) => r.reviewed_at).sort();
+  const last = reviewedAt.at(-1);
+  return dueOn ? { documentId: live.id, dueOn, lastReviewedOn: last ? sydneyDate(new Date(last)) : null } : null;
 }

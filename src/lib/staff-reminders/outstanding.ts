@@ -9,10 +9,13 @@
 //                   hasn't confirmed reading that version. The same people
 //                   the Home card asks (lib/sg-annexure/office-read.ts):
 //                   not the licensee in charge, not an assistant.
+//   sg_change_sign  Hasn't signed a change (an approved quick amendment) to
+//                   the live supervision guidelines (0125; reminders 0126).
+//                   Everyone in the office is asked, as the Home card asks.
 //
 // Never the person sending, and never anyone who has left.
 
-export type ReminderKind = "sg_manual_sign" | "sg_read";
+export type ReminderKind = "sg_manual_sign" | "sg_read" | "sg_change_sign";
 
 export type ReminderPerson = {
   id: string;
@@ -24,7 +27,13 @@ export type ReminderPerson = {
   archived_at: string | null;
 };
 
-export type StillToDo = { person: ReminderPerson; kinds: ReminderKind[]; lastRemindedAt: string | null };
+export type StillToDo = {
+  person: ReminderPerson;
+  kinds: ReminderKind[];
+  /** The changes still to sign, "A2", "A3", oldest first. */
+  changeRefs: string[];
+  lastRemindedAt: string | null;
+};
 
 export function staffStillToDo(input: {
   staff: ReminderPerson[];
@@ -35,6 +44,10 @@ export function staffStillToDo(input: {
   /** The annexure version the office adopted, if it has. */
   adoptedVersion: string | null;
   readConfirmations: Array<{ confirmed_by: string | null; annexure_version: string }>;
+  /** The live document's approved amendments, oldest first (0125). */
+  changes?: Array<{ id: string; ref: string }>;
+  /** Who has signed each (0125). */
+  changeSignatures?: Array<{ amendment_id: string; profile_id: string }>;
   /** Newest first. */
   reminders: Array<{ profile_id: string; created_at: string }>;
 }): StillToDo[] {
@@ -61,9 +74,13 @@ export function staffStillToDo(input: {
     ) {
       kinds.push("sg_read");
     }
+    const changeRefs = (input.changes ?? [])
+      .filter((c) => !(input.changeSignatures ?? []).some((s) => s.amendment_id === c.id && s.profile_id === person.id))
+      .map((c) => c.ref);
+    if (changeRefs.length > 0) kinds.push("sg_change_sign");
     if (kinds.length > 0) {
       const last = input.reminders.find((r) => r.profile_id === person.id)?.created_at ?? null;
-      out.push({ person, kinds, lastRemindedAt: last });
+      out.push({ person, kinds, changeRefs, lastRemindedAt: last });
     }
   }
   return out;

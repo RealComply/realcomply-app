@@ -61,7 +61,7 @@ function ChangeCard({ change }: { change: SgAmendment }) {
         >
           {busy ? "Saving…" : SIGN_CHANGE}
         </button>
-        <span className="text-xs text-rc-muted">This card goes once you&apos;ve signed.</span>
+        <span className="text-xs text-rc-muted">Reminders stop once you&apos;ve signed.</span>
       </div>
     </section>
   );

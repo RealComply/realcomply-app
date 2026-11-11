@@ -3,6 +3,7 @@ import { Building2, ClipboardCheck, FileWarning, IdCard, PenLine } from "lucide-
 import type { createClient } from "@/lib/supabase/server";
 import { sgChangesToSign } from "@/lib/data/sg-document";
 import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
+import { SgAnnualReviewCard } from "@/components/sg/SgAnnualReviewCard";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { ownWork, readsBeyondOwnWork } from "@/lib/data/listing-access";
 import type { Access } from "@/lib/access";
@@ -44,6 +45,7 @@ export async function AgentHome({
   officeManager = null,
   setup = null,
   sgDraft = null,
+  sgReview = null,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   profile: Profile;
@@ -57,6 +59,8 @@ export async function AgentHome({
   setup?: SetupView | null;
   /** For an office manager: the supervision guidelines read into a draft, waiting to be checked (Master, 10 Nov 2026). */
   sgDraft?: { fileName: string; fromFileOnRecord: boolean } | null;
+  /** For an office manager: the annual review card (0126), already decided to show. */
+  sgReview?: { documentId: string; dueOn: string; today: string; reviewedToday: boolean } | null;
 }) {
   const cpdYear = currentCpdYear();
   // Changes to the supervision guidelines this person hasn't signed (0125).
@@ -147,6 +151,9 @@ export async function AgentHome({
         {sgReadShows && <SgReadCard />}
 
         {sgDraft && <SgDraftReadyCard fileName={sgDraft.fileName} fromFileOnRecord={sgDraft.fromFileOnRecord} />}
+
+        {/* The annual review of the supervision guidelines (Adam's mockup, screen 7; 0126). */}
+        {sgReview && <SgAnnualReviewCard {...sgReview} />}
 
         {/* Changes to the supervision guidelines to sign (Adam's mockup, screen 6; 0125). */}
         <SgChangesToSign changes={sgChanges} />

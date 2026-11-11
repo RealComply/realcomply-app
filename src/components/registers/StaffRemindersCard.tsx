@@ -7,17 +7,18 @@ import { remindableNow, type ReminderKind } from "@/lib/staff-reminders/outstand
 import { formatAuTimestamp } from "@/lib/format-date";
 
 // Who still needs to sign the SG Manual, or read and tick the annexure and
-// the Supervision Guidelines, and a button to email them (Adam, 26 Oct
-// 2026; 0093). For the licensee and an office manager, on the SG Manual page.
+// the Supervision Guidelines, or sign a change to the supervision guidelines
+// (0126), and a button to email them (Adam, 26 Oct 2026; 0093). For the licensee and an office manager, on the SG Manual page.
 
 const initial: ReminderSendState = { error: null, sent: 0, skipped: 0, failed: 0 };
 
 const WHAT: Record<ReminderKind, string> = {
   sg_manual_sign: "Sign the SG Manual",
   sg_read: "Read and tick the annexure and Supervision Guidelines",
+  sg_change_sign: "Sign the changes to the supervision guidelines",
 };
 
-export type ReminderRow = { id: string; name: string; kinds: ReminderKind[]; lastRemindedAt: string | null };
+export type ReminderRow = { id: string; name: string; kinds: ReminderKind[]; changeRefs?: string[]; lastRemindedAt: string | null };
 
 export function StaffRemindersCard({ rows }: { rows: ReminderRow[] }) {
   const [state, action, pending] = useActionState(sendStaffReminders, initial);
@@ -35,7 +36,7 @@ export function StaffRemindersCard({ rows }: { rows: ReminderRow[] }) {
           <li key={r.id} className="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <span className="font-medium text-rc-ink">{r.name}</span>
             <span className="text-xs text-rc-muted">
-              {r.kinds.map((k) => WHAT[k]).join("; ")}
+              {r.kinds.map((k) => (k === "sg_change_sign" && r.changeRefs?.length ? `${WHAT[k]} (${r.changeRefs.join(", ")})` : WHAT[k])).join("; ")}
               {r.lastRemindedAt ? ` · Reminded ${formatAuTimestamp(r.lastRemindedAt)}` : ""}
             </span>
           </li>
