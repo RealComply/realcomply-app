@@ -51,11 +51,47 @@ export function confirmedAsReport(data: unknown, evidencePath: string | null | u
   return reportChoicesOf(data).findLast((c) => c.path === evidencePath && c.choice === "my_report") ?? null;
 }
 
-/** The ESP card is asking the agent to upload their report or confirm this is it. */
-export function reportToCheck(row: { data?: unknown; evidence_path?: string | null } | null | undefined): boolean {
-  if (!row?.evidence_path) return false;
-  return noSalesInReport(row.data, row.evidence_path) && !confirmedAsReport(row.data, row.evidence_path);
+// THE REPORT IN THE AGENCY AGREEMENT (Adam, 11 Nov 2026, decision 6: "Yes,
+// counts as report"). When the agreement carries a page of comparable sales
+// (a Realtair "Relevant Sales" page, a pricing annexure) and they were read
+// from it, that page is the comparable sales report: nothing more needs
+// uploading on the ESP card. Kept on the ESP card as data.reportInAgreement,
+// for the agreement file it came from, and carried through Mark done.
+export type ReportInAgreement = {
+  /** The agreement file the sales were read from. Another file there now: not this one. */
+  path: string;
+  at: string;
+  sales: number;
+};
+
+export function reportInAgreementOf(espData: unknown, agreementPath: string | null | undefined): ReportInAgreement | null {
+  const r = (espData as { reportInAgreement?: ReportInAgreement } | null | undefined)?.reportInAgreement;
+  if (!r || !agreementPath || r.path !== agreementPath || !(r.sales > 0)) return null;
+  return r;
 }
+
+type CardRow = { data?: unknown; evidence_path?: string | null } | null | undefined;
+
+/**
+ * The listing needs its comparable sales report seen to: the report on the
+ * ESP card gave no sales and isn't confirmed, or there's no report at all
+ * once the agreement is on file and had none. Never while the agreement's
+ * own sales page stands as the report.
+ */
+export function reportToCheck(esp: CardRow, agreement?: CardRow): boolean {
+  if (reportInAgreementOf(esp?.data, agreement?.evidence_path)) return false;
+  if (!esp?.evidence_path) return Boolean(agreement?.evidence_path);
+  return noSalesInReport(esp.data, esp.evidence_path) && !confirmedAsReport(esp.data, esp.evidence_path);
+}
+
+/** The ESP card has a report: its own file, or the agreement's sales page. Needed to tick it (setItemStatus). */
+export function hasReport(esp: CardRow, agreement?: CardRow): boolean {
+  return Boolean(esp?.evidence_path) || reportInAgreementOf(esp?.data, agreement?.evidence_path) !== null;
+}
+
+/** Refused when the ESP card is ticked with no report from either. */
+export const REPORT_NEEDED =
+  "Add the comparable sales report before marking this done. If the sales are in the agency agreement, they're read from there.";
 
 /** The card's data with one more choice recorded. */
 export function withReportChoice(data: unknown, choice: ReportChoice): Record<string, unknown> {
@@ -81,15 +117,38 @@ export function confirmedLine(choice: ReportChoice, formatDate: (iso: string) =>
   );
 }
 
-/** What the ESP card says beside its report: asking, confirmed, or nothing extra. */
-export type ReportPrompt = { kind: "ask" } | { kind: "confirmed"; text: string };
+/** The ESP card, when its report is the agreement's sales page. */
+export function inAgreementLine(r: ReportInAgreement): string {
+  return `The comparable sales are in the agency agreement: ${r.sales} ${r.sales === 1 ? "sale" : "sales"} read from it. No separate report is needed.`;
+}
+
+/** What the ESP card says beside its report: asking, confirmed, the agreement's, or nothing extra. */
+export type ReportPrompt =
+  | { kind: "ask" }
+  | { kind: "confirmed"; text: string }
+  | { kind: "agreement"; text: string };
 
 export function reportPromptFor(
   data: unknown,
   evidencePath: string | null | undefined,
   formatDate: (iso: string) => string,
+  agreementPath?: string | null,
 ): ReportPrompt | null {
-  if (!evidencePath || !noSalesInReport(data, evidencePath)) return null;
+  // A file of its own with sales in it speaks for itself (the read's own line).
+  if (evidencePath && !noSalesInReport(data, evidencePath)) return null;
+  const inAgreement = reportInAgreementOf(data, agreementPath);
+  if (inAgreement) return { kind: "agreement", text: inAgreementLine(inAgreement) };
+  if (!evidencePath) return null;
   const confirmed = confirmedAsReport(data, evidencePath);
   return confirmed ? { kind: "confirmed", text: confirmedLine(confirmed, formatDate) } : { kind: "ask" };
+}
+
+/**
+ * The compliance record's line when the report is the agreement's own sales
+ * page and the ESP card has no report of its own; null otherwise.
+ */
+export function recordInAgreementLine(espData: unknown): string | null {
+  const r = (espData as { reportInAgreement?: ReportInAgreement } | null | undefined)?.reportInAgreement;
+  if (!r || !(r.sales > 0)) return null;
+  return `Comparable sales report: the agency agreement's own sales page (${r.sales} ${r.sales === 1 ? "sale" : "sales"} read from it).`;
 }

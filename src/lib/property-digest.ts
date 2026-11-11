@@ -33,8 +33,9 @@ export type PropertyDigest = {
   /**
    * No comparable sales were found in the report on the ESP card, and the
    * agent hasn't uploaded another or said "This is my report" (Master, 11 Nov
-   * 2026; lib/documents/report-choice). Needs attention, but holds nothing:
-   * the reader can be wrong.
+   * 2026; lib/documents/report-choice). Or there's no report at all, and the
+   * agreement had no sales page to stand as one (decision 6). Needs
+   * attention, but holds nothing: the reader can be wrong.
    */
   reportToCheck: boolean;
 };
@@ -131,7 +132,7 @@ export function computePropertyDigests(
       awaiting,
       lastActivityAt,
       onMarketComplete: hold.stage > ON_MARKET_STAGE,
-      reportToCheck: reportToCheck(rows.get("a4")),
+      reportToCheck: reportToCheck(rows.get("a4"), rows.get("a3")),
     };
   });
 }

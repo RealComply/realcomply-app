@@ -40,7 +40,7 @@ import {
 } from "@/lib/rules/question-card";
 import { applyNa, naCarriedThroughSave, naRefusal, readNa, withNa } from "@/lib/rules/not-applicable";
 import { COVERING_LETTER_KEY, afterAgentSave } from "@/lib/documents/covering-letter";
-import { reportToCheck, withReportChoice } from "@/lib/documents/report-choice";
+import { REPORT_NEEDED, hasReport, reportToCheck, withReportChoice } from "@/lib/documents/report-choice";
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { checkSalePrice } from "@/lib/rules/sale-price";
 import { holdsBack, stageHold } from "@/lib/rules/stage-hold";
@@ -125,7 +125,8 @@ const CARRIED_BY_ITEM: Record<string, string[]> = {
   b1: ["aiDraft", "contractRead"],
   // espGivenOn and the ESP notice: s72A(2), from 17 Nov 2026 (Adam, 9 Nov 2026).
   // reportChoices: "Upload report" or "This is my report", who and when (Master, 11 Nov 2026).
-  a4: ["reportRead", "espGivenOn", "espNoticePath", "espNoticeFileName", "reportChoices"],
+  // reportInAgreement: the agreement's own sales page stands as the report (decision 6, 11 Nov 2026).
+  a4: ["reportRead", "espGivenOn", "espNoticePath", "espNoticeFileName", "reportChoices", "reportInAgreement"],
   // Fewer than 3 comparable, and the information used (Reg s12C(2), s12F; 0119).
   a4c: ["comparablesRecord"],
   // The settlement date, kept when a save doesn't send it (a reopen, say).
@@ -345,6 +346,24 @@ export async function setItemStatus(
     const row = attached as { evidence_path?: string | null; status?: string } | null;
     if (row?.status !== "done" && !row?.evidence_path) {
       return { error: CONTRACT_NOT_ATTACHED };
+    }
+  }
+
+  // The ESP card can't be newly done without a comparable sales report: its
+  // own file, or the agency agreement's sales page (decision 6, 11 Nov 2026).
+  // Until then a report was always there, from Add a listing; now it can be
+  // left off there when the agreement has the sales. A card already done is
+  // left alone, like the contract's above.
+  if (status === "done" && itemKey === "a4") {
+    const { data: cards } = await supabase
+      .from("property_items")
+      .select("item_key, status, data, evidence_path")
+      .eq("property_id", propertyId)
+      .in("item_key", ["a3", "a4"]);
+    const rows = (cards ?? []) as Array<{ item_key: string; status?: string; data?: unknown; evidence_path?: string | null }>;
+    const esp = rows.find((r) => r.item_key === "a4");
+    if (esp?.status !== "done" && !hasReport(esp, rows.find((r) => r.item_key === "a3"))) {
+      return { error: REPORT_NEEDED };
     }
   }
 
