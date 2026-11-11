@@ -47,6 +47,7 @@ import { areaOf } from "@/lib/rules/council-area";
 import { comparablesRulesApply, espDeterminedOn } from "@/lib/rules/comparables-rules";
 import { formatAuDate, formatAuTimestamp, formatSydney } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
+import { listingsPageReadsFor } from "@/lib/data/listings-page-reads";
 
 // "Read uploaded documents" and "Read again" run from this page. A large PDF
 // is now read in parts (25 Oct 2026, lib/documents/reader-parts.ts), and a
@@ -134,6 +135,12 @@ export default async function PropertyPage({
     // What was changed by hand on each sale with "Edit details" (0123).
     comparableChangesFor(supabase, id),
   ]);
+
+  // What the morning's read made of the listing agent's own listings page and
+  // the office's (0105). The advertised price card says a page that couldn't
+  // be read was unread, not that this listing was missing from it (Adam,
+  // 11 Nov 2026).
+  const listingsPageReads = await listingsPageReadsFor(supabase, p.agency_id, p.created_by);
 
   // The listing's own attributes — the other half of every comparison, and
   // read off the property row the page already has rather than fetched again.
@@ -525,6 +532,7 @@ export default async function PropertyPage({
                   comparablesArea={comparablesArea}
                   soi={soi}
                   soiReviseBy={soiReviseBy}
+                  listingsPageReads={listingsPageReads}
                 />
               ))}
             </div>
@@ -553,6 +561,7 @@ export default async function PropertyPage({
               comparablesArea={comparablesArea}
               soi={soi}
               soiReviseBy={soiReviseBy}
+              listingsPageReads={listingsPageReads}
               />
           ))}
         </div>
