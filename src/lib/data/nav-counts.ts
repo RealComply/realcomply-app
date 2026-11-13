@@ -61,6 +61,8 @@ export type ListingStatus = {
   flagged: number;
   /** Amber. Left to do before this stage is complete. */
   outstanding: number;
+  /** No comparable sales found in the ESP card's report, not yet answered (lib/documents/report-choice). */
+  reportToCheck?: boolean;
 };
 
 export type NavCounts = {
@@ -286,6 +288,7 @@ export const navCountsFor = cache(async function navCountsFor(
       stage: d.property.stage,
       flagged: d.flagged.length,
       outstanding: Math.max(0, d.requiredCurrentStage.length - d.doneCurrentStage.length),
+      reportToCheck: d.reportToCheck,
     }))
     // Flagged first, then whoever has the most left to do, then alphabetical.
     // The reason to open the list is to find where to go next, so the answer

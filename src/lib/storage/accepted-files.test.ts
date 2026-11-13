@@ -2,10 +2,15 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   ACCEPTED_FILES,
+  ACCEPTED_FILES_WITH_WORD,
+  KEPT_AS_WORD,
+  OLD_WORD_ON_READING_CARD,
+  READ_FROM_WORD,
   UPLOAD_A_PDF,
   cantReadMessage,
   savedButCantRead,
   unreadableKind,
+  wordFileNotice,
 } from "@/lib/storage/accepted-files";
 
 // The approved words (Adam, 2 to 3 Nov 2026), word for word.
@@ -13,6 +18,28 @@ import {
 describe("the words", () => {
   it("says the accepted files line exactly", () => {
     assert.equal(ACCEPTED_FILES, "Accepted files: Clear photo or PDF.");
+  });
+
+  it("on listing cards, Word too (Adam, 11 Nov 2026)", () => {
+    assert.equal(ACCEPTED_FILES_WITH_WORD, "Accepted files: PDF, clear photo or Word.");
+  });
+
+  it("says a Word file on a card isn't in the audit pack (Master's words, 11 Nov 2026)", () => {
+    assert.equal(READ_FROM_WORD, "Read from your Word file. Word files aren't included in the audit pack. To include it, upload it as a PDF.");
+    assert.equal(KEPT_AS_WORD, "Kept as a Word file. Word files aren't included in the audit pack. To include it, upload it as a PDF.");
+    assert.equal(
+      OLD_WORD_ON_READING_CARD,
+      "Saved, but we can't read older Word files (.doc), and Word files aren't included in the audit pack. Save it as a PDF and upload that, and we'll fill in the details and include it in the pack.",
+    );
+  });
+
+  it("an old Word file (.doc) on a listing card: one notice, saying \"upload it as a PDF\" once (Master, 11 Nov 2026)", () => {
+    assert.equal(cantReadMessage("Covering letter.doc", { listingCard: true }), OLD_WORD_ON_READING_CARD);
+    assert.equal(OLD_WORD_ON_READING_CARD.match(/as a PDF/g)?.length, 1);
+    // Off a listing card (the registers), and for other kinds, as before.
+    assert.equal(cantReadMessage("Certificate.doc"), savedButCantRead("Word files"));
+    assert.equal(cantReadMessage("Comparables.xlsx", { listingCard: true }), savedButCantRead("Excel files"));
+    assert.equal(cantReadMessage("Covering letter.docx", { listingCard: true }), null);
   });
 
   it("names the button exactly", () => {
@@ -25,6 +52,10 @@ describe("the words", () => {
       "Saved, but we can't read Word files. Save it as a PDF and upload that, and we'll fill in the details for you.",
     );
     assert.equal(
+      savedButCantRead("older Word files (.doc)"),
+      "Saved, but we can't read older Word files (.doc). Save it as a PDF and upload that, and we'll fill in the details for you.",
+    );
+    assert.equal(
       savedButCantRead("Excel files"),
       "Saved, but we can't read Excel files. Save it as a PDF and upload that, and we'll fill in the details for you.",
     );
@@ -35,7 +66,7 @@ describe("the words", () => {
   });
 
   it("uses no dashes and never the word compliant", () => {
-    for (const text of [ACCEPTED_FILES, UPLOAD_A_PDF, ...(["Word files", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
+    for (const text of [ACCEPTED_FILES, ACCEPTED_FILES_WITH_WORD, READ_FROM_WORD, KEPT_AS_WORD, OLD_WORD_ON_READING_CARD, UPLOAD_A_PDF, ...(["Word files", "older Word files (.doc)", "Excel files", "saved emails"] as const).map(savedButCantRead)]) {
       assert.doesNotMatch(text, /[\u2013\u2014]/);
       assert.doesNotMatch(text, /compliant/i);
     }
@@ -88,6 +119,20 @@ describe("which files the reader can't open, by the name's extension", () => {
   });
 });
 
+describe("on a listing card, where Word is read (Adam, 11 Nov 2026)", () => {
+  it("a Word file (.docx) is read; only the old format (.doc) isn't", () => {
+    const card = { listingCard: true };
+    assert.equal(unreadableKind("ID check form.docx", card), null);
+    assert.equal(unreadableKind("agency/property/a1/1730000000000-ID_check.DOCX", card), null);
+    assert.equal(unreadableKind("Covering letter.doc", card), "older Word files (.doc)");
+    assert.equal(unreadableKind("Comparables.xlsx", card), "Excel files");
+    assert.equal(unreadableKind("Letter.eml", card), "saved emails");
+    assert.equal(unreadableKind("contract.pdf", card), null);
+    assert.equal(cantReadMessage("ID check form.docx", card), null);
+    assert.equal(cantReadMessage("Covering letter.doc", card), OLD_WORD_ON_READING_CARD);
+  });
+});
+
 describe("the sentence for a stored file", () => {
   it("is the notice for a file the reader can't open", () => {
     assert.equal(
@@ -99,5 +144,30 @@ describe("the sentence for a stored file", () => {
   it("is null for one it can", () => {
     assert.equal(cantReadMessage("Comparables.pdf"), null);
     assert.equal(cantReadMessage(null), null);
+  });
+});
+
+describe("what a listing card says about a Word file on it", () => {
+  it("a Word file a card reads: read from it, and how to get it into the pack", () => {
+    assert.equal(wordFileNotice("Covering letter (made up).docx", { read: true }), READ_FROM_WORD);
+    assert.equal(wordFileNotice("agency/property/a1/1730000000000-ID CHECK.DOCX", { read: true }), READ_FROM_WORD);
+  });
+
+  it("a Word file on a card nothing reads: kept, and how to get it into the pack", () => {
+    assert.equal(wordFileNotice("Pool certificate.docx", { read: false }), KEPT_AS_WORD);
+    assert.equal(wordFileNotice("Pool certificate.doc", { read: false }), KEPT_AS_WORD);
+  });
+
+  it("an old Word file (.doc) is kept, never read", () => {
+    assert.equal(wordFileNotice("Covering letter.doc", { read: true }), KEPT_AS_WORD);
+    // On a card that reads, the can't-read notice is shown for it instead.
+    assert.equal(unreadableKind("Covering letter.doc", { listingCard: true }), "older Word files (.doc)");
+  });
+
+  it("says nothing for any other file, or none", () => {
+    for (const name of ["contract.pdf", "photo.jpg", "sheet.xlsx", "fwd.msg", "letter.docx.pdf", "", null, undefined]) {
+      assert.equal(wordFileNotice(name, { read: true }), null);
+      assert.equal(wordFileNotice(name, { read: false }), null);
+    }
   });
 });

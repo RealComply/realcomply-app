@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allItemsInRuleset } from "@/lib/rules/nsw-sales";
-import { DOCUMENT_TITLE, fileTypeLabel, packDocKind, packDocumentsFor, reportTitle, uploadedAtFromPath } from "@/lib/pdf/pack-documents";
+import { DOCUMENT_TITLE, fileTypeLabel, notIncludedNote, packDocKind, packDocumentsFor, reportTitle, uploadedAtFromPath } from "@/lib/pdf/pack-documents";
 import { readFileSync } from "node:fs";
 import { AUDIT_PACK_MAX_BYTES, KEEP_PACK_MS, PACK_DOCUMENTS_MAX_BYTES, clearOldAuditPacks, removeAuditPacks, storeAuditPack } from "@/lib/pdf/audit-pack-store";
 import type { PropertyItem } from "@/lib/types";
@@ -88,6 +88,12 @@ test("kinds and file type words", () => {
   assert.equal(fileTypeLabel("letter.docx"), "Word document (.docx)");
   assert.equal(fileTypeLabel("forwarded.msg"), "saved Outlook email (.msg)");
   assert.equal(fileTypeLabel("notes.txt"), ".txt file");
+  // A Word file says how to get it into the pack (Adam, 11 Nov 2026); others as before.
+  for (const name of ["Covering letter.docx", "OLD FORM.DOC"]) {
+    assert.equal(notIncludedNote(name), "Not included in this PDF: Word document. Kept in RealComply. Upload it as a PDF to include it here.");
+  }
+  assert.equal(notIncludedNote("forwarded.msg"), "Not included in this PDF: saved Outlook email (.msg). Kept in RealComply.");
+  assert.equal(notIncludedNote("sheet.xlsx"), "Not included in this PDF: Excel spreadsheet (.xlsx). Kept in RealComply.");
   assert.equal(uploadedAtFromPath("a/b/c/1760000000000-x.pdf"), new Date(1760000000000).toISOString());
   assert.equal(uploadedAtFromPath("a/b/c/x.pdf"), null);
 });

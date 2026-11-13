@@ -1,4 +1,5 @@
 import type { EvidenceVerdict } from "@/lib/data/esp-draft";
+import { formatAuTime, formatSydney } from "@/lib/format-date";
 
 // The ESP reasoning on file is the agent's own opinion (a4c).
 //
@@ -217,15 +218,12 @@ export function a4cSave(input: A4cSaveInput): { error: string } | { data: Record
 export function adoptionSummary(record: ReasoningAdoptionRecord): string {
   const who = record.confirmedByName ?? "the agent";
   const when = new Date(record.confirmedAt);
-  const date = when.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric", timeZone: "Australia/Sydney" });
+  const date = formatSydney(when, { day: "numeric", month: "long", year: "numeric" });
   if (!record.statement) {
     const whose = record.confirmedByName ? `${record.confirmedByName}'s` : "the agent's";
     return `Confirmed as ${whose} reasoning on ${date}${record.source === "document" ? ", from the uploaded document." : ", edited from RealComply's draft."}`;
   }
-  const time = when
-    .toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Australia/Sydney" })
-    .replace(/\s/g, " ")
-    .toLowerCase();
+  const time = formatAuTime(when);
   const from =
     record.source === "realcomply_draft"
       ? record.changed

@@ -7,7 +7,7 @@ import { REVISION_COMPARABLES_LABEL, saleLine, type RevisionCandidate } from "@/
 import { factorsLine } from "@/lib/rules/comparables-rules";
 import type { AreaKind } from "@/lib/rules/council-area";
 import { FileDropZone } from "@/components/FileDropZone";
-import { AcceptedFilesLine, CantReadNotice } from "@/components/AcceptedFiles";
+import { AcceptedFilesLine, CantReadNotice, WordFileNotice } from "@/components/AcceptedFiles";
 import { unreadableKind } from "@/lib/storage/accepted-files";
 import { advertisingFixLine } from "@/lib/rules/underquoting-reforms";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -42,6 +42,7 @@ import {
   FEEDBACK_TICK,
   feedbackFrom,
 } from "@/lib/rules/market-feedback";
+import { DateBox } from "@/components/DateBox";
 
 // The parts of the ESP revision card (Adam, 3 Nov 2026; the approved mockup;
 // 0110): every version, newest first; the notice upload; and the draft, read
@@ -309,7 +310,7 @@ export function EspNoticeUpload({
       {title && <p className="text-sm font-bold text-rc-ink">{title}</p>}
       <p className="text-xs leading-relaxed text-rc-muted">{UPLOAD_HELP}</p>
       <FileDropZone compact file={file} onFile={setFile} disabled={busy !== null} label="Drag the notice here, or click to browse" />
-      <AcceptedFilesLine />
+      <AcceptedFilesLine word />
       {error && (
         <p role="alert" className="text-xs font-medium text-rc-amber-deep">
           {error}
@@ -443,7 +444,7 @@ export function EspDraftForm({
     else setEvidence(stored);
   };
   const cancel = () => startCancel(async () => void (await cancelEspDraft(propertyId)));
-  const cantRead = !pending.notRecognised && unreadableKind(pending.fileName) !== null;
+  const cantRead = !pending.notRecognised && unreadableKind(pending.fileName, { listingCard: true }) !== null;
   const uploadPdf = () =>
     startCancel(async () => {
       const { error } = await cancelEspDraft(propertyId);
@@ -473,7 +474,7 @@ export function EspDraftForm({
           </span>
         </p>
       ) : cantRead ? (
-        <CantReadNotice fileName={pending.fileName} onUploadPdf={uploadPdf} disabled={saving || cancelling} />
+        <CantReadNotice listingCard fileName={pending.fileName} onUploadPdf={uploadPdf} disabled={saving || cancelling} />
       ) : pending.readFailed ? (
         <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-2 text-xs text-rc-amber-deep">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
@@ -486,6 +487,10 @@ export function EspDraftForm({
           <Sparkles size={13} className="mt-0.5 shrink-0" />
           <span>Read from the notice. Check these against it before you save.</span>
         </p>
+      )}
+      {/* A revision can't be changed once recorded, so a Word notice is swapped for its PDF here, before it is. */}
+      {!pending.notRecognised && !cantRead && (
+        <WordFileNotice read fileName={pending.fileName} onUploadPdf={uploadPdf} disabled={saving || cancelling} />
       )}
 
       {!pending.notRecognised && (
@@ -522,9 +527,8 @@ export function EspDraftForm({
           )}
           <label className="block text-xs font-semibold text-rc-ink">
             Date the notice was given
-            <input
+            <DateBox
               name="noticeGivenOn"
-              type="date"
               value={givenOn}
               onChange={(e) => setGivenOn(e.target.value)}
               className="mt-1 block rounded-md border border-rc-border px-2.5 py-2 text-sm focus:border-rc-green-deep focus:outline-none"
@@ -623,8 +627,7 @@ export function EspDraftForm({
                         </label>
                         <label className="text-xs font-semibold text-rc-ink">
                           {FEEDBACK_LABELS.on}
-                          <input
-                            type="date"
+                          <DateBox
                             value={f.on}
                             onChange={(e) => setRow(i, "on", e.target.value)}
                             className="mt-1 w-full rounded-md border border-rc-border bg-white px-2.5 py-1.5 text-sm font-normal focus:border-rc-green-deep focus:outline-none"

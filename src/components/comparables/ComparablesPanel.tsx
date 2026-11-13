@@ -11,7 +11,8 @@ import {
   type ComparablesArea,
 } from "@/components/comparables/MostComparable";
 import type { ComparablesRecord } from "@/lib/rules/comparables-rules";
-import { STRATA_LAND_NOT_SHOWN } from "@/lib/rules/strata-land";
+import { STRATA_LAND_NOT_SHOWN, isStrataDwelling } from "@/lib/rules/strata-land";
+import { missingSaleDetails, missingSaleLine } from "@/lib/rules/sale-details";
 import { DETAIL_FIELDS, type DetailKey } from "@/lib/rules/comparable-changes";
 import { DictateButton, DictationSuspended, appendDictated } from "@/components/Dictate";
 import {
@@ -34,6 +35,7 @@ import {
   type SubjectAttributes,
   type Weighting,
 } from "@/lib/data/comparables";
+import { DateBox } from "@/components/DateBox";
 
 // The comparable sales, stacked against this listing.
 //
@@ -327,6 +329,10 @@ function ComparableRow({
 
   const similar = similaritiesFrom(subject, comparable);
   const different = differencesFrom(subject, comparable);
+  // What this sale is still missing, to fill in with Edit details (Master, 11 Nov 2026).
+  const stillToAdd = missingSaleLine(
+    missingSaleDetails(comparable, isStrataDwelling(subject.propertyType ?? null, subject.isStrata ?? null)),
+  );
   const canCompare = similar.length > 0 || different.length > 0;
   const dimmed = comparable.weighting === "not_comparable";
 
@@ -443,6 +449,7 @@ function ComparableRow({
             {spec(comparable) ? ` · ${spec(comparable)}` : ""}
             {comparable.distanceM !== null ? ` · ${formatDistance(comparable.distanceM)}` : ""}
           </p>
+          {stillToAdd && <p className="mt-0.5 text-[11px] font-medium text-rc-amber-deep">{stillToAdd}</p>}
           {comparable.source === "agent" && (
             <p className="mt-0.5 text-[11px] text-rc-faint">Added by you, not from the report.</p>
           )}
@@ -691,14 +698,24 @@ function EditComparableDetails({
         {DETAIL_FIELDS.map((f) => (
           <label key={f.key} className="block text-[11px] font-medium text-rc-muted">
             {f.label}
-            <input
-              type={f.key === "saleDate" ? "date" : "text"}
-              inputMode={f.key === "saleDate" ? undefined : f.key === "bedrooms" || f.key === "bathrooms" || f.key === "carSpaces" ? "numeric" : "decimal"}
-              name={f.key}
-              value={values[f.key]}
-              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-              className="mt-1 w-full min-w-0 rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm text-rc-ink"
-            />
+            {/* The sale date in the RealComply date box, always dd/mm/yyyy (Adam, 11 Nov 2026). */}
+            {f.key === "saleDate" ? (
+              <DateBox
+                name={f.key}
+                value={values[f.key]}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                className="mt-1 w-full min-w-0 rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm text-rc-ink"
+              />
+            ) : (
+              <input
+                type="text"
+                inputMode={f.key === "bedrooms" || f.key === "bathrooms" || f.key === "carSpaces" ? "numeric" : "decimal"}
+                name={f.key}
+                value={values[f.key]}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                className="mt-1 w-full min-w-0 rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm text-rc-ink"
+              />
+            )}
             {f.key === "landSizeSqm" && comparable.landSizeHidden && !values.landSizeSqm.trim() && (
               <span className="mt-0.5 block text-[10px] font-normal text-rc-faint">{STRATA_LAND_NOT_SHOWN}</span>
             )}
@@ -760,8 +777,7 @@ function AddComparable({ propertyId, onDone }: { propertyId: string; onDone: () 
         <Field name="salePrice" label="Sale price" defaultValue="" />
         <label className="block text-[11px] font-medium text-rc-muted">
           Sale date
-          <input
-            type="date"
+          <DateBox
             name="saleDate"
             className="mt-1 w-full rounded-md border border-rc-border px-2 py-1.5 text-sm text-rc-ink"
           />

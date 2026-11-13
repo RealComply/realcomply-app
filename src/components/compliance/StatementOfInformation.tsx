@@ -20,8 +20,9 @@ import {
   versionLine,
   type SoiComparable,
 } from "@/lib/rules/soi";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, formatAuTimestamp, sydneyDate } from "@/lib/format-date";
 import { STRATA_LAND_NOT_SHOWN } from "@/lib/rules/strata-land";
+import { DateBox } from "@/components/DateBox";
 
 // The Statement of Information card (s72C; Reg s12H, s12I; 0121). Made in
 // RealComply from the file (the main route) or uploaded, every version kept
@@ -29,8 +30,7 @@ import { STRATA_LAND_NOT_SHOWN } from "@/lib/rules/strata-land";
 
 const initial: SoiActionState = { error: null };
 
-const sydneyToday = () =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const sydneyToday = () => sydneyDate();
 
 const inputClass =
   "w-full rounded-md border border-rc-border bg-white px-2 py-1.5 text-sm font-normal text-rc-ink focus:border-rc-green-deep focus:outline-none";
@@ -164,7 +164,7 @@ function MakeForm({ view, onClose }: { view: SoiView; onClose: () => void }) {
               </label>
               <label className="text-[11px] text-rc-muted">
                 Date of sale
-                <input type="date" value={r.soldOn} onChange={(e) => set(i, "soldOn", e.target.value)} className={inputClass} />
+                <DateBox value={r.soldOn} onChange={(e) => set(i, "soldOn", e.target.value)} className={inputClass} />
               </label>
             </div>
             <label className="block text-[11px] text-rc-muted">
@@ -265,7 +265,7 @@ function UploadForm({ view, onClose }: { view: SoiView; onClose: () => void }) {
       <div className="grid grid-cols-2 gap-2">
         <label className="text-[11px] font-semibold text-rc-ink">
           Date it was prepared
-          <input type="date" name="preparedOn" defaultValue={sydneyToday()} max={sydneyToday()} required className={`mt-1 ${inputClass}`} />
+          <DateBox name="preparedOn" defaultValue={sydneyToday()} max={sydneyToday()} required className={`mt-1 ${inputClass}`} />
         </label>
         <label className="text-[11px] font-semibold text-rc-ink">
           The ESP it&apos;s for
@@ -297,9 +297,7 @@ function LinkPart({ view }: { view: SoiView }) {
   const [copied, setCopied] = useState(false);
   const live = view.link?.enabled && !view.linkStopped;
   const changed = view.link?.changedAt
-    ? ` Switched ${view.link.enabled ? "on" : "off"} ${formatAuDate(
-        new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney" }).format(new Date(view.link.changedAt)),
-      )}${view.link.changedByName ? ` by ${view.link.changedByName}` : ""}.`
+    ? ` Switched ${view.link.enabled ? "on" : "off"} ${formatAuTimestamp(view.link.changedAt)}${view.link.changedByName ? ` by ${view.link.changedByName}` : ""}.`
     : "";
 
   return (

@@ -41,6 +41,26 @@ describe("the staff reminder email", () => {
     assert.ok(!read.text.includes("Sign the Supervision Guidelines Manual"));
   });
 
+  it("a change still to sign (0126): says which, and links to Home where the card is", () => {
+    assert.equal(
+      staffReminderSubject({ ...base, kinds: ["sg_change_sign"] }),
+      "Please sign the changes to Harbour Street Realty's Supervision Guidelines",
+    );
+    assert.equal(
+      staffReminderSubject({ ...base, kinds: ["sg_change_sign", "sg_read"] }),
+      "Please sign and read Harbour Street Realty's Supervision Guidelines",
+    );
+    assert.equal(
+      staffReminderSubject({ ...base, kinds: ["sg_manual_sign", "sg_change_sign"] }),
+      "Please sign Harbour Street Realty's Supervision Guidelines Manual",
+    );
+    const change = buildStaffReminderEmail({ ...base, kinds: ["sg_change_sign"], changeRefs: ["A2", "A3"] });
+    assert.ok(change.text.includes("Sign the changes to the supervision guidelines (A2, A3)"));
+    assert.ok(change.text.includes("I've read and understood this change"));
+    assert.ok(change.text.includes("https://www.realcomply.com.au/dashboard/home"));
+    assert.ok(!change.text.includes("Sign the Supervision Guidelines Manual"));
+  });
+
   it("has a plain-text part and no em dashes outside the shared diligence line", () => {
     const { text, html } = buildStaffReminderEmail({ ...base, kinds: ["sg_read"] });
     assert.ok(text.length > 0 && html.length > 0);

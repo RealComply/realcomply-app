@@ -8,7 +8,21 @@ import { SgReadingCard } from "@/components/sg/SgReadingCard";
 import { SgDraftReview } from "@/components/sg/SgDraftReview";
 import { SgReadFailedCard } from "@/components/sg/SgReadFailedCard";
 import { SgLiveDocument } from "@/components/sg/SgLiveDocument";
-import { sgDocumentsFor } from "@/lib/data/sg-document";
+import {
+  sgAmendmentSigners,
+  sgAmendmentsFor,
+  sgApprovedAmendmentsAll,
+  sgDocumentsFor,
+  sgReviewDueFor,
+  sgReviewsAll,
+  sgSavedDocuments,
+} from "@/lib/data/sg-document";
+import { SgAnnualReviewCard } from "@/components/sg/SgAnnualReviewCard";
+import { reviewCardShows } from "@/lib/sg-document/annual-review";
+import { SgChangeLog } from "@/components/sg/SgChangeLog";
+import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
+import { todayInSydney } from "@/lib/sg-document/amendments";
+import { sgChangeLog, versionSignedOf } from "@/lib/sg-document/change-log";
 import { sgReadGapLines } from "@/lib/sg-document/checks";
 import { DocumentSignoffCard } from "@/components/registers/DocumentSignoffCard";
 import { AmlPreCommencementCard } from "@/components/registers/AmlPreCommencementCard";
@@ -18,6 +32,7 @@ import { staffReminderData } from "@/lib/data/staff-reminders";
 import { StaffRemindersCard } from "@/components/registers/StaffRemindersCard";
 import type { SgManualVersion, SignoffDocument, SignoffSignature } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
+import { formatAuShortDate } from "@/lib/format-date";
 
 // Supervision guidelines and operational procedures (was "SG Manual").
 //
@@ -35,8 +50,16 @@ import { RoofMark } from "@/components/RoofMark";
 // along while it's open (continueSgDocumentRead), within this limit.
 export const maxDuration = 300;
 
-export default async function SgManualPage() {
+/** Export PDF (part 4b): the document with its amendments merged in, then the change log. */
+const SG_PDF_HREF = "/dashboard/sg-manual/pdf";
+
+export default async function SgManualPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { profile, access } = await requireAccess();
+  const query = await searchParams;
   const supabase = await createClient();
 
   const [{ data: versionRows }, staff, { data: signoffDocRows }, { data: signoffSigRows }, { data: agency }, sg] = await Promise.all([
@@ -44,10 +67,28 @@ export default async function SgManualPage() {
     agencyPeople(supabase),
     supabase.from("signoff_documents").select("*").eq("category", "sg_manual").order("created_at", { ascending: false }),
     supabase.from("signoff_signatures").select("*"),
-    supabase.from("agencies").select("aml_precommencement_enabled").eq("id", profile.agency_id).maybeSingle(),
+    supabase.from("agencies").select("aml_precommencement_enabled, created_at").eq("id", profile.agency_id).maybeSingle(),
     sgDocumentsFor(supabase),
   ]);
   const open = access.runsOffice ? sg.open : null;
+
+  // Part 2 (0125): the live document's quick amendments, who has signed each,
+  // every document saved, for the change log, and when the next review is due
+  // (2.1.2: at least every 12 months).
+  // The change log keeps the amendments to earlier versions too (part 3),
+  // and every "Reviewed, no changes needed" (part 4, 0126).
+  const [amendments, savedDocs, everyApproved, reviews, review] = await Promise.all([
+    sg.live ? sgAmendmentsFor(supabase, sg.live.doc.id) : Promise.resolve([]),
+    sgSavedDocuments(supabase),
+    sgApprovedAmendmentsAll(supabase),
+    sgReviewsAll(supabase),
+    sgReviewDueFor(supabase, profile.agency_id),
+  ]);
+  const approvedAmendments = amendments.filter((a) => a.status === "approved");
+  const signers = await sgAmendmentSigners(
+    supabase,
+    everyApproved.map((a) => a.id),
+  );
 
   // Who still needs to sign or read, for the reminder card (0093): the
   // licensee or an office manager only.
@@ -61,6 +102,7 @@ export default async function SgManualPage() {
   );
 
   const current = versions[0];
+  const staffIds = staff.filter((s) => !s.archived_at).map((s) => s.id);
 
   // Matched by file_path rather than a formal FK — the signoff row is
   // created from the same upload, in the same request, right after this one.
@@ -82,6 +124,23 @@ export default async function SgManualPage() {
           .data?.signedUrl ?? null
       : signedUrls[versions.findIndex((v) => v.file_path === currentSignoff.file_path)]?.data?.signedUrl ?? null
     : null;
+
+  // The change log (screen 5): every version, with its file's sign-off
+  // (0009), every amendment and every review. The same rows Export PDF prints.
+  const logRows = sgChangeLog({
+    savedDocs,
+    approved: everyApproved,
+    reviews,
+    signers,
+    staffIds,
+    versionSigned: versionSignedOf(versions, signoffDocs, signoffSigs),
+  });
+  // When the next review is due (2.1.2): the same date Home and the reminders use.
+  const reviewDue = sg.live ? (review?.dueOn ?? null) : null;
+  const today = todayInSydney();
+  const reviewCard =
+    access.runsOffice && sg.live && review && (reviewCardShows(review.dueOn, today) || review.lastReviewedOn === today) ? review : null;
+  const myChanges = approvedAmendments.filter((a) => !(signers.get(a.id) ?? []).includes(profile.id));
 
   return (
     <>
@@ -118,6 +177,11 @@ export default async function SgManualPage() {
                 versionRead={open.doc.versionRead}
                 checks={open.doc.checks}
                 sections={open.sections}
+                live={
+                  sg.live
+                    ? { versionLabel: sg.live.doc.versionLabel, sections: sg.live.sections, amendments: approvedAmendments }
+                    : null
+                }
               />
             ) : (
               <SgReadFailedCard
@@ -130,17 +194,41 @@ export default async function SgManualPage() {
           </div>
         )}
 
+        {reviewCard && (
+          <SgAnnualReviewCard
+            documentId={reviewCard.documentId}
+            dueOn={reviewCard.dueOn}
+            today={today}
+            reviewedToday={reviewCard.lastReviewedOn === today}
+            onPage
+          />
+        )}
+
+        <SgChangesToSign changes={myChanges} />
+
         {sg.live && (
           <div className="mt-8">
             <SgLiveDocument
+              documentId={sg.live.doc.id}
+              amendments={amendments}
+              nextReviewDue={reviewDue}
+              today={today}
+              startAmendment={query.amend === "1"}
               docType={sg.live.doc.docType}
               versionLabel={sg.live.doc.versionLabel}
               savedAt={sg.live.doc.savedAt}
               savedByName={sg.live.doc.savedByName}
               sections={sg.live.sections}
               canUpload={access.runsOffice}
+              exportHref={access.runsOffice ? SG_PDF_HREF : null}
               gaps={sgReadGapLines(sg.live.doc.checks)}
             />
+          </div>
+        )}
+
+        {sg.live && logRows.length > 0 && (
+          <div className="mt-8">
+            <SgChangeLog rows={logRows} exportHref={access.runsOffice ? SG_PDF_HREF : null} />
           </div>
         )}
 
@@ -157,7 +245,7 @@ export default async function SgManualPage() {
               ) : (
                 current.file_name
               )}{" "}
-              · uploaded {new Date(current.created_at).toLocaleDateString("en-AU")} by {nameFor(current.uploaded_by)}
+              · uploaded {formatAuShortDate(current.created_at)} by {nameFor(current.uploaded_by)}
             </p>
             {current.notes && <p className="mt-1 text-xs text-rc-muted">{current.notes}</p>}
           </div>
@@ -186,6 +274,7 @@ export default async function SgManualPage() {
               id: r.person.id,
               name: r.person.full_name?.trim() || r.person.email,
               kinds: r.kinds,
+              changeRefs: r.changeRefs,
               lastRemindedAt: r.lastRemindedAt,
             }))}
           />
@@ -219,7 +308,7 @@ export default async function SgManualPage() {
                 <li key={v.id} className="px-4 py-3 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-rc-ink">{v.version_label ?? "Untitled version"}</span>
-                    <span className="text-xs text-rc-faint">{new Date(v.created_at).toLocaleDateString("en-AU")}</span>
+                    <span className="text-xs text-rc-faint">{formatAuShortDate(v.created_at)}</span>
                   </div>
                   <p className="mt-0.5 text-xs text-rc-muted">
                     {url ? (

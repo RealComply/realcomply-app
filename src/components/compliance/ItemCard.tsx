@@ -18,6 +18,7 @@ import {
   ORDER_ON_AGENT_KEY,
   SETTLEMENT_DATE_LABEL,
   addedAfterSignOffLine,
+  getItem,
   selfManaged,
   settlementDateOf,
 } from "@/lib/rules/nsw-sales";
@@ -28,7 +29,7 @@ import {
   daysBetween,
   type TenantPhotoData,
 } from "@/lib/rules/tenant-photo-notice";
-import { formatAuDate, formatAuDateTimeShort, formatAuTimestamp } from "@/lib/format-date";
+import { formatAuDate, formatAuDateTime, formatAuDateTimeShort, formatAuShortDate, formatAuTimestamp } from "@/lib/format-date";
 import type { ComplianceItem } from "@/lib/rules/nsw-sales";
 import { getPrescribedDoc } from "@/lib/rules/nsw-prescribed-documents";
 import {
@@ -37,7 +38,7 @@ import {
   agreementPredatesAml,
 } from "@/lib/rules/aml-precommencement";
 import { FileDropZone, type FilePicker } from "@/components/FileDropZone";
-import { AcceptedFilesLine, CantReadNotice, askForPdfAt, useUploadPdfAsk } from "@/components/AcceptedFiles";
+import { AcceptedFilesLine, CantReadNotice, WordFileNotice, askForPdfAt, useUploadPdfAsk } from "@/components/AcceptedFiles";
 import { unreadableKind } from "@/lib/storage/accepted-files";
 import { SignoffLinkPanel } from "@/components/signoff/SignoffLinkPanel";
 import { FlagNote, useFlagFor } from "@/components/compliance/SendBack";
@@ -61,7 +62,7 @@ import {
   espNoticeOf,
 } from "@/lib/rules/esp-given-before-signing";
 import { espFrom } from "@/lib/data/effective-esp";
-import type { SearchTry } from "@/lib/listings-pages";
+import type { PageReads, SearchTry } from "@/lib/listings-pages";
 import type { AuctionOutcomeData, AuctionOutcomeKind, Profile, PropertyItem } from "@/lib/types";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, buildEvidencePath, uploadEvidenceObject } from "@/lib/storage/evidence";
@@ -114,6 +115,16 @@ import { EspPrompts } from "@/components/compliance/EspPrompts";
 import { advertisingFixLine, reformsInForce } from "@/lib/rules/underquoting-reforms";
 import { lowestPriceFromItems } from "@/lib/data/lowest-price";
 import { sydneyDate } from "@/lib/subscription-end/dates";
+import { confirmMyReport } from "@/lib/actions/report-choice";
+import {
+  NO_SALES_PROMPT,
+  THIS_IS_MY_REPORT,
+  UPLOAD_REPORT,
+  confirmedAsReport,
+  reportInAgreementOf,
+  reportPromptFor,
+  type ReportPrompt,
+} from "@/lib/documents/report-choice";
 import {
   ADS_UPDATED_LABEL,
   OTHER_ADS_LINE,
@@ -164,6 +175,7 @@ import type { Comparable, SubjectAttributes } from "@/lib/data/comparables";
 import { reportReadFinished, reportReadNote, reportReadOf, type ReportRead } from "@/lib/documents/report-read";
 import { RoofMark } from "@/components/RoofMark";
 import { CardReopenArea, useReopen, useWaitingRequest } from "@/components/compliance/Reopen";
+import { DateBox } from "@/components/DateBox";
 
 const initialState: ActionState = { error: null };
 
@@ -243,6 +255,7 @@ function ItemShell({
   evidenceReadOnly = false,
   optional = false,
   evidenceReadNote = null,
+  reportPrompt = null,
   hideReopen = false,
   children,
 }: {
@@ -252,6 +265,8 @@ function ItemShell({
   current?: PropertyItem;
   /** What the last read of the attached file came to, said beside it (a4). */
   evidenceReadNote?: ReadNote | null;
+  /** a4: no comparable sales found in the report: upload another, or confirm it (Master, 11 Nov 2026). */
+  reportPrompt?: ReportPrompt | null;
   /** Passed through to the pill — see StatusPill. */
   optional?: boolean;
   /** Passed through to the pill — see StatusPill. */
@@ -474,11 +489,12 @@ function ItemShell({
           evidencePath={current?.evidence_path ?? null}
           evidenceFileName={(current?.data as { evidenceFileName?: string } | undefined)?.evidenceFileName}
           label={item.evidenceLabel}
-          required={item.evidenceRequired}
+          required={item.evidenceRequired && reportPrompt?.kind !== "agreement"}
           warning={item.evidenceWarning}
           replaceOnly={item.evidenceReplaceOnly}
           onUnsavedChange={setEvidenceUnsaved}
           readNote={evidenceReadNote}
+          reportPrompt={reportPrompt}
         />
       )}
       </fieldset>
@@ -559,6 +575,46 @@ function RereadButton({ propertyId, itemKey }: { propertyId: string; itemKey: st
 // do about it, quiet when the read went well.
 type ReadNote = { tone: "ok" | "warn"; text: string };
 
+// NO COMPARABLE SALES FOUND IN THE REPORT (Master, 11 Nov 2026; see
+// lib/documents/report-choice.ts). The card stays as it is and nothing holds
+// the stage, since the reader can be wrong: the agent uploads their report, or
+// says this is it and enters the sales on the ESP reasoning card.
+function NoSalesPrompt({ propertyId, onUpload }: { propertyId: string; onUpload: () => void }) {
+  const action = confirmMyReport.bind(null, propertyId);
+  const [state, formAction, pending] = useActionState(action, initialState);
+  return (
+    <div
+      role="status"
+      className="flex w-full items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-2 text-xs text-rc-amber-deep"
+    >
+      <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+      <div className="min-w-0 space-y-1.5">
+        <p>{NO_SALES_PROMPT}</p>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={onUpload}
+            disabled={pending}
+            className="rounded-md border border-rc-border bg-white px-2.5 py-1 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20 disabled:opacity-60"
+          >
+            {UPLOAD_REPORT}
+          </button>
+          <form action={formAction}>
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md border border-rc-border bg-white px-2.5 py-1 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20 disabled:opacity-60"
+            >
+              {pending ? "Saving…" : THIS_IS_MY_REPORT}
+            </button>
+          </form>
+        </div>
+        {state.error && <p>{state.error}</p>}
+      </div>
+    </div>
+  );
+}
+
 function ReadNoteLine({ note }: { note: ReadNote }) {
   return (
     <p
@@ -587,6 +643,7 @@ function EvidenceUploader({
   replaceOnly = false,
   onUnsavedChange,
   readNote = null,
+  reportPrompt = null,
 }: {
   propertyId: string;
   itemKey: string;
@@ -597,6 +654,8 @@ function EvidenceUploader({
   warning?: string;
   /** What the last read of this file came to, under it. */
   readNote?: ReadNote | null;
+  /** a4: in place of readNote when no comparable sales were found in the report. */
+  reportPrompt?: ReportPrompt | null;
   /**
    * Swap Remove for Replace. For the documents collected at listing setup,
    * which are mandatory there: a file the listing could not have been created
@@ -631,9 +690,12 @@ function EvidenceUploader({
   // (application/vnd...)") and of Read again, which can't read it either. By
   // the attached file's name, so it is said again on reload.
   const reads = isAiReadItem(itemKey);
+  // The identity card checks its file (screenForIdDocument), Word included
+  // (Adam, 11 Nov 2026), so it says what a reading card says about Word.
+  const readsOrChecks = reads || Boolean(getItem(itemKey)?.rejectIdDocuments);
   const picker = useRef<FilePicker>(null);
   const attachedName = evidencePath ? (evidenceFileName ?? evidencePath.split("/").pop() ?? null) : null;
-  const cantRead = reads && unreadableKind(attachedName) !== null;
+  const cantRead = reads && unreadableKind(attachedName, { listingCard: true }) !== null;
   function uploadPdf() {
     // The drop zone is drawn first, in this same click, so its picker can open.
     flushSync(() => {
@@ -727,6 +789,12 @@ function EvidenceUploader({
         {label ?? "Evidence"}
         {!required && <span className="font-normal text-rc-faint"> (optional)</span>}
       </p>
+      {/* a4: the agency agreement's own sales page is the report (decision 6, 11 Nov 2026). */}
+      {!evidencePath && reportPrompt?.kind === "agreement" && (
+        <div className="mt-1">
+          <ReadNoteLine note={{ tone: "ok", text: reportPrompt.text }} />
+        </div>
+      )}
       {/* Rendered above the control, and above the attached-file row too, so
           it is still visible to whoever looks at the file later — not just to
           the person uploading.
@@ -787,9 +855,17 @@ function EvidenceUploader({
             </form>
           )}
           {cantRead ? (
-            <CantReadNotice fileName={attachedName} onUploadPdf={uploadPdf} className="w-full" />
+            <CantReadNotice listingCard fileName={attachedName} onUploadPdf={uploadPdf} className="w-full" />
+          ) : reportPrompt?.kind === "ask" ? (
+            <NoSalesPrompt propertyId={propertyId} onUpload={uploadPdf} />
+          ) : reportPrompt?.kind === "confirmed" || reportPrompt?.kind === "agreement" ? (
+            <ReadNoteLine note={{ tone: "ok", text: reportPrompt.text }} />
           ) : (
             readNote && <ReadNoteLine note={readNote} />
+          )}
+          {/* A Word file isn't in the audit pack (Adam, 11 Nov 2026). */}
+          {!cantRead && (
+            <WordFileNotice fileName={attachedName} read={readsOrChecks} onUploadPdf={uploadPdf} className="w-full" />
           )}
         </div>
       ) : (
@@ -817,8 +893,8 @@ function EvidenceUploader({
               label="Drag a file here, or click to browse"
               pickerRef={picker}
             />
-            {/* Only where RealComply reads the file (Adam, 3 Nov 2026). */}
-            {reads && <AcceptedFilesLine />}
+            {/* Only where RealComply reads the file (Adam, 3 Nov 2026), or checks it. */}
+            {readsOrChecks && <AcceptedFilesLine word />}
             <button
               type="submit"
               disabled={uploading || uploadPending}
@@ -887,6 +963,8 @@ function ChecklistItem({
   allEsp,
   comparablesReportRead = false,
   reportRead = null,
+  reportConfirmed = false,
+  agreementPath = null,
   doneLine = null,
   keepUntil = null,
   councilArea,
@@ -903,6 +981,10 @@ function ChecklistItem({
   comparablesArea?: ComparablesArea;
   /** a4 and a4c: what the last read of the comparable-sales report on a4 came to. */
   reportRead?: ReportRead | null;
+  /** a4c: "This is my report" was said on a4 about the report there now (11 Nov 2026). */
+  reportConfirmed?: boolean;
+  /** a4: the agency agreement on a3, whose own sales page can stand as the report (decision 6, 11 Nov 2026). */
+  agreementPath?: string | null;
   // The listing's own attributes and its comparable sales. Read once by the
   // page and passed down, like amlPreCommencementEnabled — only a4 and a4c
   // use them, and neither should be asking the database on its own.
@@ -1003,7 +1085,7 @@ function ChecklistItem({
   const letterName = current?.evidence_path
     ? ((current.data as { evidenceFileName?: string } | null)?.evidenceFileName ?? current.evidence_path.split("/").pop() ?? null)
     : null;
-  const letterReadFailed = received?.readFailed && unreadableKind(letterName) === null ? received.readFailed : null;
+  const letterReadFailed = received?.readFailed && unreadableKind(letterName, { listingCard: true }) === null ? received.readFailed : null;
   // The file in this slot is a different kind of document than the slot
   // expects, so nothing was read from it. Everything the AI would otherwise
   // have offered on this card is suppressed — see the extraction module's
@@ -1169,13 +1251,16 @@ function ChecklistItem({
     item.key === "a4c" &&
     !comparables.some((c) => c.source === "report") &&
     !marketListings.some((l) => l.source === "report")
-      ? reportReadNote(reportRead, "reasoning")
+      ? reportConfirmed
+        ? // "This is my report" on the ESP card (Master, 11 Nov 2026): the sales go in by hand here.
+          { tone: "ok" as const, text: "Add the sales from the report on the ESP card below. Each sale shows any details still to fill in." }
+        : reportReadNote(reportRead, "reasoning")
       : null;
   // The report on the ESP card is a Word, Excel or saved email file (Adam,
   // 3 Nov 2026): said in his words, not as "No sales from the comparable-sales
   // report yet: file type not supported for extraction yet (application/...)".
   // Upload a PDF opens the ESP card's own picker, where the report is.
-  const reasoningCantRead = reasoningReadNote !== null && unreadableKind(reportRead?.path) !== null;
+  const reasoningCantRead = reasoningReadNote !== null && unreadableKind(reportRead?.path, { listingCard: true }) !== null;
 
   return (
     <ItemShell
@@ -1184,6 +1269,16 @@ function ChecklistItem({
       propertyId={propertyId}
       current={current}
       awaitingReview={showsDraft}
+      reportPrompt={
+        item.key === "a4"
+          ? reportPromptFor(
+              current?.data,
+              current?.evidence_path,
+              (iso) => formatAuDate(sydneyDate(new Date(iso))),
+              agreementPath,
+            )
+          : null
+      }
       evidenceReadNote={
         item.key === "a4"
           ? reportReadNote(reportRead, "report")
@@ -1227,7 +1322,7 @@ function ChecklistItem({
       {item.key === "a4c" && subject && !espElsewhere && !item.showFindings && !item.hideNote && (
         <div className="mb-3">
           {reasoningCantRead ? (
-            <CantReadNotice fileName={reportRead?.path} onUploadPdf={() => askForPdfAt("a4")} className="mb-2" />
+            <CantReadNotice listingCard fileName={reportRead?.path} onUploadPdf={() => askForPdfAt("a4")} className="mb-2" />
           ) : (
             reasoningReadNote && (
               <div className="mb-2">
@@ -1255,7 +1350,9 @@ function ChecklistItem({
         onSubmit={keepOnRefusal ? submitKeepingFields : undefined}
         className="space-y-3"
       >
-        {wrongDocument ? (
+        {/* Not on the ESP card: there, no sales found is said beside the
+            report, with Upload report and This is my report (11 Nov 2026). */}
+        {wrongDocument && item.key !== "a4" ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-rc-amber/10 px-2.5 py-1.5 text-xs text-rc-amber-deep">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             <span>
@@ -1538,12 +1635,12 @@ function ChecklistItem({
                   {spreadMarginal ? (
                     <>
                       Just over the 10% limit in s72A. The highest this range can go on a $
-                      {lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
+                      {lowNum.toLocaleString("en-AU")} low is ${maxHigh?.toLocaleString("en-AU")}.
                     </>
                   ) : spreadOver ? (
                     <>
                       {spreadPct.toFixed(1)}% spread. Over the 10% limit in s72A. The highest this range can go
-                      on a ${lowNum.toLocaleString()} low is ${maxHigh?.toLocaleString()}.
+                      on a ${lowNum.toLocaleString("en-AU")} low is ${maxHigh?.toLocaleString("en-AU")}.
                     </>
                   ) : (
                     <>{spreadPct.toFixed(1)}% spread. Within the 10% limit in s72A.</>
@@ -1570,9 +1667,8 @@ function ChecklistItem({
             <label className="block text-xs text-rc-muted" htmlFor="settlement-date">
               {SETTLEMENT_DATE_LABEL}
             </label>
-            <input
+            <DateBox
               id="settlement-date"
-              type="date"
               name="settlementDate"
               defaultValue={settlementDateOf(current) ?? ""}
               className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
@@ -1582,8 +1678,7 @@ function ChecklistItem({
         {item.requiresDate && item.key !== "t5" && (
           <div>
             <label className="block text-xs text-rc-muted">{item.dateLabel ?? "Event date"}</label>
-            <input
-              type="date"
+            <DateBox
               name="eventDate"
               defaultValue={current?.event_date ?? draft?.eventDate ?? ""}
               className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
@@ -1915,9 +2010,8 @@ function TenantPhotoFields({ item, current }: { item: ComplianceItem; current?: 
           <label className="block text-xs text-rc-muted" htmlFor="t5-notice">
             {item.dateLabel ?? "Event date"}
           </label>
-          <input
+          <DateBox
             id="t5-notice"
-            type="date"
             name="eventDate"
             value={notice}
             onChange={(e) => setNotice(e.target.value)}
@@ -1928,9 +2022,8 @@ function TenantPhotoFields({ item, current }: { item: ComplianceItem; current?: 
           <label className="block text-xs text-rc-muted" htmlFor="t5-shoot">
             Date of the photo or video shoot
           </label>
-          <input
+          <DateBox
             id="t5-shoot"
-            type="date"
             name="shootDate"
             value={shoot}
             onChange={(e) => setShoot(e.target.value)}
@@ -1977,9 +2070,8 @@ function TenantPhotoFields({ item, current }: { item: ComplianceItem; current?: 
             <label className="block text-xs text-rc-muted" htmlFor="t5-permission">
               Date permission was given
             </label>
-            <input
+            <DateBox
               id="t5-permission"
-              type="date"
               name="permissionDate"
               defaultValue={saved.permissionDate ?? ""}
               className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm"
@@ -2020,12 +2112,15 @@ function GuideItem({
   revisionItem,
   agreementItem,
   lowest,
+  listingsPageReads,
 }: {
   item: ComplianceItem;
   propertyId: string;
   current?: PropertyItem;
   /** The lowest price the ads can start at (lib/rules/lowest-advertised-price.ts). */
   lowest?: LowestPrice;
+  /** What the morning's read made of the agent's listings page and the office's (11 Nov 2026). */
+  listingsPageReads?: PageReads;
   espItem?: PropertyItem;
   /** The ESP revision card (d3): its latest revision is the ESP now (Adam, 3 Nov 2026). */
   revisionItem?: PropertyItem;
@@ -2130,8 +2225,8 @@ function GuideItem({
         <p className="text-xs text-rc-muted">
           {latestEsp.revised ? "Latest ESP (revised)" : "Recorded ESP"}{" "}
           <span className="font-semibold text-rc-ink">
-            ${esp.espLow.toLocaleString()}
-            {esp.espHigh && esp.espHigh !== esp.espLow ? ` to $${esp.espHigh.toLocaleString()}` : ""}
+            ${esp.espLow.toLocaleString("en-AU")}
+            {esp.espHigh && esp.espHigh !== esp.espLow ? ` to $${esp.espHigh.toLocaleString("en-AU")}` : ""}
           </span>
           . The advertised price can&rsquo;t be below it.
         </p>
@@ -2226,8 +2321,7 @@ function GuideItem({
               <div className="space-y-2 border-l-2 border-rc-green-deep/30 pl-3">
                 <label className="block text-xs font-semibold text-rc-ink">
                   Date updated
-                  <input
-                    type="date"
+                  <DateBox
                     name="adsUpdatedOn"
                     defaultValue={sydneyDate(new Date())}
                     className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
@@ -2280,7 +2374,7 @@ function GuideItem({
       {/* The independent read of the live page. Sits below the agent's own
           record rather than replacing it: the form above is what the agent
           says is advertised, this is what the website actually shows. */}
-      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} pageSearch={data.pageSearch} />
+      <ListingScanPanel propertyId={propertyId} finding={data.websiteScan} pageSearch={data.pageSearch} pageReads={listingsPageReads} />
     </ItemShell>
   );
 }
@@ -2513,11 +2607,11 @@ function OfferRow({ propertyId, entry }: { propertyId: string; entry: LoggedOffe
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {/* No dashes in what people read (Adam, 9 Nov 2026). */}
-            <span className="font-medium text-rc-ink">${entry.amount.toLocaleString()}</span>, {offerSummary(entry)}
+            <span className="font-medium text-rc-ink">${entry.amount.toLocaleString("en-AU")}</span>, {offerSummary(entry)}
             {entry.note && <> · {entry.note}</>}
             {entry.updatedAt && (
               <span className="ml-1 text-[11px] text-rc-faint">
-                (edited {new Date(entry.updatedAt).toLocaleDateString("en-AU")})
+                (edited {formatAuShortDate(entry.updatedAt)})
               </span>
             )}
           </div>
@@ -2652,8 +2746,7 @@ function OfferFields({ defaults }: { defaults?: LoggedOffer }) {
               <WhyRejected defaultValue={defaults?.rejectedFor ?? null} />
               <label className="block text-xs font-semibold text-rc-ink">
                 Date the vendor rejected it
-                <input
-                  type="date"
+                <DateBox
                   name="rejectedOn"
                   defaultValue={defaults?.rejectedOn ?? ""}
                   className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
@@ -2801,8 +2894,7 @@ function ElsewhereOfferQuestion({
             </label>
             <label className="block text-xs font-semibold text-rc-ink">
               Date the vendor rejected it
-              <input
-                type="date"
+              <DateBox
                 name="rejectedOn"
                 defaultValue={answer?.rejectedOn ?? ""}
                 className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm font-normal"
@@ -2894,9 +2986,8 @@ function EspGivenFields({
         <label className="block text-xs text-rc-muted" htmlFor="esp-given-on">
           {ESP_GIVEN_LABEL}
         </label>
-        <input
+        <DateBox
           id="esp-given-on"
-          type="date"
           name="espGivenOn"
           value={givenOn}
           onChange={(e) => setGivenOn(e.target.value)}
@@ -3049,7 +3140,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
   // since nothing was read. Before, they were hidden and Log entry saved a
   // blank entry. Upload a PDF opens this picker again.
   const reportPicker = useRef<FilePicker>(null);
-  const cantRead = evidence !== null && unreadableKind(evidence.fileName) !== null;
+  const cantRead = evidence !== null && unreadableKind(evidence.fileName, { listingCard: true }) !== null;
 
   // Reset the upload/extraction state once a submission actually succeeds,
   // so the form is ready for the next entry rather than carrying over the
@@ -3098,7 +3189,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
     setExtracting(false);
     if (extractError) {
       // The notice under the drop zone says it for a file of a kind that can't be read.
-      if (unreadableKind(stored.name) === null) setClientError(extractError);
+      if (unreadableKind(stored.name, { listingCard: true }) === null) setClientError(extractError);
       return;
     }
     setDraft(fields ?? {});
@@ -3173,9 +3264,12 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
               label="Drag the report here, or click to browse"
               pickerRef={reportPicker}
             />
-            <AcceptedFilesLine />
+            <AcceptedFilesLine word />
             {cantRead && !uploading && !extracting && (
-              <CantReadNotice fileName={evidence?.fileName} onUploadPdf={() => reportPicker.current?.open()} />
+              <CantReadNotice listingCard fileName={evidence?.fileName} onUploadPdf={() => reportPicker.current?.open()} />
+            )}
+            {evidence && !cantRead && !uploading && !extracting && (
+              <WordFileNotice read fileName={evidence.fileName} onUploadPdf={() => reportPicker.current?.open()} />
             )}
             {(uploading || extracting) && (
               <span className="text-xs text-rc-faint">{uploading ? "Uploading…" : "Reading report…"}</span>
@@ -3235,8 +3329,7 @@ function ReportsLogItem({ item, propertyId, current }: { item: ComplianceItem; p
             </div>
             <label className="mt-2.5 block text-[11px] text-rc-muted">
               Date carried out
-              <input
-                type="date"
+              <DateBox
                 name="inspectionDate"
                 className="mt-1 block rounded-md border border-rc-border px-2 py-1 text-sm"
               />
@@ -3845,7 +3938,7 @@ function VerbalQuoteLogItem({ item, propertyId, current }: { item: ComplianceIte
         <ul className="mt-3 space-y-2 text-sm text-rc-muted">
           {entries.map((e, i) => (
             <li key={i} className="border-t border-rc-border pt-2">
-              ${Number(e.amount).toLocaleString()} — {String(e.context)}
+              ${Number(e.amount).toLocaleString("en-AU")} — {String(e.context)}
             </li>
           ))}
         </ul>
@@ -3963,7 +4056,7 @@ function SignItem({
       <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
         <p className="text-sm text-rc-muted">
           Signed <span className="font-medium text-rc-ink">{signature.typedName}</span>
-          {signature.signedAt && <> on {new Date(signature.signedAt).toLocaleString("en-AU")}</>}
+          {signature.signedAt && <> on {formatAuDateTime(signature.signedAt)}</>}
         </p>
       </ItemShell>
     );
@@ -4349,7 +4442,7 @@ function ExportItem({
     <ItemShell item={item} status={current?.status} propertyId={propertyId} current={current}>
       {current?.status === "done" ? (
         <p className="text-sm text-rc-muted">
-          Generated {new Date((current.data as { generatedAt?: string }).generatedAt ?? current.created_at).toLocaleString("en-AU")}.{" "}
+          Generated {formatAuDateTime((current.data as { generatedAt?: string }).generatedAt ?? current.created_at)}.{" "}
           <a href={`/dashboard/${propertyId}/summary`} className="text-rc-green-deep hover:underline">
             View the finalised summary
           </a>
@@ -4866,6 +4959,8 @@ type ItemCardProps = {
   soi?: SoiView;
   /** The ESP revision card (d3): when the statement has to be revised by (Reg s12I; 0121). */
   soiReviseBy?: { revisionNo: number; dueBy: string } | null;
+  /** The advertised price card (c1): what the morning's read made of the listing agent's listings page and the office's (11 Nov 2026). */
+  listingsPageReads?: PageReads;
 };
 
 export function ItemCard(props: ItemCardProps) {
@@ -4891,6 +4986,7 @@ function ItemCardBody({
   comparablesArea,
   soi,
   soiReviseBy = null,
+  listingsPageReads,
 }: ItemCardProps) {
   // A card added after this file was signed off (the order on the agent,
   // 6 Nov 2026) was never asked for here: it says so, with nothing to do.
@@ -4985,6 +5081,7 @@ function ItemCardBody({
           espItem={allItems["a4"]}
           revisionItem={allItems["d3"]}
           agreementItem={allItems["a3"]}
+          listingsPageReads={listingsPageReads}
           lowest={lowestPriceFromItems({
             a4: allItems["a4"]?.data,
             d3: allItems["d3"]?.data,
@@ -5077,13 +5174,18 @@ function ItemCardBody({
           // never came.
           comparablesReportRead={
             item.key === "a4c" &&
-            Boolean(allItems["a4"]?.evidence_path) &&
+            (Boolean(allItems["a4"]?.evidence_path) ||
+              reportInAgreementOf(allItems["a4"]?.data, allItems["a3"]?.evidence_path) !== null) &&
             ((comparables ?? []).some((c) => c.source === "report") ||
               (marketListings ?? []).some((l) => l.source === "report") ||
               Boolean((current?.data as { aiDraft?: { generatedAt?: string } } | undefined)?.aiDraft?.generatedAt) ||
               reportReadFinished(a4ReportRead))
           }
           reportRead={item.key === "a4" || item.key === "a4c" ? a4ReportRead : null}
+          reportConfirmed={
+            item.key === "a4c" && Boolean(confirmedAsReport(allItems["a4"]?.data, allItems["a4"]?.evidence_path))
+          }
+          agreementPath={item.key === "a4" ? (allItems["a3"]?.evidence_path ?? null) : null}
         />
       );
     }

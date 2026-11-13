@@ -68,9 +68,15 @@ describe("the daily reader check", () => {
   });
 
   it("emails Adam when the reader says the sample isn't a comparable-sales report", async () => {
-    const result = await runReaderCheck({ anthropic: reader(() => ({ documentIs: "other", patches: [] })) });
+    const result = await runReaderCheck({ anthropic: reader(() => ({ documentIs: "contract_for_sale", patches: [] })) });
     assert.equal(result.ok, false);
     assert.match(result.problems[0], /isn't a comparable-sales report, so it found no sales\. It has 27\./);
+  });
+
+  it("emails Adam when the reader finds no sales in the sample, whatever it calls it (any format, 11 Nov 2026)", async () => {
+    const result = await runReaderCheck({ anthropic: reader(() => ({ documentIs: "other", patches: [] })) });
+    assert.equal(result.ok, false);
+    assert.match(result.problems[0], /The reader found 0 sales in the sample report .* It has 27\./);
   });
 
   it("says so when there is no reader to check", async (t) => {

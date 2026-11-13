@@ -1,5 +1,6 @@
 import { allItemsInRuleset } from "@/lib/rules/nsw-sales";
 import type { PropertyStage } from "@/lib/types";
+import { formatSydney } from "@/lib/format-date";
 
 // The RealComply annexure to an agency's Supervision Guidelines, the client
 // version (brief, 14 Oct 2026: "Use the 6-page PDF ... as the annexure text
@@ -291,12 +292,7 @@ export function scheduleOne(): ScheduleOneGroup[] {
 /** A date as the annexure prints it: "14 October 2026", in Sydney. */
 export function annexureDate(at: Date | string = new Date()): string {
   const d = typeof at === "string" ? new Date(at) : at;
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: "Australia/Sydney",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(d);
+  return formatSydney(d, { day: "numeric", month: "long", year: "numeric" });
 }
 
 /** The first word of a typed name, for "Thank you, Sam." Blank when there is none. */

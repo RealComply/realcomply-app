@@ -803,7 +803,7 @@ export async function extractRevisedEspNotice(
     // photograph taken on an iPhone — IMG_9352.HEIC — and HEIC was not a format
     // this could open, so the block came back null, the read returned null, and
     // the revised figures were never recorded. readableBytes converts it.
-    const prepared = await prepareRead(blob, fileName);
+    const prepared = await prepareRead(blob, fileName, { word: true });
     if (!prepared.ok) return failed(prepared.problem === "too_large" ? "too_large" : "unsupported");
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -880,7 +880,7 @@ export async function extractCoveringLetterDate(
     const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
     if (error || !blob) return failed("file");
 
-    const prepared = await prepareRead(blob, fileName);
+    const prepared = await prepareRead(blob, fileName, { word: true });
     if (!prepared.ok) return failed(prepared.problem === "too_large" ? "too_large" : "unsupported");
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -1016,7 +1016,7 @@ export async function screenForIdDocument(
     const { data: blob, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(path);
     if (error || !blob) return failed("file");
 
-    const prepared = await prepareRead(blob, fileName);
+    const prepared = await prepareRead(blob, fileName, { word: true });
     // A file type we cannot read cannot be screened. Let it through rather
     // than refusing on the basis of not having looked. The same for a file
     // too large to read at all (a large PDF is read in parts, every part
@@ -1093,7 +1093,7 @@ export async function extractReportDetails(
     return { error: unreadable };
   }
 
-  const prepared = await prepareRead(blob, fileName);
+  const prepared = await prepareRead(blob, fileName, { word: true });
   if (!prepared.ok) {
     await failed(prepared.problem === "too_large" ? "too_large" : "unsupported");
     return prepared.problem === "too_large"
@@ -1102,7 +1102,8 @@ export async function extractReportDetails(
   }
 
   const MIN_TEXT_CHARS = 400;
-  if (prepared.contentType === "text/plain") {
+  // Not a Word file with pictures: its words can be few and its pictures the record.
+  if (prepared.contentType === "text/plain" && !prepared.pictures) {
     const text = Buffer.from(prepared.bytes).toString("utf-8");
     if (text.trim().length < MIN_TEXT_CHARS) {
       await noteRead(supabase, { ...where, outcome: "nothing_found" });
@@ -1289,7 +1290,7 @@ async function readCoveringLetterOnto(propertyId: string): Promise<ActionState> 
     // A saved email or a Word file (Adam, 3 Nov 2026): said in his words, not
     // as "Couldn't read the covering letter. Check it opens". The card says
     // the same beside the file, by its name.
-    const cantRead = result.why === "unsupported" ? cantReadMessage(fileName) : null;
+    const cantRead = result.why === "unsupported" ? cantReadMessage(fileName, { listingCard: true }) : null;
     return { error: cantRead ? `Covering letter: ${cantRead}` : reason };
   }
   const fields = result.fields;
@@ -1454,6 +1455,9 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
   let reportRead: ReportRead | null = null;
   // The contract's outcome, kept on its card (lib/documents/contract-read).
   let contractRead: ContractRead | null = null;
+  // How many sales the agency agreement's own sales page gave, when it was
+  // read to the end (lib/documents/report-choice reportInAgreement).
+  let agreementSales: { path: string; at: string; sales: number; agencyId: string } | null = null;
   for (const item of withEvidence) {
     const readAt = new Date().toISOString();
     // Every read recorded, a failed one logged as an error, and Adam alerted
@@ -1469,6 +1473,15 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
       const found = await extractOneDocument(supabase, anthropic, item, prescribedDocs);
       patches.push(...found);
       readToEnd.add(item.item_key);
+      // The agreement's own sales page, read to the end (decision 6, 11 Nov 2026).
+      if (item.item_key === "a3") {
+        agreementSales = {
+          path: item.evidence_path!,
+          at: readAt,
+          sales: found.reduce((n, p) => n + (p.itemKey === "a4c" ? (p.comparableSales?.length ?? 0) : 0), 0),
+          agencyId: item.agency_id,
+        };
+      }
       if (item.item_key === "b1") contractRead = contractReadFrom(found, item.evidence_path!, readAt);
       if (item.item_key === "a4") {
         reportRead = reportReadFrom(found, item.evidence_path!, readAt);
@@ -1484,7 +1497,7 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
       // (application/...)". What is kept on the card is unchanged; the card
       // says the same, by the file's name.
       const cantRead =
-        err instanceof FileCantBeRead && err.why === "unsupported" ? cantReadMessage(evidenceFileNameOf(item)) : null;
+        err instanceof FileCantBeRead && err.why === "unsupported" ? cantReadMessage(evidenceFileNameOf(item), { listingCard: true }) : null;
       failures.push(`${SOURCE_LABELS[item.item_key] ?? item.item_key}: ${cantRead ?? why}`);
       if (item.item_key === "a4") reportRead = reportReadFailed(why, item.evidence_path!, readAt);
       if (item.item_key === "b1") contractRead = contractReadFailed(cantRead ?? why, item.evidence_path!, readAt);
@@ -1575,12 +1588,16 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
   //      A figure a model read off a PDF and a figure the agent stands behind
   //      are different things, and the record has to be able to tell them
   //      apart.
-  const comparablesPatch = patches.find(
+  //
+  // From every document that gave some (11 Nov 2026): the report and the
+  // agency agreement's own sales page can both, and the same sale in both is
+  // added once (report-rows matches on the address). Was: the first one only.
+  const comparablesPatches = patches.filter(
     (p) =>
       p.itemKey === "a4c" &&
       ((p.comparableSales?.length ?? 0) > 0 || (p.marketListings?.length ?? 0) > 0 || p.subjectProperty),
   );
-  if (comparablesPatch) {
+  if (comparablesPatches.length > 0) {
     const { data: agencyIdRow } = await supabase
       .from("properties")
       .select("agency_id, bedrooms, bathrooms, car_spaces, land_size_sqm, internal_area_sqm, attributes_confirmed_at")
@@ -1589,14 +1606,16 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
     const propertyRowNow = agencyIdRow as Record<string, unknown> | null;
     const agencyId = propertyRowNow?.agency_id as string | undefined;
 
-    if (agencyId && comparablesPatch.subjectProperty) {
+    // Only a report gives the subject's own details (the agreement's are stripped in the reader).
+    const subjectProperty = comparablesPatches.find((p) => p.subjectProperty)?.subjectProperty;
+    if (agencyId && subjectProperty) {
       // Offered, not applied. And not offered at all once the agent has
       // confirmed the details themselves — re-reading a report should not
       // reopen a question they have already answered.
       if (!propertyRowNow?.attributes_confirmed_at) {
         await supabase
           .from("properties")
-          .update({ attribute_suggestions: comparablesPatch.subjectProperty })
+          .update({ attribute_suggestions: subjectProperty })
           .eq("id", propertyId);
       }
     }
@@ -1605,8 +1624,10 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
     // the agent's own rows. lib/documents/report-rows, shared with Adam's
     // re-reads on the staff page since 2 Nov 2026.
     if (agencyId) {
-      const added = await addReportRows(supabase, { agencyId, propertyId }, comparablesPatch);
-      for (const problem of added.problems) console.error("report rows not added:", propertyId, problem);
+      for (const comparablesPatch of comparablesPatches) {
+        const added = await addReportRows(supabase, { agencyId, propertyId }, comparablesPatch);
+        for (const problem of added.problems) console.error("report rows not added:", propertyId, problem);
+      }
     }
   }
 
@@ -1879,6 +1900,45 @@ async function readSourceDocuments(propertyId: string, onlyItemKey?: string): Pr
       .eq("property_id", propertyId)
       .eq("item_key", "a4");
     if (reportReadError) console.error("report read not recorded:", propertyId, reportReadError.message);
+  }
+
+  // The agreement's sales page as the comparable sales report (Adam, 11 Nov
+  // 2026, decision 6): kept on the ESP card for the agreement file it came
+  // from, and taken off when a read of the agreement to the end finds none.
+  // The ESP card may have no row yet (no report uploaded at Create listing),
+  // so one is made. Never touches anything else on the card.
+  if (agreementSales) {
+    const { data: a4Row } = await supabase
+      .from("property_items")
+      .select("*")
+      .eq("property_id", propertyId)
+      .eq("item_key", "a4")
+      .maybeSingle();
+    const esp = a4Row as PropertyItem | null;
+    const espData = { ...((esp?.data ?? {}) as Record<string, unknown>) };
+    if (agreementSales.sales > 0) {
+      espData.reportInAgreement = { path: agreementSales.path, at: agreementSales.at, sales: agreementSales.sales };
+    } else if ("reportInAgreement" in espData) {
+      delete espData.reportInAgreement;
+    }
+    if (esp || agreementSales.sales > 0) {
+      const { error: inAgreementError } = esp
+        ? await supabase.from("property_items").update({ data: espData }).eq("property_id", propertyId).eq("item_key", "a4")
+        : await supabase.from("property_items").upsert(
+            {
+              agency_id: agreementSales.agencyId,
+              property_id: propertyId,
+              item_key: "a4",
+              status: "open",
+              data: espData,
+              event_date: null,
+              completed_by: null,
+              evidence_path: null,
+            },
+            { onConflict: "property_id,item_key" },
+          );
+      if (inAgreementError) console.error("agreement sales not recorded:", propertyId, inAgreementError.message);
+    }
   }
 
   // What the contract's read came to, on its card: read, couldn't be read, or

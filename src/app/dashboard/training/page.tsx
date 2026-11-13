@@ -18,6 +18,7 @@ import type {
   TrainingSession,
 } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
+import { formatAuShortDate } from "@/lib/format-date";
 
 // Training — one section, two tabs (Adam, 18 Aug 2026).
 //
@@ -232,7 +233,7 @@ export default async function TrainingPage({
                     <ul className="mt-1 flex flex-wrap gap-1.5">
                       {attended.map((sess) => (
                         <li key={sess.id} className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-600">
-                          {sess.title} ({sess.session_date})
+                          {sess.title} ({formatAuShortDate(sess.session_date)})
                         </li>
                       ))}
                     </ul>

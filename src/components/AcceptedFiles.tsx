@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AlertTriangle } from "lucide-react";
-import { ACCEPTED_FILES, UPLOAD_A_PDF, savedButCantRead, unreadableKind } from "@/lib/storage/accepted-files";
+import { AlertTriangle, FileText } from "lucide-react";
+import {
+  ACCEPTED_FILES,
+  ACCEPTED_FILES_WITH_WORD,
+  UPLOAD_A_PDF,
+  cantReadMessage,
+  wordFileNotice,
+} from "@/lib/storage/accepted-files";
 
 // The two pieces every upload RealComply reads shares (Adam, 2 to 3 Nov 2026;
 // mockup approved). The words and the rule are in lib/storage/accepted-files.ts.
@@ -11,8 +17,8 @@ import { ACCEPTED_FILES, UPLOAD_A_PDF, savedButCantRead, unreadableKind } from "
  * "Accepted files: Clear photo or PDF.", small and grey, right under the
  * upload. Styled as it was first built for the ESP notice upload.
  */
-export function AcceptedFilesLine({ className = "" }: { className?: string }) {
-  return <p className={`text-[11px] text-rc-muted ${className}`.trim()}>{ACCEPTED_FILES}</p>;
+export function AcceptedFilesLine({ className = "", word = false }: { className?: string; word?: boolean }) {
+  return <p className={`text-[11px] text-rc-muted ${className}`.trim()}>{word ? ACCEPTED_FILES_WITH_WORD : ACCEPTED_FILES}</p>;
 }
 
 /**
@@ -32,14 +38,17 @@ export function CantReadNotice({
   onUploadPdf,
   disabled = false,
   className = "",
+  listingCard = false,
 }: {
   fileName: string | null | undefined;
   onUploadPdf?: () => void;
   disabled?: boolean;
   className?: string;
+  /** On a listing card, where a Word file (.docx) is read (Adam, 11 Nov 2026). */
+  listingCard?: boolean;
 }) {
-  const kind = unreadableKind(fileName);
-  if (!kind) return null;
+  const text = cantReadMessage(fileName, { listingCard });
+  if (!text) return null;
   return (
     <div
       role="status"
@@ -47,7 +56,53 @@ export function CantReadNotice({
     >
       <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
       <div className="min-w-0 space-y-1.5">
-        <p>{savedButCantRead(kind)}</p>
+        <p>{text}</p>
+        {onUploadPdf && (
+          <button
+            type="button"
+            onClick={onUploadPdf}
+            disabled={disabled}
+            className="rounded-md border border-rc-border bg-white px-2.5 py-1 text-xs font-semibold text-rc-ink transition hover:border-rc-ink/20 disabled:opacity-60"
+          >
+            {UPLOAD_A_PDF}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A Word file on a listing card (Adam, 11 Nov 2026): read (or kept), but never
+ * in the audit pack, so the card says so, with "Upload a PDF" to replace it.
+ * The PDF replaces the file as Replace does, and is read in its turn; what
+ * was read from the Word file stays on the card, since a read adds to what is
+ * there. Nothing for any other file.
+ */
+export function WordFileNotice({
+  fileName,
+  read,
+  onUploadPdf,
+  disabled = false,
+  className = "",
+}: {
+  fileName: string | null | undefined;
+  /** The card reads its file, or checks it as the identity card does. */
+  read: boolean;
+  onUploadPdf?: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const text = wordFileNotice(fileName, { read });
+  if (!text) return null;
+  return (
+    <div
+      role="status"
+      className={`flex items-start gap-1.5 rounded-lg border border-rc-border bg-rc-bg-alt px-2.5 py-2 text-xs text-rc-ink ${className}`.trim()}
+    >
+      <FileText size={13} className="mt-0.5 shrink-0 text-rc-muted" aria-hidden="true" />
+      <div className="min-w-0 space-y-1.5">
+        <p>{text}</p>
         {onUploadPdf && (
           <button
             type="button"

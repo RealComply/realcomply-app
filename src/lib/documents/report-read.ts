@@ -85,13 +85,18 @@ export function reportReadNote(
         .join(" and ");
       return { tone: "ok", text: `Read for comparable sales: ${found}. They're on the ESP reasoning card.` };
     }
+    // No sales found, or not a comparable sales report as far as the reader
+    // could tell: the same words (Master, 11 Nov 2026). On the ESP card itself
+    // NO_SALES_PROMPT (lib/documents/report-choice) is said in place of these,
+    // with Upload report and This is my report.
     case "nothing_found":
+    case "wrong_document":
       return {
         tone: "warn",
         text:
           card === "report"
-            ? "Read, but no sales or listings were found in it. Check this is the comparable-sales report, or add the sales yourself on the ESP reasoning card."
-            : "The comparable-sales report was read, but no sales or listings were found in it. Add the sales yourself below, or check the report on the ESP card.",
+            ? "We couldn't find comparable sales in this file. Upload your comparable sales report, or confirm this is it."
+            : "We couldn't find comparable sales in the report on the ESP card. Upload your report there, or confirm it's your report and add the sales below.",
       };
     case "failed": {
       const why = sentence(r.message, "couldn't be read just now");
@@ -103,13 +108,5 @@ export function reportReadNote(
             : `No sales from the comparable-sales report yet: ${why} Read again is beside the report on the ESP card.`,
       };
     }
-    case "wrong_document":
-      return {
-        tone: "warn",
-        text:
-          card === "report"
-            ? `Comparable sales not read: this file looks like ${r.message ?? "a different kind of document"}, not a comparable-sales report, so nothing was taken from it. Replace the file.`
-            : "No sales from the comparable-sales report yet: the file on the ESP card is not a comparable-sales report. Replace it there.",
-      };
   }
 }

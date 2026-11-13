@@ -9,6 +9,8 @@ import { noteRead, staffReadRecord } from "@/lib/documents/read-record";
 import { reportReadFrom, reportReadOf, type ReportRead } from "@/lib/documents/report-read";
 import { addReportRows } from "@/lib/documents/report-rows";
 import { prescribedDocumentsFor } from "@/lib/rules/nsw-prescribed-documents";
+import { missingSaleDetails, missingSaleLine } from "@/lib/rules/sale-details";
+import { isStrataDwelling } from "@/lib/rules/strata-land";
 import { getItem } from "@/lib/rules/nsw-sales";
 import { EVIDENCE_BUCKET } from "@/lib/storage/evidence";
 import { downloadedFileProblem } from "@/lib/storage/file-check";
@@ -51,6 +53,23 @@ export function isCmaReread(propertyId: string): boolean {
   return CMA_REREADS.some((r) => r.propertyId === propertyId);
 }
 
+// TEST READS, NOTHING SAVED (Master, 11 Nov 2026). McGoldrick's report was
+// judged "a different kind of document" on 11 Nov. Before the reader that
+// takes any format is merged, staff read the file with it here, on the
+// branch's preview, and see what it would take: the sales, and what each is
+// still missing. Nothing is written: no sales added, nothing on the card, no
+// read recorded and no alert. Also offered on the listings above.
+export const CMA_TEST_READS: ReadonlyArray<{ propertyId: string; listing: string }> = [
+  {
+    propertyId: "d12b6401-8ae3-4523-a8bc-2f9790758e3d",
+    listing: "10 Binks Close, Cambewarra Village (McGoldrick Estate Agents)",
+  },
+];
+
+export function isCmaTestRead(propertyId: string): boolean {
+  return isCmaReread(propertyId) || CMA_TEST_READS.some((r) => r.propertyId === propertyId);
+}
+
 /** Whether "Draft my reasoning" would write a draft now, and what it would say about the estimate. */
 export type DraftNow = { available: true; evidence: EvidenceVerdict } | { available: false; why: "no_estimate" | "no_details" };
 
@@ -85,6 +104,10 @@ export type CmaRereadListing = {
   listingsOnListing: number;
   /** The read on the ESP card for the file there now; null when none is recorded. */
   lastRead: ReportRead | null;
+  /** A test read only (CMA_TEST_READS): no Re-read button. */
+  testOnly?: boolean;
+  /** The office's subscription has ended: nothing on its listings is changed (11 Nov 2026). */
+  ended?: boolean;
 };
 
 type Row = Record<string, unknown>;
@@ -101,7 +124,7 @@ async function loadListing(service: SupabaseClient, propertyId: string) {
   const { data: property } = await service.from("properties").select("*").eq("id", propertyId).maybeSingle();
   const row = (property ?? null) as Row | null;
   if (!row) return null;
-  const { data: agency } = await service.from("agencies").select("name").eq("id", row.agency_id as string).maybeSingle();
+  const { data: agency } = await service.from("agencies").select("name, ended_at").eq("id", row.agency_id as string).maybeSingle();
   const { data: items } = await service
     .from("property_items")
     .select("item_key, status, data, evidence_path, event_date")
@@ -111,6 +134,7 @@ async function loadListing(service: SupabaseClient, propertyId: string) {
   return {
     row,
     office: String((agency as { name?: string } | null)?.name ?? "").trim(),
+    ended: Boolean((agency as { ended_at?: string | null } | null)?.ended_at),
     a3: byKey.get("a3") ?? null,
     a4: byKey.get(ESP_CARD) ?? null,
     a4c: byKey.get("a4c") ?? null,
@@ -122,10 +146,11 @@ function fileNameOf(a4: Item | null): string | null {
   return (a4.data as { evidenceFileName?: string } | null)?.evidenceFileName ?? a4.evidence_path.split("/").pop() ?? "document";
 }
 
-/** The three listings as they stand, for the staff page. */
+/** The listings as they stand, for the staff page: the re-reads, then the test reads. */
 export async function cmaRereadListings(service: SupabaseClient): Promise<CmaRereadListing[]> {
   const out: CmaRereadListing[] = [];
-  for (const { propertyId, listing } of CMA_REREADS) {
+  const all = [...CMA_REREADS.map((r) => ({ ...r, testOnly: false })), ...CMA_TEST_READS.map((r) => ({ ...r, testOnly: true }))];
+  for (const { propertyId, listing, testOnly } of all) {
     const found = await loadListing(service, propertyId);
     const [sales, listings] = found
       ? await Promise.all([comparablesFor(service, propertyId), marketListingsFor(service, propertyId)])
@@ -138,6 +163,8 @@ export async function cmaRereadListings(service: SupabaseClient): Promise<CmaRer
       salesOnListing: sales.length,
       listingsOnListing: listings.length,
       lastRead: reportReadOf(found?.a4?.data, found?.a4?.evidence_path),
+      testOnly,
+      ended: found?.ended ?? false,
     });
   }
   return out;
@@ -182,6 +209,10 @@ export async function rereadComparablesReport(
 
   const found = await loadListing(service, propertyId);
   if (!found) return { error: "That listing isn't on RealComply any more." };
+  // An office whose subscription has ended is read only for its own people
+  // (0054); this runs with the service key, which that lock doesn't stop, so
+  // it stops here (Master, 11 Nov 2026: skip the two cancelled offices).
+  if (found.ended) return { error: "That office's subscription has ended, so nothing on its listings is changed." };
   const path = found.a4?.evidence_path;
   if (!path) return { error: "There's no comparable-sales report on that listing's ESP card any more." };
   const fileName = fileNameOf(found.a4)!;
@@ -315,8 +346,8 @@ export function cmaRereadSummary(r: CmaReread): string {
       );
     case "wrong_document":
       return (
-        `${where}: the file on the ESP card isn't a comparable-sales report (it looks like ${r.read.message ?? "something else"}). ` +
-        "Nothing was added. The ESP card now says so."
+        `${where}: no comparable sales were found in the file (it looks like ${r.read.message ?? "something else"}). ` +
+        "Nothing was added. The ESP card now asks the agent to upload their report or confirm this is it."
       );
     case "nothing_found":
       return `${where}: read to the end, but no sales or listings were found in the report. Nothing was added. ${draft} ${reasoning}${problems}`;
@@ -327,5 +358,111 @@ export function cmaRereadSummary(r: CmaReread): string {
         `${count(r.listingsAdded, "listing")}; the listing now has ${count(r.salesOnListing, "sale")} and ` +
         `${count(r.listingsOnListing, "listing")} on the market. ${draft} ${reasoning}${problems}`
       );
+  }
+}
+
+/** What a test read found, nothing saved (CMA_TEST_READS). */
+export type CmaTestRead = {
+  propertyId: string;
+  address: string;
+  office: string;
+  fileName: string;
+  read: ReportRead;
+  failedBecause?: ReadFailureWhy;
+  sales: Array<{
+    address: string;
+    salePrice: number | null;
+    saleDate: string | null;
+    /** "Still to add: bedrooms, ..." as the ESP reasoning card would say it; null when complete. */
+    stillToAdd: string | null;
+  }>;
+  listings: number;
+};
+
+/**
+ * Reads the report on the listing's ESP card, or the agency agreement for its
+ * own sales page (decision 6, 11 Nov 2026), with the reader as it is now and
+ * says what it would take. Writes nothing (see CMA_TEST_READS).
+ */
+export async function testReadComparablesReport(
+  service: SupabaseClient,
+  anthropic: Anthropic,
+  propertyId: string,
+  from: "report" | "agreement" = "report",
+): Promise<CmaTestRead | { error: string }> {
+  if (!isCmaTestRead(propertyId)) return { error: "That listing isn't one RealComply staff can test-read." };
+  const found = await loadListing(service, propertyId);
+  if (!found) return { error: "That listing isn't on RealComply any more." };
+  const card = from === "agreement" ? found.a3 : found.a4;
+  const path = card?.evidence_path;
+  if (!path) {
+    return {
+      error: from === "agreement" ? "There's no agency agreement on that listing." : "There's no comparable-sales report on that listing's ESP card.",
+    };
+  }
+  const fileName = fileNameOf(card)!;
+  const base = { propertyId, address: String(found.row.address ?? ""), office: found.office, fileName };
+  const at = new Date().toISOString();
+  const strata = isStrataDwelling(found.row.property_type as string | null, found.row.is_strata as boolean | null);
+  try {
+    const { data: blob, error } = await service.storage.from(EVIDENCE_BUCKET).download(path);
+    if (error || !blob) throw new FileCantBeRead("file", "the file couldn't be downloaded");
+    const unreadable = await downloadedFileProblem(blob, path.split("/").pop() ?? fileName);
+    if (unreadable) throw new FileCantBeRead("file", unreadable);
+    const patches = await readListingDocument({
+      anthropic,
+      blob,
+      fileName,
+      source: from === "agreement" ? "a3" : ESP_CARD,
+      prescribedDocs: prescribedDocumentsFor({ isStrata: (found.row.is_strata as boolean | null) ?? false }),
+    });
+    const rows = patches.find((p) => p.itemKey === "a4c" && (p.comparableSales?.length ?? 0) > 0) ?? patches.find((p) => p.itemKey === "a4c");
+    const sales = (rows?.comparableSales ?? []).map((c) => {
+      const figures = {
+        salePrice: c.salePrice ?? null,
+        saleDate: c.saleDate ?? null,
+        bedrooms: c.bedrooms ?? null,
+        bathrooms: c.bathrooms ?? null,
+        carSpaces: c.carSpaces ?? null,
+        landSizeSqm: c.landSizeSqm ?? null,
+      };
+      return {
+        address: c.address,
+        salePrice: figures.salePrice,
+        saleDate: figures.saleDate,
+        stillToAdd: missingSaleLine(missingSaleDetails(figures, strata)),
+      };
+    });
+    return { ...base, read: reportReadFrom(patches, path, at), sales, listings: rows?.marketListings?.length ?? 0 };
+  } catch (err) {
+    const why = readFailureWhy(err);
+    return {
+      ...base,
+      read: { at, path, outcome: "failed", message: failedWords(why, err) },
+      failedBecause: why,
+      sales: [],
+      listings: 0,
+    };
+  }
+}
+
+/** A test read in plain words, one sale a line, for the staff page. */
+export function cmaTestReadSummary(r: CmaTestRead): string {
+  const head = `${r.address} (${r.office}), ${r.fileName}. Test read with the reader on this build. Nothing was saved.`;
+  const asks = "The ESP card would ask the agent to upload their report or confirm this is it.";
+  switch (r.read.outcome) {
+    case "failed":
+      return [head, `The report couldn't be read: ${r.read.message ?? "no reason given"}.`].join("\n");
+    case "wrong_document":
+      return [head, `No sales found. The reader took it for ${r.read.message ?? "a different kind of document"}. ${asks}`].join("\n");
+    case "nothing_found":
+      return [head, `No sales found. ${asks}`].join("\n");
+    case "read": {
+      const lines = r.sales.map((s, i) => {
+        const price = s.salePrice === null ? "no price" : `$${Math.round(s.salePrice).toLocaleString("en-AU")}`;
+        return `${i + 1}. ${s.address}, ${price}, ${s.saleDate ?? "no date"}.${s.stillToAdd ? ` ${s.stillToAdd}` : ""}`;
+      });
+      return [head, `Found ${count(r.sales.length, "sale")} and ${count(r.listings, "listing")} on the market:`, ...lines].join("\n");
+    }
   }
 }

@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import { embedSignatureFont, signatureFontCanDraw } from "./signature-font";
 import { pdfText } from "./text";
 import { checkedPdf } from "@/lib/pdf/checked-pdf";
+import { formatSydney } from "@/lib/format-date";
 
 // Putting the signature ON the document.
 //
@@ -121,15 +122,7 @@ export function formatSignedAt(iso: string): string {
   // Sydney, because that is where the licensee signed and where the obligation
   // sits. A UTC timestamp on a NSW trust record invites an argument about
   // whether something was done inside the 21 days.
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: "Australia/Sydney",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
+  return formatSydney(d, { day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
 }
 
 /**

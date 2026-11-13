@@ -1,4 +1,4 @@
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, formatAuTime } from "@/lib/format-date";
 import { sydneyDate } from "@/lib/subscription-end/dates";
 import { reformsInForce } from "@/lib/rules/underquoting-reforms";
 import { feedbackRecordOf, marketFeedbackOf, type FeedbackRecord, type MarketFeedback } from "@/lib/rules/market-feedback";
@@ -130,10 +130,7 @@ export function shortDay(iso: string): string {
 
 /** "4:12pm", the time in Sydney. */
 function sydneyTime(iso: string): string {
-  return new Date(iso)
-    .toLocaleTimeString("en-AU", { timeZone: "Australia/Sydney", hour: "numeric", minute: "2-digit", hour12: true })
-    .replace(/\s/g, "")
-    .toLowerCase();
+  return formatAuTime(iso).replace(/\s/g, "");
 }
 
 /** "Recorded by Dana Whitlock, 28 Oct, 4:12pm" (the mockup). */

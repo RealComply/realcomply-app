@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { Globe, AlertTriangle, Check } from "lucide-react";
 import { checkListingNow } from "@/lib/actions/website-scan";
-import { searchLine, type SearchTry } from "@/lib/listings-pages";
+import { searchLine, type PageReads, type SearchTry } from "@/lib/listings-pages";
 import { reformsInForce } from "@/lib/rules/underquoting-reforms";
+import { formatAuDayMonthTime } from "@/lib/format-date";
 
 // The advertised-price check, as shown on c1.
 //
@@ -37,20 +38,23 @@ export type ScanFinding = {
 function when(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  return formatAuDayMonthTime(d);
 }
 
 export function ListingScanPanel({
   propertyId,
   finding,
   pageSearch,
+  pageReads,
 }: {
   propertyId: string;
   finding?: ScanFinding;
   /** Where the morning's check looked for this listing's page, while none is found (2 Nov 2026). */
   pageSearch?: { at: string; tries: SearchTry[] } | null;
+  /** What the morning's read made of the agent's page and the office's: a page that couldn't be read says so (11 Nov 2026). */
+  pageReads?: PageReads;
 }) {
-  const notFound = searchLine(pageSearch);
+  const notFound = searchLine(pageSearch, pageReads);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 

@@ -13,6 +13,7 @@ import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
+import { REPORT_TO_CHECK_BADGE } from "@/lib/documents/report-choice";
 import { WeeklyReviewWidget } from "@/components/home/WeeklyReviewWidget";
 import { TeamWidget } from "@/components/home/TeamWidget";
 import { LicenceCpdWidget } from "@/components/home/LicenceCpdWidget";
@@ -22,7 +23,10 @@ import { ComplaintsWidget } from "@/components/home/ComplaintsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgManualWidget } from "@/components/home/SgManualWidget";
 import { SgDraftReadyCard } from "@/components/home/SgDraftReadyCard";
-import { sgDraftWaiting } from "@/lib/data/sg-document";
+import { sgChangesToSign, sgDraftWaiting, sgReviewDueFor } from "@/lib/data/sg-document";
+import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
+import { SgAnnualReviewCard } from "@/components/sg/SgAnnualReviewCard";
+import { reviewCardShows } from "@/lib/sg-document/annual-review";
 import { AnnexureCard } from "@/components/home/AnnexureCard";
 import { FairTradingCard, NewLicenseeAnnexureCard } from "@/components/home/LicenseeChangeCards";
 import { fairTradingDueSentence, fairTradingReminder, type LicenseeHistoryLine } from "@/lib/licensee-history";
@@ -38,7 +42,7 @@ import { SetupCard, SetupDoneLine } from "@/components/home/SetupCard";
 import { UnopenedSignoffLinks } from "@/components/home/LinkNudges";
 import { unopenedSignoffLinksFor } from "@/lib/data/link-nudges";
 import { getItem } from "@/lib/rules/nsw-sales";
-import { formatAuTimestamp } from "@/lib/format-date";
+import { formatAuDayMonthTime, formatAuTimestamp } from "@/lib/format-date";
 
 // Home — the single consolidated landing dashboard a licensee sees after
 // login, replacing "check five different pages" with one page of widgets
@@ -56,6 +60,20 @@ import { formatAuTimestamp } from "@/lib/format-date";
 // Portfolio and Registers pages. Only the structural pattern (stat-tile row
 // + card grid of metric/breakdown widgets, colour-coded by status) is
 // borrowed, not the look.
+/**
+ * The annual review card (Adam's mockup, screen 7; 0126), for whoever runs
+ * the office: from 90 days before the review is due, or a line saying it was
+ * marked reviewed today.
+ */
+function annualReviewCard(
+  due: { documentId: string; dueOn: string; lastReviewedOn: string | null } | null,
+): { documentId: string; dueOn: string; today: string; reviewedToday: boolean } | null {
+  if (!due) return null;
+  const today = sydneyDate(new Date());
+  const reviewedToday = due.lastReviewedOn === today;
+  return reviewCardShows(due.dueOn, today) || reviewedToday ? { documentId: due.documentId, dueOn: due.dueOn, today, reviewedToday } : null;
+}
+
 export default async function HomeDashboardPage({
   searchParams,
 }: {
@@ -81,13 +99,15 @@ export default async function HomeDashboardPage({
     }
     // Asking to be office manager, and where that is up to (0093); once the
     // approval has been seen, a small line instead (0096).
-    const [officeManager, setup, sgDraft] = await Promise.all([
+    const [officeManager, setup, sgDraft, sgReviewDue] = await Promise.all([
       officeManagerHomeFor(supabase, profile, access),
       // "Set up your office" for an office manager; "Set up your profile" for
       // everyone else here (Adam, 27 Oct 2026).
       setupViewFor(supabase, profile, access),
       // An office manager: a draft of the supervision guidelines waiting to be checked.
       access.runsOffice ? sgDraftWaiting(supabase) : Promise.resolve(null),
+      // An office manager: the annual review (0126).
+      access.runsOffice ? sgReviewDueFor(supabase, profile.agency_id) : Promise.resolve(null),
     ]);
     return (
       <AgentHome
@@ -98,6 +118,7 @@ export default async function HomeDashboardPage({
         officeManager={officeManager}
         setup={setup}
         sgDraft={sgDraft}
+        sgReview={annualReviewCard(sgReviewDue)}
       />
     );
   }
@@ -105,6 +126,10 @@ export default async function HomeDashboardPage({
   const cpdYear = currentCpdYear();
   // The supervision guidelines read into a draft, waiting to be checked (Master, 10 Nov 2026).
   const sgDraft = await sgDraftWaiting(supabase);
+  // Changes to the supervision guidelines this person hasn't signed (0125).
+  const sgChanges = await sgChangesToSign(supabase, profile.id);
+  // The annual review of the supervision guidelines (0126).
+  const sgReview = annualReviewCard(await sgReviewDueFor(supabase, profile.agency_id));
 
   // Until the annexure is adopted (brief, 14 Oct 2026), the Home of an
   // office's licensee in charge asks for it. Shown only on a clean read that
@@ -216,7 +241,7 @@ export default async function HomeDashboardPage({
   };
   const handedOver = (at: string | null) =>
     at
-      ? `handed over ${new Date(at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`
+      ? `handed over ${formatAuDayMonthTime(at)}`
       : "handed over";
   const agency = agencyRow as Agency | null;
   const pendingInviteCount = (pendingInviteRows ?? []).length;
@@ -267,13 +292,13 @@ export default async function HomeDashboardPage({
   const licenseeIds = new Set((await agencyPeople(supabase)).filter((r) => r.is_licensee_in_charge).map((r) => r.id));
 
   const digests = computePropertyDigests(propertyList, itemsByProperty, licenseeIds);
-  const needsYouDigests = digests.filter((d) => d.pendingSignoff.length > 0 || d.flagged.length > 0);
+  const needsYouDigests = digests.filter((d) => d.pendingSignoff.length > 0 || d.flagged.length > 0 || d.reportToCheck);
   const needsAttentionItems: NeedsAttentionItem[] = needsYouDigests.map((d) => ({
     propertyId: d.property.id,
     address: d.property.address,
     stageLabel: STAGE_LABELS[d.property.stage],
     agentName: agentNames.get(d.property.created_by) ?? "Unknown agent",
-    badges: [...d.pendingSignoff, ...d.flagged].map((item) => item.label),
+    badges: [...[...d.pendingSignoff, ...d.flagged].map((item) => item.label), ...(d.reportToCheck ? [REPORT_TO_CHECK_BADGE] : [])],
   }));
   const dueForReview = digests.filter((d) => {
     const days = daysSinceActivity(d.lastActivityAt);
@@ -386,6 +411,8 @@ export default async function HomeDashboardPage({
               there is something in it, so an office with no assistants never
               sees it. */}
           {sgDraft && <SgDraftReadyCard fileName={sgDraft.fileName} fromFileOnRecord={sgDraft.fromFileOnRecord} />}
+          {sgReview && <SgAnnualReviewCard {...sgReview} />}
+          <SgChangesToSign changes={sgChanges} />
 
           {awaitingMyReview.length > 0 && (
             <section className="mt-6 rounded-card border border-rc-amber-deep/25 bg-rc-amber/10 px-4 py-3.5">

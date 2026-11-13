@@ -31,6 +31,7 @@ import {
   type TrainingPlan,
   type TrainingSession,
 } from "@/lib/types";
+import { formatSydney } from "@/lib/format-date";
 
 // Office training frequency isn't prescribed — s32 is outcome-based, the
 // agency sets its own cadence — but "defaults quarterly" (see
@@ -222,11 +223,7 @@ function renderAwaitingAgentSection(properties: Property[], profiles: Profile[])
       kind: "rows",
       rows: waiting.map((p) => {
         const since = p.review_requested_at
-          ? new Date(p.review_requested_at).toLocaleDateString("en-AU", {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-            })
+          ? formatSydney(p.review_requested_at, { weekday: "short", day: "numeric", month: "short" })
           : "recently";
         const preparer = p.review_requested_by ? agentName(profiles, p.review_requested_by) : "an assistant";
         return {
@@ -250,7 +247,7 @@ function humanDate(iso: string | null | undefined): string | undefined {
   if (!iso) return undefined;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  return formatSydney(iso, { day: "numeric", month: "long", year: "numeric" });
 }
 
 function renderLicenceAndPiSection(agency: Agency, profiles: Profile[]): EmailSection[] {
@@ -480,12 +477,7 @@ export async function runWeeklyDigest(): Promise<{ sent: number; skipped: number
             ? "Nothing needs you this week."
             : `${needsYouCount} ${needsYouCount === 1 ? "file needs" : "files need"} you this week.`,
         title: "Weekly digest",
-        meta: `${bundle.agency.name} · ${new Date().toLocaleDateString("en-AU", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-          timeZone: "Australia/Sydney",
-        })}`,
+        meta: `${bundle.agency.name} · ${formatSydney(new Date(), { weekday: "long", day: "numeric", month: "long" })}`,
         sections,
         footer: digestFooter(link.href),
       };

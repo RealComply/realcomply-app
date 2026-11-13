@@ -95,7 +95,45 @@ export function readReceivedDate(raw: unknown): ReceivedDateRecord {
   return { history, source, noDateAt, readFailed };
 }
 
-type Card = { event_date: string | null; status: string; data: unknown };
+/** The card as read: its date, status, data, and the file on it now (its stored path). */
+type Card = { event_date: string | null; status: string; data: unknown; evidence_path?: string | null };
+
+// WHAT THE CARD SAID ABOUT AN EARLIER FILE GOES WITH IT (Adam, 11 Nov 2026).
+// A covering letter that was read, then replaced by a file that couldn't be
+// read, left the card saying "No date found in the covering letter." and
+// "Read by AI from the covering letter. Check it against the letter, then
+// save." about a letter that was no longer there. Now every read records
+// which file it was of (coveringLetterFile). When the file on the card is a
+// different one, what was said about the earlier file is dropped before this
+// read's outcome is written: the "no date" line and an earlier failure line
+// always; the "Read by AI" line too when this file gives no date (it couldn't
+// be read, or has none). The date itself stays, and so does its history. The
+// same goes when the letter is removed. Read again on the same file keeps
+// what was said, so a read that fails once doesn't wipe a good one.
+const LETTER_FILE = "coveringLetterFile";
+
+/** Drops what the card said about an earlier letter, when the file is a different one. Whether it was. */
+function forgetEarlierLetter(data: Record<string, unknown>, path: string | null | undefined): boolean {
+  if (path && data[LETTER_FILE] === path) return false;
+  delete data.coveringLetterNoDateAt;
+  delete data.coveringLetterReadFailed;
+  delete data.coveringLetterReadFailedAt;
+  return true;
+}
+
+/** The "Read by AI" line goes: the date stays, but it was read from a letter that isn't on the card any more. */
+function forgetAiSource(data: Record<string, unknown>): void {
+  if (data.receivedDateSource === "ai") delete data.receivedDateSource;
+}
+
+/** The card after its covering letter is removed (Adam, 11 Nov 2026): nothing said about that letter stays. */
+export function afterLetterRemoved(raw: unknown): Record<string, unknown> {
+  const data: Record<string, unknown> = raw && typeof raw === "object" ? { ...(raw as object) } : {};
+  forgetEarlierLetter(data, null);
+  forgetAiSource(data);
+  delete data[LETTER_FILE];
+  return data;
+}
 
 /**
  * What a read of the letter does to the card. `date` is the letter's date
@@ -111,15 +149,24 @@ export function afterLetterRead(
   const data: Record<string, unknown> = card.data && typeof card.data === "object" ? { ...(card.data as object) } : {};
   // The offer PR #66 left in the AI draft is superseded by this record.
   delete data.aiDraft;
+  const newFile = forgetEarlierLetter(data, card.evidence_path);
+  if (card.evidence_path) data[LETTER_FILE] = card.evidence_path;
   // A read that finished replaces a failed one.
   delete data.coveringLetterReadFailed;
   delete data.coveringLetterReadFailedAt;
   if (!date) {
+    if (newFile) forgetAiSource(data);
     data.coveringLetterNoDateAt = at;
     return { changed: false, eventDate: card.event_date, status: card.status, data };
   }
   delete data.coveringLetterNoDateAt;
-  if (date === card.event_date) return { changed: false, eventDate: card.event_date, status: card.status, data };
+  if (date === card.event_date) {
+    // A new letter that gives the date already on an open card says so again,
+    // where an earlier file's "Read by AI" line had gone. An agent's own date,
+    // or a card marked done, is left as it is.
+    if (newFile && !data.receivedDateSource && card.status !== "done") data.receivedDateSource = "ai";
+    return { changed: false, eventDate: card.event_date, status: card.status, data };
+  }
 
   const { history } = readReceivedDate(card.data);
   data.receivedDateHistory = [...history, { at, source: "ai", from: card.event_date ?? null, to: date }];
@@ -137,6 +184,8 @@ export function afterLetterRead(
  */
 export function afterLetterReadFailed(card: Card, reason: string, at: string): Record<string, unknown> {
   const data: Record<string, unknown> = card.data && typeof card.data === "object" ? { ...(card.data as object) } : {};
+  if (forgetEarlierLetter(data, card.evidence_path)) forgetAiSource(data);
+  if (card.evidence_path) data[LETTER_FILE] = card.evidence_path;
   data.coveringLetterReadFailed = reason;
   data.coveringLetterReadFailedAt = at;
   return data;

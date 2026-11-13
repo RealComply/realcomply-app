@@ -1,5 +1,6 @@
 import { Presentation } from "lucide-react";
 import { WidgetCard } from "./WidgetCard";
+import { formatAuShortDate } from "@/lib/format-date";
 
 export function TrainingWidget({
   sessionsLast90Days,
@@ -18,7 +19,7 @@ export function TrainingWidget({
       hrefLabel="Training log"
       metric={sessionsLast90Days}
       caption={`sessions in the last 90 days · ${totalSessions} on file${
-        lastSessionDate ? ` · last ${new Date(lastSessionDate).toLocaleDateString("en-AU")}` : ""
+        lastSessionDate ? ` · last ${formatAuShortDate(lastSessionDate)}` : ""
       }`}
       tone={sessionsLast90Days === 0 ? "warn" : "ok"}
     />

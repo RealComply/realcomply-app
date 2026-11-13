@@ -43,27 +43,146 @@ export type ListingCandidate = { url: string; label: string; why: string };
 
 const LINK_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 
-/** Same-host links with their anchor text, deduplicated, capped. */
+const NAMED: Record<string, string> = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" };
+
+/**
+ * An href as the browser reads it: character references decoded. A page
+ * writes "&" in a link as "&amp;", or "&#038;" as WordPress does (an
+ * office's listings page, 4 Nov 2026). Read raw,
+ * "?saleOrRental=Sale&#038;order=..." turned everything after the "#" into a
+ * fragment, which was then dropped, so the check followed a link that wasn't
+ * the page's own.
+ */
+export function decodeHref(raw: string): string {
+  return raw.replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|(amp|quot|apos|lt|gt));/gi, (whole, dec, hex, name) => {
+    if (name) return NAMED[name.toLowerCase()];
+    const code = dec ? Number(dec) : parseInt(hex, 16);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
+}
+
+// LISTINGS THE PAGE CARRIES AS DATA (Adam, 4 Nov 2026: an office entered its
+// listings page and "the AI isn't reading it"). Some websites draw their
+// listings in after the page loads, from a list inside the page itself, so
+// the page as sent has no links to them. That office's page had 39, each
+// like {"url":"https:\/\/...\/listings\/residential_sale-...\/","address":
+// "3/5 Margaret Street, Warners Bay","price":"..."}, and the morning's check
+// read "0 listings found". An object in the page with a "url" is read as a
+// link, with its address (or title, or name) as the link's words. The same
+// rules apply as to any link: this website only, https only, and the link
+// must be written out in full.
+//
+// NESTED, AND NOT CROWDED OUT (Adam, 11 Nov 2026, through Master). Global
+// Property's page (Rex Websites) still read 0 listings on 11 Nov, with its 37
+// listings in a script block for the map. Was: only a flat object was read
+// ({ ... "url" ... } with no { } inside it), so an entry carrying anything
+// nested, a map position {"lat":..,"lng":..} or a photo, was skipped whole;
+// and the data was read only after the page's links, so a page with 400
+// links (a long menu) never got to it. Now the object around each "url" is
+// found and read whole, nested parts and all, and the data has room of its
+// own after the links.
+const DATA_KEY = /"url"\s*:\s*"/g;
+const DATA_WORDS = ["address", "title", "name"] as const;
+/** How far either side of a "url" an entry's own braces are looked for. A listing entry is short. */
+const DATA_REACH = 20_000;
+/** Links read from the page's own links, then from its data. */
+const MAX_LINKS = 400;
+const MAX_DATA_LINKS = 200;
+
+/** The "{" that opens the innermost object around position `at`, or -1. */
+function openingBrace(text: string, at: number): number {
+  let depth = 0;
+  for (let i = at - 1; i >= 0 && i >= at - DATA_REACH; i--) {
+    const c = text[i];
+    if (c === "}") depth += 1;
+    else if (c === "{") {
+      if (depth === 0) return i;
+      depth -= 1;
+    }
+  }
+  return -1;
+}
+
+/** The "}" that closes the object opened at `open`, minding strings, or -1. */
+function closingBrace(text: string, open: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = open; i < text.length && i <= open + DATA_REACH; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === "\\") i += 1;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "{") depth += 1;
+    else if (c === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** Every object in the page with a "url" in it, read whole. Anything that isn't JSON is passed over. */
+export function dataEntries(html: string): Array<Record<string, unknown>> {
+  const entries: Array<Record<string, unknown>> = [];
+  const tried = new Set<number>();
+  let m: RegExpExecArray | null;
+  DATA_KEY.lastIndex = 0;
+  while ((m = DATA_KEY.exec(html)) !== null) {
+    const open = openingBrace(html, m.index);
+    if (open < 0 || tried.has(open)) continue;
+    tried.add(open);
+    const close = closingBrace(html, open);
+    if (close < 0) continue;
+    try {
+      const value: unknown = JSON.parse(html.slice(open, close + 1));
+      if (value && typeof value === "object" && !Array.isArray(value)) entries.push(value as Record<string, unknown>);
+    } catch {
+      // Script, not data.
+    }
+  }
+  return entries;
+}
+
+/** The same website: the same host, with or without "www." in front. */
+export function sameWebsite(a: string, b: string): boolean {
+  const bare = (h: string) => h.toLowerCase().replace(/^www\./, "");
+  return bare(a) === bare(b);
+}
+
+/** Same-website links with their anchor text, deduplicated, capped. Listings the page carries as data come after its links. */
 export function linksFrom(html: string, base: URL): Array<{ href: string; text: string }> {
   const seen = new Set<string>();
   const out: Array<{ href: string; text: string }> = [];
-  let m: RegExpExecArray | null;
-  LINK_RE.lastIndex = 0;
-  while ((m = LINK_RE.exec(html)) !== null) {
+  const add = (href: string, text: string): boolean => {
     let abs: URL;
     try {
-      abs = new URL(m[1], base);
+      abs = new URL(href, base);
     } catch {
-      continue;
+      return false;
     }
-    if (abs.protocol !== "https:" || abs.hostname !== base.hostname) continue;
+    if (abs.protocol !== "https:" || !sameWebsite(abs.hostname, base.hostname)) return false;
     abs.hash = "";
     const key = abs.toString();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) return false;
     seen.add(key);
-    const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
-    out.push({ href: key, text });
-    if (out.length >= 400) break;
+    out.push({ href: key, text: text.replace(/\s+/g, " ").trim().slice(0, 120) });
+    return true;
+  };
+
+  let m: RegExpExecArray | null;
+  LINK_RE.lastIndex = 0;
+  let fromLinks = 0;
+  while (fromLinks < MAX_LINKS && (m = LINK_RE.exec(html)) !== null) {
+    if (add(decodeHref(m[1]), m[2].replace(/<[^>]+>/g, " "))) fromLinks += 1;
+  }
+  let fromData = 0;
+  for (const item of dataEntries(html)) {
+    if (fromData >= MAX_DATA_LINKS) break;
+    // A full address only: a script's "url" can be anything, a listing's is the whole link.
+    if (typeof item.url !== "string" || !/^https:\/\//i.test(item.url)) continue;
+    const words = DATA_WORDS.map((k) => item[k]).find((v): v is string => typeof v === "string") ?? "";
+    if (add(item.url, words)) fromData += 1;
   }
   return out;
 }
@@ -97,18 +216,52 @@ const CANDIDATE_TOOL: Anthropic.Tool = {
   },
 };
 
-/** Reads a page once per run, however many listings look at it. A refusal is remembered too. */
+/**
+ * Reads a page once per run, however many listings look at it. A refusal is
+ * remembered too, and logged once with why.
+ *
+ * WHY A PAGE WAS TURNED AWAY GOES IN THE LOG (4 Nov 2026). The listing and
+ * listings_page_checks only say "refused", so the 7am run on 4 Nov showed 11
+ * pages refused with nothing to say why. They were: a "checking your
+ * browser" screen, which returns 403 to anything that isn't a person in a
+ * browser; website addresses that don't exist; and a website whose https is
+ * broken. One line per page, with the website's name
+ * only, never the rest of the address: an agent's own page can carry their
+ * name.
+ */
 export type FetchPage = (url: string) => Promise<{ url: URL; html: string }>;
-export function pageCache(fetch: (url: string) => Promise<{ url: URL; html: string }> = fetchPublicPage): FetchPage {
+/**
+ * The morning's pages. `use` puts a page in place of the plain read of that
+ * address, for the rest of the run: the drawn page, when a browser found the
+ * listings the plain read couldn't (11 Nov 2026).
+ */
+export type PageCache = FetchPage & { use: (url: string, page: { url: URL; html: string }) => void };
+export function pageCache(
+  fetch: (url: string) => Promise<{ url: URL; html: string }> = fetchPublicPage,
+  log: (line: string) => void = console.log,
+): PageCache {
   const seen = new Map<string, Promise<{ url: URL; html: string }>>();
-  return (url) => {
+  const get = (url: string) => {
     let page = seen.get(url);
     if (!page) {
       page = fetch(url);
+      page.catch((err: unknown) => log(`listing-scan: ${websiteOf(url)} turned the check away: ${err instanceof Error ? err.message : String(err)}`));
       seen.set(url, page);
     }
     return page;
   };
+  return Object.assign(get, { use: (url: string, page: { url: URL; html: string }) => void seen.set(url, Promise.resolve(page)) });
+}
+
+/** A page drawn in a browser (render-page.ts), when the plain read found no listings. */
+export type DrawPage = (url: string) => Promise<{ url: URL; html: string }>;
+
+function websiteOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "an address that isn't valid";
+  }
 }
 
 /**
@@ -299,10 +452,12 @@ async function countListings(anthropic: Anthropic, pageUrl: URL, links: Array<{ 
 export async function checkListingsPages(
   supabase: Db,
   anthropic: Anthropic,
-  fetchPage: FetchPage,
+  fetchPage: FetchPage | PageCache,
   live: Array<{ agency_id: string; created_by: string | null }>,
   ended: Set<string>,
-): Promise<{ pagesChecked: number; pagesRefused: number; pagesFailed: number }> {
+  draw?: DrawPage | null,
+  log: (line: string) => void = console.log,
+): Promise<{ pagesChecked: number; pagesRefused: number; pagesFailed: number; pagesDrawn: number }> {
   const [{ data: agencyRows }, { data: agentRows }, { data: previousRows }] = await Promise.all([
     supabase.from("agencies").select("id, website_url").not("website_url", "is", null),
     supabase.from("agent_listing_pages").select("profile_id, agency_id, url, profiles!agent_listing_pages_profile_id_fkey(archived_at)"),
@@ -339,25 +494,49 @@ export async function checkListingsPages(
   let pagesChecked = 0;
   let pagesRefused = 0;
   let pagesFailed = 0;
+  let pagesDrawn = 0;
   for (const page of pages) {
     const before = previous.get(page.pageKey);
     let outcome: "read" | "refused" | "failed" = "read";
     let listingsFound: number | null = null;
     let linksHash: string | null = null;
+    // What a set of links counts to: the morning before's count when the links
+    // are the same (not counted again), else the AI's count.
+    const countOf = async (at: URL, links: Array<{ href: string; text: string }>) => {
+      const hash = createHash("sha256").update(links.map((l) => l.href).sort().join("\n")).digest("hex");
+      if (before && before.url === page.url && before.outcome === "read" && before.links_hash === hash) {
+        return { hash, count: before.listings_found };
+      }
+      return { hash, count: links.length === 0 ? 0 : await countListings(anthropic, at, links) };
+    };
     try {
       const fetched = await fetchPage(page.url);
-      const links = linksFrom(fetched.html, fetched.url);
-      linksHash = createHash("sha256").update(links.map((l) => l.href).sort().join("\n")).digest("hex");
-      if (before && before.url === page.url && before.outcome === "read" && before.links_hash === linksHash) {
-        listingsFound = before.listings_found;
-      } else if (links.length === 0) {
-        listingsFound = 0;
-      } else {
+      try {
+        ({ hash: linksHash, count: listingsFound } = await countOf(fetched.url, linksFrom(fetched.html, fetched.url)));
+      } catch (err) {
+        if (err instanceof UnfinishedAnswer || err instanceof Anthropic.APIError) logReadFailure("listings_page_counter", err);
+        outcome = "failed";
+      }
+      // THE HEADLESS FALLBACK (Adam, 11 Nov 2026; render-rules.ts). The plain
+      // read and the data read both found 0 listings: the page is opened once
+      // in a browser and read when it has drawn, by the same rules. Its count
+      // stands only if it found some; then the drawn page is the one each
+      // listing is looked for on this morning. Never for a page that turned
+      // the plain read away, and never past a challenge.
+      if (outcome === "read" && listingsFound === 0 && draw) {
         try {
-          listingsFound = await countListings(anthropic, fetched.url, links);
+          const drawn = await draw(page.url);
+          const result = await countOf(drawn.url, linksFrom(drawn.html, drawn.url));
+          if ((result.count ?? 0) > 0) {
+            listingsFound = result.count;
+            linksHash = result.hash;
+            if ("use" in fetchPage) fetchPage.use(page.url, drawn);
+            pagesDrawn += 1;
+          }
+          log(`listing-scan: ${websiteOf(page.url)} drawn in a browser: ${result.count ?? 0} listings`);
         } catch (err) {
           if (err instanceof UnfinishedAnswer || err instanceof Anthropic.APIError) logReadFailure("listings_page_counter", err);
-          outcome = "failed";
+          log(`listing-scan: ${websiteOf(page.url)} not drawn: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     } catch {
@@ -381,5 +560,5 @@ export async function checkListingsPages(
       { onConflict: "page_key" },
     );
   }
-  return { pagesChecked, pagesRefused, pagesFailed };
+  return { pagesChecked, pagesRefused, pagesFailed, pagesDrawn };
 }

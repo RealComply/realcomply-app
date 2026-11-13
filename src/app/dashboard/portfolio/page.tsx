@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireOfficePage } from "@/lib/data/current-profile";
 import { StatTile } from "@/components/home/WidgetCard";
 import { computePropertyDigests, daysSinceActivity } from "@/lib/property-digest";
+import { REPORT_TO_CHECK_BADGE } from "@/lib/documents/report-choice";
 import { expiryStatus } from "@/lib/expiry-status";
 import { STAGE_LABELS, type Agency, type Complaint, type Profile, type Property, type PropertyItem } from "@/lib/types";
 import { RoofMark } from "@/components/RoofMark";
@@ -66,7 +67,7 @@ export default async function PortfolioPage() {
 
   const digests = computePropertyDigests(propertyList, itemsByProperty, licenseeIds);
   const needsYou = digests.filter(
-    (d) => d.pendingSignoff.length > 0 || d.flagged.length > 0 || d.awaiting.length > 0,
+    (d) => d.pendingSignoff.length > 0 || d.flagged.length > 0 || d.awaiting.length > 0 || d.reportToCheck,
   );
   const dueForReview = digests.filter((d) => {
     const days = daysSinceActivity(d.lastActivityAt);
@@ -196,6 +197,11 @@ export default async function PortfolioPage() {
                         {item.label}
                       </li>
                     ))}
+                    {d.reportToCheck && (
+                      <li className="rounded-full bg-rc-amber/15 px-2.5 py-0.5 text-xs font-medium text-rc-amber-deep">
+                        {REPORT_TO_CHECK_BADGE}
+                      </li>
+                    )}
                   </ul>
                 </li>
               ))}

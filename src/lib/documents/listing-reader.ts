@@ -234,6 +234,16 @@ export type SubjectAttributesRead = {
   internalAreaSqm?: number;
 };
 
+// BEDS, BATHS AND CARS, 0 INCLUDED (Adam, 11 Nov 2026: "read and record
+// number of bed, bath and car. still allow even if those data points read
+// 0"). A 0 is an answer: a studio has 0 bedrooms, a unit with no parking 0
+// car spaces. Left out, it reads as "not known", and the agent is asked to
+// fill in a figure the document gave. The app already keeps a 0 from here
+// to the comparables table and the statement of information.
+const COUNT_ZERO_TOO =
+  " A whole number, as printed. Record 0 when the document shows 0, 'nil' or 'none': 0 is a real answer, never leave it out. Leave it out only when the document doesn't give it (blank, a dash, or not shown).";
+const countField = (what: string) => ({ type: "number", description: `Number of ${what}.${COUNT_ZERO_TOO}` });
+
 export const EXTRACTION_TOOL: Anthropic.Tool = {
   name: "record_findings",
   description:
@@ -256,7 +266,15 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
           "of Documents page followed by annexures. CRITICAL: a contract prepared for a new listing has NO " +
           "purchaser named, NO agreed price and NO settlement date, because it must exist before the property " +
           "is offered for sale. Those absences are normal and must NEVER lead you to call it something else. " +
-          "'comparable_sales' — a comparable-sales or market-appraisal report (Cotality, PropTrack or similar). " +
+          // Judged by what it holds, not how it looks (Adam, 11 Nov 2026):
+          // what makes comparable sales is the properties, each with an
+          // address and a price, and their beds, baths, cars and land.
+          "'comparable_sales' — judge this one by its CONTENTS, not its heading or layout: a document that " +
+          "lists other properties, each with an address and a price (sold, or advertised for sale), usually " +
+          "with beds, baths, car spaces, land size or a sale date. Any format counts: a provider's report " +
+          "(Cotality, PropTrack, Pricefinder or similar), an agent's own appraisal or comparative market " +
+          "analysis, a letter or proposal to the vendor, a table or a list, or a few pages taken from any of " +
+          "these. " +
           "'other' — anything else. " +
           "These two are genuinely easy to confuse and the consequences of getting it wrong are real, so look " +
           "at the heading and the parties before you answer.",
@@ -360,7 +378,7 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
             comparableSales: {
               type: "array",
               description:
-                "Item a4c only, and ONLY when reading a comparable-sales report. One entry for every sold property the report lists — all of them, in the order the report presents them. Record only what is printed: leave a field out rather than estimating, converting or inferring it. Do NOT include the subject property itself, do NOT include properties listed as currently for sale or under offer rather than sold, and do NOT rank, score or judge them — which sales matter is the agent's decision and recording an opinion here would put words in their mouth on the one figure they may be asked to substantiate under s74.",
+                "Item a4c only, and ONLY when reading a comparable-sales report, or an agency agreement's own page of comparable sales given to the vendor. One entry for every sold property the report lists — all of them, in the order the report presents them. Record only what is printed: leave a field out rather than estimating, converting or inferring it. Do NOT include the subject property itself, do NOT include properties listed as currently for sale or under offer rather than sold, and do NOT rank, score or judge them — which sales matter is the agent's decision and recording an opinion here would put words in their mouth on the one figure they may be asked to substantiate under s74.",
               items: {
                 type: "object",
                 properties: {
@@ -370,9 +388,9 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
                   },
                   salePrice: { type: "number", description: "Sale price in dollars, digits only. Omit if the report withholds it." },
                   saleDate: { type: "string", description: "Date of sale, YYYY-MM-DD. Omit unless a specific date is printed — a month alone is not a date." },
-                  bedrooms: { type: "number" },
-                  bathrooms: { type: "number" },
-                  carSpaces: { type: "number", description: "Garage or carport spaces." },
+                  bedrooms: countField("bedrooms"),
+                  bathrooms: countField("bathrooms"),
+                  carSpaces: countField("car spaces (garage, carport or parking spaces)"),
                   landSizeSqm: { type: "number", description: "Land size in square metres. Convert hectares only where the report itself gives both; otherwise omit." },
                   internalAreaSqm: { type: "number", description: "Internal or building area in square metres, if stated separately from land." },
                   distanceM: { type: "number", description: "Distance from the subject property in METRES, only if the report states a distance. Convert a printed kilometre figure to metres; do not calculate one from addresses." },
@@ -392,9 +410,9 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
                   askingPrice: { type: "string", description: "The advertised price or guide exactly as printed, e.g. '$1,200,000 - $1,300,000', 'Contact Agent'. Omit if none is shown." },
                   saleMethod: { type: "string", description: "e.g. 'Auction', 'Private treaty', 'Expressions of interest', only as printed." },
                   listedDate: { type: "string", description: "Date first listed, YYYY-MM-DD, only if a specific date is printed. Do not calculate it from a days-on-market figure." },
-                  bedrooms: { type: "number" },
-                  bathrooms: { type: "number" },
-                  carSpaces: { type: "number" },
+                  bedrooms: countField("bedrooms"),
+                  bathrooms: countField("bathrooms"),
+                  carSpaces: countField("car spaces (garage, carport or parking spaces)"),
                   landSizeSqm: { type: "number", description: "Land size in square metres, only as printed." },
                   internalAreaSqm: { type: "number" },
                   distanceM: { type: "number", description: "Distance from the subject in METRES, only if printed. Convert a printed km figure; do not calculate one." },
@@ -408,9 +426,9 @@ export const EXTRACTION_TOOL: Anthropic.Tool = {
               description:
                 "Item a4c only, and ONLY from a comparable-sales report. The attributes of the SUBJECT property — the one the report was prepared for, usually named on its first page — not of any comparable. Everything optional; omit anything not printed. These are shown to the agent for confirmation, never used as fact until they accept them.",
               properties: {
-                bedrooms: { type: "number" },
-                bathrooms: { type: "number" },
-                carSpaces: { type: "number" },
+                bedrooms: countField("bedrooms"),
+                bathrooms: countField("bathrooms"),
+                carSpaces: countField("car spaces (garage, carport or parking spaces)"),
                 landSizeSqm: { type: "number" },
                 internalAreaSqm: { type: "number" },
               },
@@ -472,6 +490,19 @@ export function prescribedDocsPrompt(docs: PrescribedDoc[]): string {
 // SOURCE_TARGETS is still the thing that enforces it — this just stops us
 // inviting the wrong answer in the first place, and costs fewer tokens.
 
+// The comparable sales an agency agreement carries (Adam, 11 Nov 2026,
+// decision 6): a page of sold properties given to the vendor as evidence for
+// the ESP, such as Realtair's "Relevant Sales" page or a pricing annexure.
+// From that page only: a sale named anywhere else in the agreement is not the
+// evidence the vendor was given.
+export const AGREEMENT_SALES_PROMPT =
+  "ALSO on a4c, comparableSales: ONLY if the agreement includes a page or schedule listing comparable " +
+  "sold properties given as evidence for the estimated selling price (for example a 'Relevant Sales' " +
+  "page, a pricing annexure or a comparable sales schedule), one entry for every sold property on it, " +
+  "in its own order: address, sold price, sale date, beds, baths, car spaces and land size, as printed. " +
+  "Beds, baths and car spaces of 0 (or 'nil', 'none') are recorded as 0. Leave out any field it doesn't " +
+  "give, and never take a sale from anywhere else in the agreement. No such page: no comparableSales.";
+
 export const AGENCY_AGREEMENT_PROMPT =
   "a1 (whether the vendor's identity was verified. LOOK IN TWO PLACES, and the second is the one " +
   "that is usually there. FIRST, the vendor declarations and signing pages: a proof-of-identity or " +
@@ -531,7 +562,9 @@ export const AGENCY_AGREEMENT_PROMPT =
   "elsewhere, and is not your job), " +
   "a4c (the agent's own reasoning behind the ESP — this one item is an exception to the " +
   "note-flagging rule: if the document contains that reasoning text, copy it in the document's own " +
-  "words, not paraphrased or summarised, for the agent to confirm, not just a gap-flag), " +
+  "words, not paraphrased or summarised, for the agent to confirm, not just a gap-flag. " +
+  AGREEMENT_SALES_PROMPT +
+  "), " +
   "a3 (set offerPrice from the private-treaty offering price the agreement is required to specify " +
   "under Schedule 6 section 5 of the Regulation, copied exactly as written. This is NOT the estimated " +
   "selling price and must not be taken from the ESP field, and an auction agreement has none, so leave " +
@@ -564,10 +597,13 @@ export const AGENCY_AGREEMENT_PROMPT =
 // agreed. SOURCE_TARGETS enforces that in code; this is only the reminder.
 export const COMPARABLES_PROMPT =
   "a4c, and on a4c please do these things.\n\n" +
-  "(1) comparableSales — every sold property this report lists, as one entry each, in the report's own " +
-  "order. This is the main job. Transcribe what is printed and nothing else: address, price, date of " +
+  "(1) comparableSales — every sold property this document shows, wherever and however it is set out " +
+  "(a table, a list, a paragraph, a caption under a photo, a map key), as one entry each, in the " +
+  "document's own order. This is the main job. Transcribe what is printed and nothing else: address, price, date of " +
   "sale, beds, baths, car, land size, internal area, distance. Leave a field out rather than " +
-  "estimating it. Include every sale, even ones that look unlike the subject — deciding which sales " +
+  "estimating it, except that beds, baths and car spaces of 0 (or 'nil', 'none') are recorded as 0: a 0 " +
+  "is an answer, not a gap. The same goes for the subject property and the listings for sale. " +
+  "Include every sale, even ones that look unlike the subject — deciding which sales " +
   "count is the agent's job, and a sale you silently omitted is one they cannot consider.\n\n" +
   "(2) subjectProperty — the attributes of the property the report was prepared FOR, which these " +
   "reports normally state on the first page. Beds, baths, car, land, internal area. Omit anything not " +
@@ -619,7 +655,8 @@ export async function readListingDocument(args: {
   prescribedDocs: PrescribedDoc[];
 }): Promise<DraftPatch[]> {
   const { anthropic, blob, fileName, source, prescribedDocs } = args;
-  const prepared = await prepareRead(blob, fileName);
+  // A listing document: Word (.docx) is read too (Adam, 11 Nov 2026).
+  const prepared = await prepareRead(blob, fileName, { word: true });
   if (!prepared.ok) {
     if (prepared.problem === "too_large") throw new TooLargeToRead();
     throw new FileCantBeRead("unsupported", `file type not supported for extraction yet (${prepared.contentType})`);
@@ -632,7 +669,8 @@ export async function readListingDocument(args: {
   // confirmed hallucination (invented document names) that survived two
   // rounds of prompt-only fixes on a one-line placeholder test file.
   const MIN_TEXT_CHARS = 400;
-  if (prepared.contentType === "text/plain") {
+  // Not a Word file with pictures: its words can be few and its pictures the record.
+  if (prepared.contentType === "text/plain" && !prepared.pictures) {
     const text = Buffer.from(prepared.bytes).toString("utf-8");
     if (text.trim().length < MIN_TEXT_CHARS) {
       return [];
@@ -677,7 +715,14 @@ export async function readListingDocument(args: {
       "normal, successful, and common outcome — do not stretch to fill the array with a weak or unsupported " +
       "finding just because you're calling the tool.",
     text: (partIndex) =>
-      (partIndex === 1
+      (partIndex === 1 && source === "a4"
+        ? // Any format (Adam, 11 Nov 2026): see READ_FOR_SALES_WHATEVER_IT_IS below.
+          "This document was uploaded as the evidence for the estimated selling price. That evidence comes in " +
+          "every format: a provider's report, the agent's own appraisal or comparative market analysis, a letter " +
+          "or proposal to the vendor, a few pages taken from any of these, or a scan. FIRST set documentIs from " +
+          "what the document actually is. THEN, whatever its format, call record_findings with any facts it " +
+          "explicitly and literally states "
+        : partIndex === 1
         ? `This document was uploaded as the ${sourceLabel}, but do not take that on trust — the wrong ` +
           "file is uploaded often enough to matter, and reading the wrong document produces answers that " +
           "look right and are not. FIRST set documentIs from what the document actually is. THEN, only if " +
@@ -714,18 +759,28 @@ export async function readListingDocument(args: {
   // green ticks against s52A on the strength of a document that is not a
   // contract. Both halves came back in the same tool call and nothing
   // reconciled them.
+  //
+  // READ_FOR_SALES_WHATEVER_IT_IS. Not on the ESP card (Adam, 11 Nov 2026:
+  // "We can't have people uploading CMA files... they're always all going to
+  // be different... the AI just needs to read it and pull out the relevant
+  // data"). REVERSAL of the 20 Aug rule for the ESP card only. Four reports
+  // from four offices (5 and 11 Nov) were judged "a different kind of
+  // document" and nothing was taken from them: an agent's own appraisal, a
+  // few pages cut from a bigger report. Now every file on the ESP card is read
+  // for sales. It is the wrong file only when it is plainly the agreement or
+  // the contract AND no sales were found in it (wrongFileOnEspCard below). A
+  // file with no sales is "no sales found", and the agent can add them. The
+  // comparables are the agent's to check and weigh either way. The agreement
+  // and the contract keep the rule: there a wrong document gives false ticks.
   const actual = input.documentIs;
-  if (actual && actual !== expected) {
-    return [
-      {
-        itemKey: source,
-        wrongDocument: { expected: KIND_LABELS[expected], actual: KIND_LABELS[actual] },
-        // Kept in step with the older flag so a b1 card written either side of
-        // this change behaves the same way.
-        ...(source === "b1" ? { notAContract: true } : {}),
-      },
-    ];
-  }
+  const wrongDocument = (kind: DocumentKind): DraftPatch => ({
+    itemKey: source,
+    wrongDocument: { expected: KIND_LABELS[expected], actual: KIND_LABELS[kind] },
+    // Kept in step with the older flag so a b1 card written either side of
+    // this change behaves the same way.
+    ...(source === "b1" ? { notAContract: true } : {}),
+  });
+  if (actual && actual !== expected && source !== "a4") return [wrongDocument(actual)];
 
   // The rest of a split file, then every part's answers as one answer per
   // item (lib/documents/reader-parts mergeReads: a prescribed document found
@@ -745,7 +800,7 @@ export async function readListingDocument(args: {
     patches = [...byItem.values()].map((list) => (list.length === 1 ? list[0] : mergeReads(list)));
   }
 
-  return patches
+  const kept = patches
     .filter((p) => TARGET_ITEM_KEYS.has(p.itemKey))
     // The rule this file exists to enforce. A document only speaks to the
     // items it can actually evidence, whatever the model chose to return.
@@ -763,7 +818,34 @@ export async function readListingDocument(args: {
     // without this an agreement that happened to mention a nearby sale could
     // put a row in the comparison table — a sale that is not in the report the
     // file holds as evidence, appearing in the record as though it were.
+    //
+    // REVERSAL for the agreement's own sales page (Adam, 11 Nov 2026,
+    // decision 6: "Yes, counts as report"). An agency agreement often carries
+    // the comparable sales the agent gave the vendor: a Realtair "Relevant
+    // Sales" page, a pricing annexure. McGoldrick's agent cut that page out
+    // and uploaded it again as the report. Now the agreement's sales are read
+    // from it (asked only for such a page, AGREEMENT_SALES_PROMPT), and that
+    // page stands as the comparable sales report (lib/documents/report-choice
+    // reportInAgreement). Its listings for sale and the subject's details
+    // still come off a report only.
     .map((p) =>
-      source === "a4" ? p : { ...p, comparableSales: undefined, subjectProperty: undefined, marketListings: undefined },
+      source === "a4"
+        ? p
+        : source === "a3"
+          ? { ...p, subjectProperty: undefined, marketListings: undefined }
+          : { ...p, comparableSales: undefined, subjectProperty: undefined, marketListings: undefined },
     );
+
+  if (source === "a4" && wrongFileOnEspCard(actual, kept)) return [wrongDocument(actual!)];
+  return kept;
+}
+
+/**
+ * The ESP card's one wrong file (READ_FOR_SALES_WHATEVER_IT_IS above): the
+ * agency agreement or the contract, with no sales in it. An agreement with
+ * the comparable sales attached to it is read for them.
+ */
+export function wrongFileOnEspCard(actual: DocumentKind | undefined, patches: DraftPatch[]): boolean {
+  if (actual !== "agency_agreement" && actual !== "contract_for_sale") return false;
+  return !patches.some((p) => (p.comparableSales?.length ?? 0) > 0 || (p.marketListings?.length ?? 0) > 0);
 }

@@ -41,9 +41,12 @@ import type { ActionState } from "@/lib/actions/auth";
 // uploaded on its own card in Pre-market and read the moment it's attached;
 // completeStage refuses On market until it's there. Why: agents often list
 // and organise marketing while still waiting on the contract.
-const SETUP_EVIDENCE_FIELDS: Array<{ field: string; itemKey: string; label: string }> = [
+// REVERSAL (Adam, 11 Nov 2026, decision 6): the comparable sales report is
+// optional here. When the agency agreement carries the sales, they're read
+// from it and that page stands as the report (lib/documents/report-choice).
+const SETUP_EVIDENCE_FIELDS: Array<{ field: string; itemKey: string; label: string; optional?: boolean }> = [
   { field: "agencyAgreementFile", itemKey: "a3", label: "Agency agreement" }, // Agency agreement signed; copy served within 48 hours
-  { field: "comparableSalesFile", itemKey: "a4", label: "Comparable sales report" }, // Attached to the ESP card (a4b merged in, 22 Aug 2026)
+  { field: "comparableSalesFile", itemKey: "a4", label: "Comparable sales report", optional: true }, // Attached to the ESP card (a4b merged in, 22 Aug 2026)
 ];
 
 // Creates a new property from the setup-question form (address, type,
@@ -144,18 +147,17 @@ export async function createProperty(
     return { error: "Address is required." };
   }
 
-  // Documents are mandatory at setup — NewPropertyForm.tsx uploads each
-  // file to Storage itself and only submits here once both succeed,
+  // The agency agreement is mandatory at setup — NewPropertyForm.tsx uploads
+  // each file to Storage itself and only submits here once they succeed,
   // but re-check that every staged path actually arrived, since a Server
   // Action is a real POST endpoint a bare form submission could bypass.
   const staged: Array<{ field: string; itemKey: string; path: string; fileName: string }> = [];
-  for (const { field, itemKey } of SETUP_EVIDENCE_FIELDS) {
+  for (const { field, itemKey, optional } of SETUP_EVIDENCE_FIELDS) {
     const path = String(formData.get(`${field}StagedPath`) ?? "").trim();
     const fileName = String(formData.get(`${field}FileName`) ?? "").trim();
     if (!path || !fileName) {
-      return {
-        error: "Attach both documents (the agency agreement and the comparable sales report) to create the listing.",
-      };
+      if (optional) continue;
+      return { error: "Attach the agency agreement to create the listing." };
     }
     staged.push({ field, itemKey, path, fileName });
   }

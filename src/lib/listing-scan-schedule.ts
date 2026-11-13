@@ -1,3 +1,4 @@
+import { sydneyParts } from "@/lib/format-date";
 // What the 7am Sydney listing-scan run does on a given morning.
 //
 // Until 31 October 2026 the advertised-price check runs weekly, exactly as it
@@ -15,20 +16,14 @@ export const PRICE_CHECK_FROM = new Date("2026-11-01T00:00:00+11:00");
 
 export type ScanMode = "daily" | "weekly" | "discovery";
 
-const sydneyParts = (now: Date) =>
-  new Intl.DateTimeFormat("en-AU", {
-    timeZone: "Australia/Sydney",
-    weekday: "short",
-    hour: "numeric",
-    hourCycle: "h23",
-  }).formatToParts(now);
+const partsNow = (now: Date) => sydneyParts(now, { weekday: "short", hour: "numeric", hourCycle: "h23" });
 
 /** The hour of the day in Sydney, 0–23. The cron route runs only at 7. */
 export function sydneyHour(now: Date): number {
-  return Number(sydneyParts(now).find((p) => p.type === "hour")?.value);
+  return Number(partsNow(now).hour);
 }
 
 export function scanModeAt(now: Date): ScanMode {
   if (now >= PRICE_CHECK_FROM) return "daily";
-  return sydneyParts(now).find((p) => p.type === "weekday")?.value === "Mon" ? "weekly" : "discovery";
+  return partsNow(now).weekday === "Mon" ? "weekly" : "discovery";
 }

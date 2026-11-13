@@ -160,7 +160,7 @@ describe("every document on the listing, inside the one PDF (2 Nov 2026)", () =>
       assert.ok(pages[sep - 1].includes("Back to contents"));
     }
     const word = pages[first + 4].replace(/\s+/g, " ");
-    assert.ok(word.includes("Not included in this PDF: Word document (.docx). Kept in RealComply."), word);
+    assert.ok(word.includes("Not included in this PDF: Word document. Kept in RealComply. Upload it as a PDF to include it here."), word);
     assert.deepEqual(report, [
       [doc().path, true],
       ["a/p/b1/2-contract.pdf", true],

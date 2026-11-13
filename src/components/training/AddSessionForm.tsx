@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { addTrainingSession, type ActionState } from "@/lib/actions/registers";
+import { DateBox } from "@/components/DateBox";
 
 const initialState: ActionState = { error: null };
 
@@ -22,7 +23,7 @@ export function AddSessionForm() {
       <div className="flex flex-wrap gap-3">
         <div>
           <label className="block text-xs text-rc-muted">Date</label>
-          <input type="date" name="sessionDate" required className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm" />
+          <DateBox name="sessionDate" required className="mt-1 rounded-md border border-rc-border px-2 py-1 text-sm" />
         </div>
         <div>
           <label className="block text-xs text-rc-muted">Trainer</label>

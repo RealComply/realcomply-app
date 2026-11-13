@@ -22,6 +22,7 @@ import { ReminderLine, type ReminderInfo } from "@/components/registers/Reminder
 import { LicenceReadNotice } from "@/components/registers/LicenceReadNotice";
 import { AcceptedFilesLine } from "@/components/AcceptedFiles";
 import type { Agency } from "@/lib/types";
+import { DateBox } from "@/components/DateBox";
 
 // The corporation's own licence.
 //
@@ -144,7 +145,14 @@ export function CorporationLicenceCard({
             placeholder={agency.licensed_entity_name ?? agency.name}
           />
           <Field name="licenceNumber" label="Licence number" defaultValue={licenceNumber ?? ""} />
-          <Field name="expiry" label="Expires" defaultValue={expiry ?? ""} type="date" />
+          <label className="block">
+            <span className="block text-xs text-rc-muted">Expires</span>
+            <DateBox
+              name="expiry"
+              defaultValue={expiry ?? ""}
+              className="mt-1 w-full rounded-lg border border-rc-border px-2.5 py-1.5 text-sm transition focus:border-rc-green-deep focus:outline-none focus:ring-2 focus:ring-rc-green-soft"
+            />
+          </label>
           <div className="flex gap-2 sm:col-span-3">
             <button
               type="submit"

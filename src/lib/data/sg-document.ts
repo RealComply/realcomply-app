@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sgChecksOf, type SgChecks } from "@/lib/sg-document/checks";
 import { isSgDocType, type SgDocType } from "@/lib/sg-document/fair-trading";
+import { amendmentFrom, type SgAmendment } from "@/lib/sg-document/amendments";
+import { reviewFrom, type SgReview } from "@/lib/sg-document/annual-review";
+import { nextReviewDue, sgChangeLog, versionSignedOf, type ChangeLogRow } from "@/lib/sg-document/change-log";
+import { sydneyDate } from "@/lib/subscription-end/dates";
 
 // The office's supervision guidelines as a live document (0122), as the SG
 // page and Home read them. Each person sees what the database lets them: the
@@ -107,4 +111,185 @@ export async function sgDraftWaiting(supabase: SupabaseClient): Promise<{ fileNa
   if (error || !data) return null;
   const r = data as { file_name: string; from_file_on_record: boolean };
   return { fileName: r.file_name, fromFileOnRecord: r.from_file_on_record };
+}
+
+// ── Part 2: quick amendments and staff sign-off of each change (0125) ────
+// Before 0125 has run there's no table: no amendments, and the page is as it was.
+
+const AMENDMENT_COLUMNS =
+  "id, document_id, ref_no, section_position, paragraph_index, section_label, previous_text, new_text, reason, reason_other, starts_on, status, created_by_name, created_at, approved_by_name, approved_as, approved_at";
+
+/** The live document's amendments: approved for everyone, drafts too for whoever runs the office (the database decides). */
+export async function sgAmendmentsFor(supabase: SupabaseClient, documentId: string): Promise<SgAmendment[]> {
+  const { data, error } = await supabase
+    .from("sg_amendments")
+    .select(AMENDMENT_COLUMNS)
+    .eq("document_id", documentId)
+    .in("status", ["draft", "approved"])
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Array<Record<string, unknown>>).map(amendmentFrom).filter((a): a is SgAmendment => a !== null);
+}
+
+/** Who has signed each amendment: amendment id to the people who signed it. */
+export async function sgAmendmentSigners(supabase: SupabaseClient, amendmentIds: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (amendmentIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from("sg_amendment_signatures")
+    .select("amendment_id, profile_id")
+    .in("amendment_id", amendmentIds);
+  if (error || !data) return out;
+  for (const r of data as Array<{ amendment_id: string; profile_id: string }>) {
+    out.set(r.amendment_id, [...(out.get(r.amendment_id) ?? []), r.profile_id]);
+  }
+  return out;
+}
+
+/** Every document saved (live, and those it replaced), oldest first, for the change log. */
+export async function sgSavedDocuments(supabase: SupabaseClient): Promise<
+  Array<{ id: string; docType: SgDocType | null; versionLabel: string | null; savedAt: string; savedByName: string | null; manualVersionId: string | null }>
+> {
+  const { data, error } = await supabase
+    .from("sg_documents")
+    .select("id, doc_type, version_label, saved_at, saved_by_name, manual_version_id")
+    .in("status", ["live", "replaced"])
+    .not("saved_at", "is", null)
+    .order("saved_at", { ascending: true });
+  if (error || !data) return [];
+  return (
+    data as Array<{ id: string; doc_type: string | null; version_label: string | null; saved_at: string; saved_by_name: string | null; manual_version_id: string | null }>
+  ).map((r) => ({
+    id: r.id,
+    docType: isSgDocType(r.doc_type) ? r.doc_type : null,
+    versionLabel: r.version_label,
+    savedAt: r.saved_at,
+    savedByName: r.saved_by_name,
+    manualVersionId: r.manual_version_id,
+  }));
+}
+
+/**
+ * For Home (mockup screen 6): the changes to the live document this person
+ * hasn't signed yet, oldest first, each with the section it's in.
+ */
+export async function sgChangesToSign(supabase: SupabaseClient, profileId: string): Promise<SgAmendment[]> {
+  const { data: live, error } = await supabase.from("sg_documents").select("id").eq("status", "live").limit(1).maybeSingle();
+  if (error || !live) return [];
+  const amendments = (await sgAmendmentsFor(supabase, (live as { id: string }).id)).filter((a) => a.status === "approved");
+  if (amendments.length === 0) return [];
+  const signers = await sgAmendmentSigners(
+    supabase,
+    amendments.map((a) => a.id),
+  );
+  return amendments
+    .filter((a) => !(signers.get(a.id) ?? []).includes(profileId))
+    .sort((x, y) => (x.refNo ?? 0) - (y.refNo ?? 0));
+}
+
+/** Every approved amendment, on the live document and those it replaced, for the change log (part 3). */
+export async function sgApprovedAmendmentsAll(supabase: SupabaseClient): Promise<SgAmendment[]> {
+  const { data, error } = await supabase
+    .from("sg_amendments")
+    .select(AMENDMENT_COLUMNS)
+    .eq("status", "approved")
+    .order("approved_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Array<Record<string, unknown>>).map(amendmentFrom).filter((a): a is SgAmendment => a !== null);
+}
+
+// ── Part 4: the annual review (0126) ─────────────────────────────────────
+// Before 0126 has run there's no sg_reviews table: no reviews, and the date
+// is worked out from the rest.
+
+/** Every "Reviewed, no changes needed", oldest first, for the change log. */
+export async function sgReviewsAll(supabase: SupabaseClient): Promise<SgReview[]> {
+  const { data, error } = await supabase
+    .from("sg_reviews")
+    .select("id, document_id, note, reviewed_by_name, reviewed_as, reviewed_at")
+    .order("reviewed_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Array<Record<string, unknown>>).map(reviewFrom).filter((r): r is SgReview => r !== null);
+}
+
+/**
+ * An office's live document and when its next review is due (2.1.2): 12
+ * months after the latest of its sign-up, a version saved, an amendment
+ * approved and a "Reviewed, no changes needed". Null with no live document.
+ * lastReviewedOn: the Sydney day of the latest "Reviewed, no changes needed".
+ * Every query names the office, so the daily job can use it with the
+ * service key; signed in, the database narrows it the same way.
+ */
+export async function sgReviewDueFor(
+  supabase: SupabaseClient,
+  agencyId: string,
+): Promise<{ documentId: string; dueOn: string; lastReviewedOn: string | null } | null> {
+  const [{ data: agency }, { data: docs, error: docsError }, { data: approved }, { data: reviews }] = await Promise.all([
+    supabase.from("agencies").select("created_at").eq("id", agencyId).maybeSingle(),
+    supabase
+      .from("sg_documents")
+      .select("id, status, saved_at")
+      .eq("agency_id", agencyId)
+      .in("status", ["live", "replaced"])
+      .not("saved_at", "is", null),
+    supabase.from("sg_amendments").select("approved_at").eq("agency_id", agencyId).eq("status", "approved"),
+    supabase.from("sg_reviews").select("reviewed_at").eq("agency_id", agencyId),
+  ]);
+  if (docsError || !docs) return null;
+  const rows = docs as Array<{ id: string; status: string; saved_at: string }>;
+  const live = rows.find((d) => d.status === "live");
+  if (!live) return null;
+  const dueOn = nextReviewDue((agency as { created_at?: string } | null)?.created_at ?? null, [
+    ...rows.map((d) => d.saved_at),
+    ...((approved ?? []) as Array<{ approved_at: string | null }>).map((a) => a.approved_at),
+    ...((reviews ?? []) as Array<{ reviewed_at: string }>).map((r) => r.reviewed_at),
+  ]);
+  const reviewedAt = ((reviews ?? []) as Array<{ reviewed_at: string }>).map((r) => r.reviewed_at).sort();
+  const last = reviewedAt.at(-1);
+  return dueOn ? { documentId: live.id, dueOn, lastReviewedOn: last ? sydneyDate(new Date(last)) : null } : null;
+}
+
+// ── Part 4b: the change log, for Export PDF ──────────────────────────────
+
+/**
+ * The change log as the page shows it (screen 5), for the export. With the
+ * reader's own access: whoever runs the office reads every signature.
+ */
+export async function sgChangeLogFor(supabase: SupabaseClient, agencyId: string): Promise<ChangeLogRow[]> {
+  const [savedDocs, approved, reviews, { data: staff }, { data: versions }, { data: docs }] = await Promise.all([
+    sgSavedDocuments(supabase),
+    sgApprovedAmendmentsAll(supabase),
+    sgReviewsAll(supabase),
+    supabase.from("profiles").select("id, archived_at").eq("agency_id", agencyId),
+    supabase.from("sg_manual_versions").select("id, file_path"),
+    supabase.from("signoff_documents").select("id, file_path").eq("category", "sg_manual"),
+  ]);
+  const docRows = (docs ?? []) as Array<{ id: string; file_path: string | null }>;
+  const [signers, { data: sigs }] = await Promise.all([
+    sgAmendmentSigners(
+      supabase,
+      approved.map((a) => a.id),
+    ),
+    docRows.length > 0
+      ? supabase
+          .from("signoff_signatures")
+          .select("document_id, signed_at")
+          .in(
+            "document_id",
+            docRows.map((d) => d.id),
+          )
+      : Promise.resolve({ data: [] }),
+  ]);
+  return sgChangeLog({
+    savedDocs,
+    approved,
+    reviews,
+    signers,
+    staffIds: ((staff ?? []) as Array<{ id: string; archived_at: string | null }>).filter((p) => !p.archived_at).map((p) => p.id),
+    versionSigned: versionSignedOf(
+      (versions ?? []) as Array<{ id: string; file_path: string }>,
+      docRows,
+      (sigs ?? []) as Array<{ document_id: string; signed_at: string | null }>,
+    ),
+  });
 }

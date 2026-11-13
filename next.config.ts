@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/cron/reader-check": ["./samples/cma/long-report.pdf", "./samples/cma/long-report.json"],
     "/dashboard/admin": ["./samples/cma/long-report.pdf", "./samples/cma/long-report.json"],
+    // The headless browser for listings pages drawn by JavaScript (11 Nov
+    // 2026; lib/listing-scan/render-page.ts), with the 7am check only. Its
+    // compressed Chromium is read from disk at run time, so it is named here.
+    "/api/cron/listing-scan": ["./node_modules/@sparticuz/chromium/bin/**"],
   },
   async redirects() {
     return [

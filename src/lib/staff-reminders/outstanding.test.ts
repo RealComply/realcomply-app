@@ -70,4 +70,34 @@ describe("who still needs to sign or read the Supervision Guidelines", () => {
     assert.equal(remindableNow("2026-10-26T01:00:00Z", new Date("2026-10-26T21:00:00Z")), true);
     assert.equal(remindableNow(null, new Date()), true);
   });
+
+  it("a change to the supervision guidelines not yet signed (0125; 0126): everyone asked, assistants too, each with their refs", () => {
+    const out = staffStillToDo({
+      ...base,
+      currentSgDocumentId: null,
+      adoptedVersion: null,
+      changes: [
+        { id: "a1", ref: "A1" },
+        { id: "a2", ref: "A2" },
+      ],
+      changeSignatures: [
+        { amendment_id: "a1", profile_id: "a" },
+        { amendment_id: "a1", profile_id: "b" },
+        { amendment_id: "a2", profile_id: "b" },
+        { amendment_id: "a1", profile_id: "asst" },
+      ],
+    });
+    assert.deepEqual(
+      out.map((o) => [o.person.id, o.kinds, o.changeRefs]),
+      [
+        ["a", ["sg_change_sign"], ["A2"]],
+        ["asst", ["sg_change_sign"], ["A2"]],
+      ],
+    );
+    // With nothing else to do and every change signed: nobody.
+    assert.deepEqual(
+      staffStillToDo({ ...base, currentSgDocumentId: null, adoptedVersion: null, changes: [], changeSignatures: [] }),
+      [],
+    );
+  });
 });

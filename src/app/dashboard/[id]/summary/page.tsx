@@ -15,7 +15,7 @@ import {
 import { ruleContextFor } from "@/lib/data/rule-context";
 import { STAGE_LABELS, type Property, type PropertyItem } from "@/lib/types";
 import { RULESET_VERSION } from "@/lib/rules/ruleset-version";
-import { formatAuDate, formatAuDateTimeShort, formatAuTimestamp } from "@/lib/format-date";
+import { formatAuDate, formatAuDateTime, formatAuDateTimeShort, formatAuTimestamp } from "@/lib/format-date";
 import { questionAndDocumentRecordLines } from "@/lib/rules/question-card";
 import { naRecordLines, readNa } from "@/lib/rules/not-applicable";
 import { marketListingsFor } from "@/lib/data/market-listings";
@@ -118,7 +118,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         </div>
       )}
       <p className="mt-1 text-xs text-rc-faint">
-        Generated {new Date().toLocaleString("en-AU")} · {RULESET_VERSION} · diligence support — verify with your
+        Generated {formatAuDateTime(new Date())} · {RULESET_VERSION} · diligence support — verify with your
         adviser; the licensee decides.
       </p>
 

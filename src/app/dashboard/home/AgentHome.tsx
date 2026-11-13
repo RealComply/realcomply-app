@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { Building2, ClipboardCheck, FileWarning, IdCard, PenLine } from "lucide-react";
 import type { createClient } from "@/lib/supabase/server";
+import { sgChangesToSign } from "@/lib/data/sg-document";
+import { SgChangesToSign } from "@/components/sg/SgChangesToSign";
+import { SgAnnualReviewCard } from "@/components/sg/SgAnnualReviewCard";
 import { navCountsFor } from "@/lib/data/nav-counts";
 import { ownWork, readsBeyondOwnWork } from "@/lib/data/listing-access";
 import type { Access } from "@/lib/access";
@@ -9,6 +12,7 @@ import { expiryStatus } from "@/lib/expiry-status";
 import { currentCpdYear } from "@/lib/cpd-year";
 import { StatTile } from "@/components/home/WidgetCard";
 import { NeedsAttentionWidget, type NeedsAttentionItem } from "@/components/home/NeedsAttentionWidget";
+import { REPORT_TO_CHECK_BADGE } from "@/lib/documents/report-choice";
 import { GiftsWidget } from "@/components/home/GiftsWidget";
 import { TrainingWidget } from "@/components/home/TrainingWidget";
 import { SgReadCard } from "@/components/home/SgReadCard";
@@ -42,6 +46,7 @@ export async function AgentHome({
   officeManager = null,
   setup = null,
   sgDraft = null,
+  sgReview = null,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   profile: Profile;
@@ -55,8 +60,12 @@ export async function AgentHome({
   setup?: SetupView | null;
   /** For an office manager: the supervision guidelines read into a draft, waiting to be checked (Master, 10 Nov 2026). */
   sgDraft?: { fileName: string; fromFileOnRecord: boolean } | null;
+  /** For an office manager: the annual review card (0126), already decided to show. */
+  sgReview?: { documentId: string; dueOn: string; today: string; reviewedToday: boolean } | null;
 }) {
   const cpdYear = currentCpdYear();
+  // Changes to the supervision guidelines this person hasn't signed (0125).
+  const sgChanges = await sgChangesToSign(supabase, profile.id);
 
   // Every query here goes through the signed-in person's own rules (0058):
   // their listings (or their agents', for an assistant), their CPD, the
@@ -96,7 +105,7 @@ export async function AgentHome({
   const nameOf = (id: string | null) => people.find((x) => x.id === id)?.full_name ?? "Unknown";
 
   const needs: NeedsAttentionItem[] = counts.listingRows
-    .filter((r) => r.outstanding > 0 || r.flagged > 0)
+    .filter((r) => r.outstanding > 0 || r.flagged > 0 || r.reportToCheck)
     .map((r) => ({
       propertyId: r.id,
       address: r.address,
@@ -105,6 +114,7 @@ export async function AgentHome({
       badges: [
         ...(r.outstanding > 0 ? [`${r.outstanding} to do`] : []),
         ...(r.flagged > 0 ? [`${r.flagged} flagged`] : []),
+        ...(r.reportToCheck ? [REPORT_TO_CHECK_BADGE] : []),
       ],
     }));
 
@@ -143,6 +153,12 @@ export async function AgentHome({
         {sgReadShows && <SgReadCard />}
 
         {sgDraft && <SgDraftReadyCard fileName={sgDraft.fileName} fromFileOnRecord={sgDraft.fromFileOnRecord} />}
+
+        {/* The annual review of the supervision guidelines (Adam's mockup, screen 7; 0126). */}
+        {sgReview && <SgAnnualReviewCard {...sgReview} />}
+
+        {/* Changes to the supervision guidelines to sign (Adam's mockup, screen 6; 0125). */}
+        <SgChangesToSign changes={sgChanges} />
 
         <UnopenedSignoffLinks nudges={signoffNudges} />
         <AnnexureLinkCard status={annexureWaiting} />

@@ -4,9 +4,14 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CMA_REREADS,
+  CMA_TEST_READS,
   cmaRereadListings,
   cmaRereadSummary,
+  cmaTestReadSummary,
+  isCmaReread,
+  isCmaTestRead,
   rereadComparablesReport,
+  testReadComparablesReport,
   type CmaReread,
 } from "@/lib/documents/cma-reread";
 import { LISTING_READER_MAX_TOKENS } from "@/lib/documents/listing-reader";
@@ -353,7 +358,12 @@ describe("which listings can be re-read", () => {
     const { tables, files } = madeUpListing();
     const service = fakeService(tables, files);
     const listed = await cmaRereadListings(service);
-    assert.equal(listed.length, 3);
+    // The three re-reads, then McGoldrick's test read (Master, 11 Nov 2026).
+    assert.equal(listed.length, 4);
+    assert.deepEqual(
+      listed.map((l) => l.testOnly),
+      [false, false, false, true],
+    );
     const mine = listed.find((l) => l.propertyId === LISTING)!;
     assert.deepEqual(
       { ...mine },
@@ -365,6 +375,8 @@ describe("which listings can be re-read", () => {
         salesOnListing: 1,
         listingsOnListing: 0,
         lastRead: null,
+        testOnly: false,
+        ended: false,
       },
     );
     assert.equal(listed.find((l) => l.propertyId !== LISTING)!.office, "Office not found");
@@ -377,5 +389,37 @@ describe("which listings can be re-read", () => {
 
   it("are read with the reader's own limit", () => {
     assert.ok(LISTING_READER_MAX_TOKENS >= 8000);
+  });
+});
+
+describe("test reads, nothing saved (Master, 11 Nov 2026)", () => {
+  it("says what the reader would take, and writes nothing", async () => {
+    const { tables, files } = madeUpListing();
+    const before = JSON.stringify(tables);
+    const result = await testReadComparablesReport(fakeService(tables, files), standInReader(sample.answer).client, LISTING);
+    assert.ok(!("error" in result));
+    assert.equal(result.read.outcome, "read");
+    assert.equal(result.sales.length, sample.sales);
+    assert.equal(result.listings, sample.listings);
+    assert.equal(JSON.stringify(tables), before, "no sales added, nothing on the card, no read recorded");
+    const summary = cmaTestReadSummary(result);
+    assert.match(summary, /Nothing was saved\./);
+    assert.match(summary, new RegExp(`Found ${sample.sales} sales`));
+  });
+
+  it("McGoldrick's listing can be test-read, but not re-read", () => {
+    const mcgoldrick = CMA_TEST_READS[0].propertyId;
+    assert.equal(isCmaTestRead(mcgoldrick), true);
+    assert.equal(isCmaReread(mcgoldrick), false);
+    assert.equal(isCmaTestRead(LISTING), true, "the re-read listings can be test-read too");
+  });
+
+  it("a re-read changes nothing for an office whose subscription has ended", async () => {
+    const { tables, files } = madeUpListing();
+    tables.agencies[0].ended_at = "2026-11-03T05:47:14Z";
+    const before = JSON.stringify(tables);
+    const result = await rereadComparablesReport(fakeService(tables, files), standInReader(sample.answer).client, LISTING, recorder().options);
+    assert.deepEqual(result, { error: "That office's subscription has ended, so nothing on its listings is changed." });
+    assert.equal(JSON.stringify(tables), before);
   });
 });

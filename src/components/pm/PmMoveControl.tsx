@@ -15,6 +15,7 @@ import {
 import { PmChoicePills } from "@/components/pm/PmChoicePills";
 import { todayInSydney } from "@/components/pm/pm-dates";
 import { RoofMark } from "@/components/RoofMark";
+import { DateBox } from "@/components/DateBox";
 
 // The move buttons on a PM property (brief A9, B1 to B3). One main button per
 // group, and in Tenant vacating and Vacant a second, quieter one. Disabled
@@ -129,8 +130,7 @@ function MoveForm({
       {dateLabel && (
         <label className="flex items-center gap-2 text-[13px] text-rc-muted">
           {dateLabel}
-          <input
-            type="date"
+          <DateBox
             name="date"
             required
             defaultValue={todayInSydney()}

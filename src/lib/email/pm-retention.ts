@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { sendEmail } from "@/lib/email/send";
 import { renderEmailHtml, renderEmailText, type EmailDocument } from "./layout";
-import { formatAuDate } from "@/lib/format-date";
+import { formatAuDate, sydneyDate as sharedSydneyDate } from "@/lib/format-date";
 import { PM_COPY, pmManagementEndedLabel, pmRetentionUntil } from "@/lib/rules/nsw-pm";
 
 // Property management: the 3-year file reminder (brief B4). The daily job.
@@ -81,7 +81,7 @@ async function selectAll<T>(page: (from: number, to: number) => Page): Promise<T
 
 /** Today's date in Sydney, as YYYY-MM-DD. The job runs before the working day starts there. */
 export function sydneyDate(now: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney" }).format(now);
+  return sharedSydneyDate(now);
 }
 
 export function retentionDocument(subject: PmRetentionSubject, agencyName: string): EmailDocument {
