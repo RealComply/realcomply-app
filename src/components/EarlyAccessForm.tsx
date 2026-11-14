@@ -172,10 +172,7 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
           {/* Was "Mobile (optional): for a quick call to get you set up"
               (16 Oct 2026). Still optional, still never a reason to refuse. */}
           <label htmlFor={`${uid}-mobile`} className={label}>
-            Mobile{" "}
-            <span className={`font-normal ${dark ? "text-white/70" : "text-rc-muted"}`}>
-              (optional, if you&rsquo;d like a 10-minute walkthrough)
-            </span>
+            Mobile
           </label>
           <input
             id={`${uid}-mobile`}
@@ -226,7 +223,6 @@ export function EarlyAccessForm({ source, tone = "light" }: { source?: string; t
           removed, and the Privacy policy link now serves as this form's
           collection notice. Same tab, same text style as the line. */}
       <p className={`mt-3 text-sm leading-relaxed ${dark ? "text-rc-ink-muted" : "text-rc-muted"}`}>
-        Card needed to start your trial. Cancel before day 14 and you won&rsquo;t be charged.{" "}
         <Link href="/privacy" className={`whitespace-nowrap underline underline-offset-2 ${dark ? "hover:text-white" : "hover:text-rc-ink"}`}>
           Privacy policy
         </Link>
