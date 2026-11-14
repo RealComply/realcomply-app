@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { HERO_LEAD_BEFORE } from "@/lib/landing/hero-copy";
 import "./globals.css";
 
 // Meta Pixel lives in components/MetaPixel.tsx and is rendered by the public
@@ -25,16 +26,18 @@ export const metadata: Metadata = {
   // until 15 Aug 2026, when Adam pulled that line. It could not simply be
   // deleted: this is what search results and shared links show for any page
   // that does not set its own, so an empty one leaves Google to invent a
-  // snippet. Replaced with the same wording the landing page already uses,
-  // which describes the product rather than its origin.
-  // Kept identical to the landing page's own description and openGraph text.
+  // snippet. Replaced with wording the landing page already uses, which
+  // describes the product rather than its origin.
   // Updated 17 Aug 2026 with the rewrite: the old line ("AI compliance support
   // for NSW real estate agencies...") never said what the product is, which is
-  // exactly the fault the rewrite exists to fix. If the three ever diverge,
-  // the ad, the search result and the page start saying different things.
+  // exactly the fault the rewrite exists to fix.
   // Changed 22 Oct 2026 with the landing page sub-headline (Adam's reversal,
   // recorded in src/app/page.tsx).
-  description: "Join agencies around NSW in making compliance simple and stress-free.",
+  // Changed again 10 Nov 2026 with the underquoting hero. This fallback is the
+  // sentence from before 17 November. The homepage (src/app/page.tsx) uses
+  // heroLead(), which swaps to the "in force" sentence at REFORMS_FROM.
+  // Pages that do not set their own description keep this sentence.
+  description: HERO_LEAD_BEFORE,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

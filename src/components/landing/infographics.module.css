@@ -93,31 +93,55 @@
 .cellLabel {
   display: none;
 }
+/* Phones only. Wider screens keep the paired rows and never show this. */
+.toggle {
+  display: none;
+}
+.toggleBtn {
+  border: 1px solid var(--rc-border);
+  border-radius: 999px;
+  background: #fff;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--rc-ink);
+  cursor: pointer;
+}
+.toggleBtn:focus-visible {
+  outline: 2px solid var(--rc-green-deep);
+  outline-offset: 2px;
+}
+.toggleBeforeOn {
+  border-color: transparent;
+  background: var(--rc-red-soft);
+  color: #b83232;
+}
+.toggleAfterOn {
+  border-color: transparent;
+  background: var(--rc-green-soft);
+  color: var(--rc-green-deep-600);
+}
 @media (max-width: 640px) {
-  .head {
+  /* One side at a time, so six rows do not become twelve stacked cards. */
+  .toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .head,
+  .arrow,
+  .cellLabel {
     display: none;
   }
   .row {
     grid-template-columns: 1fr;
-    gap: 6px;
+    gap: 8px;
   }
-  .arrow {
-    transform: rotate(90deg);
-    height: 20px;
-  }
-  .cellLabel {
-    display: block;
-    margin-bottom: 4px;
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .before .cellLabel {
-    color: #b83232;
-  }
-  .after .cellLabel {
-    color: var(--rc-green-deep-600);
+  .panel[data-side="before"] .after,
+  .panel[data-side="after"] .before {
+    display: none;
   }
 }
 
@@ -142,6 +166,16 @@
 .play .foot {
   animation: rise 0.6s ease both;
   animation-delay: 6s;
+}
+/* After the entrance rules above, so a phone does not leave a side at
+   opacity 0 until a delay that assumed both columns were on screen. */
+@media (max-width: 640px) {
+  .play .row .before,
+  .play .row .before h3,
+  .play .row .arrow,
+  .play .row .after {
+    animation: none;
+  }
 }
 
 /* ---------- Time back bars ---------- */
@@ -227,27 +261,34 @@
   letter-spacing: -0.01em;
   line-height: 1.3;
 }
-/* Phones (Adam, 23 Oct 2026: the labels weren't showing on mobile). Was:
-   font-size 0, labels hidden because they don't fit in one row. Now the
-   bars grow taller instead. "Now" stays one row (Adam, same day: two rows
-   of three was tried first and didn't read as one week), with phone widths
-   from TimeBack.tsx and smaller text that may wrap inside its block. The
-   short "With RealComply" block is wider, its three steps side by side.
+/* Phones. The "Without RealComply" bar used to force all six jobs into one
+   row, which crushed the labels. They stack, one full-width row each, so
+   every label can be read. The short "With RealComply" block stays one row.
    Wide screens are unchanged. */
 @media (max-width: 640px) {
   .bar {
     height: auto;
     min-height: 52px;
   }
+  .trackBefore .bar {
+    flex-direction: column;
+  }
   .trackBefore .seg {
-    flex: var(--phone-flex) 1 0 !important;
-    padding: 6px 1px;
-    font-size: 10px;
-    line-height: 1.15;
-    hyphens: none;
-    white-space: normal;
-    text-align: center;
-    border-right-width: 1px;
+    flex: none !important;
+    width: 100%;
+    justify-content: flex-start;
+    overflow: visible;
+    text-overflow: clip;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-align: left;
+    border-right-width: 0;
+    border-bottom: 2px solid #fff;
+  }
+  .trackBefore .seg:last-child {
+    border-bottom-width: 0;
   }
   /* Side by side like the red bar (Adam, 23 Oct 2026; was stacked). */
   .work {
@@ -403,10 +444,21 @@
 }
 .addr {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-weight: 700;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+/* On a phone the status pill was eating the address column, so
+   "3 Mock Rd, Placeholder Bay" broke or looked cut off. The address
+   takes the full row. The pill sits under it, still a pill. */
+@media (max-width: 640px) {
+  .file {
+    grid-template-columns: 1fr;
+  }
+  .pill {
+    justify-self: start;
+  }
 }
 .flag {
   grid-column: 1 / -1;

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import styles from "./infographics.module.css";
 import { useInViewOnce } from "./motion";
 import { RoofMark } from "@/components/RoofMark";
@@ -21,7 +22,7 @@ const ROWS = [
     after: "Advertising checked against your estimate",
   },
   {
-    before: "Office compliance management",
+    before: "Chasing every agent for the status of every file.",
     after: "The whole office at a glance, with built-in reminders",
   },
   {
@@ -60,13 +61,34 @@ function Row({ before, after, i }: { before: string; after: string; i: number })
 
 export function BeforeAfter() {
   const { ref, seen } = useInViewOnce<HTMLDivElement>();
+  // Phones show one side at a time (the two-column rows stay on wider
+  // screens). Before is the opening view, matching the heading.
+  const [side, setSide] = useState<"before" | "after">("before");
   return (
-    <div ref={ref} className={`${styles.panel} ${seen ? styles.play : ""}`}>
+    <div ref={ref} data-side={side} className={`${styles.panel} ${seen ? styles.play : ""}`}>
       <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Same rules. A clearer path.</h2>
       <p className="mt-3 max-w-xl text-lg leading-relaxed text-rc-muted">
         What compliance looks like for most NSW sales agents today, and what it looks like for agents using
         RealComply.
       </p>
+      <div className={styles.toggle} role="group" aria-label="Show before or with RealComply">
+        <button
+          type="button"
+          className={`${styles.toggleBtn} ${side === "before" ? styles.toggleBeforeOn : ""}`}
+          aria-pressed={side === "before"}
+          onClick={() => setSide("before")}
+        >
+          Before
+        </button>
+        <button
+          type="button"
+          className={`${styles.toggleBtn} ${side === "after" ? styles.toggleAfterOn : ""}`}
+          aria-pressed={side === "after"}
+          onClick={() => setSide("after")}
+        >
+          With RealComply
+        </button>
+      </div>
       <div className={`${styles.rows} mt-7`}>
         <div className={styles.head}>
           <span>
